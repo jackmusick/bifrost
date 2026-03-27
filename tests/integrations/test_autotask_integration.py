@@ -5,7 +5,7 @@ import sys
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 API_ROOT = REPO_ROOT / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
@@ -13,84 +13,70 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bifrost import integrations, organizations
-from features.dattonetworking.workflows.data_providers import (
-    list_dattonetworking_networks,
-)
-from features.dattonetworking.workflows.sync_networks import (
-    sync_dattonetworking_networks,
-)
-from modules import dattonetworking
+from features.autotask.workflows.data_providers import list_autotask_companies
+from features.autotask.workflows.sync_customers import sync_autotask_customers
+from modules import autotask
 
 
-def _network(network_id: str | None, name: str | None) -> dict:
-    return {
-        "id": network_id,
-        "name": name,
-    }
-
-
-def test_build_headers_matches_cloudtrax_hmac_example():
-    client = dattonetworking.DattoNetworkingClient(
-        api_key="api-key",
-        api_secret="super-secret",
-    )
-
-    headers = client._build_headers(
-        "/network/list",
-        timestamp=1700000000,
-        nonce="abc123",
-    )
-
-    assert headers["OpenMesh-API-Version"] == "1"
-    assert headers["Authorization"] == "key=api-key,timestamp=1700000000,nonce=abc123"
-    assert headers["Signature"] == "7614c0ac3d21a2da982fadf34fd49be4090456fbde0e8e3d89946e3a71fc9cab"
+def _company(company_id: int | None, name: str | None) -> dict:
+    return {"id": company_id, "companyName": name}
 
 
 @pytest.mark.asyncio
 async def test_get_client_uses_scoped_mapping(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
-        assert name == "Datto Networking"
+        assert name == "Autotask"
         assert scope == "org-123"
         return SimpleNamespace(
             config={
-                "api_key": "api-key",
-                "api_secret": "secret-key",
+                "base_url": "https://webservices.example.com/atservicesrest",
+                "api_integration_code": "code",
+                "username": "user",
+                "secret": "secret",
             },
-            entity_id="net-42",
+            entity_id="456",
         )
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    client = await dattonetworking.get_client(scope="org-123")
+    client = await autotask.get_client(scope="org-123")
     try:
-        assert client.network_id == "net-42"
+        assert client.company_id == "456"
     finally:
         await client.close()
 
 
 @pytest.mark.asyncio
-async def test_get_client_requires_all_fields(monkeypatch):
+async def test_get_client_requires_credentials(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
-        return SimpleNamespace(config={"api_key": "api-key"})
+        return SimpleNamespace(config={"base_url": "https://webservices.example.com"})
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    with pytest.raises(RuntimeError, match="api_secret"):
-        await dattonetworking.get_client(scope="global")
+    with pytest.raises(RuntimeError, match="api_integration_code"):
+        await autotask.get_client(scope="global")
+
+
+def test_normalize_company():
+    normalized = autotask.AutotaskClient.normalize_company(
+        {"id": 123, "companyName": "Acme Dental"}
+    )
+
+    assert normalized == {"id": "123", "name": "Acme Dental"}
 
 
 @pytest.mark.asyncio
-async def test_list_dattonetworking_networks_returns_sorted_options(monkeypatch):
+async def test_list_autotask_companies_returns_sorted_options(monkeypatch):
     class FakeClient:
         def __init__(self) -> None:
             self.closed = False
 
-        async def list_networks(self):
+        async def list_active_companies(self):
             return [
-                _network("2", "Zulu"),
-                _network("1", "Alpha"),
-                _network("", "Missing ID"),
-                _network("3", ""),
+                _company(2, "Zulu Dental"),
+                _company(1, "Alpha Dental"),
+                _company(None, "Missing ID"),
+                _company(3, ""),
             ]
 
         async def close(self) -> None:
@@ -102,29 +88,29 @@ async def test_list_dattonetworking_networks_returns_sorted_options(monkeypatch)
         assert scope == "global"
         return fake_client
 
-    monkeypatch.setattr(dattonetworking, "get_client", fake_get_client)
+    monkeypatch.setattr(autotask, "get_client", fake_get_client)
 
-    result = await list_dattonetworking_networks()
+    result = await list_autotask_companies()
 
     assert result == [
-        {"value": "1", "label": "Alpha"},
-        {"value": "2", "label": "Zulu"},
+        {"value": "1", "label": "Alpha Dental"},
+        {"value": "2", "label": "Zulu Dental"},
     ]
     assert fake_client.closed is True
 
 
 @pytest.mark.asyncio
-async def test_sync_dattonetworking_networks_maps_unmapped_networks(monkeypatch):
+async def test_sync_autotask_customers_maps_unmapped_customers(monkeypatch):
     class FakeClient:
         def __init__(self) -> None:
             self.closed = False
 
-        async def list_networks(self):
+        async def list_active_companies(self):
             return [
-                _network("100", "Already Mapped"),
-                _network("200", "Existing Org"),
-                _network("300", "New Org"),
-                _network(None, "Broken Network"),
+                _company(100, "Already Mapped"),
+                _company(200, "Existing Org"),
+                _company(300, "New Org"),
+                _company(None, "Broken Company"),
             ]
 
         async def close(self) -> None:
@@ -139,7 +125,7 @@ async def test_sync_dattonetworking_networks_maps_unmapped_networks(monkeypatch)
         return fake_client
 
     async def fake_list_mappings(name: str):
-        assert name == "Datto Networking"
+        assert name == "Autotask"
         return [SimpleNamespace(entity_id="100")]
 
     existing_org = SimpleNamespace(id="org-existing", name="Existing Org")
@@ -160,24 +146,24 @@ async def test_sync_dattonetworking_networks_maps_unmapped_networks(monkeypatch)
     ):
         mapping_calls.append((name, scope, entity_id, entity_name))
 
-    monkeypatch.setattr(dattonetworking, "get_client", fake_get_client)
+    monkeypatch.setattr(autotask, "get_client", fake_get_client)
     monkeypatch.setattr(integrations, "list_mappings", fake_list_mappings)
     monkeypatch.setattr(integrations, "upsert_mapping", fake_upsert_mapping)
     monkeypatch.setattr(organizations, "list", fake_list_orgs)
     monkeypatch.setattr(organizations, "create", fake_create_org)
 
-    result = await sync_dattonetworking_networks()
+    result = await sync_autotask_customers()
 
     assert result == {
         "total": 4,
         "mapped": 2,
         "already_mapped": 1,
         "created_orgs": 1,
-        "errors": ["Skipped network with no ID: {'id': None, 'name': 'Broken Network'}"],
+        "errors": ["Skipped company with no ID: {'id': None, 'companyName': 'Broken Company'}"],
     }
     assert created_names == ["New Org"]
     assert mapping_calls == [
-        ("Datto Networking", "org-existing", "200", "Existing Org"),
-        ("Datto Networking", "org-new", "300", "New Org"),
+        ("Autotask", "org-existing", "200", "Existing Org"),
+        ("Autotask", "org-new", "300", "New Org"),
     ]
     assert fake_client.closed is True

@@ -5,7 +5,7 @@ import sys
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 API_ROOT = REPO_ROOT / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
@@ -13,39 +13,43 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bifrost import integrations, organizations
-from features.connectsecure.workflows.data_providers import list_connectsecure_companies
-from features.connectsecure.workflows.sync_companies import sync_connectsecure_companies
-from modules import connectsecure
+from features.idemeum.workflows.data_providers import list_idemeum_customers
+from features.idemeum.workflows.sync_customers import sync_idemeum_customers
+from modules import idemeum
 
 
-def _company(company_id: str | None, name: str | None) -> dict:
+def _customer(
+    customer_id: str | None,
+    slug: str | None,
+    display_name: str | None,
+) -> dict:
     return {
-        "id": company_id,
-        "name": name,
+        "id": customer_id,
+        "name": slug,
+        "displayName": display_name,
     }
 
 
 @pytest.mark.asyncio
 async def test_get_client_uses_scoped_mapping(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
-        assert name == "ConnectSecure"
+        assert name == "Idemeum"
         assert scope == "org-123"
         return SimpleNamespace(
             config={
-                "base_uri": "https://api.myconnectsecure.com",
-                "pod_id": "pod103",
-                "tenant": "midtowntg",
-                "api_key": "cid",
-                "api_secret": "secret",
+                "base_url": "https://midtowntg.idemeum.com",
+                "api_key": "secret",
             },
-            entity_id=42,
+            entity_id="cust-123",
+            entity_name="Acme Dental",
         )
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    client = await connectsecure.get_client(scope="org-123")
+    client = await idemeum.get_client(scope="org-123")
     try:
-        assert client.company_id == "42"
+        assert client.customer_id == "cust-123"
+        assert client.customer_name == "Acme Dental"
     finally:
         await client.close()
 
@@ -53,26 +57,44 @@ async def test_get_client_uses_scoped_mapping(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_client_requires_all_fields(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
-        return SimpleNamespace(config={"base_uri": "https://api.myconnectsecure.com"})
+        return SimpleNamespace(config={"base_url": "https://midtowntg.idemeum.com"})
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    with pytest.raises(RuntimeError, match="pod_id"):
-        await connectsecure.get_client(scope="global")
+    with pytest.raises(RuntimeError, match="api_key"):
+        await idemeum.get_client(scope="global")
+
+
+def test_normalize_customer_prefers_display_name():
+    normalized = idemeum.IdemeumClient.normalize_customer(
+        {
+            "id": "cust-1",
+            "name": "acme",
+            "displayName": "Acme Dental",
+            "url": "https://acme.idemeum.com",
+        }
+    )
+
+    assert normalized == {
+        "id": "cust-1",
+        "name": "Acme Dental",
+        "slug": "acme",
+        "url": "https://acme.idemeum.com",
+    }
 
 
 @pytest.mark.asyncio
-async def test_list_connectsecure_companies_returns_sorted_options(monkeypatch):
+async def test_list_idemeum_customers_returns_sorted_options(monkeypatch):
     class FakeClient:
         def __init__(self) -> None:
             self.closed = False
 
-        async def list_companies(self):
+        async def list_customers(self):
             return [
-                _company("2", "Zulu"),
-                _company("1", "Alpha"),
-                _company("", "Missing ID"),
-                _company("3", ""),
+                _customer("2", "zulu", "Zulu Dental"),
+                _customer("1", "alpha", "Alpha Dental"),
+                _customer("", "broken", "Missing ID"),
+                _customer("3", "nameless", ""),
             ]
 
         async def close(self) -> None:
@@ -84,29 +106,29 @@ async def test_list_connectsecure_companies_returns_sorted_options(monkeypatch):
         assert scope == "global"
         return fake_client
 
-    monkeypatch.setattr(connectsecure, "get_client", fake_get_client)
+    monkeypatch.setattr(idemeum, "get_client", fake_get_client)
 
-    result = await list_connectsecure_companies()
+    result = await list_idemeum_customers()
 
     assert result == [
-        {"value": "1", "label": "Alpha"},
-        {"value": "2", "label": "Zulu"},
+        {"value": "1", "label": "Alpha Dental"},
+        {"value": "2", "label": "Zulu Dental"},
     ]
     assert fake_client.closed is True
 
 
 @pytest.mark.asyncio
-async def test_sync_connectsecure_companies_maps_unmapped_companies(monkeypatch):
+async def test_sync_idemeum_customers_maps_unmapped_customers(monkeypatch):
     class FakeClient:
         def __init__(self) -> None:
             self.closed = False
 
-        async def list_companies(self):
+        async def list_customers(self):
             return [
-                _company("100", "Already Mapped"),
-                _company("200", "Existing Org"),
-                _company("300", "New Org"),
-                _company(None, "Broken Company"),
+                _customer("100", "mapped", "Already Mapped"),
+                _customer("200", "existing-org", "Existing Org"),
+                _customer("300", "new-org", "New Org"),
+                _customer(None, "broken", "Broken Customer"),
             ]
 
         async def close(self) -> None:
@@ -121,7 +143,7 @@ async def test_sync_connectsecure_companies_maps_unmapped_companies(monkeypatch)
         return fake_client
 
     async def fake_list_mappings(name: str):
-        assert name == "ConnectSecure"
+        assert name == "Idemeum"
         return [SimpleNamespace(entity_id="100")]
 
     existing_org = SimpleNamespace(id="org-existing", name="Existing Org")
@@ -142,25 +164,24 @@ async def test_sync_connectsecure_companies_maps_unmapped_companies(monkeypatch)
     ):
         mapping_calls.append((name, scope, entity_id, entity_name))
 
-    monkeypatch.setattr(connectsecure, "get_client", fake_get_client)
+    monkeypatch.setattr(idemeum, "get_client", fake_get_client)
     monkeypatch.setattr(integrations, "list_mappings", fake_list_mappings)
     monkeypatch.setattr(integrations, "upsert_mapping", fake_upsert_mapping)
     monkeypatch.setattr(organizations, "list", fake_list_orgs)
     monkeypatch.setattr(organizations, "create", fake_create_org)
 
-    result = await sync_connectsecure_companies()
+    result = await sync_idemeum_customers()
 
     assert result == {
         "total": 4,
         "mapped": 2,
         "already_mapped": 1,
         "created_orgs": 1,
-        "errors": ["Skipped company with no ID: {'id': None, 'name': 'Broken Company'}"],
+        "errors": ["Skipped customer with no ID: {'id': None, 'name': 'broken', 'displayName': 'Broken Customer'}"],
     }
     assert created_names == ["New Org"]
     assert mapping_calls == [
-        ("ConnectSecure", "org-existing", "200", "Existing Org"),
-        ("ConnectSecure", "org-new", "300", "New Org"),
+        ("Idemeum", "org-existing", "200", "Existing Org"),
+        ("Idemeum", "org-new", "300", "New Org"),
     ]
     assert fake_client.closed is True
-

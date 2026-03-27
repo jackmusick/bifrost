@@ -5,7 +5,7 @@ import sys
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 API_ROOT = REPO_ROOT / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
@@ -13,68 +13,65 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bifrost import integrations, organizations
-from features.dattormm.workflows.data_providers import list_dattormm_sites
-from features.dattormm.workflows.sync_sites import sync_dattormm_sites
-from modules import dattormm
+from features.pax8.workflows.data_providers import list_pax8_companies
+from features.pax8.workflows.sync_companies import sync_pax8_companies
+from modules import pax8
 
 
-def _site(site_uid: str | None, name: str | None) -> dict:
-    return {
-        "siteUid": site_uid,
-        "siteName": name,
-    }
+def _company(company_id: str | None, name: str | None) -> dict:
+    company: dict[str, str] = {}
+    if company_id is not None:
+        company["id"] = company_id
+    if name is not None:
+        company["name"] = name
+    return company
 
 
 @pytest.mark.asyncio
 async def test_get_client_uses_scoped_mapping(monkeypatch):
+    oauth = SimpleNamespace(access_token="access-token")
+
     async def fake_get(name: str, scope: str | None = None):
-        assert name == "Datto RMM"
+        assert name == "Pax8"
         assert scope == "org-123"
-        return SimpleNamespace(
-            config={
-                "base_uri": "https://concord-api.centrastage.net",
-                "api_key": "access-key",
-                "api_secret": "secret-key",
-            },
-            entity_id="site-42",
-        )
+        return SimpleNamespace(config={}, entity_id="company-42", oauth=oauth)
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    client = await dattormm.get_client(scope="org-123")
+    client = await pax8.get_client(scope="org-123")
     try:
-        assert client.site_uid == "site-42"
+        assert client.company_id == "company-42"
+        assert client._base_url == pax8.Pax8Client.BASE_URL
     finally:
         await client.close()
 
 
 @pytest.mark.asyncio
-async def test_get_client_requires_all_fields(monkeypatch):
+async def test_get_client_requires_oauth_token(monkeypatch):
+    oauth = SimpleNamespace(access_token=None)
+
     async def fake_get(name: str, scope: str | None = None):
-        return SimpleNamespace(config={"base_uri": "https://concord-api.centrastage.net"})
+        return SimpleNamespace(config={}, entity_id=None, oauth=oauth)
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    with pytest.raises(RuntimeError, match="api_key"):
-        await dattormm.get_client(scope="global")
+    with pytest.raises(RuntimeError, match="OAuth access token"):
+        await pax8.get_client(scope="global")
 
 
 @pytest.mark.asyncio
-async def test_list_dattormm_sites_returns_sorted_options(monkeypatch):
+async def test_list_pax8_companies_returns_sorted_options(monkeypatch):
     class FakeClient:
-        def __init__(self) -> None:
-            self.closed = False
-
-        async def list_sites(self):
+        async def list_companies(self):
             return [
-                _site("2", "Zulu"),
-                _site("1", "Alpha"),
-                _site("", "Missing ID"),
-                _site("3", ""),
+                _company("2", "Zulu"),
+                _company("1", "Alpha"),
+                _company("", "Missing ID"),
+                _company("3", ""),
             ]
 
         async def close(self) -> None:
-            self.closed = True
+            return None
 
     fake_client = FakeClient()
 
@@ -82,33 +79,29 @@ async def test_list_dattormm_sites_returns_sorted_options(monkeypatch):
         assert scope == "global"
         return fake_client
 
-    monkeypatch.setattr(dattormm, "get_client", fake_get_client)
+    monkeypatch.setattr(pax8, "get_client", fake_get_client)
 
-    result = await list_dattormm_sites()
+    result = await list_pax8_companies()
 
     assert result == [
         {"value": "1", "label": "Alpha"},
         {"value": "2", "label": "Zulu"},
     ]
-    assert fake_client.closed is True
 
 
 @pytest.mark.asyncio
-async def test_sync_dattormm_sites_maps_unmapped_sites(monkeypatch):
+async def test_sync_pax8_companies_maps_unmapped_companies(monkeypatch):
     class FakeClient:
-        def __init__(self) -> None:
-            self.closed = False
-
-        async def list_sites(self):
+        async def list_companies(self):
             return [
-                _site("100", "Already Mapped"),
-                _site("200", "Existing Org"),
-                _site("300", "New Org"),
-                _site(None, "Broken Site"),
+                _company("100", "Already Mapped"),
+                _company("200", "Existing Org"),
+                _company("300", "New Org"),
+                _company(None, "Broken Company"),
             ]
 
         async def close(self) -> None:
-            self.closed = True
+            return None
 
     fake_client = FakeClient()
     created_names: list[str] = []
@@ -119,7 +112,7 @@ async def test_sync_dattormm_sites_maps_unmapped_sites(monkeypatch):
         return fake_client
 
     async def fake_list_mappings(name: str):
-        assert name == "Datto RMM"
+        assert name == "Pax8"
         return [SimpleNamespace(entity_id="100")]
 
     existing_org = SimpleNamespace(id="org-existing", name="Existing Org")
@@ -140,24 +133,23 @@ async def test_sync_dattormm_sites_maps_unmapped_sites(monkeypatch):
     ):
         mapping_calls.append((name, scope, entity_id, entity_name))
 
-    monkeypatch.setattr(dattormm, "get_client", fake_get_client)
+    monkeypatch.setattr(pax8, "get_client", fake_get_client)
     monkeypatch.setattr(integrations, "list_mappings", fake_list_mappings)
     monkeypatch.setattr(integrations, "upsert_mapping", fake_upsert_mapping)
     monkeypatch.setattr(organizations, "list", fake_list_orgs)
     monkeypatch.setattr(organizations, "create", fake_create_org)
 
-    result = await sync_dattormm_sites()
+    result = await sync_pax8_companies()
 
     assert result == {
         "total": 4,
         "mapped": 2,
         "already_mapped": 1,
         "created_orgs": 1,
-        "errors": ["Skipped site with no ID: {'siteUid': None, 'siteName': 'Broken Site'}"],
+        "errors": ["Skipped company with no ID: {'name': 'Broken Company'}"],
     }
     assert created_names == ["New Org"]
     assert mapping_calls == [
-        ("Datto RMM", "org-existing", "200", "Existing Org"),
-        ("Datto RMM", "org-new", "300", "New Org"),
+        ("Pax8", "org-existing", "200", "Existing Org"),
+        ("Pax8", "org-new", "300", "New Org"),
     ]
-    assert fake_client.closed is True

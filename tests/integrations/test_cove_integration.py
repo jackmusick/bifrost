@@ -5,7 +5,7 @@ import sys
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 API_ROOT = REPO_ROOT / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
@@ -13,60 +13,68 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bifrost import integrations, organizations
-from features.huntress.workflows.data_providers import list_huntress_organizations
-from features.huntress.workflows.sync_organizations import sync_huntress_organizations
-from modules import huntress
+from features.cove.workflows.data_providers import list_cove_customers
+from features.cove.workflows.sync_customers import sync_cove_customers
+from modules import cove
 
 
-def _organization(organization_id: str | None, name: str | None) -> dict:
-    organization: dict[str, str] = {}
-    if organization_id is not None:
-        organization["id"] = organization_id
+def _partner(partner_id: int | None, name: str | None, level: str | None) -> dict:
+    partner: dict[str, object] = {}
+    if partner_id is not None:
+        partner["Id"] = partner_id
     if name is not None:
-        organization["name"] = name
-    return organization
+        partner["Name"] = name
+    if level is not None:
+        partner["Level"] = level
+    return partner
 
 
 @pytest.mark.asyncio
 async def test_get_client_uses_scoped_mapping(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
-        assert name == "Huntress"
+        assert name == "Cove Data Protection"
         assert scope == "org-123"
         return SimpleNamespace(
-            config={"api_key": "public", "api_secret": "secret"},
-            entity_id="97509",
+            config={
+                "partner_name": "Midtown Technology Group (doug@midtowntg.com)",
+                "username": "MidBot",
+                "password": "secret",
+            },
+            entity_id="2544869",
         )
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    client = await huntress.get_client(scope="org-123")
+    client = await cove.get_client(scope="org-123")
     try:
-        assert client.organization_id == "97509"
-        assert client._base_url == "https://api.huntress.io"
+        assert client.partner_id == 2544869
+        assert client.partner_name == "Midtown Technology Group (doug@midtowntg.com)"
+        assert client.root_partner_id == cove.CoveClient.ROOT_PARTNER_ID
     finally:
         await client.close()
 
 
 @pytest.mark.asyncio
-async def test_get_client_requires_api_credentials(monkeypatch):
+async def test_get_client_requires_partner_username_and_password(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
         return SimpleNamespace(config={}, entity_id=None)
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    with pytest.raises(RuntimeError, match="api_key or api_secret"):
-        await huntress.get_client(scope="global")
+    with pytest.raises(RuntimeError, match="partner_name, username, or password"):
+        await cove.get_client(scope="global")
 
 
 @pytest.mark.asyncio
-async def test_list_huntress_organizations_returns_sorted_options(monkeypatch):
+async def test_list_cove_customers_returns_sorted_endcustomers(monkeypatch):
     class FakeClient:
-        async def list_organizations(self):
+        async def enumerate_partners(self):
             return [
-                _organization("2", "Zulu"),
-                _organization("1", "Alpha"),
-                _organization("", "Missing ID"),
-                _organization("3", ""),
+                _partner(2, "Zulu", "EndCustomer"),
+                _partner(1, "Alpha", "EndCustomer"),
+                _partner(3, "Parent MSP", "Reseller"),
+                _partner(None, "Broken", "EndCustomer"),
+                _partner(4, "", "EndCustomer"),
             ]
 
         async def close(self) -> None:
@@ -78,9 +86,9 @@ async def test_list_huntress_organizations_returns_sorted_options(monkeypatch):
         assert scope == "global"
         return fake_client
 
-    monkeypatch.setattr(huntress, "get_client", fake_get_client)
+    monkeypatch.setattr(cove, "get_client", fake_get_client)
 
-    result = await list_huntress_organizations()
+    result = await list_cove_customers()
 
     assert result == [
         {"value": "1", "label": "Alpha"},
@@ -89,14 +97,15 @@ async def test_list_huntress_organizations_returns_sorted_options(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sync_huntress_organizations_maps_unmapped_organizations(monkeypatch):
+async def test_sync_cove_customers_maps_unmapped_endcustomers(monkeypatch):
     class FakeClient:
-        async def list_organizations(self):
+        async def enumerate_partners(self):
             return [
-                _organization("100", "Already Mapped"),
-                _organization("200", "Existing Org"),
-                _organization("300", "New Org"),
-                _organization(None, "Broken Organization"),
+                _partner(100, "Already Mapped", "EndCustomer"),
+                _partner(200, "Existing Org", "EndCustomer"),
+                _partner(300, "New Org", "EndCustomer"),
+                _partner(400, "Parent MSP", "Reseller"),
+                _partner(None, "Broken Customer", "EndCustomer"),
             ]
 
         async def close(self) -> None:
@@ -111,7 +120,7 @@ async def test_sync_huntress_organizations_maps_unmapped_organizations(monkeypat
         return fake_client
 
     async def fake_list_mappings(name: str):
-        assert name == "Huntress"
+        assert name == "Cove Data Protection"
         return [SimpleNamespace(entity_id="100")]
 
     existing_org = SimpleNamespace(id="org-existing", name="Existing Org")
@@ -132,23 +141,23 @@ async def test_sync_huntress_organizations_maps_unmapped_organizations(monkeypat
     ):
         mapping_calls.append((name, scope, entity_id, entity_name))
 
-    monkeypatch.setattr(huntress, "get_client", fake_get_client)
+    monkeypatch.setattr(cove, "get_client", fake_get_client)
     monkeypatch.setattr(integrations, "list_mappings", fake_list_mappings)
     monkeypatch.setattr(integrations, "upsert_mapping", fake_upsert_mapping)
     monkeypatch.setattr(organizations, "list", fake_list_orgs)
     monkeypatch.setattr(organizations, "create", fake_create_org)
 
-    result = await sync_huntress_organizations()
+    result = await sync_cove_customers()
 
     assert result == {
         "total": 4,
         "mapped": 2,
         "already_mapped": 1,
         "created_orgs": 1,
-        "errors": ["Skipped organization with no ID: {'name': 'Broken Organization'}"],
+        "errors": ["Skipped partner with no ID: {'Name': 'Broken Customer', 'Level': 'EndCustomer'}"],
     }
     assert created_names == ["New Org"]
     assert mapping_calls == [
-        ("Huntress", "org-existing", "200", "Existing Org"),
-        ("Huntress", "org-new", "300", "New Org"),
+        ("Cove Data Protection", "org-existing", "200", "Existing Org"),
+        ("Cove Data Protection", "org-new", "300", "New Org"),
     ]

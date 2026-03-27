@@ -5,7 +5,7 @@ import sys
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 API_ROOT = REPO_ROOT / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
@@ -13,43 +13,57 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bifrost import integrations, organizations
-from features.idemeum.workflows.data_providers import list_idemeum_customers
-from features.idemeum.workflows.sync_customers import sync_idemeum_customers
-from modules import idemeum
+from features.dattonetworking.workflows.data_providers import (
+    list_dattonetworking_networks,
+)
+from features.dattonetworking.workflows.sync_networks import (
+    sync_dattonetworking_networks,
+)
+from modules import dattonetworking
 
 
-def _customer(
-    customer_id: str | None,
-    slug: str | None,
-    display_name: str | None,
-) -> dict:
+def _network(network_id: str | None, name: str | None) -> dict:
     return {
-        "id": customer_id,
-        "name": slug,
-        "displayName": display_name,
+        "id": network_id,
+        "name": name,
     }
+
+
+def test_build_headers_matches_cloudtrax_hmac_example():
+    client = dattonetworking.DattoNetworkingClient(
+        api_key="api-key",
+        api_secret="super-secret",
+    )
+
+    headers = client._build_headers(
+        "/network/list",
+        timestamp=1700000000,
+        nonce="abc123",
+    )
+
+    assert headers["OpenMesh-API-Version"] == "1"
+    assert headers["Authorization"] == "key=api-key,timestamp=1700000000,nonce=abc123"
+    assert headers["Signature"] == "7614c0ac3d21a2da982fadf34fd49be4090456fbde0e8e3d89946e3a71fc9cab"
 
 
 @pytest.mark.asyncio
 async def test_get_client_uses_scoped_mapping(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
-        assert name == "Idemeum"
+        assert name == "Datto Networking"
         assert scope == "org-123"
         return SimpleNamespace(
             config={
-                "base_url": "https://midtowntg.idemeum.com",
-                "api_key": "secret",
+                "api_key": "api-key",
+                "api_secret": "secret-key",
             },
-            entity_id="cust-123",
-            entity_name="Acme Dental",
+            entity_id="net-42",
         )
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    client = await idemeum.get_client(scope="org-123")
+    client = await dattonetworking.get_client(scope="org-123")
     try:
-        assert client.customer_id == "cust-123"
-        assert client.customer_name == "Acme Dental"
+        assert client.network_id == "net-42"
     finally:
         await client.close()
 
@@ -57,44 +71,26 @@ async def test_get_client_uses_scoped_mapping(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_client_requires_all_fields(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):
-        return SimpleNamespace(config={"base_url": "https://midtowntg.idemeum.com"})
+        return SimpleNamespace(config={"api_key": "api-key"})
 
     monkeypatch.setattr(integrations, "get", fake_get)
 
-    with pytest.raises(RuntimeError, match="api_key"):
-        await idemeum.get_client(scope="global")
-
-
-def test_normalize_customer_prefers_display_name():
-    normalized = idemeum.IdemeumClient.normalize_customer(
-        {
-            "id": "cust-1",
-            "name": "acme",
-            "displayName": "Acme Dental",
-            "url": "https://acme.idemeum.com",
-        }
-    )
-
-    assert normalized == {
-        "id": "cust-1",
-        "name": "Acme Dental",
-        "slug": "acme",
-        "url": "https://acme.idemeum.com",
-    }
+    with pytest.raises(RuntimeError, match="api_secret"):
+        await dattonetworking.get_client(scope="global")
 
 
 @pytest.mark.asyncio
-async def test_list_idemeum_customers_returns_sorted_options(monkeypatch):
+async def test_list_dattonetworking_networks_returns_sorted_options(monkeypatch):
     class FakeClient:
         def __init__(self) -> None:
             self.closed = False
 
-        async def list_customers(self):
+        async def list_networks(self):
             return [
-                _customer("2", "zulu", "Zulu Dental"),
-                _customer("1", "alpha", "Alpha Dental"),
-                _customer("", "broken", "Missing ID"),
-                _customer("3", "nameless", ""),
+                _network("2", "Zulu"),
+                _network("1", "Alpha"),
+                _network("", "Missing ID"),
+                _network("3", ""),
             ]
 
         async def close(self) -> None:
@@ -106,29 +102,29 @@ async def test_list_idemeum_customers_returns_sorted_options(monkeypatch):
         assert scope == "global"
         return fake_client
 
-    monkeypatch.setattr(idemeum, "get_client", fake_get_client)
+    monkeypatch.setattr(dattonetworking, "get_client", fake_get_client)
 
-    result = await list_idemeum_customers()
+    result = await list_dattonetworking_networks()
 
     assert result == [
-        {"value": "1", "label": "Alpha Dental"},
-        {"value": "2", "label": "Zulu Dental"},
+        {"value": "1", "label": "Alpha"},
+        {"value": "2", "label": "Zulu"},
     ]
     assert fake_client.closed is True
 
 
 @pytest.mark.asyncio
-async def test_sync_idemeum_customers_maps_unmapped_customers(monkeypatch):
+async def test_sync_dattonetworking_networks_maps_unmapped_networks(monkeypatch):
     class FakeClient:
         def __init__(self) -> None:
             self.closed = False
 
-        async def list_customers(self):
+        async def list_networks(self):
             return [
-                _customer("100", "mapped", "Already Mapped"),
-                _customer("200", "existing-org", "Existing Org"),
-                _customer("300", "new-org", "New Org"),
-                _customer(None, "broken", "Broken Customer"),
+                _network("100", "Already Mapped"),
+                _network("200", "Existing Org"),
+                _network("300", "New Org"),
+                _network(None, "Broken Network"),
             ]
 
         async def close(self) -> None:
@@ -143,7 +139,7 @@ async def test_sync_idemeum_customers_maps_unmapped_customers(monkeypatch):
         return fake_client
 
     async def fake_list_mappings(name: str):
-        assert name == "Idemeum"
+        assert name == "Datto Networking"
         return [SimpleNamespace(entity_id="100")]
 
     existing_org = SimpleNamespace(id="org-existing", name="Existing Org")
@@ -164,24 +160,24 @@ async def test_sync_idemeum_customers_maps_unmapped_customers(monkeypatch):
     ):
         mapping_calls.append((name, scope, entity_id, entity_name))
 
-    monkeypatch.setattr(idemeum, "get_client", fake_get_client)
+    monkeypatch.setattr(dattonetworking, "get_client", fake_get_client)
     monkeypatch.setattr(integrations, "list_mappings", fake_list_mappings)
     monkeypatch.setattr(integrations, "upsert_mapping", fake_upsert_mapping)
     monkeypatch.setattr(organizations, "list", fake_list_orgs)
     monkeypatch.setattr(organizations, "create", fake_create_org)
 
-    result = await sync_idemeum_customers()
+    result = await sync_dattonetworking_networks()
 
     assert result == {
         "total": 4,
         "mapped": 2,
         "already_mapped": 1,
         "created_orgs": 1,
-        "errors": ["Skipped customer with no ID: {'id': None, 'name': 'broken', 'displayName': 'Broken Customer'}"],
+        "errors": ["Skipped network with no ID: {'id': None, 'name': 'Broken Network'}"],
     }
     assert created_names == ["New Org"]
     assert mapping_calls == [
-        ("Idemeum", "org-existing", "200", "Existing Org"),
-        ("Idemeum", "org-new", "300", "New Org"),
+        ("Datto Networking", "org-existing", "200", "Existing Org"),
+        ("Datto Networking", "org-new", "300", "New Org"),
     ]
     assert fake_client.closed is True
