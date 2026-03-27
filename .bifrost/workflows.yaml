@@ -1194,3 +1194,56 @@ workflows:
     - sync
     timeout_seconds: 300
     type: workflow
+  b4324172-5d1d-4bf7-b37d-29b96a4b6461:
+    category: TD SYNNEX Partner API
+    description: Look up TD SYNNEX reseller order details by order number, with
+      optional order type.
+    function_name: get_order
+    id: b4324172-5d1d-4bf7-b37d-29b96a4b6461
+    name: 'TD SYNNEX Partner API: Get Order'
+    path: features/tdsynnex_partner/workflows/tools.py
+    tags:
+    - tdsynnex
+    - orders
+    - procurement
+    timeout_seconds: 60
+    type: tool
+  79dd693b-783e-4e65-b98b-53af4e6a7758:
+    category: TD SYNNEX Partner API
+    description: Look up TD SYNNEX shipment details for a reseller order number.
+    function_name: get_shipment_details
+    id: 79dd693b-783e-4e65-b98b-53af4e6a7758
+    name: 'TD SYNNEX Partner API: Get Shipment Details'
+    path: features/tdsynnex_partner/workflows/tools.py
+    tags:
+    - tdsynnex
+    - shipments
+    - procurement
+    timeout_seconds: 60
+    type: tool
+  c2cfcefb-7345-4218-89fd-bcd122c1c6c5:
+    category: TD SYNNEX Partner API
+    description: Look up TD SYNNEX invoice details by invoice number and type.
+    function_name: get_invoice
+    id: c2cfcefb-7345-4218-89fd-bcd122c1c6c5
+    name: 'TD SYNNEX Partner API: Get Invoice'
+    path: features/tdsynnex_partner/workflows/tools.py
+    tags:
+    - tdsynnex
+    - invoices
+    - procurement
+    timeout_seconds: 60
+    type: tool
+  7041cd62-4fbf-469c-a913-b480e8ccce6d:
+    category: TD SYNNEX Partner API
+    description: Look up TD SYNNEX quote status by reseller order number.
+    function_name: get_quote_status
+    id: 7041cd62-4fbf-469c-a913-b480e8ccce6d
+    name: 'TD SYNNEX Partner API: Get Quote Status'
+    path: features/tdsynnex_partner/workflows/tools.py
+    tags:
+    - tdsynnex
+    - quotes
+    - procurement
+    timeout_seconds: 60
+    type: tool

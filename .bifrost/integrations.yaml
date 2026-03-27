@@ -470,3 +470,23 @@ integrations:
     list_entities_data_provider_id: 70f8bbd0-b93a-43e4-bf05-5599d6c221cf
     mappings: []
     name: Idemeum
+  fffea9b0-03bd-46a1-89f8-41bb67d22ceb:
+    config_schema:
+    - description: TD SYNNEX Partner API client ID
+      key: client_id
+      position: 0
+      required: true
+      type: string
+    - description: TD SYNNEX Partner API client secret
+      key: client_secret
+      position: 1
+      required: true
+      type: secret
+    - description: Optional base URL override; defaults to https://api.us.tdsynnex.com
+      key: base_url
+      position: 2
+      required: false
+      type: string
+    id: fffea9b0-03bd-46a1-89f8-41bb67d22ceb
+    mappings: []
+    name: TD SYNNEX Partner API

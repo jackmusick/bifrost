@@ -4,6 +4,10 @@
 
 TD SYNNEX's public `StreamOne ION` API is workable for cloud and subscription order lifecycle workflows, but it is not yet a clean fit for Bifrost's current integration runtime.
 
+This note applies specifically to `StreamOne ION`, not the separate
+`TD SYNNEX Partner API` described in
+`/home/thomas/mtg-bifrost/bifrost/docs/plans/2026-03-27-tdsynnex-partner-api-readiness.md`.
+
 The main problem is authentication:
 
 - StreamOne ION uses `POST https://ion.tdsynnex.com/oauth/token`
