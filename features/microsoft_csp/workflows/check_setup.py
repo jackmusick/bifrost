@@ -43,7 +43,7 @@ async def check_microsoft_setup() -> dict:
 
     # Check Microsoft CSP integration
     try:
-        csp_integration = await integrations.get("Microsoft CSP")
+        csp_integration = await integrations.get("Microsoft CSP", scope="global")
         if csp_integration and csp_integration.oauth:
             # For delegated flow, we need a refresh token
             if csp_integration.oauth.refresh_token:
