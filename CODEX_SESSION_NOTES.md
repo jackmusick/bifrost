@@ -51,6 +51,9 @@ workflow/content repos.
   `.bifrost/` as generated/system-managed workspace state
 - See `docs/plans/2026-03-26-upstream-convergence-plan.md` before doing more
   repo-model work around manifests or dev image workflows
+- Use `docs/plans/2026-03-27-manifest-transition-guidance.md` as the current
+  operating rule: `.bifrost/` is a discovery surface and transitional sync
+  artifact, not a safe long-term authored source-of-truth
 - The built-in Git/GitHub integration should now be treated as deprecated for
   this fork's day-to-day workflow; see
   `docs/plans/2026-03-27-post-github-integration-workflow.md`
@@ -82,6 +85,8 @@ The main reusable ideas from `.claude/skills/bifrost-build/SKILL.md` are:
 - fetch platform docs once per session if needed and reuse them
 - treat `.bifrost/*.yaml` as a current discovery surface, but not as a safe
   long-term source-of-truth assumption
+- avoid teaching or reinforcing manual `.bifrost/*.yaml` authoring as the
+  default workflow
 - generate UUIDs before writing cross-referenced manifest entities
 - rely on `bifrost watch` only when intentionally using SDK/watch workflows
 
