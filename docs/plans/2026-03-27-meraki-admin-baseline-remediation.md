@@ -38,6 +38,7 @@ Reusable Meraki workflows added for this operational pattern:
 
 - `Meraki: Audit Admins Against Baseline Organization`
 - `Meraki: Sync Admins From Baseline Organization`
+- `Meraki: Remove Admin Across Organizations`
 
 These workflows are intended to support standard add/change remediation based on
 a known-good Meraki org rather than an inferred domain-wide heuristic. They now
@@ -81,6 +82,33 @@ vendor-disabled orgs:
   - `Jacobson Hile Kight`
   - `Cynthia L Hovey DDS`
   - `Connected Healthcare Systems`
+
+## Follow-up Cleanup
+
+Confirmed typo account cleanup:
+
+- `tleuke@midtowntg.com` was removed across the active managed Meraki orgs via
+  `Meraki: Remove Admin Across Organizations`
+
+Broader Meraki hygiene work still remaining after the baseline remediation and
+typo-account cleanup:
+
+- review and remove legacy or vendor admins such as:
+  - `stephen@bionic-cat.com`
+  - `doug@techsupportindy.com`
+  - `dawn@gethotboxpizza.com`
+- review intentional extra Midtown admins not present in the baseline org, such
+  as:
+  - `mgarcia@midtowntg.com`
+  - `regina@midtowntg.com`
+  - `kmiller@midtowntg.com`
+- decide whether the broader baseline should also include additional Midtown
+  staff currently missing from many orgs, especially:
+  - `koerner@midtowntg.com`
+  - `adam@midtowntg.com`
+  - `mike@midtowntg.com`
+  - `doug@midtowntg.com`
+  - `tim@midtowntg.com`
 
 ## Team Note
 
