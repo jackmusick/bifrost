@@ -85,6 +85,22 @@ workflows:
     - autotask
     - sync
     timeout_seconds: 300
+  0e6f7903-1e67-4db4-af4f-7082bc16efb4:
+    access_level: role_based
+    category: NetBird
+    description: Summarize NetBird account inventory across peers, groups, setup keys,
+      users, and audit events.
+    function_name: get_netbird_account_inventory
+    id: 0e6f7903-1e67-4db4-af4f-7082bc16efb4
+    name: 'NetBird: Get Account Inventory'
+    path: features/netbird/workflows/tools.py
+    tags:
+    - netbird
+    - inventory
+    - vpn
+    - network
+    timeout_seconds: 60
+    type: tool
   0e86a4b8-046e-4b0b-a76d-37f62c13f22c:
     access_level: role_based
     description: Save a HaloPSA schema rule or pattern to knowledge for future SQL
@@ -151,6 +167,21 @@ workflows:
     tags:
     - itglue
     - documentation
+  17a54b69-8a12-46d9-875b-adebd8439b02:
+    access_level: role_based
+    category: NetBird
+    description: List NetBird audit events for the connected account.
+    function_name: list_netbird_audit_events
+    id: 17a54b69-8a12-46d9-875b-adebd8439b02
+    name: 'NetBird: List Audit Events'
+    path: features/netbird/workflows/tools.py
+    tags:
+    - netbird
+    - audit
+    - events
+    - network
+    timeout_seconds: 60
+    type: tool
   183ffeb9-0ecc-496a-87b4-adbd46528f3d:
     access_level: role_based
     category: LuxSci
@@ -412,6 +443,21 @@ workflows:
     - governance
     timeout_seconds: 60
     type: data_provider
+  57a5528e-d5e8-4fd2-b52f-061cbb543295:
+    access_level: role_based
+    category: NetBird
+    description: List NetBird peers for the connected account, optionally filtered
+      by name or IP.
+    function_name: list_netbird_peers
+    id: 57a5528e-d5e8-4fd2-b52f-061cbb543295
+    name: 'NetBird: List Peers'
+    path: features/netbird/workflows/tools.py
+    tags:
+    - netbird
+    - peers
+    - network
+    timeout_seconds: 60
+    type: tool
   58926179-37af-445d-9f5f-c06d50060c59:
     access_level: authenticated
     category: Idemeum
@@ -556,6 +602,21 @@ workflows:
     - halopsa
     - notes
     type: tool
+  73103d8f-f788-4ea7-a5df-6ac91f5943a2:
+    access_level: role_based
+    category: NetBird
+    description: List NetBird users for the connected account, optionally filtering
+      for service users.
+    function_name: list_netbird_users
+    id: 73103d8f-f788-4ea7-a5df-6ac91f5943a2
+    name: 'NetBird: List Users'
+    path: features/netbird/workflows/tools.py
+    tags:
+    - netbird
+    - users
+    - network
+    timeout_seconds: 60
+    type: tool
   7457c662-79d1-4e7b-96b4-42c1112faf22:
     access_level: role_based
     category: Platform
@@ -581,6 +642,21 @@ workflows:
     - microsoft
     - csp
     - consent
+  786ba45d-dd1c-49d4-8b6a-3ec2b6ca7ea7:
+    access_level: role_based
+    category: NetBird
+    description: List NetBird groups for the connected account, optionally filtered
+      by exact group name.
+    function_name: list_netbird_groups
+    id: 786ba45d-dd1c-49d4-8b6a-3ec2b6ca7ea7
+    name: 'NetBird: List Groups'
+    path: features/netbird/workflows/tools.py
+    tags:
+    - netbird
+    - groups
+    - network
+    timeout_seconds: 60
+    type: tool
   7966b43d-f27a-4ae9-921c-269eccdede6d:
     access_level: authenticated
     category: Datto RMM
@@ -1063,6 +1139,20 @@ workflows:
     - gotoconnect
     - calls
     - agent
+    timeout_seconds: 60
+    type: tool
+  c40fd630-d4ca-48ba-bc3c-b1c1140b6de9:
+    access_level: role_based
+    category: NetBird
+    description: List NetBird setup keys for the connected account.
+    function_name: list_netbird_setup_keys
+    id: c40fd630-d4ca-48ba-bc3c-b1c1140b6de9
+    name: 'NetBird: List Setup Keys'
+    path: features/netbird/workflows/tools.py
+    tags:
+    - netbird
+    - setup-keys
+    - network
     timeout_seconds: 60
     type: tool
   c63d6c1e-80b9-44e6-aa1a-69246c2d0637:
