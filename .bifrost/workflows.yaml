@@ -87,7 +87,7 @@ workflows:
     function_name: sync_autotask_customers
     id: 0df08d7b-4d69-4b17-a92e-df056d2996b3
     name: 'Autotask: Sync Customers'
-    path: workflows/autotask/sync_customers.py
+    path: features/autotask/workflows/sync_customers.py
     tags:
     - autotask
     - sync
@@ -223,7 +223,7 @@ workflows:
     function_name: list_autotask_companies
     id: 32222c8b-5b11-40b2-aed3-e8840766cf15
     name: 'Autotask: List Companies'
-    path: workflows/autotask/entities.py
+    path: features/autotask/workflows/data_providers.py
     tags:
     - autotask
     - data-provider
