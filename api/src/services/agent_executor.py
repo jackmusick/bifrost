@@ -282,6 +282,15 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             model_override = agent.llm_model if agent else None
             max_tokens_override = agent.llm_max_tokens if agent else None
 
+            # Track tool_call IDs across iterations to handle providers
+            # (e.g. Minimax) that reuse the same IDs across turns.
+            seen_tc_ids: set[str] = set()
+            # Also collect IDs from message history (loaded from DB)
+            for m in messages:
+                if m.role == "assistant" and m.tool_calls:
+                    for tc in m.tool_calls:
+                        seen_tc_ids.add(tc.id)
+
             while iteration < MAX_TOOL_ITERATIONS:
                 iteration += 1
 
@@ -334,6 +343,15 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 if not collected_tool_calls:
                     final_content = collected_content
                     break
+
+                # Deduplicate tool_call IDs — some providers (e.g. Minimax)
+                # reuse the same IDs across turns within a single request.
+                for tc in collected_tool_calls:
+                    if tc.id in seen_tc_ids:
+                        old_id = tc.id
+                        tc.id = f"{tc.id}_iter{iteration}"
+                        logger.debug("Remapped duplicate tool_call ID %s -> %s", old_id, tc.id)
+                    seen_tc_ids.add(tc.id)
 
                 # Save text content as its own message BEFORE tools (no tool_calls embedded)
                 # This ensures text appears before tools in timeline after refresh
@@ -585,6 +603,12 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         )
         db_messages = result.scalars().all()
 
+        # Track seen tool_call IDs to handle providers (e.g. Minimax) that
+        # reuse the same IDs across turns. When a collision is detected, remap
+        # to a unique ID and apply the same remap to the corresponding tool result.
+        seen_tc_ids: dict[str, int] = {}  # tc_id -> count of times seen
+        tc_id_remap: dict[tuple[int, str], str] = {}  # (sequence, original_id) -> new_id
+
         for msg in db_messages:
             if msg.role == MessageRole.USER:
                 messages.append(
@@ -596,14 +620,23 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             elif msg.role == MessageRole.ASSISTANT:
                 tool_calls = None
                 if msg.tool_calls:
-                    tool_calls = [
-                        ToolCallRequest(
-                            id=tc["id"],
-                            name=tc["name"],
-                            arguments=tc.get("arguments", {}),
+                    tool_calls = []
+                    for tc in msg.tool_calls:
+                        tc_id = tc["id"]
+                        if tc_id in seen_tc_ids:
+                            seen_tc_ids[tc_id] += 1
+                            new_id = f"{tc_id}_t{seen_tc_ids[tc_id]}"
+                            tc_id_remap[(msg.sequence, tc["id"])] = new_id
+                            tc_id = new_id
+                        else:
+                            seen_tc_ids[tc_id] = 1
+                        tool_calls.append(
+                            ToolCallRequest(
+                                id=tc_id,
+                                name=tc["name"],
+                                arguments=tc.get("arguments", {}),
+                            )
                         )
-                        for tc in msg.tool_calls
-                    ]
                 messages.append(
                     LLMMessage(
                         role="assistant",
@@ -615,10 +648,16 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 # TOOL_CALL rows are stored separately from the assistant message.
                 # Attach them as tool_calls on the preceding assistant LLMMessage
                 # so the LLM sees the correct assistant→tool_use→tool_result sequence.
-                # Note: DB order may be assistant, tool_call, tool, tool_call, tool
-                # so we search backward past any tool results to find the assistant.
+                tc_id = msg.tool_call_id or ""
+                if tc_id in seen_tc_ids:
+                    seen_tc_ids[tc_id] += 1
+                    new_id = f"{tc_id}_t{seen_tc_ids[tc_id]}"
+                    tc_id_remap[(msg.sequence, msg.tool_call_id or "")] = new_id
+                    tc_id = new_id
+                else:
+                    seen_tc_ids[tc_id] = 1
                 tc_request = ToolCallRequest(
-                    id=msg.tool_call_id or "",
+                    id=tc_id,
                     name=msg.tool_name or "",
                     arguments=msg.tool_input if isinstance(msg.tool_input, dict) else {},
                 )
@@ -643,11 +682,19 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                         )
                     )
             elif msg.role == MessageRole.TOOL:
+                # Apply remapping if the preceding tool_call had its ID changed
+                tc_id = msg.tool_call_id
+                if tc_id:
+                    best_seq = -1
+                    for (seq, orig_id), new_id in tc_id_remap.items():
+                        if orig_id == tc_id and seq < msg.sequence and seq > best_seq:
+                            best_seq = seq
+                            tc_id = new_id
                 messages.append(
                     LLMMessage(
                         role="tool",
                         content=msg.content,
-                        tool_call_id=msg.tool_call_id,
+                        tool_call_id=tc_id,
                         tool_name=msg.tool_name,
                     )
                 )
