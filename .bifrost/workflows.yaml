@@ -398,6 +398,20 @@ workflows:
     path: shared/bifrost/data_providers.py
     timeout_seconds: 300
     type: data_provider
+  52faaf0d-b861-407a-920a-ee33de7a6af3:
+    access_level: authenticated
+    category: Meraki
+    description: Returns Meraki organization names for admin governance pickers.
+    function_name: list_meraki_organization_names
+    id: 52faaf0d-b861-407a-920a-ee33de7a6af3
+    name: 'Meraki: List Organization Names'
+    path: features/meraki/workflows/data_providers.py
+    tags:
+    - meraki
+    - data-provider
+    - governance
+    timeout_seconds: 60
+    type: data_provider
   58926179-37af-445d-9f5f-c06d50060c59:
     access_level: authenticated
     category: Idemeum
@@ -1022,6 +1036,20 @@ workflows:
     - procurement
     timeout_seconds: 60
     type: tool
+  c2e69d39-d5e1-478f-b823-4b4815a78876:
+    access_level: authenticated
+    category: Meraki
+    description: Returns baseline Meraki admins as picker options for governance policy.
+    function_name: list_meraki_baseline_admin_options
+    id: c2e69d39-d5e1-478f-b823-4b4815a78876
+    name: 'Meraki: List Baseline Admin Options'
+    path: features/meraki/workflows/data_providers.py
+    tags:
+    - meraki
+    - data-provider
+    - governance
+    timeout_seconds: 60
+    type: data_provider
   c2e8f147-3a91-4d05-b826-9f1e730d5c82:
     access_level: role_based
     category: GoToConnect

@@ -27,6 +27,10 @@ from features.meraki.workflows.baseline_admins import (
     sync_meraki_admins_from_baseline,
 )
 from features.meraki.workflows.data_providers import list_meraki_organizations
+from features.meraki.workflows.data_providers import (
+    list_meraki_baseline_admin_options,
+    list_meraki_organization_names,
+)
 from features.meraki.workflows.sync_organizations import sync_meraki_organizations
 from modules import meraki
 
@@ -251,6 +255,60 @@ async def test_list_meraki_organizations_returns_sorted_options(monkeypatch):
         {"value": "2", "label": "Zulu"},
     ]
     assert fake_client.closed is True
+
+
+@pytest.mark.asyncio
+async def test_list_meraki_organization_names_uses_labels(monkeypatch):
+    async def fake_list_meraki_organizations():
+        return [
+            {"value": "2", "label": "Zulu"},
+            {"value": "1", "label": "Alpha"},
+        ]
+
+    monkeypatch.setattr(
+        "features.meraki.workflows.data_providers.list_meraki_organizations",
+        fake_list_meraki_organizations,
+    )
+
+    result = await list_meraki_organization_names()
+
+    assert result == [
+        {"value": "Zulu", "label": "Zulu"},
+        {"value": "Alpha", "label": "Alpha"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_meraki_baseline_admin_options(monkeypatch):
+    class FakeClient:
+        async def list_organizations(self):
+            return [
+                _organization("100", "Midtown Technology Group"),
+                _organization("200", "Other Org"),
+            ]
+
+        async def list_organization_admins(self, organization_id: str, **_: object):
+            assert organization_id == "100"
+            return [
+                _admin("alice@midtowntg.com", name="Alice"),
+                _admin("bob@midtowntg.com", name="bob@midtowntg.com"),
+            ]
+
+        async def close(self) -> None:
+            return None
+
+    async def fake_get_client(scope: str | None = None):
+        assert scope == "global"
+        return FakeClient()
+
+    monkeypatch.setattr(meraki, "get_client", fake_get_client)
+
+    result = await list_meraki_baseline_admin_options()
+
+    assert result == [
+        {"value": "alice@midtowntg.com", "label": "Alice (alice@midtowntg.com)"},
+        {"value": "bob@midtowntg.com", "label": "bob@midtowntg.com"},
+    ]
 
 
 @pytest.mark.asyncio

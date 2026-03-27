@@ -3,34 +3,36 @@ const WORKFLOW_IDS = {
   savePolicy: "e391174e-b341-423d-bcd5-81e56c5e809d",
   auditBaseline: "8b7cbc91-4b8d-40fd-9ea1-55d9dbf2dd4f",
   auditProcurement: "8bc2ea7c-7c36-41ef-b026-0e6c28c7476c",
+  listOrgNames: "52faaf0d-b861-407a-920a-ee33de7a6af3",
+  listAdminOptions: "c2e69d39-d5e1-478f-b823-4b4815a78876",
 } as const;
 
 export default function MerakiAdminGovernancePage() {
   const policyQuery = useWorkflowQuery(WORKFLOW_IDS.getPolicy);
+  const orgOptionsQuery = useWorkflowQuery(WORKFLOW_IDS.listOrgNames);
+  const adminOptionsQuery = useWorkflowQuery(WORKFLOW_IDS.listAdminOptions);
   const savePolicy = useWorkflowMutation(WORKFLOW_IDS.savePolicy);
   const auditBaseline = useWorkflowMutation(WORKFLOW_IDS.auditBaseline);
   const auditProcurement = useWorkflowMutation(WORKFLOW_IDS.auditProcurement);
 
-  const [customerExclusions, setCustomerExclusions] = useState("");
-  const [procurementOrgs, setProcurementOrgs] = useState("");
-  const [procurementAdmins, setProcurementAdmins] = useState("");
+  const [customerExclusions, setCustomerExclusions] = useState<string[]>([]);
+  const [procurementOrgs, setProcurementOrgs] = useState<string[]>([]);
+  const [procurementAdmins, setProcurementAdmins] = useState<string[]>([]);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!policyQuery.data) return;
-    setCustomerExclusions(policyQuery.data.customer_org_exclusions_csv || "");
-    setProcurementOrgs(policyQuery.data.procurement_org_names_csv || "");
-    setProcurementAdmins(
-      policyQuery.data.procurement_allowed_admin_emails_csv || "",
-    );
+    setCustomerExclusions(policyQuery.data.customer_org_exclusions || []);
+    setProcurementOrgs(policyQuery.data.procurement_org_names || []);
+    setProcurementAdmins(policyQuery.data.procurement_allowed_admin_emails || []);
   }, [policyQuery.data]);
 
   const handleSave = async () => {
     setSaveMessage(null);
     await savePolicy.execute({
-      customer_org_exclusions_csv: customerExclusions,
-      procurement_org_names_csv: procurementOrgs,
-      procurement_allowed_admin_emails_csv: procurementAdmins,
+      customer_org_exclusions_csv: customerExclusions.join(","),
+      procurement_org_names_csv: procurementOrgs.join(","),
+      procurement_allowed_admin_emails_csv: procurementAdmins.join(","),
     });
     await policyQuery.refetch();
     setSaveMessage("Policy saved.");
@@ -124,33 +126,42 @@ export default function MerakiAdminGovernancePage() {
             <span className="meraki-governance__label">
               Customer Org Exclusions
             </span>
-            <textarea
-              className="meraki-governance__textarea"
-              rows={5}
+            <MultiCombobox
+              options={orgOptionsQuery.data || []}
               value={customerExclusions}
-              onChange={(event) => setCustomerExclusions(event.target.value)}
+              onValueChange={setCustomerExclusions}
+              placeholder="Select excluded orgs..."
+              searchPlaceholder="Search Meraki orgs..."
+              emptyText="No Meraki org found."
+              isLoading={orgOptionsQuery.isLoading}
             />
           </label>
           <label className="meraki-governance__field">
             <span className="meraki-governance__label">
               Procurement License Orgs
             </span>
-            <textarea
-              className="meraki-governance__textarea"
-              rows={3}
+            <MultiCombobox
+              options={orgOptionsQuery.data || []}
               value={procurementOrgs}
-              onChange={(event) => setProcurementOrgs(event.target.value)}
+              onValueChange={setProcurementOrgs}
+              placeholder="Select procurement/license orgs..."
+              searchPlaceholder="Search Meraki orgs..."
+              emptyText="No Meraki org found."
+              isLoading={orgOptionsQuery.isLoading}
             />
           </label>
           <label className="meraki-governance__field">
             <span className="meraki-governance__label">
               Procurement Allowed Admins
             </span>
-            <textarea
-              className="meraki-governance__textarea"
-              rows={3}
+            <MultiCombobox
+              options={adminOptionsQuery.data || []}
               value={procurementAdmins}
-              onChange={(event) => setProcurementAdmins(event.target.value)}
+              onValueChange={setProcurementAdmins}
+              placeholder="Select allowed admins..."
+              searchPlaceholder="Search baseline admins..."
+              emptyText="No Meraki admin found."
+              isLoading={adminOptionsQuery.isLoading}
             />
           </label>
         </div>
