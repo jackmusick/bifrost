@@ -39,41 +39,46 @@ export default function MerakiAdminGovernancePage() {
   const renderAudit = (title: string, audit: typeof auditBaseline) => {
     const result = audit.data;
     return (
-      <section style={sectionStyle}>
-        <div style={sectionHeaderStyle}>
-          <h3 style={sectionTitleStyle}>{title}</h3>
+      <section className="meraki-governance__section">
+        <div className="meraki-governance__section-header">
+          <h3 className="meraki-governance__section-title">{title}</h3>
           <button
-            style={buttonStyle}
+            className="meraki-governance__button"
             onClick={() => void audit.execute()}
             disabled={audit.isLoading}
           >
             {audit.isLoading ? "Running..." : "Run Audit"}
           </button>
         </div>
-        {audit.error && <p style={errorStyle}>{audit.error}</p>}
+        {audit.error && <p className="meraki-governance__error">{audit.error}</p>}
         {!result && !audit.isLoading && (
-          <p style={mutedStyle}>No audit run yet.</p>
+          <p className="meraki-governance__muted">No audit run yet.</p>
         )}
         {result && (
-          <div style={resultBlockStyle}>
-            <p style={summaryStyle}>
+          <div className="meraki-governance__result-block">
+            <p className="meraki-governance__summary">
               Organizations with disparities:{" "}
               <strong>{result.organizations_with_disparities}</strong>
             </p>
             {result.disparities.length === 0 ? (
-              <p style={mutedStyle}>No disparities.</p>
+              <p className="meraki-governance__muted">No disparities.</p>
             ) : (
-              <div style={tableStyle}>
-                {result.disparities.map((item) => (
-                  <div key={item.organization_name} style={rowStyle}>
-                    <div style={orgNameStyle}>{item.organization_name}</div>
-                    <div style={detailStyle}>
+              <div className="meraki-governance__table">
+                {result.disparities.map((item: any) => (
+                  <div
+                    key={item.organization_name}
+                    className="meraki-governance__row"
+                  >
+                    <div className="meraki-governance__org-name">
+                      {item.organization_name}
+                    </div>
+                    <div className="meraki-governance__detail">
                       Missing:{" "}
                       {item.missing_admins.length > 0
                         ? item.missing_admins.join(", ")
                         : "none"}
                     </div>
-                    <div style={detailStyle}>
+                    <div className="meraki-governance__detail">
                       Extra:{" "}
                       {item.extra_admins.length > 0
                         ? item.extra_admins.join(", ")
@@ -90,18 +95,18 @@ export default function MerakiAdminGovernancePage() {
   };
 
   return (
-    <div style={pageStyle}>
-      <div style={heroStyle}>
+    <div className="meraki-governance">
+      <div className="meraki-governance__hero">
         <div>
-          <h1 style={titleStyle}>Meraki Admin Governance</h1>
-          <p style={subtitleStyle}>
+          <h1 className="meraki-governance__title">Meraki Admin Governance</h1>
+          <p className="meraki-governance__subtitle">
             Store the Meraki admin policy here, then let the reusable workflows
             read it. Workflow parameters stay for one-off overrides, but the
             persistent policy lives in Bifrost config.
           </p>
         </div>
         <button
-          style={secondaryButtonStyle}
+          className="meraki-governance__button meraki-governance__button--secondary"
           onClick={() => void policyQuery.refetch()}
           disabled={policyQuery.isLoading}
         >
@@ -109,150 +114,64 @@ export default function MerakiAdminGovernancePage() {
         </button>
       </div>
 
-      <section style={sectionStyle}>
-        <h2 style={sectionTitleStyle}>Configuration</h2>
-        {policyQuery.error && <p style={errorStyle}>{policyQuery.error}</p>}
-        <div style={fieldGridStyle}>
-          <label style={fieldStyle}>
-            <span style={labelStyle}>Customer Org Exclusions</span>
+      <section className="meraki-governance__section">
+        <h2 className="meraki-governance__section-title">Configuration</h2>
+        {policyQuery.error && (
+          <p className="meraki-governance__error">{policyQuery.error}</p>
+        )}
+        <div className="meraki-governance__field-grid">
+          <label className="meraki-governance__field">
+            <span className="meraki-governance__label">
+              Customer Org Exclusions
+            </span>
             <textarea
-              style={textareaStyle}
+              className="meraki-governance__textarea"
               rows={5}
               value={customerExclusions}
               onChange={(event) => setCustomerExclusions(event.target.value)}
             />
           </label>
-          <label style={fieldStyle}>
-            <span style={labelStyle}>Procurement License Orgs</span>
+          <label className="meraki-governance__field">
+            <span className="meraki-governance__label">
+              Procurement License Orgs
+            </span>
             <textarea
-              style={textareaStyle}
+              className="meraki-governance__textarea"
               rows={3}
               value={procurementOrgs}
               onChange={(event) => setProcurementOrgs(event.target.value)}
             />
           </label>
-          <label style={fieldStyle}>
-            <span style={labelStyle}>Procurement Allowed Admins</span>
+          <label className="meraki-governance__field">
+            <span className="meraki-governance__label">
+              Procurement Allowed Admins
+            </span>
             <textarea
-              style={textareaStyle}
+              className="meraki-governance__textarea"
               rows={3}
               value={procurementAdmins}
               onChange={(event) => setProcurementAdmins(event.target.value)}
             />
           </label>
         </div>
-        <div style={actionRowStyle}>
-          <button style={buttonStyle} onClick={() => void handleSave()} disabled={savePolicy.isLoading}>
+        <div className="meraki-governance__action-row">
+          <button
+            className="meraki-governance__button"
+            onClick={() => void handleSave()}
+            disabled={savePolicy.isLoading}
+          >
             {savePolicy.isLoading ? "Saving..." : "Save Policy"}
           </button>
-          {saveMessage && <span style={successStyle}>{saveMessage}</span>}
+          {saveMessage && (
+            <span className="meraki-governance__success">{saveMessage}</span>
+          )}
         </div>
       </section>
 
-      <div style={auditGridStyle}>
+      <div className="meraki-governance__audit-grid">
         {renderAudit("Baseline Audit", auditBaseline)}
         {renderAudit("Procurement Audit", auditProcurement)}
       </div>
     </div>
   );
 }
-
-const pageStyle: Record<string, string | number> = {
-  minHeight: "100%",
-  padding: "32px",
-  background:
-    "linear-gradient(180deg, rgba(246,248,252,1) 0%, rgba(232,238,247,1) 100%)",
-  color: "#152033",
-  fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
-};
-
-const heroStyle: Record<string, string | number> = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: "16px",
-  marginBottom: "24px",
-};
-
-const titleStyle = { margin: 0, fontSize: "32px", fontWeight: 700 };
-const subtitleStyle = {
-  margin: "8px 0 0 0",
-  maxWidth: "780px",
-  color: "#42526b",
-  lineHeight: 1.5,
-};
-
-const sectionStyle: Record<string, string | number> = {
-  background: "rgba(255,255,255,0.9)",
-  border: "1px solid rgba(21,32,51,0.08)",
-  borderRadius: "18px",
-  padding: "20px",
-  boxShadow: "0 8px 24px rgba(21,32,51,0.05)",
-};
-
-const sectionHeaderStyle: Record<string, string | number> = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px",
-  marginBottom: "12px",
-};
-
-const sectionTitleStyle = { margin: 0, fontSize: "20px", fontWeight: 600 };
-const fieldGridStyle: Record<string, string | number> = {
-  display: "grid",
-  gap: "16px",
-  marginTop: "16px",
-};
-const fieldStyle = { display: "grid", gap: "8px" };
-const labelStyle = { fontSize: "14px", fontWeight: 600 };
-const textareaStyle: Record<string, string | number> = {
-  width: "100%",
-  borderRadius: "12px",
-  border: "1px solid rgba(21,32,51,0.12)",
-  padding: "12px 14px",
-  fontSize: "14px",
-  lineHeight: 1.45,
-  resize: "vertical",
-  background: "#fbfcfe",
-  color: "#152033",
-};
-const actionRowStyle: Record<string, string | number> = {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  marginTop: "16px",
-};
-const buttonStyle: Record<string, string | number> = {
-  border: "none",
-  borderRadius: "999px",
-  background: "#0c6cf2",
-  color: "white",
-  padding: "10px 16px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-const secondaryButtonStyle: Record<string, string | number> = {
-  ...buttonStyle,
-  background: "#152033",
-};
-const successStyle = { color: "#0f7b46", fontWeight: 600 };
-const errorStyle = { color: "#b42318", margin: "8px 0 0 0" };
-const mutedStyle = { color: "#5d6b82", margin: 0 };
-const auditGridStyle: Record<string, string | number> = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: "20px",
-  marginTop: "24px",
-};
-const resultBlockStyle = { display: "grid", gap: "12px" };
-const summaryStyle = { margin: 0 };
-const tableStyle = { display: "grid", gap: "10px" };
-const rowStyle: Record<string, string | number> = {
-  border: "1px solid rgba(21,32,51,0.08)",
-  borderRadius: "12px",
-  padding: "12px 14px",
-  background: "#ffffff",
-};
-const orgNameStyle = { fontWeight: 600, marginBottom: "6px" };
-const detailStyle = { color: "#42526b", fontSize: "14px", lineHeight: 1.4 };
