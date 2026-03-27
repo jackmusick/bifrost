@@ -60,11 +60,42 @@ export function SetupStatusCards({
 
   const cspConnected = setupStatus?.csp?.connected ?? false;
   const microsoftConnected = setupStatus?.microsoft?.connected ?? false;
+  const readyForConsent = setupStatus?.ready_for_consent ?? false;
   const hasPermissions = (permissionCounts?.total_count ?? 0) > 0;
   const hasAppPermissions = (permissionCounts?.application_count ?? 0) > 0;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div className="space-y-4 mb-6">
+      <Card className={readyForConsent ? "border-green-500/50 bg-green-500/5" : "border-yellow-500/50 bg-yellow-500/5"}>
+        <CardContent className="pt-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="font-semibold">Consent Readiness</h3>
+            <p className="text-sm text-muted-foreground">
+              {readyForConsent
+                ? "Partner connection and customer app identity are both ready. You can configure permissions and start tenant consent work."
+                : "Finish both Microsoft connections before expecting customer consent and GDAP actions to work cleanly."}
+            </p>
+          </div>
+          <Badge
+            variant={readyForConsent ? "default" : "secondary"}
+            className={readyForConsent ? "bg-green-600" : "bg-yellow-500/10 text-yellow-700"}
+          >
+            {readyForConsent ? (
+              <>
+                <Check className="w-3 h-3 mr-1" />
+                Ready for Consent
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                Setup Incomplete
+              </>
+            )}
+          </Badge>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {/* Microsoft CSP Integration */}
       <Card className={cspConnected ? "border-green-500/50" : "border-yellow-500/50"}>
         <CardContent className="pt-6">
@@ -90,11 +121,11 @@ export function SetupStatusCards({
               </Badge>
             )}
           </div>
-          {!cspConnected && (
-            <p className="text-xs text-muted-foreground mt-3">
-              Connect this first for Partner Center, GDAP, and consent workflows.
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground mt-3">
+            {cspConnected
+              ? setupStatus?.csp?.description || "Partner Center, GDAP, and consent workflows are available."
+              : setupStatus?.csp?.error || "Connect this first for Partner Center, GDAP, and consent workflows."}
+          </p>
         </CardContent>
       </Card>
 
@@ -123,11 +154,11 @@ export function SetupStatusCards({
               </Badge>
             )}
           </div>
-          {!microsoftConnected && (
-            <p className="text-xs text-muted-foreground mt-3">
-              Configure the Bifrost app identity used inside customer tenants.
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground mt-3">
+            {microsoftConnected
+              ? setupStatus?.microsoft?.description || "The Bifrost customer app identity is configured."
+              : setupStatus?.microsoft?.error || "Configure the Bifrost app identity used inside customer tenants."}
+          </p>
         </CardContent>
       </Card>
 
@@ -173,8 +204,16 @@ export function SetupStatusCards({
               )}
             </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            {!cspConnected || !microsoftConnected
+              ? "Configure both Microsoft connections first. Permission selection alone is not enough to make tenant consent work."
+              : hasPermissions
+                ? "Delegated and application permissions are stored separately. Apply app permissions to the partner tenant before broad rollout."
+                : "Choose the smallest permission set you actually need before applying anything to the partner tenant."}
+          </p>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

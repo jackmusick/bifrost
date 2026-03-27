@@ -570,6 +570,11 @@ export default function MicrosoftCspPage() {
               In short: CSP is who we are as the partner, Microsoft is the app we
               want customers to trust.
             </p>
+            <p className="text-muted-foreground">
+              Recommended operator flow: connect <strong>Microsoft CSP</strong>, connect
+              <strong> Microsoft</strong>, choose the smallest permission set, apply app
+              permissions to the partner tenant, then link and consent customer tenants.
+            </p>
           </div>
         </CardContent>
       </Card>

@@ -39,20 +39,20 @@ export function PartnerSetupDialog({
           {/* Instructions */}
           <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-3">
             <p className="text-muted-foreground">
-              Your GDAP user needs admin rights to grant app permissions in your own tenant:
+              Use the dedicated CSP operator account for this step. It needs enough Entra elevation to grant Graph application permissions in your own tenant:
             </p>
             <ol className="text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 <strong>PIM elevate</strong> to{" "}
                 <span className="font-mono text-xs bg-muted px-1 py-0.5 rounded">
-                  Cloud Application Administrator
+                  Privileged Role Administrator
                 </span>
               </li>
               <li>
-                <strong>Reconnect Microsoft CSP</strong> integration to refresh your token
+                <strong>Reconnect Microsoft CSP</strong> if the elevation or role assignment changed after you last authenticated
               </li>
               <li>
-                <strong>Click Apply</strong> below
+                <strong>Click Apply</strong> below to grant the selected application permissions to the partner tenant copy of the Bifrost Microsoft app
               </li>
             </ol>
           </div>
