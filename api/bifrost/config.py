@@ -39,10 +39,10 @@ class config:
         Args:
             key: Configuration key
             default: Default value if key not found (optional)
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Bypass org resolution, use global config
+            scope: Organization scope override. Omit to use the execution
+                context org (with automatic global fallback via cascade).
+                Pass an org UUID to target a specific org (provider orgs only).
+                Pass None explicitly for global scope.
 
         Returns:
             Any: Configuration value, or default if not found
@@ -54,7 +54,6 @@ class config:
             >>> from bifrost import config
             >>> api_key = await config.get("api_key")
             >>> timeout = await config.get("timeout", default=30)
-            >>> global_setting = await config.get("global_key", scope="global")
             >>> org_setting = await config.get("key", scope="org-uuid-here")
         """
         client = get_client()
@@ -92,10 +91,9 @@ class config:
             key: Configuration key
             value: Configuration value (must be JSON-serializable)
             is_secret: If True, encrypts the value before storage
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Bypass org resolution, use global config
+            scope: Organization scope override. Omit to use the execution
+                context org. Pass an org UUID to target a specific org
+                (provider orgs only). Pass None explicitly for global scope.
 
         Raises:
             RuntimeError: If not authenticated
@@ -105,7 +103,6 @@ class config:
             >>> from bifrost import config
             >>> await config.set("api_url", "https://api.example.com")
             >>> await config.set("api_key", "secret123", is_secret=True)
-            >>> await config.set("global_setting", "value", scope="global")
             >>> await config.set("org_setting", "value", scope="org-uuid-here")
         """
         client = get_client()
@@ -129,10 +126,10 @@ class config:
         Note: Secret values are shown as the decrypted value (or "[SECRET]" on error).
 
         Args:
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Bypass org resolution, use global config
+            scope: Organization scope override. Omit to use the execution
+                context org (with automatic global fallback via cascade).
+                Pass an org UUID to target a specific org (provider orgs only).
+                Pass None explicitly for global scope.
 
         Returns:
             ConfigData: Configuration data with dot-notation and dict-like access:
@@ -150,7 +147,7 @@ class config:
             >>> cfg = await config.list()
             >>> api_url = cfg.api_url
             >>> timeout = cfg.timeout or 30
-            >>> global_cfg = await config.list(scope="global")
+            >>> org_cfg = await config.list(scope="org-uuid-here")
         """
         client = get_client()
         effective_scope = resolve_scope(scope)
@@ -170,10 +167,10 @@ class config:
 
         Args:
             key: Configuration key
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Bypass org resolution, use global config
+            scope: Organization scope override. Omit to use the execution
+                context org (with automatic global fallback via cascade).
+                Pass an org UUID to target a specific org (provider orgs only).
+                Pass None explicitly for global scope.
 
         Returns:
             bool: True if deleted successfully
@@ -184,7 +181,7 @@ class config:
         Example:
             >>> from bifrost import config
             >>> await config.delete("old_api_url")
-            >>> await config.delete("global_key", scope="global")
+            >>> await config.delete("old_api_url")
         """
         client = get_client()
         effective_scope = resolve_scope(scope)

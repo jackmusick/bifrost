@@ -4,6 +4,7 @@ Agent Runs Router
 CRUD + execute endpoints for autonomous agent runs.
 """
 
+import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -14,6 +15,8 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser
+from src.core.cache.keys import agent_run_steps_stream_key
+from src.core.cache.redis_client import get_redis
 from src.core.database import DbSession
 from src.models.contracts.agent_runs import (
     AgentRunCreateRequest,
@@ -201,6 +204,53 @@ async def get_agent_run(
     )
     child_run_ids = [row[0] for row in child_ids_result.all()]
 
+    # Dual-read steps: Redis Stream when in-progress, DB when complete
+    steps_response: list[AgentRunStepResponse] = []
+    is_in_progress = run.status in ("queued", "running", "cancelling")
+
+    if is_in_progress:
+        # Read from Redis Stream (steps are uncommitted in DB during execution)
+        try:
+            async with get_redis() as r:
+                stream_key = agent_run_steps_stream_key(str(run_id))
+                entries = await r.xrange(stream_key, min="-", max="+")  # type: ignore[misc]
+                for _entry_id, data in entries:
+                    content_raw = data.get("content", "{}")
+                    content = json.loads(content_raw) if content_raw else None
+                    tokens_str = data.get("tokens_used", "")
+                    duration_str = data.get("duration_ms", "")
+                    steps_response.append(AgentRunStepResponse(
+                        id=UUID(data["id"]),
+                        run_id=UUID(data["run_id"]),
+                        step_number=int(data["step_number"]),
+                        type=data["type"],
+                        content=content,
+                        tokens_used=int(tokens_str) if tokens_str else None,
+                        duration_ms=int(duration_str) if duration_str else None,
+                        created_at=datetime.fromisoformat(data["created_at"]),
+                    ))
+        except Exception:
+            logger.warning(f"Failed to read steps from Redis for run {run_id}, falling back to DB")
+            # Fall back to DB steps (may be empty if uncommitted)
+            steps_response = [
+                AgentRunStepResponse(
+                    id=step.id, run_id=step.run_id, step_number=step.step_number,
+                    type=step.type, content=step.content, tokens_used=step.tokens_used,
+                    duration_ms=step.duration_ms, created_at=step.created_at,
+                )
+                for step in run.steps
+            ]
+    else:
+        # Completed — read from DB (steps are committed)
+        steps_response = [
+            AgentRunStepResponse(
+                id=step.id, run_id=step.run_id, step_number=step.step_number,
+                type=step.type, content=step.content, tokens_used=step.tokens_used,
+                duration_ms=step.duration_ms, created_at=step.created_at,
+            )
+            for step in run.steps
+        ]
+
     return AgentRunDetailResponse(
         id=run.id,
         agent_id=run.agent_id,
@@ -228,19 +278,7 @@ async def get_agent_run(
         completed_at=run.completed_at,
         parent_run_id=run.parent_run_id,
         child_run_ids=child_run_ids,
-        steps=[
-            AgentRunStepResponse(
-                id=step.id,
-                run_id=step.run_id,
-                step_number=step.step_number,
-                type=step.type,
-                content=step.content,
-                tokens_used=step.tokens_used,
-                duration_ms=step.duration_ms,
-                created_at=step.created_at,
-            )
-            for step in run.steps
-        ],
+        steps=steps_response,
         ai_usage=ai_usage_list,
         ai_totals=ai_totals_response,
     )

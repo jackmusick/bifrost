@@ -44,7 +44,7 @@ def raise_for_status_with_detail(response: httpx.Response) -> None:
     detail = ""
     try:
         body = response.json()
-        detail = body.get("message") or body.get("error") or ""
+        detail = body.get("detail") or body.get("message") or body.get("error") or ""
     except Exception:
         pass
 

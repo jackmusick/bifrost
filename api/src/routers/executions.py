@@ -32,6 +32,7 @@ from src.models.contracts.executions import (
 )
 from src.models.orm.ai_usage import AIUsage
 
+from bifrost._logging import read_logs_from_stream
 from src.core.auth import Context, UserPrincipal
 from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.core.pubsub import publish_execution_update, publish_history_update
@@ -163,30 +164,58 @@ class ExecutionRepository:
         if not user.is_superuser and execution.executed_by != user.user_id:
             return None, "Forbidden"
 
-        # 2. Fetch logs (DEBUG/TRACEBACK filtered for non-admins)
-        logs_query = (
-            select(ExecutionLogORM)
-            .where(ExecutionLogORM.execution_id == execution_id)
-            .order_by(ExecutionLogORM.sequence)
+        # 2. Fetch logs — dual-read: Redis Stream when in-progress, DB when complete
+        is_in_progress = execution.status in (
+            ExecutionStatus.PENDING, ExecutionStatus.RUNNING, ExecutionStatus.CANCELLING,
         )
-        if not user.is_superuser:
-            logs_query = logs_query.where(
-                ExecutionLogORM.level.notin_(["DEBUG", "TRACEBACK"])
-            )
-        logs_result = await self.db.execute(logs_query)
-        log_entries = logs_result.scalars().all()
+        logs: list[ExecutionLogPublic] = []
 
-        logs = [
-            ExecutionLogPublic(
-                id=log.id,
-                timestamp=log.timestamp.isoformat() if log.timestamp else "",
-                level=log.level or "info",
-                message=log.message or "",
-                data=log.log_metadata,
-                sequence=log.sequence,
+        if is_in_progress:
+            # Read from Redis Stream (logs haven't been flushed to DB yet)
+            try:
+                stream_logs = await read_logs_from_stream(str(execution_id), count=10000)
+                hidden_levels = set() if user.is_superuser else {"DEBUG", "TRACEBACK"}
+                for seq, slog in enumerate(stream_logs):
+                    level = (slog.level or "INFO").upper()
+                    if level in hidden_levels:
+                        continue
+                    logs.append(ExecutionLogPublic(
+                        id=seq,
+                        timestamp=slog.timestamp or "",
+                        level=level.lower(),
+                        message=slog.message or "",
+                        data=slog.metadata if isinstance(slog.metadata, dict) else None,
+                        sequence=seq,
+                    ))
+            except Exception:
+                logger.warning(f"Failed to read logs from Redis for execution {execution_id}, falling back to DB")
+                is_in_progress = False  # Fall through to DB read below
+
+        if not is_in_progress:
+            # Completed — read from Postgres
+            logs_query = (
+                select(ExecutionLogORM)
+                .where(ExecutionLogORM.execution_id == execution_id)
+                .order_by(ExecutionLogORM.sequence)
             )
-            for log in log_entries
-        ]
+            if not user.is_superuser:
+                logs_query = logs_query.where(
+                    ExecutionLogORM.level.notin_(["DEBUG", "TRACEBACK"])
+                )
+            logs_result = await self.db.execute(logs_query)
+            log_entries = logs_result.scalars().all()
+
+            logs = [
+                ExecutionLogPublic(
+                    id=log.id,
+                    timestamp=log.timestamp.isoformat() if log.timestamp else "",
+                    level=log.level or "info",
+                    message=log.message or "",
+                    data=log.log_metadata,
+                    sequence=log.sequence,
+                )
+                for log in log_entries
+            ]
 
         # 3. Fetch AI usage data
         ai_usage_query = (
@@ -297,10 +326,11 @@ class ExecutionRepository:
         execution_id: UUID,
         user: UserPrincipal,
     ) -> tuple[list[ExecutionLogPublic] | None, str | None]:
-        """Get execution logs from the execution_logs table."""
-        # First check if execution exists and user has access
+        """Get execution logs — dual-read from Redis Stream when in-progress, DB when complete."""
+        # Check if execution exists, user has access, and get status
         result = await self.db.execute(
-            select(ExecutionModel.executed_by).where(ExecutionModel.id == execution_id)
+            select(ExecutionModel.executed_by, ExecutionModel.status)
+            .where(ExecutionModel.id == execution_id)
         )
         row = result.one_or_none()
 
@@ -310,21 +340,44 @@ class ExecutionRepository:
         if not user.is_superuser and row.executed_by != user.user_id:
             return None, "Forbidden"
 
-        # Query logs from execution_logs table (order by sequence for guaranteed ordering)
+        is_in_progress = row.status in (
+            ExecutionStatus.PENDING, ExecutionStatus.RUNNING,
+        )
+
+        if is_in_progress:
+            # Read from Redis Stream
+            try:
+                stream_logs = await read_logs_from_stream(str(execution_id), count=10000)
+                hidden_levels = set() if user.is_superuser else {"DEBUG", "TRACEBACK"}
+                logs: list[ExecutionLogPublic] = []
+                for seq, slog in enumerate(stream_logs):
+                    level = (slog.level or "INFO").upper()
+                    if level in hidden_levels:
+                        continue
+                    logs.append(ExecutionLogPublic(
+                        id=seq,
+                        timestamp=slog.timestamp or "",
+                        level=level.lower(),
+                        message=slog.message or "",
+                        data=slog.metadata if isinstance(slog.metadata, dict) else None,
+                        sequence=seq,
+                    ))
+                return logs, None
+            except Exception:
+                logger.warning(f"Failed to read logs from Redis for execution {execution_id}, falling back to DB")
+
+        # Completed or Redis failed — read from Postgres
         logs_query = (
             select(ExecutionLogORM)
             .where(ExecutionLogORM.execution_id == execution_id)
             .order_by(ExecutionLogORM.sequence)
         )
-
-        # Filter debug logs for non-superusers
         if not user.is_superuser:
             logs_query = logs_query.where(ExecutionLogORM.level.notin_(["DEBUG", "TRACEBACK"]))
 
         logs_result = await self.db.execute(logs_query)
         log_entries = logs_result.scalars().all()
 
-        # Convert ORM models to Pydantic models
         logs = [
             ExecutionLogPublic(
                 id=log.id,

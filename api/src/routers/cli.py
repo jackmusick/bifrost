@@ -762,6 +762,7 @@ async def _build_oauth_data(
                 client_id=provider.client_id,
                 client_secret=client_secret,
                 scopes=scopes,
+                audience=provider.audience,
             )
 
             if success:
@@ -1158,6 +1159,7 @@ async def sdk_integrations_refresh_token(
                 client_id=provider.client_id,
                 client_secret=client_secret,
                 scopes=scopes,
+                audience=provider.audience,
             )
 
             if not success:

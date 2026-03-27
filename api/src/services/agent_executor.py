@@ -137,7 +137,6 @@ class AgentExecutor:
         *,
         stream: bool = True,
         enable_routing: bool = True,
-        is_platform_admin: bool = False,
         local_id: str | None = None,
     ) -> AsyncIterator[ChatStreamChunk]:
         """
@@ -152,7 +151,6 @@ class AgentExecutor:
             user_message: The user's message text
             stream: Whether to stream the response (default True)
             enable_routing: Whether to enable @mention and AI routing (default True)
-            is_platform_admin: Whether user is platform admin (enables coding agent routing)
 
         Yields:
             ChatStreamChunk objects with response content, tool calls, etc.
@@ -180,7 +178,7 @@ class AgentExecutor:
                 is_first_message = await self._is_first_user_message(conversation.id)
                 if is_first_message:
                     routed_agent = await router.route_message(
-                        user_message, is_platform_admin=is_platform_admin
+                        user_message
                     )
                     if routed_agent:
                         # Switch to routed agent (handles events and persistence)

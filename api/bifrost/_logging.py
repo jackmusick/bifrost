@@ -29,8 +29,12 @@ from src.core.cache.keys import execution_logs_stream_key
 
 logger = logging.getLogger(__name__)
 
-# Thread-local storage for Redis connections
+# Thread-local storage for Redis connections and sequence counters
 _local = threading.local()
+
+# Per-execution sequence counters for log ordering.
+# Thread-local counters for sync callers, dict for async callers.
+_async_sequence_counters: dict[str, int] = {}
 
 
 def _serialize_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -123,6 +127,7 @@ def publish_log_to_pubsub(
     message: str,
     metadata: dict[str, Any] | None = None,
     timestamp: datetime | None = None,
+    sequence: int | None = None,
 ) -> None:
     """
     Publish log entry directly to PubSub for immediate WebSocket delivery.
@@ -136,12 +141,13 @@ def publish_log_to_pubsub(
         message: Log message
         metadata: Optional metadata
         timestamp: Optional timestamp
+        sequence: Monotonic sequence number for client-side ordering
     """
     exec_id = str(execution_id)
     ts = timestamp or datetime.now(timezone.utc)
 
     safe_metadata = _serialize_metadata(metadata)
-    log_entry = {
+    log_entry: dict[str, Any] = {
         "type": "execution_log",
         "executionId": exec_id,
         "level": level.upper(),
@@ -149,6 +155,8 @@ def publish_log_to_pubsub(
         "metadata": safe_metadata,
         "timestamp": ts.isoformat(),
     }
+    if sequence is not None:
+        log_entry["sequence"] = sequence
 
     try:
         r = _get_sync_redis()
@@ -183,6 +191,13 @@ def log_and_broadcast(
     """
     ts = timestamp or datetime.now(timezone.utc)
 
+    # Increment thread-local sequence counter for this execution
+    exec_id = str(execution_id)
+    if not hasattr(_local, "sequence_counters"):
+        _local.sequence_counters = {}
+    seq = _local.sequence_counters.get(exec_id, 0)
+    _local.sequence_counters[exec_id] = seq + 1
+
     # Write to stream (source of truth for persistence)
     entry_id = append_log_to_stream(
         execution_id=execution_id,
@@ -199,6 +214,7 @@ def log_and_broadcast(
         message=message,
         metadata=metadata,
         timestamp=ts,
+        sequence=seq,
     )
 
     return entry_id
@@ -294,6 +310,7 @@ async def publish_log_to_pubsub_async(
     message: str,
     metadata: dict[str, Any] | None = None,
     timestamp: datetime | None = None,
+    sequence: int | None = None,
 ) -> None:
     """
     Async version of publish_log_to_pubsub.
@@ -307,6 +324,7 @@ async def publish_log_to_pubsub_async(
         message: Log message
         metadata: Optional metadata
         timestamp: Optional timestamp
+        sequence: Monotonic sequence number for client-side ordering
     """
     from src.core.cache import get_redis
 
@@ -314,7 +332,7 @@ async def publish_log_to_pubsub_async(
     ts = timestamp or datetime.now(timezone.utc)
 
     safe_metadata = _serialize_metadata(metadata)
-    log_entry = {
+    log_entry: dict[str, Any] = {
         "type": "execution_log",
         "executionId": exec_id,
         "level": level.upper(),
@@ -322,6 +340,8 @@ async def publish_log_to_pubsub_async(
         "metadata": safe_metadata,
         "timestamp": ts.isoformat(),
     }
+    if sequence is not None:
+        log_entry["sequence"] = sequence
 
     try:
         async with get_redis() as r:
@@ -355,6 +375,11 @@ async def log_and_broadcast_async(
     """
     ts = timestamp or datetime.now(timezone.utc)
 
+    # Increment async sequence counter for this execution
+    exec_id = str(execution_id)
+    seq = _async_sequence_counters.get(exec_id, 0)
+    _async_sequence_counters[exec_id] = seq + 1
+
     # Write to stream (source of truth for persistence)
     entry_id = await append_log_to_stream_async(
         execution_id=execution_id,
@@ -371,6 +396,7 @@ async def log_and_broadcast_async(
         message=message,
         metadata=metadata,
         timestamp=ts,
+        sequence=seq,
     )
 
     return entry_id
@@ -384,6 +410,8 @@ def close_thread_redis() -> None:
         except Exception:
             pass
         _local.redis = None
+    if hasattr(_local, "sequence_counters"):
+        _local.sequence_counters = {}
 
 
 # =============================================================================

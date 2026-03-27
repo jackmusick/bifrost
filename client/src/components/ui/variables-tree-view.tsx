@@ -14,7 +14,7 @@ export function VariablesTreeView({ data }: VariablesTreeViewProps) {
 	// Debug: log the data to see what we're receiving
 
 	return (
-		<div className="font-mono text-xs space-y-0.5">
+		<div className="font-mono text-xs space-y-0.5 overflow-x-auto min-w-0">
 			{Object.entries(data).map(([key, value]) => {
 				return (
 					<VariableItem

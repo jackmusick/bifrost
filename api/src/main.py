@@ -132,9 +132,6 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.default_user_email and settings.default_user_password:
         await create_default_user()
 
-    # Ensure system agents exist (like Coding Assistant)
-    await ensure_system_agents()
-
     # Reconcile file_index with S3 _repo/ in background
     from src.services.file_index_reconciler import reconcile_file_index
     from src.core.database import get_session_factory
@@ -254,22 +251,6 @@ async def create_default_user() -> None:
         )
         logger.info(f"Created default admin user: {user.email} (id: {user.id})")
 
-
-async def ensure_system_agents() -> None:
-    """
-    Ensure all system agents exist in the database.
-
-    Called on application startup to create built-in agents like the Coding Assistant.
-    """
-    from src.core.database import get_db_context
-    from src.core.system_agents import ensure_system_agents as _ensure_system_agents
-
-    try:
-        async with get_db_context() as db:
-            await _ensure_system_agents(db)
-            logger.info("System agents initialized")
-    except Exception as e:
-        logger.warning(f"Failed to ensure system agents: {e}")
 
 
 def create_app() -> FastAPI:

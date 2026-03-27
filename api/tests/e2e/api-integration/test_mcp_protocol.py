@@ -31,6 +31,42 @@ def mcp_headers(token: str) -> dict[str, str]:
 class TestMCPProtocol:
     """Test MCP JSON-RPC 2.0 protocol endpoint."""
 
+    @pytest.fixture(autouse=True, scope="class")
+    def _ensure_agent_with_tools(self):
+        """Create an agent with system tools so MCP tools/list returns results."""
+        token = create_test_jwt(is_superuser=True)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        resp = requests.post(
+            f"{TEST_API_URL}/api/agents",
+            headers=headers,
+            json={
+                "name": "MCP Protocol Test Agent",
+                "system_prompt": "Test agent for MCP protocol",
+                "channels": ["chat"],
+                "system_tools": [
+                    "execute_workflow",
+                    "list_workflows",
+                    "list_integrations",
+                    "list_forms",
+                    "get_docs",
+                    "search_knowledge",
+                ],
+            },
+        )
+        assert resp.status_code == 201, f"Failed to create test agent: {resp.text}"
+        agent_id = resp.json()["id"]
+
+        yield
+
+        requests.delete(
+            f"{TEST_API_URL}/api/agents/{agent_id}",
+            headers=headers,
+        )
+
     def test_mcp_requires_auth(self):
         """POST /mcp without auth should return 401."""
         response = requests.post(

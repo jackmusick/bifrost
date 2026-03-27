@@ -39,7 +39,7 @@ Then use `Grep/Read` on `/tmp/bifrost-docs/llms.txt` whenever you need reference
 ### Principles
 
 - **Local first.** Use Glob, Read, Grep for discovery. `.bifrost/*.yaml` manifests are the source of truth.
-- **Write locally, sync to deploy.** Write files in the git repo. `bifrost watch` auto-syncs to the platform.
+- **Write locally, sync to deploy.** Write files + manifest entries in the git repo. `bifrost watch` syncs file changes to the platform. New entities (workflows, forms, apps, agents) MUST be registered in `.bifrost/*.yaml` manifest files first — watch does not auto-discover new entities.
 - **Never use MCP for discovery** (`list_*`), reading code (`list_content`, `search_content`), or docs when a local workspace exists.
 
 ### Before Building
@@ -93,10 +93,20 @@ Then use these IDs in all files — workflow code, manifest entries, form/agent 
 1. Generate UUIDs for all new entities
 2. Write entity files (workflow `.py`, form `.form.yaml`, agent `.agent.yaml`, app `.tsx`)
 3. Add entries to `.bifrost/*.yaml` manifest files
-4. Watch mode auto-syncs to platform
-5. Test workflows: `bifrost run <file> --workflow <name> --params '{...}'`
+4. Watch mode syncs file changes to platform (entities must already be in manifests)
+5. Test workflows: `bifrost run <file> --workflow <name> --org <UUID> --params '{...}'`
 6. When happy: `git add && git commit && git push`
 
+### CLI Commands Reference
+
+| Command | Purpose |
+|---------|---------|
+| `bifrost watch` | Primary dev command — starts interactive watch session, syncs file changes on save |
+| `bifrost sync` | One-shot bidirectional sync — **interactive TUI, user must run manually** |
+| `bifrost run <file> -w <name> --org <UUID>` | Execute workflow in specific org context |
+| `bifrost api <METHOD> <path>` | Bifrost platform API client ONLY — inspect executions, validate apps, check platform state. NOT for third-party APIs. |
+| `bifrost push` | One-shot upload — **interactive TUI, user must run manually** |
+| `bifrost pull` | One-shot download — **interactive TUI, user must run manually** |
 ### Platform Operations
 
 | Need | Command |
@@ -105,6 +115,24 @@ Then use these IDs in all files — workflow code, manifest entries, form/agent 
 | Check execution logs | `bifrost api GET /api/executions/{id}` |
 | List executions | `bifrost api GET /api/executions` |
 | Verify platform state | `bifrost api GET /api/workflows` (only for debugging sync divergence) |
+| Validate an app | `bifrost api POST /api/applications/{id}/validate` |
+| Download platform docs | `bifrost api GET /api/llms.txt > /tmp/bifrost-docs/llms.txt` |
+
+### `bifrost api` Boundaries (CRITICAL)
+
+`bifrost api` is ONLY for the Bifrost platform API. It does NOT proxy to third-party integration APIs.
+
+- **Valid**: `/api/executions/{id}`, `/api/workflows`, `/api/applications/{id}/validate`, `/api/llms.txt`
+- **Invalid**: `/Client/237` (HaloPSA), `/companies` (Pax8), or any non-`/api/` path
+
+**If you don't know whether an endpoint exists, check first:**
+1. Download the docs if not already cached: `bifrost api GET /api/llms.txt > /tmp/bifrost-docs/llms.txt`
+2. Grep for the endpoint: `grep -i "endpoint_name" /tmp/bifrost-docs/llms.txt`
+3. If it's not documented, it doesn't exist — do NOT guess URL patterns
+
+**To call a third-party integration API** (HaloPSA, Pax8, NinjaOne, etc.):
+- Write a small test workflow using the SDK module and run it with `bifrost run`
+- Never try to route integration API calls through `bifrost api`
 
 ### MCP Tools (creation and events only)
 
@@ -115,34 +143,33 @@ Then use these IDs in all files — workflow code, manifest entries, form/agent 
 | Create an agent | `create_agent` |
 | Event triggers | `create_event_source`, `create_event_subscription` |
 | RAG search | `search_knowledge` |
-| Validate an app | `validate_app` or `bifrost push --validate` |
+| Validate an app | `validate_app` or `bifrost api POST /api/applications/{id}/validate` |
 | App dependencies | `get_app_dependencies`, `update_app_dependencies` |
 
 ### Syncing
 
-**`bifrost watch` handles all syncing.** Do NOT run `bifrost push` or `bifrost git push` while watch is running — watch already pushes every file change automatically.
+**`bifrost watch` handles all syncing.** The agent NEVER runs sync commands directly.
 
-- `bifrost git push` is for git-integrated deployments (pull + push + entity import). Only use when the user explicitly requests it.
-- `bifrost push` is a one-off direct upload. Only use when the user explicitly requests it or watch is not running.
+#### NEVER run these commands from the agent (CRITICAL)
+
+`bifrost sync`, `bifrost push`, and `bifrost pull` all launch an **interactive TUI** for conflict resolution. They will hang or fail when run non-interactively. The agent must NEVER execute these commands.
+
+#### Sync rules
+
+1. **Before writing any files**, verify `bifrost watch` is running:
+   ```bash
+   pgrep -f 'bifrost watch' > /dev/null 2>&1 && echo "RUNNING" || echo "NOT RUNNING"
+   ```
+2. **If watch is running**: Write files locally AND add `.bifrost/*.yaml` entries for any NEW entities. Watch syncs file changes but does NOT auto-discover unregistered entities.
+3. **If watch is NOT running**: Tell the user: "Please run `bifrost watch` in a terminal first." **Do NOT write files or attempt to sync until the user confirms watch is running.**
+4. **If the user asks to sync manually** (push/pull/sync): Tell them to run the command themselves in their terminal since it requires interactive TUI input.
+5. **GitHub/git-integrated deployment is deprecated.** Use normal local git for source control, and use `bifrost watch`, `bifrost sync`, or explicit platform image deploys as appropriate.
+
+#### What about deploying without watch?
+
+If the user doesn't want to run watch and asks to deploy, tell them to run `bifrost sync` or `bifrost push` in their own terminal. The agent cannot do this for them.
 
 Preflight (runs automatically in watch): manifest YAML, file existence, Python syntax, ruff linting, UUID cross-references, orphan detection.
-
-### Git Source Control
-
-When the user needs to deploy via git (not watch mode), use the `bifrost git` subcommands:
-
-```bash
-bifrost git fetch                     # regenerate manifest from DB, fetch remote
-bifrost git status                    # show changed files, ahead/behind
-bifrost git commit -m "description"   # regenerate manifest, stage, preflight, commit
-bifrost git push                      # pull + push + import entities (deploy)
-git pull                              # pull platform commits into local repo
-bifrost git resolve path=keep_remote  # resolve merge conflicts
-bifrost git diff <path>               # show file diff
-bifrost git discard <path>            # discard working tree changes
-```
-
-Typical workflow: `bifrost git fetch` → `bifrost git commit -m "msg"` → `bifrost git push` → `git pull` (to get the platform's commits locally).
 
 ## MCP-Only Mode
 
@@ -191,7 +218,7 @@ For component lists, hooks API, CSS examples, sandbox constraints — grep `/tmp
 
 1. Write files in `apps/{slug}/`
 2. Add entry to `.bifrost/apps.yaml`
-3. `bifrost watch` auto-syncs
+3. `bifrost watch` syncs file changes (auto-validates app dirs after each push). New apps must be added to `.bifrost/apps.yaml` first.
 4. Preview at `$BIFROST_DEV_URL/apps/{slug}/preview`
 5. Validate with `bifrost push apps/{slug} --validate`
 

@@ -450,7 +450,6 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
         agents={
             str(agent.id): serialize_agent(agent, agent_roles_by_agent.get(str(agent.id), []))
             for agent in agents_list
-            if not agent.is_system  # Exclude system agents
         },
         apps={
             str(app.id): serialize_app(app, app_roles_by_app.get(str(app.id), []))

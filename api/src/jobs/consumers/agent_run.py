@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from src.config import get_settings
 from src.core.pubsub import publish_agent_run_update
+from src.core.cache.keys import agent_run_steps_stream_key
 from src.core.cache.redis_client import get_redis
 from src.core.database import get_session_factory
 from src.jobs.rabbitmq import BaseConsumer
@@ -72,12 +73,13 @@ class AgentRunConsumer(BaseConsumer):
             return
 
         start_time = time.time()
+        agent_run: AgentRun | None = None
+        agent: Agent | None = None
+        executor: AutonomousAgentExecutor | None = None
 
-        async with self._session_factory() as db:
-            agent_run: AgentRun | None = None
-            agent: Agent | None = None
-            try:
-                # Load agent with relationships
+        try:
+            # Load agent with relationships (brief DB session)
+            async with self._session_factory() as db:
                 result = await db.execute(
                     select(Agent)
                     .options(
@@ -88,11 +90,13 @@ class AgentRunConsumer(BaseConsumer):
                     .where(Agent.id == UUID(agent_id))
                 )
                 agent = result.scalar_one_or_none()
-                if not agent:
-                    logger.error(f"Agent run {run_id}: agent {agent_id} not found")
-                    return
 
-                # Create AgentRun record
+            if not agent:
+                logger.error(f"Agent run {run_id}: agent {agent_id} not found")
+                return
+
+            # Create AgentRun record (brief DB session)
+            async with self._session_factory() as db:
                 agent_run = AgentRun(
                     id=UUID(run_id),
                     agent_id=agent.id,
@@ -113,79 +117,100 @@ class AgentRunConsumer(BaseConsumer):
                 db.add(agent_run)
                 await db.commit()
 
-                await publish_agent_run_update(agent_run, agent.name)
+            await publish_agent_run_update(agent_run, agent.name)
 
-                # Run the agent with timeout (Layer 1: hard safety net)
-                run_timeout = agent.max_run_timeout or DEFAULT_RUN_TIMEOUT
+            # Run the agent with timeout (Layer 1: hard safety net)
+            run_timeout = agent.max_run_timeout or DEFAULT_RUN_TIMEOUT
 
-                async with get_redis() as redis_for_executor:
-                    executor = AutonomousAgentExecutor(db, redis_client=redis_for_executor)
+            async with get_redis() as redis_for_executor:
+                executor = AutonomousAgentExecutor(self._session_factory, redis_client=redis_for_executor)
 
-                    # Create executor task so cancel watcher can cancel it
-                    executor_task = asyncio.ensure_future(executor.run(
-                        agent=agent,
-                        input_data=context.get("input"),
-                        output_schema=context.get("output_schema"),
-                        run_id=run_id,
-                        _caller=context.get("caller"),
-                    ))
+                # Create executor task so cancel watcher can cancel it
+                executor_task = asyncio.ensure_future(executor.run(
+                    agent=agent,
+                    input_data=context.get("input"),
+                    output_schema=context.get("output_schema"),
+                    run_id=run_id,
+                    _caller=context.get("caller"),
+                ))
 
-                    # Cancel watcher: polls Redis flag, force-cancels task if stuck
-                    cancel_watcher = asyncio.ensure_future(
-                        AgentRunConsumer._cancel_watcher(run_id, executor_task, redis_for_executor)
+                # Cancel watcher: polls Redis flag, force-cancels task if stuck
+                cancel_watcher = asyncio.ensure_future(
+                    AgentRunConsumer._cancel_watcher(run_id, executor_task, redis_for_executor)
+                )
+
+                try:
+                    run_result = await asyncio.wait_for(
+                        asyncio.shield(executor_task),
+                        timeout=run_timeout,
                     )
-
+                except asyncio.TimeoutError:
+                    executor_task.cancel()
                     try:
-                        run_result = await asyncio.wait_for(
-                            asyncio.shield(executor_task),
-                            timeout=run_timeout,
-                        )
-                    except asyncio.TimeoutError:
-                        executor_task.cancel()
-                        try:
-                            await executor_task
-                        except asyncio.CancelledError:
-                            pass
-                        run_result = {
-                            "output": None,
-                            "iterations_used": 0,
-                            "tokens_used": 0,
-                            "status": "timeout",
-                            "llm_model": None,
-                            "error": f"Agent run timed out after {run_timeout}s",
-                        }
+                        await executor_task
                     except asyncio.CancelledError:
-                        run_result = {
-                            "output": None,
-                            "iterations_used": 0,
-                            "tokens_used": 0,
-                            "status": "cancelled",
-                            "llm_model": None,
-                        }
-                    finally:
-                        cancel_watcher.cancel()
-                        try:
-                            await cancel_watcher
-                        except asyncio.CancelledError:
-                            pass
+                        pass
+                    run_result = {
+                        "output": None,
+                        "iterations_used": 0,
+                        "tokens_used": 0,
+                        "status": "timeout",
+                        "llm_model": None,
+                        "error": f"Agent run timed out after {run_timeout}s",
+                    }
+                except asyncio.CancelledError:
+                    run_result = {
+                        "output": None,
+                        "iterations_used": 0,
+                        "tokens_used": 0,
+                        "status": "cancelled",
+                        "llm_model": None,
+                    }
+                finally:
+                    cancel_watcher.cancel()
+                    try:
+                        await cancel_watcher
+                    except asyncio.CancelledError:
+                        pass
 
-                # Update run record
-                duration_ms = int((time.time() - start_time) * 1000)
-                agent_run.status = run_result.get("status", "completed")
-                agent_run.output = run_result.get("output") if isinstance(run_result.get("output"), dict) else {"text": run_result.get("output")}
-                agent_run.iterations_used = run_result.get("iterations_used", 0)
-                agent_run.tokens_used = run_result.get("tokens_used", 0)
-                agent_run.llm_model = run_result.get("llm_model")
-                agent_run.duration_ms = duration_ms
-                agent_run.completed_at = datetime.now(timezone.utc)
-                if run_result.get("error"):
-                    agent_run.error = run_result["error"]
+            # Update run record and flush buffered steps (brief DB session)
+            duration_ms = int((time.time() - start_time) * 1000)
+            async with self._session_factory() as db:
+                # Re-fetch the AgentRun in this session to update it
+                run_obj = await db.get(AgentRun, UUID(run_id))
+                if run_obj:
+                    run_obj.status = run_result.get("status", "completed")
+                    run_obj.output = run_result.get("output") if isinstance(run_result.get("output"), dict) else {"text": run_result.get("output")}
+                    run_obj.iterations_used = run_result.get("iterations_used", 0)
+                    run_obj.tokens_used = run_result.get("tokens_used", 0)
+                    run_obj.llm_model = run_result.get("llm_model")
+                    run_obj.duration_ms = duration_ms
+                    run_obj.completed_at = datetime.now(timezone.utc)
+                    if run_result.get("error"):
+                        run_obj.error = run_result["error"]
+
+                # Flush executor's buffered steps and AI usage
+                if executor:
+                    await executor.flush_to_db(db)
+
                 await db.commit()
 
-                await publish_agent_run_update(agent_run, agent.name)
+                # Re-read for publish (need agent relationship)
+                if run_obj:
+                    agent_run = run_obj
 
-                # Update event delivery status if triggered by event
-                if context.get("event_delivery_id"):
+            # Clean up Redis Stream now that steps are committed to DB
+            try:
+                async with get_redis() as r:
+                    await r.delete(agent_run_steps_stream_key(run_id))
+            except Exception:
+                pass
+
+            await publish_agent_run_update(agent_run, agent.name)
+
+            # Update event delivery status if triggered by event
+            if context.get("event_delivery_id"):
+                async with self._session_factory() as db:
                     await self._update_event_delivery(
                         db,
                         event_delivery_id=context["event_delivery_id"],
@@ -194,54 +219,69 @@ class AgentRunConsumer(BaseConsumer):
                         error_message=agent_run.error,
                     )
 
-                # If sync, push result for BLPOP waiter
-                if sync:
-                    result_key = f"{REDIS_PREFIX}:{run_id}:result"
-                    async with get_redis() as r:
-                        # redis-py 7.x stubs type lpush as -> int, but it's async at runtime
-                        await r.lpush(result_key, json.dumps({  # pyright: ignore[reportGeneralTypeIssues]
-                            "output": run_result.get("output"),
-                            "status": run_result.get("status", "completed"),
-                            "iterations_used": run_result.get("iterations_used", 0),
-                            "tokens_used": run_result.get("tokens_used", 0),
-                        }))
-                        await r.expire(result_key, 300)
+            # If sync, push result for BLPOP waiter
+            if sync:
+                result_key = f"{REDIS_PREFIX}:{run_id}:result"
+                async with get_redis() as r:
+                    # redis-py 7.x stubs type lpush as -> int, but it's async at runtime
+                    await r.lpush(result_key, json.dumps({  # pyright: ignore[reportGeneralTypeIssues]
+                        "output": run_result.get("output"),
+                        "status": run_result.get("status", "completed"),
+                        "iterations_used": run_result.get("iterations_used", 0),
+                        "tokens_used": run_result.get("tokens_used", 0),
+                    }))
+                    await r.expire(result_key, 300)
 
-            except Exception as e:
-                logger.exception(f"Agent run {run_id} failed: {e}")
-                if agent_run is not None:
-                    try:
-                        agent_run.status = "failed"
-                        agent_run.error = str(e)
-                        agent_run.duration_ms = int((time.time() - start_time) * 1000)
-                        agent_run.completed_at = datetime.now(timezone.utc)
-                        await db.commit()
-                    except Exception:
-                        logger.exception(f"Failed to update agent_run {run_id} after error")
+        except Exception as e:
+            logger.exception(f"Agent run {run_id} failed: {e}")
+            if agent_run is not None:
+                try:
+                    async with self._session_factory() as db:
+                        run_obj = await db.get(AgentRun, UUID(run_id))
+                        if run_obj:
+                            run_obj.status = "failed"
+                            run_obj.error = str(e)
+                            run_obj.duration_ms = int((time.time() - start_time) * 1000)
+                            run_obj.completed_at = datetime.now(timezone.utc)
 
-                    try:
-                        await publish_agent_run_update(
-                            agent_run, agent.name if agent else "Unknown"
-                        )
-                    except Exception:
-                        pass
+                            # Still flush any buffered steps on failure
+                            if executor:
+                                await executor.flush_to_db(db)
 
-                if sync:
-                    result_key = f"{REDIS_PREFIX}:{run_id}:result"
-                    async with get_redis() as r:
-                        await r.lpush(result_key, json.dumps({  # pyright: ignore[reportGeneralTypeIssues]
-                            "output": None,
-                            "status": "failed",
-                            "error": str(e),
-                        }))
-                        await r.expire(result_key, 300)
+                            await db.commit()
+                except Exception:
+                    logger.exception(f"Failed to update agent_run {run_id} after error")
 
-            finally:
+                # Clean up Redis Stream on failure too
                 try:
                     async with get_redis() as r:
-                        await r.delete(f"{REDIS_PREFIX}:{run_id}:context")
+                        await r.delete(agent_run_steps_stream_key(run_id))
                 except Exception:
                     pass
+
+                try:
+                    await publish_agent_run_update(
+                        agent_run, agent.name if agent else "Unknown"
+                    )
+                except Exception:
+                    pass
+
+            if sync:
+                result_key = f"{REDIS_PREFIX}:{run_id}:result"
+                async with get_redis() as r:
+                    await r.lpush(result_key, json.dumps({  # pyright: ignore[reportGeneralTypeIssues]
+                        "output": None,
+                        "status": "failed",
+                        "error": str(e),
+                    }))
+                    await r.expire(result_key, 300)
+
+        finally:
+            try:
+                async with get_redis() as r:
+                    await r.delete(f"{REDIS_PREFIX}:{run_id}:context")
+            except Exception:
+                pass
 
     @staticmethod
     async def _cancel_watcher(

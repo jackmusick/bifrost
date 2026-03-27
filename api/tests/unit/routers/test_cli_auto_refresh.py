@@ -147,6 +147,7 @@ class TestBuildOAuthDataAutoRefresh:
         provider.authorization_url = None
         provider.scopes = ["https://graph.microsoft.com/.default"]
         provider.encrypted_client_secret = "encrypted-secret"
+        provider.audience = None
 
         token = None  # No stored token
         entity_id = "customer-tenant-123"
@@ -181,6 +182,7 @@ class TestBuildOAuthDataAutoRefresh:
                 client_id="test-client-id",
                 client_secret="decrypted-client-secret",
                 scopes="https://graph.microsoft.com/.default",
+                audience=None,
             )
 
             # Verify the result contains the fresh token
@@ -293,6 +295,7 @@ class TestBuildOAuthDataAutoRefresh:
         provider.authorization_url = None
         provider.scopes = ["https://graph.microsoft.com/.default"]  # Default scope
         provider.encrypted_client_secret = "encrypted-secret"
+        provider.audience = None
 
         token = None
         entity_id = None  # No entity_id
@@ -327,6 +330,7 @@ class TestBuildOAuthDataAutoRefresh:
                 client_id="test-client-id",
                 client_secret="decrypted-client-secret",
                 scopes="https://outlook.office365.com/.default",  # Override, not provider.scopes
+                audience=None,
             )
 
             assert result.access_token == "exchange-access-token"
@@ -346,6 +350,7 @@ class TestBuildOAuthDataAutoRefresh:
         provider.authorization_url = None
         provider.scopes = ["https://graph.microsoft.com/.default"]  # Default scope
         provider.encrypted_client_secret = "encrypted-secret"
+        provider.audience = None
 
         token = None
         entity_id = "customer-tenant-456"
@@ -380,6 +385,7 @@ class TestBuildOAuthDataAutoRefresh:
                 client_id="test-client-id",
                 client_secret="decrypted-client-secret",
                 scopes="https://outlook.office365.com/.default",
+                audience=None,
             )
 
             assert result.access_token == "exchange-customer-token"

@@ -210,6 +210,16 @@ def execution_logs_stream_key(execution_id: str) -> str:
     return f"bifrost:logs:{execution_id}"
 
 
+def agent_run_steps_stream_key(run_id: str) -> str:
+    """
+    Key for the Redis Stream containing steps for an agent run.
+
+    Structure: STREAM with step entries (id, run_id, step_number, type, content, etc.)
+    Used for dual-read: API reads from Redis when run is in-progress, DB when complete.
+    """
+    return f"bifrost:agent_run_steps:{run_id}"
+
+
 # =============================================================================
 # Authentication Keys (Refresh Token JTI, OAuth State, Rate Limiting)
 # =============================================================================

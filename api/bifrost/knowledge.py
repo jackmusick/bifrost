@@ -69,10 +69,10 @@ class knowledge:
             namespace: Namespace for organization (defaults to "default")
             key: Optional key for upserts (e.g., "ticket-123")
             metadata: Optional metadata dict
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Bypass org resolution, use global scope
+            scope: Organization scope override. Omit to use the execution
+                context org (with automatic global fallback via cascade).
+                Pass an org UUID to target a specific org (provider orgs only).
+                Pass None explicitly for global scope.
 
         Returns:
             Document ID (UUID as string)
@@ -119,10 +119,10 @@ class knowledge:
         Args:
             documents: List of document dicts
             namespace: Namespace for all documents
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Bypass org resolution, use global scope
+            scope: Organization scope override. Omit to use the execution
+                context org (with automatic global fallback via cascade).
+                Pass an org UUID to target a specific org (provider orgs only).
+                Pass None explicitly for global scope.
 
         Returns:
             List of document IDs

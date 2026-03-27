@@ -40,7 +40,7 @@ def _serialize_agent_to_yaml(agent: Agent) -> bytes:
     agent_data = agent_public.model_dump(
         mode="json",
         exclude_none=True,
-        exclude={"organization_id", "access_level", "is_system", "created_by", "created_at", "updated_at"},
+        exclude={"organization_id", "access_level", "created_by", "created_at", "updated_at"},
     )
 
     # Remove empty arrays to match import format

@@ -2,22 +2,30 @@
 
 Used for event-triggered, schedule-triggered, and SDK-triggered agent runs.
 Records every step as an AgentRunStep for full observability.
+
+Connection management: This executor uses a Redis-first pattern — steps and AI
+usage are buffered in memory/Redis during execution. DB connections are only
+acquired briefly for reads (tool resolution, LLM config, knowledge search) and
+released immediately. All buffered data is flushed to Postgres in a single
+batch after the run completes via flush_to_db().
 """
 import asyncio
 import json
 import logging
 import time
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID, uuid4
 
 import redis.asyncio as aioredis
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from src.models.orm.agents import Agent
 from src.models.orm.agent_runs import AgentRun, AgentRunStep
 from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
+from src.core.cache.keys import agent_run_steps_stream_key
 from src.core.pubsub import publish_agent_run_step
 from src.services.execution.agent_helpers import build_agent_system_prompt, find_delegated_agent, resolve_agent_tools
 from src.services.llm import LLMMessage, ToolCallRequest, get_llm_client
@@ -39,15 +47,28 @@ class AutonomousAgentExecutor:
 
     Handles the full tool-calling loop: LLM call -> tool dispatch -> LLM call,
     recording each step as an AgentRunStep for audit and debugging.
+
+    Uses a Redis-first pattern: steps are written to Redis Stream during
+    execution and flushed to Postgres after the run completes. No DB
+    connection is held during LLM calls or tool execution.
     """
 
-    def __init__(self, session: AsyncSession, redis_client: aioredis.Redis | None = None, *, _delegation_depth: int = 0):
-        self.session = session
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        redis_client: aioredis.Redis | None = None,
+        *,
+        _delegation_depth: int = 0,
+    ):
+        self._session_factory = session_factory
         self.redis_client = redis_client
         self._delegation_depth = _delegation_depth
         self._tool_workflow_id_map: dict[str, UUID] = {}
         self._current_run_id: str = ""
         self._last_delegation_run_id: str | None = None
+        # Buffers for Redis-first pattern (flushed to DB after run completes)
+        self._pending_steps: list[dict[str, Any]] = []
+        self._pending_ai_usage: list[dict[str, Any]] = []
 
     async def run(
         self,
@@ -65,7 +86,7 @@ class AutonomousAgentExecutor:
             input_data: Input payload (serialized as JSON in the user message).
             output_schema: Optional JSON Schema the agent should conform its output to.
             run_id: External run ID (generates one if not provided).
-            caller: Optional caller metadata for context.
+            _caller: Optional caller metadata for context.
 
         Returns:
             Dict with keys: output, iterations_used, tokens_used, status, llm_model
@@ -79,8 +100,10 @@ class AutonomousAgentExecutor:
         max_iterations = min(agent.max_iterations or 50, MAX_ITERATIONS)
         max_tokens = agent.max_token_budget or 100000
 
-        # Resolve tools
-        tool_definitions, self._tool_workflow_id_map = await resolve_agent_tools(agent, self.session)
+        # Resolve tools and get LLM client (brief DB reads, then release)
+        async with self._session_factory() as db:
+            tool_definitions, self._tool_workflow_id_map = await resolve_agent_tools(agent, db)
+            llm_client = await get_llm_client(db)
 
         # Build initial messages
         system_prompt = build_agent_system_prompt(agent, execution_context={"mode": "autonomous"})
@@ -93,8 +116,6 @@ class AutonomousAgentExecutor:
             LLMMessage(role="user", content=user_content),
         ]
 
-        # Get LLM client
-        llm_client = await get_llm_client(self.session)
         model = agent.llm_model
 
         # Record initial request step
@@ -136,7 +157,7 @@ class AutonomousAgentExecutor:
                     "max_iterations": max_iterations,
                 })
 
-            # Call LLM (use complete() for non-streaming autonomous runs)
+            # Call LLM — NO DB connection held during this call
             try:
                 response = await llm_client.complete(
                     messages=messages,
@@ -168,8 +189,8 @@ class AutonomousAgentExecutor:
             if not model and response.model:
                 model = response.model
 
-            # Record AI usage for cost tracking
-            await self._record_ai_usage(
+            # Buffer AI usage for later DB flush
+            self._buffer_ai_usage(
                 agent=agent,
                 run_id=run_id,
                 provider=llm_client.provider_name,
@@ -296,6 +317,44 @@ class AutonomousAgentExecutor:
         }
 
     # ------------------------------------------------------------------
+    # DB flush (called by consumer after run completes)
+    # ------------------------------------------------------------------
+
+    async def flush_to_db(self, session: AsyncSession) -> None:
+        """Flush all buffered steps and AI usage to Postgres in a single transaction.
+
+        Called by the consumer after the run completes (success, failure, timeout, etc.).
+        This is the only point where the executor writes to the database.
+        """
+        # Flush steps from this executor
+        if self._pending_steps:
+            for step_data in self._pending_steps:
+                step = AgentRunStep(
+                    id=UUID(step_data["id"]),
+                    run_id=UUID(step_data["run_id"]),
+                    step_number=step_data["step_number"],
+                    type=step_data["type"],
+                    content=step_data.get("content"),
+                    tokens_used=step_data.get("tokens_used"),
+                    duration_ms=step_data.get("duration_ms"),
+                )
+                session.add(step)
+
+        # Flush AI usage from this executor
+        if self._pending_ai_usage and self.redis_client:
+            from src.services.ai_usage_service import record_ai_usage
+
+            for usage in self._pending_ai_usage:
+                try:
+                    await record_ai_usage(
+                        session=session,
+                        redis_client=self.redis_client,
+                        **usage,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to flush AI usage record: {e}")
+
+    # ------------------------------------------------------------------
     # Tool dispatch
     # ------------------------------------------------------------------
 
@@ -358,20 +417,20 @@ class AutonomousAgentExecutor:
             if not namespaces:
                 return "No knowledge sources configured for this agent"
 
-            # Generate query embedding
-            embedding_client = await get_embedding_client(self.session)
-            query_embedding = await embedding_client.embed_single(query)
+            # Brief DB session for embedding client config + knowledge search
+            async with self._session_factory() as db:
+                embedding_client = await get_embedding_client(db)
+                query_embedding = await embedding_client.embed_single(query)
 
-            # Search knowledge store
-            repo = KnowledgeRepository(
-                self.session, org_id=agent.organization_id, is_superuser=True
-            )
-            results = await repo.search(
-                query_embedding=query_embedding,
-                namespace=namespaces,
-                limit=limit,
-                fallback=True,
-            )
+                repo = KnowledgeRepository(
+                    db, org_id=agent.organization_id, is_superuser=True
+                )
+                results = await repo.search(
+                    query_embedding=query_embedding,
+                    namespace=namespaces,
+                    limit=limit,
+                    fallback=True,
+                )
 
             if not results:
                 return "No relevant knowledge found."
@@ -414,39 +473,39 @@ class AutonomousAgentExecutor:
             f"(depth={self._delegation_depth + 1}/{MAX_DELEGATION_DEPTH})"
         )
 
-        # Re-fetch with relationships loaded — the parent's selectinload
-        # doesn't transitively load the child agent's own relationships
-        result = await self.session.execute(
-            select(Agent)
-            .options(selectinload(Agent.tools), selectinload(Agent.delegated_agents))
-            .where(Agent.id == target_agent.id)
-        )
-        target_agent = result.scalar_one()
-
-        # Create a child AgentRun so steps and AI usage are properly tracked
+        # Brief DB session: re-fetch child agent with relationships + create sub-run record
         sub_run_id = str(uuid4())
-        sub_run = AgentRun(
-            id=UUID(sub_run_id),
-            agent_id=target_agent.id,
-            trigger_type="delegation",
-            trigger_source=f"agent:{agent.name}",
-            input={"task": task, "_delegated_from": agent.name},
-            status="running",
-            org_id=agent.organization_id,
-            parent_run_id=UUID(self._current_run_id),
-            budget_max_iterations=target_agent.max_iterations,
-            budget_max_tokens=target_agent.max_token_budget,
-            started_at=datetime.now(timezone.utc),
-        )
-        self.session.add(sub_run)
-        await self.session.flush()
+        async with self._session_factory() as db:
+            result = await db.execute(
+                select(Agent)
+                .options(selectinload(Agent.tools), selectinload(Agent.delegated_agents))
+                .where(Agent.id == target_agent.id)
+            )
+            target_agent = result.scalar_one()
+
+            # Create a child AgentRun so steps and AI usage are properly tracked
+            sub_run = AgentRun(
+                id=UUID(sub_run_id),
+                agent_id=target_agent.id,
+                trigger_type="delegation",
+                trigger_source=f"agent:{agent.name}",
+                input={"task": task, "_delegated_from": agent.name},
+                status="running",
+                org_id=agent.organization_id,
+                parent_run_id=UUID(self._current_run_id),
+                budget_max_iterations=target_agent.max_iterations,
+                budget_max_tokens=target_agent.max_token_budget,
+                started_at=datetime.now(timezone.utc),
+            )
+            db.add(sub_run)
+            await db.commit()
 
         # Store for the caller to include in the tool_result step
         self._last_delegation_run_id = sub_run_id
 
-        # Recursive run with the delegated agent
+        # Recursive run with the delegated agent (child gets its own session factory)
         sub_executor = AutonomousAgentExecutor(
-            self.session,
+            self._session_factory,
             redis_client=self.redis_client,
             _delegation_depth=self._delegation_depth + 1,
         )
@@ -462,29 +521,38 @@ class AutonomousAgentExecutor:
             )
         except asyncio.TimeoutError:
             duration_ms = int((time.time() - sub_start) * 1000)
-            sub_run.status = "failed"
-            sub_run.error = f"Timed out after {DELEGATION_TIMEOUT_SECONDS}s"
-            sub_run.duration_ms = duration_ms
-            sub_run.completed_at = datetime.now(timezone.utc)
-            await self.session.flush()
+            async with self._session_factory() as db:
+                sub_run_obj = await db.get(AgentRun, UUID(sub_run_id))
+                if sub_run_obj:
+                    sub_run_obj.status = "failed"
+                    sub_run_obj.error = f"Timed out after {DELEGATION_TIMEOUT_SECONDS}s"
+                    sub_run_obj.duration_ms = duration_ms
+                    sub_run_obj.completed_at = datetime.now(timezone.utc)
+                    await db.commit()
             logger.error(
                 f"Delegation to '{target_agent.name}' timed out after {DELEGATION_TIMEOUT_SECONDS}s"
             )
             raise ToolError(f"Delegation to {target_agent.name} timed out after {DELEGATION_TIMEOUT_SECONDS}s")
 
-        # Update sub-run record with results
+        # Update sub-run record with results (brief DB session)
         duration_ms = int((time.time() - sub_start) * 1000)
-        sub_run.status = sub_result.get("status", "completed")
-        output = sub_result.get("output")
-        sub_run.output = output if isinstance(output, dict) else {"text": output}
-        sub_run.iterations_used = sub_result.get("iterations_used", 0)
-        sub_run.tokens_used = sub_result.get("tokens_used", 0)
-        sub_run.llm_model = sub_result.get("llm_model")
-        sub_run.duration_ms = duration_ms
-        sub_run.completed_at = datetime.now(timezone.utc)
-        if sub_result.get("error"):
-            sub_run.error = sub_result["error"]
-        await self.session.flush()
+        async with self._session_factory() as db:
+            sub_run_obj = await db.get(AgentRun, UUID(sub_run_id))
+            if sub_run_obj:
+                sub_run_obj.status = sub_result.get("status", "completed")
+                output = sub_result.get("output")
+                sub_run_obj.output = output if isinstance(output, dict) else {"text": output}
+                sub_run_obj.iterations_used = sub_result.get("iterations_used", 0)
+                sub_run_obj.tokens_used = sub_result.get("tokens_used", 0)
+                sub_run_obj.llm_model = sub_result.get("llm_model")
+                sub_run_obj.duration_ms = duration_ms
+                sub_run_obj.completed_at = datetime.now(timezone.utc)
+                if sub_result.get("error"):
+                    sub_run_obj.error = sub_result["error"]
+
+                # Flush child executor's buffered steps in the same transaction
+                await sub_executor.flush_to_db(db)
+                await db.commit()
 
         logger.info(
             f"Delegation to '{target_agent.name}' completed with status={sub_result.get('status')}"
@@ -501,16 +569,19 @@ class AutonomousAgentExecutor:
             raise ToolError(f"System tool '{tool_call.name}' not found")
 
         try:
-            context = MCPContext(
-                user_id=SYSTEM_USER_ID,
-                org_id=str(agent.organization_id) if agent.organization_id else None,
-                is_platform_admin=False,
-                user_email=SYSTEM_USER_EMAIL,
-                user_name=agent.name,
-                session=self.session,
-            )
+            # Brief DB session scoped to the tool call
+            async with self._session_factory() as db:
+                context = MCPContext(
+                    user_id=SYSTEM_USER_ID,
+                    org_id=str(agent.organization_id) if agent.organization_id else None,
+                    is_platform_admin=False,
+                    user_email=SYSTEM_USER_EMAIL,
+                    user_name=agent.name,
+                    session=db,
+                )
 
-            result = await func(context, **tool_call.arguments)
+                result = await func(context, **tool_call.arguments)
+                await db.commit()
 
             # Extract result from FastMCP ToolResult format
             import pydantic_core
@@ -547,10 +618,10 @@ class AutonomousAgentExecutor:
             return False
 
     # ------------------------------------------------------------------
-    # AI usage recording
+    # AI usage buffering
     # ------------------------------------------------------------------
 
-    async def _record_ai_usage(
+    def _buffer_ai_usage(
         self,
         agent: Agent,
         run_id: str,
@@ -560,28 +631,21 @@ class AutonomousAgentExecutor:
         output_tokens: int,
         duration_ms: int | None = None,
     ) -> None:
-        """Record an AI usage entry for cost tracking."""
+        """Buffer an AI usage entry for later DB flush."""
         if not self.redis_client:
             return
-        try:
-            from src.services.ai_usage_service import record_ai_usage
-
-            await record_ai_usage(
-                session=self.session,
-                redis_client=self.redis_client,
-                provider=provider,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                duration_ms=duration_ms,
-                agent_run_id=UUID(run_id),
-                organization_id=agent.organization_id,
-            )
-        except Exception as e:
-            logger.warning(f"Failed to record AI usage for run {run_id}: {e}")
+        self._pending_ai_usage.append({
+            "provider": provider,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "duration_ms": duration_ms,
+            "agent_run_id": UUID(run_id),
+            "organization_id": agent.organization_id,
+        })
 
     # ------------------------------------------------------------------
-    # Step recording
+    # Step recording (Redis-first)
     # ------------------------------------------------------------------
 
     async def _record_step(
@@ -594,32 +658,56 @@ class AutonomousAgentExecutor:
         tokens_used: int | None = None,
         duration_ms: int | None = None,
     ) -> None:
-        """Record an AgentRunStep in the database."""
-        step = AgentRunStep(
-            id=uuid4(),
-            run_id=UUID(run_id),
-            step_number=step_number,
-            type=step_type,
-            content=content,
-            tokens_used=tokens_used,
-            duration_ms=duration_ms,
-        )
-        self.session.add(step)
-        await self.session.flush()
+        """Record a step to Redis Stream and buffer for later DB flush.
+
+        Steps are NOT written to Postgres here — they are buffered in
+        self._pending_steps and flushed via flush_to_db() after the run.
+        """
+        step_id = str(uuid4())
+
+        # Buffer for later DB flush
+        self._pending_steps.append({
+            "id": step_id,
+            "run_id": run_id,
+            "step_number": step_number,
+            "type": step_type,
+            "content": content,
+            "tokens_used": tokens_used,
+            "duration_ms": duration_ms,
+        })
 
         # Broadcast step for real-time updates
+        step_data = {
+            "id": step_id,
+            "run_id": str(run_id),
+            "step_number": step_number,
+            "type": step_type,
+            "content": content,
+            "tokens_used": tokens_used,
+            "duration_ms": duration_ms,
+        }
         try:
-            await publish_agent_run_step(
-                run_id=str(run_id),
-                step={
-                    "id": str(step.id),
-                    "run_id": str(run_id),
-                    "step_number": step_number,
-                    "type": step_type,
-                    "content": content,
-                    "tokens_used": tokens_used,
-                    "duration_ms": duration_ms,
-                },
-            )
+            await publish_agent_run_step(run_id=str(run_id), step=step_data)
         except Exception:
             pass  # Don't fail the run if pub/sub fails
+
+        # Write to Redis Stream for dual-read (API reads from Redis when run is in-progress)
+        if self.redis_client:
+            try:
+                stream_key = agent_run_steps_stream_key(str(run_id))
+                await self.redis_client.xadd(
+                    stream_key,
+                    {
+                        "id": step_id,
+                        "run_id": str(run_id),
+                        "step_number": str(step_number),
+                        "type": step_type,
+                        "content": json.dumps(content) if content else "{}",
+                        "tokens_used": str(tokens_used) if tokens_used is not None else "",
+                        "duration_ms": str(duration_ms) if duration_ms is not None else "",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                    maxlen=1000,
+                )
+            except Exception:
+                pass  # Don't fail the run if Redis write fails

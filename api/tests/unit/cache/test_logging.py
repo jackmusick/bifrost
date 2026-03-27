@@ -211,6 +211,7 @@ class TestLogAndBroadcast:
                     message="Test message",
                     metadata={"key": "value"},
                     timestamp=timestamp,
+                    sequence=0,
                 )
 
     def test_log_and_broadcast_uses_current_time_if_not_provided(self):

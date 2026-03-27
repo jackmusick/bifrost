@@ -15,11 +15,26 @@ from src.services.llm.base import LLMResponse, ToolCallRequest
 
 @pytest.fixture
 def mock_session():
+    """Create a mock session factory (async_sessionmaker) for the executor.
+
+    The executor expects a session factory, not a raw session. This fixture
+    returns a callable that produces an async context manager yielding a
+    mock session.
+    """
     session = AsyncMock()
     session.add = MagicMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
-    return session
+    session.get = AsyncMock(return_value=None)
+
+    mock_ctx = AsyncMock()
+    mock_ctx.__aenter__ = AsyncMock(return_value=session)
+    mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    factory = MagicMock(return_value=mock_ctx)
+    # Attach session for tests that need to inspect it
+    factory._mock_session = session
+    return factory
 
 
 @pytest.fixture
@@ -94,11 +109,11 @@ class TestAutonomousAgentExecutor:
             run_id=str(uuid4()),
         )
 
-        # Verify steps were recorded (session.add called for AgentRunStep objects)
-        add_calls = mock_session.add.call_args_list
-        step_adds = [c for c in add_calls if hasattr(c[0][0], "step_number")]
-        # At least the initial llm_request step and the llm_response step
-        assert len(step_adds) >= 2
+        # Verify steps were buffered (Redis-first: steps are in _pending_steps, not DB)
+        assert len(executor._pending_steps) >= 2  # llm_request + llm_response
+        step_types = [s["type"] for s in executor._pending_steps]
+        assert "llm_request" in step_types
+        assert "llm_response" in step_types
 
     @pytest.mark.asyncio
     @patch("src.services.execution.autonomous_agent_executor.get_llm_client")
@@ -314,7 +329,7 @@ class TestAutonomousAgentExecutor:
         # Mock session.execute to return the re-fetched delegated agent
         mock_result = MagicMock()
         mock_result.scalar_one.return_value = delegated
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session._mock_session.execute = AsyncMock(return_value=mock_result)
 
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(side_effect=[
@@ -410,7 +425,7 @@ class TestAutonomousAgentExecutor:
 
         mock_result = MagicMock()
         mock_result.scalar_one.return_value = refetched_agent
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session._mock_session.execute = AsyncMock(return_value=mock_result)
 
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(side_effect=[
@@ -452,7 +467,7 @@ class TestAutonomousAgentExecutor:
         assert result["status"] == "completed"
 
         # Verify session.execute was called to re-fetch the delegated agent
-        execute_calls = mock_session.execute.call_args_list
+        execute_calls = mock_session._mock_session.execute.call_args_list
         assert len(execute_calls) >= 1, "Expected at least one session.execute call for re-fetch"
 
     @pytest.mark.asyncio
@@ -486,7 +501,7 @@ class TestAutonomousAgentExecutor:
 
         mock_result = MagicMock()
         mock_result.scalar_one.return_value = delegated
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session._mock_session.execute = AsyncMock(return_value=mock_result)
 
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(side_effect=[
@@ -624,7 +639,7 @@ class TestAutonomousAgentExecutor:
 
         mock_result = MagicMock()
         mock_result.scalar_one.return_value = delegated
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session._mock_session.execute = AsyncMock(return_value=mock_result)
 
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(side_effect=[
@@ -710,12 +725,8 @@ class TestAutonomousAgentExecutor:
         assert len(tool_messages) >= 1
         assert "Unknown tool" in tool_messages[0].content
 
-        # Verify a tool_error step was recorded (not tool_result)
-        add_calls = mock_session.add.call_args_list
-        error_steps = [
-            c[0][0] for c in add_calls
-            if hasattr(c[0][0], "type") and c[0][0].type == "tool_error"
-        ]
+        # Verify a tool_error step was buffered (Redis-first pattern)
+        error_steps = [s for s in executor._pending_steps if s["type"] == "tool_error"]
         assert len(error_steps) >= 1
 
     @pytest.mark.asyncio
@@ -749,7 +760,7 @@ class TestAutonomousAgentExecutor:
 
         mock_result = MagicMock()
         mock_result.scalar_one.return_value = delegated
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session._mock_session.execute = AsyncMock(return_value=mock_result)
 
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(side_effect=[
@@ -789,7 +800,7 @@ class TestAutonomousAgentExecutor:
 
         # Find AgentRun objects added to session (not AgentRunStep)
         from src.models.orm.agent_runs import AgentRun
-        add_calls = mock_session.add.call_args_list
+        add_calls = mock_session._mock_session.add.call_args_list
         agent_run_adds = [
             c[0][0] for c in add_calls
             if isinstance(c[0][0], AgentRun)

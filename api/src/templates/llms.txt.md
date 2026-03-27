@@ -108,7 +108,7 @@ Agents are AI-powered assistants with access to workflows as tools, knowledge ba
 - `system_tools`: Built-in tools (`http`, etc.)
 - `max_iterations`: Max LLM iterations for autonomous runs (default 50)
 - `max_token_budget`: Max token budget for autonomous runs (default 100000)
-- Scope: `"global"` (all orgs) or `"organization"` (scoped)
+- Scope: `organization_id=None` for global (all orgs) or `organization_id=UUID` for org-scoped
 
 ### Autonomous Agent Runs
 
@@ -458,11 +458,13 @@ Tables provide structured data storage with schema validation and multi-tenancy.
 
 ### Scope & Visibility
 
-| Scope | Visible to |
-|-------|-----------|
-| `global` | All organizations |
-| `organization` | Only the owning org |
-| `application` | Only the owning app |
+| Scope | `organization_id` | Visible to |
+|-------|--------------------|-----------|
+| Global | `None` | All organizations |
+| Organization | UUID | Only the owning org |
+| Application | UUID + `application_id` | Only the owning app |
+
+Scope is resolved via cascade: org-specific first, then global fallback. The SDK `scope` parameter accepts `None` for global or an org UUID for a specific org. Omit it to use the execution context's org (default, with global cascade).
 
 ## Data Providers
 

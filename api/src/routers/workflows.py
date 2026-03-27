@@ -671,11 +671,20 @@ async def execute_workflow(
         WorkflowLoadError,
     )
     from src.repositories import AccessDeniedError, WorkflowRepository
+    from src.core.org_filter import resolve_target_org
 
-    # Build repository for scoped lookups and access checks
+    # Resolve org scope for workflow lookup — follows the same pattern as
+    # configs, tables, etc. Superusers can pass org_id to search that org;
+    # regular users always use their own org.
+    lookup_org_id = resolve_target_org(
+        user=user,
+        scope=request.org_id,
+        default_org_id=ctx.org_id,
+    )
+
     workflow_repo = WorkflowRepository(
         session=db,
-        org_id=ctx.org_id,
+        org_id=lookup_org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_superuser,
     )
@@ -715,12 +724,46 @@ async def execute_workflow(
             detail="Either workflow_id or code must be provided",
         )
 
+    # Validate admin-only overrides (org_id, run_as)
+    if (request.org_id or request.run_as) and not ctx.user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="org_id and run_as overrides require platform admin",
+        )
+
+    # Resolve run_as user if provided
+    exec_user_id = str(ctx.user.user_id)
+    exec_user_name = ctx.user.name or ctx.user.email or "Unknown"
+    exec_user_email = ctx.user.email or ""
+    exec_is_admin = ctx.user.is_superuser
+
+    if request.run_as:
+        from src.models.orm.users import User
+        run_as_result = await db.execute(
+            select(User).where(User.id == UUID(request.run_as))
+        )
+        run_as_user = run_as_result.scalar_one_or_none()
+        if not run_as_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"run_as user '{request.run_as}' not found",
+            )
+        exec_user_id = str(run_as_user.id)
+        exec_user_name = run_as_user.name or run_as_user.email or "Unknown"
+        exec_user_email = run_as_user.email or ""
+        exec_is_admin = run_as_user.is_superuser
+        logger.info(f"Impersonating user: {exec_user_id} ({exec_user_email})")
+
     # Determine execution org_id
     # Priority order:
+    # 0. Explicit org_id override (admin only, checked above)
     # 1. Org-scoped workflow: use workflow's organization_id (enforces workflow isolation)
     # 2. Global workflow: use caller's org context (ctx.org_id or developer context)
     # 3. Inline code: use caller's org context
-    if workflow and workflow.organization_id:
+    if request.org_id:
+        execution_org_id = UUID(request.org_id)
+        logger.info(f"Using explicit org_id override: {execution_org_id}")
+    elif workflow and workflow.organization_id:
         # Org-scoped workflow - execution MUST use workflow's org for data isolation
         execution_org_id = workflow.organization_id
         logger.info(f"Using workflow's organization: {execution_org_id}")
@@ -743,16 +786,16 @@ async def execute_workflow(
         org = Organization(id=str(execution_org_id), name="", is_active=True)
 
     logger.info(
-        f"Building execution context: org_id={execution_org_id}, is_superuser={ctx.user.is_superuser}, scope={'GLOBAL' if not execution_org_id else str(execution_org_id)}"
+        f"Building execution context: org_id={execution_org_id}, user={exec_user_id}, is_superuser={exec_is_admin}, scope={'GLOBAL' if not execution_org_id else str(execution_org_id)}"
     )
 
     shared_ctx = SharedContext(
-        user_id=str(ctx.user.user_id),
-        name=ctx.user.name,
-        email=ctx.user.email,
+        user_id=exec_user_id,
+        name=exec_user_name,
+        email=exec_user_email,
         scope=str(execution_org_id) if execution_org_id else "GLOBAL",
         organization=org,
-        is_platform_admin=ctx.user.is_superuser,
+        is_platform_admin=exec_is_admin,
         is_function_key=False,
         execution_id=str(uuid4()),
     )
@@ -822,8 +865,8 @@ async def execute_workflow(
             await publish_history_update(
                 execution_id=result.execution_id,
                 status=result.status.value,
-                executed_by=ctx.user.user_id,
-                executed_by_name=ctx.user.name or ctx.user.email or "Unknown",
+                executed_by=exec_user_id,
+                executed_by_name=exec_user_name or exec_user_email or "Unknown",
                 workflow_name=result.workflow_name or request.script_name or "inline_script",
                 org_id=execution_org_id,
                 started_at=result.started_at,

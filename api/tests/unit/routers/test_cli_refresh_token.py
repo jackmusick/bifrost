@@ -78,6 +78,7 @@ class TestRefreshTokenClientCredentials:
             client_id="pax8-client-id",
             client_secret="decrypted-secret",
             scopes="read write",
+            audience=None,
         )
         # Token should be persisted (new record since no existing token)
         mock_db.add.assert_called_once()

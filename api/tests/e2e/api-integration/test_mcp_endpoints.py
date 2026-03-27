@@ -167,6 +167,39 @@ class TestMCPConfigEndpoint:
 class TestMCPToolsEndpoint:
     """Tests for /api/mcp/tools endpoint access control."""
 
+    @pytest.fixture(autouse=True, scope="class")
+    def _ensure_agent_with_tools(self):
+        """Create an agent with system tools so /api/mcp/tools returns results."""
+        token = create_test_jwt(is_superuser=True)
+        headers = auth_headers(token)
+
+        resp = requests.post(
+            f"{TEST_API_URL}/api/agents",
+            headers=headers,
+            json={
+                "name": "MCP Test Agent",
+                "system_prompt": "Test agent for MCP tool listing",
+                "channels": ["chat"],
+                "system_tools": [
+                    "execute_workflow",
+                    "list_workflows",
+                    "list_integrations",
+                    "list_forms",
+                    "get_docs",
+                    "search_knowledge",
+                ],
+            },
+        )
+        assert resp.status_code == 201, f"Failed to create test agent: {resp.text}"
+        agent_id = resp.json()["id"]
+
+        yield
+
+        requests.delete(
+            f"{TEST_API_URL}/api/agents/{agent_id}",
+            headers=headers,
+        )
+
     @pytest.mark.e2e
     def test_list_tools_requires_auth(self):
         """Should return 401 when no auth provided."""

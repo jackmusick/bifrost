@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database import get_session_factory
 from src.core.pubsub import publish_execution_update, publish_history_update
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import BaseConsumer
@@ -74,18 +73,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
         self._pool.on_result = self._handle_result
         self._pool_started = False
 
-        # Persistent DB session for read operations
-        self._session_factory = get_session_factory()
-        self._db_session: "AsyncSession | None" = None
-
     async def start(self) -> None:
         """Start the consumer and process pool."""
         # Call parent start to set up RabbitMQ connection
         await super().start()
-
-        # Create persistent DB session for read operations
-        self._db_session = self._session_factory()
-        logger.info("Persistent DB session created")
 
         # Start process pool
         await self._pool.start()
@@ -100,45 +91,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
             self._pool_started = False
             logger.info("Process pool stopped")
 
-        # Close persistent DB session
-        if self._db_session:
-            await self._db_session.close()
-            self._db_session = None
-            logger.info("Persistent DB session closed")
-
         # Call parent stop
         await super().stop()
-
-    async def _get_db_session(self) -> "AsyncSession":
-        """
-        Get the persistent DB session, reconnecting if needed.
-
-        Performs a health check and reconnects if the connection is stale.
-        This is important for long-running consumers where connections may drop.
-
-        Returns:
-            Healthy AsyncSession instance
-        """
-        from sqlalchemy import text
-
-        # Create session if None
-        if self._db_session is None:
-            self._db_session = self._session_factory()
-            logger.debug("Created new persistent DB session")
-
-        # Health check - try a simple query
-        try:
-            await self._db_session.execute(text("SELECT 1"))
-        except Exception as e:
-            logger.warning(f"DB session stale ({type(e).__name__}), reconnecting...")
-            try:
-                await self._db_session.close()
-            except Exception:
-                pass  # Ignore close errors on stale session
-            self._db_session = self._session_factory()
-            logger.info("Reconnected persistent DB session")
-
-        return self._db_session
 
     async def _handle_result(self, result: dict[str, Any]) -> None:
         """
@@ -498,10 +452,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
     async def process_message(self, message_data: dict[str, Any]) -> None:
         """Process a workflow execution message."""
+        from src.core.database import get_db_context
         from src.services.execution.queue_tracker import remove_from_queue
-
-        # Get persistent session for read operations
-        db = await self._get_db_session()
 
         execution_id = message_data.get("execution_id", "")
         workflow_id = message_data.get("workflow_id")
@@ -614,7 +566,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
                 try:
                     # Get workflow metadata (no code — worker loads via Redis→S3)
-                    workflow_data = await get_workflow_for_execution(workflow_id, db=db)
+                    # Brief DB session for metadata read
+                    async with get_db_context() as db:
+                        workflow_data = await get_workflow_for_execution(workflow_id, db=db)
                     workflow_name = workflow_data["name"]
                     workflow_function_name = workflow_data["function_name"]
                     file_path = workflow_data["path"]  # Used for __file__ injection and Redis/S3 loading
@@ -722,7 +676,8 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 from src.core.config_resolver import ConfigResolver
 
                 resolver = ConfigResolver()
-                org = await resolver.get_organization(org_id, db=db)
+                async with get_db_context() as db:
+                    org = await resolver.get_organization(org_id, db=db)
                 if org:
                     org_data = {
                         "id": org.id,

@@ -62,10 +62,9 @@ class tables:
             name: Table name (unique within scope)
             description: Optional table description
             table_schema: Optional JSON Schema for document validation
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Create a global table
+            scope: Organization scope override. Omit to use the execution
+                context org. Pass an org UUID to target a specific org
+                (provider orgs only). Pass None explicitly for global scope.
             app: Application UUID to scope table to a specific app
 
         Returns:
@@ -104,10 +103,10 @@ class tables:
         List all tables in the current scope.
 
         Args:
-            scope: Organization scope - can be:
-                - None: Use execution context default org (includes global)
-                - org UUID string: Target specific organization
-                - "global": List only global tables
+            scope: Organization scope override. Omit to use the execution
+                context org (includes global tables via cascade).
+                Pass an org UUID to target a specific org (provider orgs only).
+                Pass None explicitly for global scope only.
             app: Filter by application UUID
 
         Returns:

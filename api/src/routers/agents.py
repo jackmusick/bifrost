@@ -192,7 +192,6 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
         access_level=agent.access_level,
         organization_id=agent.organization_id,
         is_active=agent.is_active,
-        is_system=agent.is_system,
         created_by=agent.created_by,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -265,7 +264,7 @@ async def list_agents(
 
     if is_admin:
         # Admins use list_all_in_scope with filter_type for flexibility
-        agents = await repo.list_all_in_scope(filter_type, active_only=False)
+        agents = await repo.list_all_in_scope(filter_type, active_only=active_only)
     else:
         # Regular users use list_agents with built-in cascade + role-based access
         agents = await repo.list_agents(active_only=active_only)

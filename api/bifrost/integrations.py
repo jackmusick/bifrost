@@ -41,10 +41,10 @@ class integrations:
 
         Args:
             name: Integration name
-            scope: Organization scope - can be:
-                - None: Use execution context default org
-                - org UUID string: Target specific organization
-                - "global": Bypass org resolution, use integration defaults
+            scope: Organization scope override. Omit to use the execution
+                context org (with automatic global fallback via cascade).
+                Pass an org UUID to target a specific org (provider orgs only).
+                Pass None explicitly for global scope (integration defaults).
             oauth_scope: Override OAuth scope for token request. When provided,
                 triggers a fresh token fetch for client_credentials flows.
                 Useful for accessing different resources with the same credentials.
@@ -76,9 +76,7 @@ class integrations:
             ...     if integration.oauth:
             ...         client_id = integration.oauth.client_id
             ...         refresh_token = integration.oauth.refresh_token
-            >>> # Get global integration (no org-specific mapping)
-            >>> global_int = await integrations.get("GlobalAPI", scope="global")
-            >>> # Get integration for specific org
+            >>> # Get integration for specific org (provider orgs only)
             >>> org_int = await integrations.get("HaloPSA", scope="org-uuid-here")
             >>> # Get Exchange token (different scope than default Graph)
             >>> exchange = await integrations.get(

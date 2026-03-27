@@ -6,7 +6,7 @@
  * - Right (1/3): Sidebar with run metadata, input, and context
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -56,6 +56,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 import { authFetch, apiClient } from "@/lib/api-client";
 import { useAgentRun, useAgentRunStream, type AgentRunStep, type AgentRunDetail as AgentRunDetailType } from "@/services/agentRuns";
+import { useAgentRunStepStore } from "@/stores/agentRunStepStore";
 
 /** Render markdown text with GFM support */
 function Markdown({ children }: { children: string }) {
@@ -624,11 +625,6 @@ export function AgentRunDetail() {
 	const [isCancelling, setIsCancelling] = useState(false);
 	const isRunning = (s?: string) => s === "running" || s === "queued" || s === "cancelling";
 
-	// No polling — WebSocket handles all live updates (steps + status).
-	// Polling was fighting WebSocket over the React Query cache, causing steps to
-	// "reset" when a poll response (missing recently-committed steps) replaced
-	// the WS-enriched cache. The onComplete callback + invalidateQueries on
-	// terminal status handle the final full refetch.
 	const { data: run, isLoading, refetch } = useAgentRun(runId);
 
 	// Stable onComplete callback
@@ -636,13 +632,26 @@ export function AgentRunDetail() {
 		refetch();
 	}, [refetch]);
 
-	// Always subscribe to WebSocket when we have a runId — don't gate on isRunning.
-	// This avoids the race condition where the run completes between initial fetch
-	// and WebSocket connection. The onComplete callback refetches full data.
+	// WebSocket streams steps into Zustand store; merge at render time below
 	useAgentRunStream(runId, {
 		enabled: true,
 		onComplete: handleStreamComplete,
 	});
+
+	// Merge API steps with WebSocket-buffered steps at render time.
+	// This avoids the race condition where steps are lost between API snapshot and WS connection.
+	const streamingSteps = useAgentRunStepStore(
+		(state) => (runId ? state.streams[runId]?.steps : undefined),
+	);
+	const steps = useMemo(() => {
+		const apiSteps = run?.steps ?? [];
+		if (!streamingSteps || streamingSteps.length === 0) return apiSteps;
+		if (apiSteps.length === 0) return streamingSteps;
+		const apiIds = new Set(apiSteps.map((s) => s.id));
+		const newFromStream = streamingSteps.filter((s) => !apiIds.has(s.id));
+		if (newFromStream.length === 0) return apiSteps;
+		return [...apiSteps, ...newFromStream].sort((a, b) => a.step_number - b.step_number);
+	}, [run?.steps, streamingSteps]);
 
 	const handleRerun = useCallback(async () => {
 		if (!runId) return;
@@ -880,13 +889,13 @@ export function AgentRunDetail() {
 						<Card>
 							<CardHeader>
 								<CardTitle className="text-sm">
-									Execution Steps ({run.steps?.length || 0})
+									Execution Steps ({steps.length})
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								{run.steps && run.steps.length > 0 ? (
+								{steps.length > 0 ? (
 									<div>
-										{run.steps.map((step: AgentRunStep) => (
+										{steps.map((step: AgentRunStep) => (
 											<StepCard key={step.id} step={step} />
 										))}
 									</div>

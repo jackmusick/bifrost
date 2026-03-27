@@ -57,7 +57,6 @@ def _mock_agent(agent_id=AGENT_ID, name="det_agent"):
     agent.organization_id = None
     agent.access_level = AgentAccessLevel.ROLE_BASED
     agent.is_active = True
-    agent.is_system = False
     return agent
 
 

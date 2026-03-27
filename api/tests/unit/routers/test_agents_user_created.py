@@ -53,7 +53,6 @@ def make_agent(
     agent.owner_user_id = owner_user_id
     agent.organization_id = organization_id
     agent.is_active = is_active
-    agent.is_system = False
     agent.description = "Test"
     agent.system_prompt = "Test prompt"
     agent.channels = ["chat"]

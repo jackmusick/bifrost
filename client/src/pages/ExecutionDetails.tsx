@@ -68,8 +68,8 @@ interface ExecutionDetailsProps {
 }
 
 /**
- * Deduplicate logs by ID.
- * API logs are the baseline, streaming logs are filtered to exclude any with IDs already in API logs.
+ * Merge API logs with streaming logs, deduplicating by sequence number.
+ * API logs are the baseline; only keep streaming logs with sequence > max API sequence.
  */
 function mergeLogsWithDedup(
 	apiLogs: ExecutionLogEntry[],
@@ -78,18 +78,18 @@ function mergeLogsWithDedup(
 	if (streamingLogs.length === 0) return apiLogs;
 	if (apiLogs.length === 0) return streamingLogs as ExecutionLogEntry[];
 
-	// Build Set of API log IDs for O(1) lookup
-	const apiLogIds = new Set(
-		apiLogs
-			.map((log) => log.id)
-			.filter((id): id is number => id !== undefined),
+	// Find the highest sequence in API logs — anything at or below is already covered
+	const maxApiSeq = apiLogs.reduce(
+		(max, log) => Math.max(max, log.sequence ?? -1),
+		-1,
 	);
 
-	// Filter streaming logs to only those not already in API response
+	// Only keep streaming logs with sequence beyond what the API returned
 	const newStreamingLogs = streamingLogs.filter(
-		(log) => log.id === undefined || !apiLogIds.has(log.id),
+		(log) => (log.sequence ?? -1) > maxApiSeq,
 	);
 
+	if (newStreamingLogs.length === 0) return apiLogs;
 	return [...apiLogs, ...newStreamingLogs];
 }
 
@@ -105,15 +105,20 @@ export function ExecutionDetails({
 	const isEmbed = hasRole("EmbedUser");
 	const queryClient = useQueryClient();
 
-	// Check if we came from an execution trigger (has navigation state)
-	// If so, we defer the GET until WebSocket confirms the execution exists
-	const hasNavigationState = location.state != null;
+	// Check if we came from an execution trigger (has navigation state).
+	// location.state persists across browser refreshes (React Router uses history.state),
+	// so we clear it immediately after reading to prevent deferred-fetch on refresh.
+	const [hasNavigationState] = useState(() => location.state != null);
+	useEffect(() => {
+		if (location.state != null) {
+			navigate(location.pathname, { replace: true, state: null });
+		}
+	}, []); // eslint-disable-line react-hooks/exhaustive-deps -- clear once on mount
 
 	// WebSocket streaming enabled state - starts enabled only for new executions from triggers
 	const [signalrEnabled, setSignalrEnabled] = useState(false);
 
 	// Fallback timer - enable fetch after 5s if WebSocket hasn't received updates
-	// FIX: Initialize based on hasNavigationState to avoid first-render delay on direct links
 	const [fetchFallbackEnabled, setFetchFallbackEnabled] = useState(
 		!hasNavigationState,
 	);
