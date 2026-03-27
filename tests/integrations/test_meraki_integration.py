@@ -16,6 +16,10 @@ from bifrost import integrations, organizations
 from features.meraki.workflows.audit_admin_coverage import (
     audit_meraki_admin_coverage,
 )
+from features.meraki.workflows.baseline_admins import (
+    audit_meraki_admins_against_baseline,
+    sync_meraki_admins_from_baseline,
+)
 from features.meraki.workflows.data_providers import list_meraki_organizations
 from features.meraki.workflows.sync_organizations import sync_meraki_organizations
 from modules import meraki
@@ -42,6 +46,8 @@ def _admin(
         "email": email,
         "accountStatus": account_status,
         "orgAccess": org_access,
+        "tags": [],
+        "networks": [],
     }
 
 
@@ -293,5 +299,165 @@ async def test_audit_meraki_admin_coverage_honors_explicit_email_list(monkeypatc
             "current_internal_admins": ["alice@midtowntg.com"],
             "total_admin_count": 1,
             "all_admin_emails": ["alice@midtowntg.com"],
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_audit_meraki_admins_against_baseline(monkeypatch):
+    class FakeClient:
+        async def list_organizations(self):
+            return [
+                _organization("100", "Midtown Technology Group"),
+                _organization("200", "Alpha"),
+                _organization("300", "Beta"),
+            ]
+
+        async def list_organization_admins(self, organization_id: str, **_: object):
+            return {
+                "100": [
+                    _admin("alice@midtowntg.com", name="Alice"),
+                    _admin("bob@midtowntg.com", name="Bob"),
+                ],
+                "200": [
+                    _admin("alice@midtowntg.com", name="Alice"),
+                    _admin("client@example.com", name="Client"),
+                ],
+                "300": [
+                    _admin("alice@midtowntg.com", name="Alice"),
+                    _admin("bob@midtowntg.com", name="Bob"),
+                    _admin("extra@example.com", name="Extra"),
+                ],
+            }[organization_id]
+
+        async def close(self) -> None:
+            return None
+
+    async def fake_get_client(scope: str | None = None):
+        assert scope == "global"
+        return FakeClient()
+
+    monkeypatch.setattr(meraki, "get_client", fake_get_client)
+
+    result = await audit_meraki_admins_against_baseline(
+        baseline_org_name="Midtown Technology Group",
+        required_admin_emails_csv="alice@midtowntg.com,bob@midtowntg.com",
+        extra_valid_admin_emails_csv="",
+    )
+
+    assert result["baseline_admins"] == [
+        "alice@midtowntg.com",
+        "bob@midtowntg.com",
+    ]
+    assert result["disparities"] == [
+        {
+            "organization_id": "200",
+            "organization_name": "Alpha",
+            "missing_admins": ["bob@midtowntg.com"],
+            "extra_admins": ["client@example.com"],
+            "admin_count": 2,
+        },
+        {
+            "organization_id": "300",
+            "organization_name": "Beta",
+            "missing_admins": [],
+            "extra_admins": ["extra@example.com"],
+            "admin_count": 3,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sync_meraki_admins_from_baseline_creates_missing(monkeypatch):
+    class FakeClient:
+        def __init__(self) -> None:
+            self.created: list[dict] = []
+            self.updated: list[dict] = []
+
+        async def list_organizations(self):
+            return [
+                _organization("100", "Midtown Technology Group"),
+                _organization("200", "Alpha"),
+                _organization("300", "Beta"),
+            ]
+
+        async def list_organization_admins(self, organization_id: str, **_: object):
+            return {
+                "100": [
+                    _admin("alice@midtowntg.com", name="Alice"),
+                    _admin("bob@midtowntg.com", name="Bob"),
+                ],
+                "200": [
+                    _admin("alice@midtowntg.com", name="Alice"),
+                ],
+                "300": [
+                    _admin("alice@midtowntg.com", name="Alice"),
+                    _admin("bob@midtowntg.com", name="Old Bob", org_access="read-only"),
+                ],
+            }[organization_id]
+
+        async def create_organization_admin(self, organization_id: str, **kwargs):
+            self.created.append({"organization_id": organization_id, **kwargs})
+            return {}
+
+        async def update_organization_admin(self, organization_id: str, **kwargs):
+            self.updated.append({"organization_id": organization_id, **kwargs})
+            return {}
+
+        async def close(self) -> None:
+            return None
+
+    fake_client = FakeClient()
+
+    async def fake_get_client(scope: str | None = None):
+        assert scope == "global"
+        return fake_client
+
+    monkeypatch.setattr(meraki, "get_client", fake_get_client)
+
+    result = await sync_meraki_admins_from_baseline(
+        baseline_org_name="Midtown Technology Group",
+        required_admin_emails_csv="bob@midtowntg.com",
+        dry_run=False,
+    )
+
+    assert result["created"] == [
+        {
+            "organization_id": "200",
+            "organization_name": "Alpha",
+            "email": "bob@midtowntg.com",
+            "action": "create",
+        }
+    ]
+    assert result["updated"] == [
+        {
+            "organization_id": "300",
+            "organization_name": "Beta",
+            "email": "bob@midtowntg.com",
+            "action": "update",
+            "drift": {
+                "name": {"current": "Old Bob", "desired": "Bob"},
+                "orgAccess": {"current": "read-only", "desired": "full"},
+            },
+        }
+    ]
+    assert fake_client.created == [
+        {
+            "organization_id": "200",
+            "email": "bob@midtowntg.com",
+            "name": "Bob",
+            "org_access": "full",
+            "tags": [],
+            "networks": [],
+        }
+    ]
+    assert fake_client.updated == [
+        {
+            "organization_id": "300",
+            "admin_id": "bob@midtowntg.com",
+            "name": "Bob",
+            "org_access": "full",
+            "tags": [],
+            "networks": [],
         }
     ]

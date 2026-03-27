@@ -154,11 +154,42 @@ class MerakiClient:
             "name": str(admin.get("name") or ""),
             "email": str(admin.get("email") or "").strip().lower(),
             "orgAccess": str(admin.get("orgAccess") or ""),
+            "tags": [
+                str(tag)
+                for tag in (admin.get("tags") or [])
+                if isinstance(tag, str) and tag
+            ],
+            "networks": [
+                str(network_id)
+                for network_id in (admin.get("networks") or [])
+                if network_id
+            ],
             "accountStatus": str(admin.get("accountStatus") or ""),
             "twoFactorAuthEnabled": bool(admin.get("twoFactorAuthEnabled", False)),
             "hasApiKey": bool(admin.get("hasApiKey", False)),
             "authenticationMethod": str(admin.get("authenticationMethod") or ""),
         }
+
+    @staticmethod
+    def _build_admin_payload(
+        *,
+        name: str,
+        org_access: str,
+        email: str | None = None,
+        tags: list[str] | None = None,
+        networks: list[str] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "name": name,
+            "orgAccess": org_access,
+        }
+        if email:
+            payload["email"] = email.strip().lower()
+        if tags is not None:
+            payload["tags"] = list(tags)
+        if networks is not None:
+            payload["networks"] = list(networks)
+        return payload
 
     async def list_organizations(self, *, per_page: int = 1000) -> list[dict]:
         return await self._get_paginated("/organizations", per_page=per_page)
@@ -216,6 +247,65 @@ class MerakiClient:
             params=params,
             per_page=per_page,
         )
+
+    async def create_organization_admin(
+        self,
+        organization_id: str | None = None,
+        *,
+        email: str,
+        name: str,
+        org_access: str = "full",
+        tags: list[str] | None = None,
+        networks: list[str] | None = None,
+    ) -> dict[str, Any]:
+        resolved_organization_id = organization_id or self._organization_id
+        if not resolved_organization_id:
+            raise RuntimeError(
+                "Meraki organization ID is not available. Configure an org mapping first."
+            )
+
+        response = await self._request(
+            "POST",
+            f"/organizations/{resolved_organization_id}/admins",
+            json_body=self._build_admin_payload(
+                email=email,
+                name=name,
+                org_access=org_access,
+                tags=tags,
+                networks=networks,
+            ),
+        )
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
+
+    async def update_organization_admin(
+        self,
+        organization_id: str | None = None,
+        *,
+        admin_id: str,
+        name: str,
+        org_access: str = "full",
+        tags: list[str] | None = None,
+        networks: list[str] | None = None,
+    ) -> dict[str, Any]:
+        resolved_organization_id = organization_id or self._organization_id
+        if not resolved_organization_id:
+            raise RuntimeError(
+                "Meraki organization ID is not available. Configure an org mapping first."
+            )
+
+        response = await self._request(
+            "PUT",
+            f"/organizations/{resolved_organization_id}/admins/{admin_id}",
+            json_body=self._build_admin_payload(
+                name=name,
+                org_access=org_access,
+                tags=tags,
+                networks=networks,
+            ),
+        )
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
 
     async def close(self) -> None:
         if self._http is not None:

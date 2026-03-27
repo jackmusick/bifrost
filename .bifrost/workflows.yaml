@@ -645,6 +645,38 @@ workflows:
     - admins
     timeout_seconds: 300
     type: workflow
+  8b7cbc91-4b8d-40fd-9ea1-55d9dbf2dd4f:
+    access_level: authenticated
+    category: Meraki
+    description: Compare Meraki org admins to a baseline organization.
+    endpoint_enabled: false
+    function_name: audit_meraki_admins_against_baseline
+    id: 8b7cbc91-4b8d-40fd-9ea1-55d9dbf2dd4f
+    name: 'Meraki: Audit Admins Against Baseline Organization'
+    path: features/meraki/workflows/baseline_admins.py
+    tags:
+    - meraki
+    - audit
+    - admins
+    - baseline
+    timeout_seconds: 300
+    type: workflow
+  aec5ad45-96bb-4253-b3e6-8e67711f6e10:
+    access_level: authenticated
+    category: Meraki
+    description: Add or update standard Meraki admins from a baseline organization.
+    endpoint_enabled: false
+    function_name: sync_meraki_admins_from_baseline
+    id: aec5ad45-96bb-4253-b3e6-8e67711f6e10
+    name: 'Meraki: Sync Admins From Baseline Organization'
+    path: features/meraki/workflows/baseline_admins.py
+    tags:
+    - meraki
+    - sync
+    - admins
+    - baseline
+    timeout_seconds: 600
+    type: workflow
   9dd8f037-400b-47c2-be1c-55d42a259541:
     description: Save a working HaloPSA SQL report to knowledge for future reuse.
     function_name: save_halopsa_report
