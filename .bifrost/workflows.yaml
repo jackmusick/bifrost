@@ -1299,3 +1299,33 @@ workflows:
     - procurement
     timeout_seconds: 60
     type: tool
+  8c84e874-ff7c-4e8f-8d70-8072378e155a:
+    category: Amazon Business
+    description: Look up Amazon Business order details by external order ID.
+    function_name: get_order_details
+    id: 8c84e874-ff7c-4e8f-8d70-8072378e155a
+    name: 'Amazon Business: Get Order Details'
+    path: features/amazonbusiness/workflows/tools.py
+    tags:
+    - amazon
+    - amazon-business
+    - orders
+    - procurement
+    timeout_seconds: 60
+    type: tool
+  1224a2c8-be63-40b7-aebd-919e77b050a9:
+    category: Amazon Business
+    description: Look up Amazon Business package tracking details for an order shipment
+      package.
+    function_name: get_package_tracking_details
+    id: 1224a2c8-be63-40b7-aebd-919e77b050a9
+    name: 'Amazon Business: Get Package Tracking Details'
+    path: features/amazonbusiness/workflows/tools.py
+    tags:
+    - amazon
+    - amazon-business
+    - tracking
+    - shipments
+    - procurement
+    timeout_seconds: 60
+    type: tool

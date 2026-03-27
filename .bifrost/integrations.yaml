@@ -515,3 +515,44 @@ integrations:
     id: fffea9b0-03bd-46a1-89f8-41bb67d22ceb
     mappings: []
     name: TD SYNNEX Partner API
+  0a75adc3-1bd5-4bc2-99d0-d8f4964078d3:
+    config_schema:
+    - description: Amazon Business Login with Amazon client ID
+      key: client_id
+      position: 0
+      required: true
+      type: string
+    - description: Amazon Business Login with Amazon client secret
+      key: client_secret
+      position: 1
+      required: true
+      type: secret
+    - description: Amazon Business refresh token for the buyer account
+      key: refresh_token
+      position: 2
+      required: true
+      type: secret
+    - description: Buyer email header value used for Amazon Business API calls
+      key: buyer_email
+      position: 3
+      required: true
+      type: string
+    - description: Optional API region override (NA, EU, or FE); defaults to NA
+      key: api_region
+      position: 4
+      required: false
+      type: string
+    - description: Optional marketplace region hint (e.g. US, CA, DE, JP); defaults
+        to US
+      key: marketplace_region
+      position: 5
+      required: false
+      type: string
+    - description: Optional base URL override; defaults by API region
+      key: base_url
+      position: 6
+      required: false
+      type: string
+    id: 0a75adc3-1bd5-4bc2-99d0-d8f4964078d3
+    mappings: []
+    name: Amazon Business
