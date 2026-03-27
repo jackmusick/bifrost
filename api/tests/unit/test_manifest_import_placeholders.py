@@ -2,7 +2,9 @@ from types import SimpleNamespace
 
 from src.services.manifest_import import (
     _is_setup_placeholder,
+    _manifest_oauth_uses_entity_placeholder,
     _normalize_manifest_oauth_provider,
+    _resolve_manifest_default_entity_id,
 )
 
 
@@ -56,3 +58,44 @@ def test_normalize_manifest_oauth_provider_keeps_real_values():
     assert update_values["client_id"] == "real-client-id"
     assert update_values["token_url"] == "https://authentication.logmeininc.com/oauth/token"
     assert update_values["redirect_uri"] == "https://example.com/callback"
+
+
+def test_manifest_oauth_uses_entity_placeholder_detects_microsoft_template_urls():
+    op_data = SimpleNamespace(
+        authorization_url="https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/authorize",
+        token_url="https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token",
+    )
+
+    assert _manifest_oauth_uses_entity_placeholder(op_data) is True
+
+
+def test_resolve_manifest_default_entity_id_preserves_runtime_value_for_entity_template_oauth():
+    op_data = SimpleNamespace(
+        authorization_url="https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/authorize",
+        token_url="https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token",
+    )
+
+    assert (
+        _resolve_manifest_default_entity_id(
+            None,
+            op_data,
+            existing_default_entity_id="tenant-123",
+        )
+        == "tenant-123"
+    )
+
+
+def test_resolve_manifest_default_entity_id_keeps_manifest_value_when_present():
+    op_data = SimpleNamespace(
+        authorization_url="https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/authorize",
+        token_url="https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token",
+    )
+
+    assert (
+        _resolve_manifest_default_entity_id(
+            "tenant-456",
+            op_data,
+            existing_default_entity_id="tenant-123",
+        )
+        == "tenant-456"
+    )

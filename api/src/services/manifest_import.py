@@ -101,6 +101,34 @@ def _normalize_manifest_oauth_provider(op_data: object) -> tuple[dict, dict]:
     return insert_values, update_values
 
 
+def _manifest_oauth_uses_entity_placeholder(op_data: object | None) -> bool:
+    """Return True when manifest OAuth URLs require an entity_id value."""
+    if op_data is None:
+        return False
+
+    authorization_url = getattr(op_data, "authorization_url", None) or ""
+    token_url = getattr(op_data, "token_url", None) or ""
+    return "{entity_id}" in authorization_url or "{entity_id}" in token_url
+
+
+def _resolve_manifest_default_entity_id(
+    manifest_default_entity_id: str | None,
+    oauth_provider: object | None,
+    existing_default_entity_id: str | None = None,
+) -> str | None:
+    """Preserve runtime tenant defaults when manifest only carries setup metadata."""
+    if _is_setup_placeholder(manifest_default_entity_id):
+        return None
+
+    if manifest_default_entity_id:
+        return manifest_default_entity_id
+
+    if existing_default_entity_id and _manifest_oauth_uses_entity_placeholder(oauth_provider):
+        return existing_default_entity_id
+
+    return None
+
+
 # =============================================================================
 # Manifest diff (pure in-memory comparison)
 # =============================================================================
@@ -1513,15 +1541,26 @@ class ManifestResolver:
         integ_id = UUID(minteg.id)
 
         # Check by natural key (name) — use cache if available
+        existing_integration = None
         if cache is not None:
             existing_by_name = cache["integ_by_name"].get(integ_name)
+            if existing_by_name is not None and (
+                minteg.default_entity_id is None
+                and _manifest_oauth_uses_entity_placeholder(minteg.oauth_provider)
+            ):
+                existing_integration = await self.db.get(Integration, existing_by_name)
         else:
             by_name = await self.db.execute(
-                select(Integration.id).where(Integration.name == integ_name)
+                select(Integration).where(Integration.name == integ_name)
             )
-            existing_by_name = by_name.scalar_one_or_none()
+            existing_integration = by_name.scalar_one_or_none()
+            existing_by_name = existing_integration.id if existing_integration else None
 
-        integ_default_entity_id = None if _is_setup_placeholder(minteg.default_entity_id) else minteg.default_entity_id
+        integ_default_entity_id = _resolve_manifest_default_entity_id(
+            minteg.default_entity_id,
+            minteg.oauth_provider,
+            existing_integration.default_entity_id if existing_integration else None,
+        )
 
         integ_values: dict = {
             "name": integ_name,
