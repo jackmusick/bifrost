@@ -630,6 +630,21 @@ workflows:
     - data-provider
     timeout_seconds: 60
     type: data_provider
+  4fd6b9f0-3f2b-4b3d-96b1-0c1a28ac2a6b:
+    access_level: authenticated
+    category: Meraki
+    description: Audit Meraki organizations for missing internal admins.
+    endpoint_enabled: false
+    function_name: audit_meraki_admin_coverage
+    id: 4fd6b9f0-3f2b-4b3d-96b1-0c1a28ac2a6b
+    name: 'Meraki: Audit Admin Coverage'
+    path: features/meraki/workflows/audit_admin_coverage.py
+    tags:
+    - meraki
+    - audit
+    - admins
+    timeout_seconds: 300
+    type: workflow
   9dd8f037-400b-47c2-be1c-55d42a259541:
     description: Save a working HaloPSA SQL report to knowledge for future reuse.
     function_name: save_halopsa_report

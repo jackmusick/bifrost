@@ -147,6 +147,19 @@ class MerakiClient:
             "name": str(organization.get("name") or ""),
         }
 
+    @staticmethod
+    def normalize_admin(admin: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": str(admin.get("id") or ""),
+            "name": str(admin.get("name") or ""),
+            "email": str(admin.get("email") or "").strip().lower(),
+            "orgAccess": str(admin.get("orgAccess") or ""),
+            "accountStatus": str(admin.get("accountStatus") or ""),
+            "twoFactorAuthEnabled": bool(admin.get("twoFactorAuthEnabled", False)),
+            "hasApiKey": bool(admin.get("hasApiKey", False)),
+            "authenticationMethod": str(admin.get("authenticationMethod") or ""),
+        }
+
     async def list_organizations(self, *, per_page: int = 1000) -> list[dict]:
         return await self._get_paginated("/organizations", per_page=per_page)
 
@@ -181,6 +194,29 @@ class MerakiClient:
             per_page=per_page,
         )
 
+    async def list_organization_admins(
+        self,
+        organization_id: str | None = None,
+        *,
+        network_ids: list[str] | None = None,
+        per_page: int = 1000,
+    ) -> list[dict]:
+        resolved_organization_id = organization_id or self._organization_id
+        if not resolved_organization_id:
+            raise RuntimeError(
+                "Meraki organization ID is not available. Configure an org mapping first."
+            )
+
+        params: dict[str, Any] = {}
+        if network_ids:
+            params["networkIds[]"] = network_ids
+
+        return await self._get_paginated(
+            f"/organizations/{resolved_organization_id}/admins",
+            params=params,
+            per_page=per_page,
+        )
+
     async def close(self) -> None:
         if self._http is not None:
             await self._http.aclose()
@@ -209,4 +245,3 @@ async def get_client(scope: str | None = None) -> MerakiClient:
         api_key=api_key,
         organization_id=getattr(integration, "entity_id", None),
     )
-

@@ -13,6 +13,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bifrost import integrations, organizations
+from features.meraki.workflows.audit_admin_coverage import (
+    audit_meraki_admin_coverage,
+)
 from features.meraki.workflows.data_providers import list_meraki_organizations
 from features.meraki.workflows.sync_organizations import sync_meraki_organizations
 from modules import meraki
@@ -24,6 +27,22 @@ def _organization(organization_id: str | None, name: str | None) -> dict:
         "name": name,
     }
     return payload
+
+
+def _admin(
+    email: str,
+    *,
+    name: str | None = None,
+    account_status: str = "ok",
+    org_access: str = "full",
+) -> dict:
+    return {
+        "id": email,
+        "name": name or email.split("@", 1)[0],
+        "email": email,
+        "accountStatus": account_status,
+        "orgAccess": org_access,
+    }
 
 
 @pytest.mark.asyncio
@@ -157,3 +176,122 @@ async def test_sync_meraki_organizations_maps_unmapped_organizations(monkeypatch
     ]
     assert fake_client.closed is True
 
+
+@pytest.mark.asyncio
+async def test_audit_meraki_admin_coverage_infers_expected_emails(monkeypatch):
+    class FakeClient:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def list_organizations(self):
+            return [
+                _organization("100", "Alpha"),
+                _organization("200", "Beta"),
+                _organization("300", "Gamma"),
+            ]
+
+        async def list_organization_admins(self, organization_id: str, **_: object):
+            return {
+                "100": [
+                    _admin("alice@midtowntg.com"),
+                    _admin("bob@midtowntg.com"),
+                    _admin("client@example.com"),
+                ],
+                "200": [
+                    _admin("alice@midtowntg.com"),
+                    _admin("client2@example.com"),
+                ],
+                "300": [
+                    _admin("client3@example.com"),
+                ],
+            }[organization_id]
+
+        async def close(self) -> None:
+            self.closed = True
+
+    fake_client = FakeClient()
+
+    async def fake_get_client(scope: str | None = None):
+        assert scope == "global"
+        return fake_client
+
+    monkeypatch.setattr(meraki, "get_client", fake_get_client)
+
+    result = await audit_meraki_admin_coverage(
+        internal_email_domain="midtowntg.com",
+        min_presence_ratio=1.0,
+    )
+
+    assert result["expected_admins_source"] == "inferred"
+    assert result["expected_admins"] == ["alice@midtowntg.com"]
+    assert result["organizations_total"] == 3
+    assert result["organizations_with_internal_admins"] == 2
+    assert result["organizations_missing_expected_admins"] == [
+        {
+            "organization_id": "300",
+            "organization_name": "Gamma",
+            "missing_admins": ["alice@midtowntg.com"],
+            "current_internal_admins": [],
+            "total_admin_count": 1,
+            "all_admin_emails": ["client3@example.com"],
+        }
+    ]
+    assert result["organizations_with_no_internal_admins"] == [
+        {
+            "organization_id": "300",
+            "organization_name": "Gamma",
+            "total_admin_count": 1,
+            "all_admin_emails": ["client3@example.com"],
+        }
+    ]
+    assert fake_client.closed is True
+
+
+@pytest.mark.asyncio
+async def test_audit_meraki_admin_coverage_honors_explicit_email_list(monkeypatch):
+    class FakeClient:
+        async def list_organizations(self):
+            return [
+                _organization("100", "Alpha"),
+                _organization("200", "Beta"),
+            ]
+
+        async def list_organization_admins(self, organization_id: str, **_: object):
+            return {
+                "100": [
+                    _admin("alice@midtowntg.com"),
+                    _admin("bob@midtowntg.com"),
+                ],
+                "200": [
+                    _admin("alice@midtowntg.com"),
+                ],
+            }[organization_id]
+
+        async def close(self) -> None:
+            return None
+
+    async def fake_get_client(scope: str | None = None):
+        return FakeClient()
+
+    monkeypatch.setattr(meraki, "get_client", fake_get_client)
+
+    result = await audit_meraki_admin_coverage(
+        internal_email_domain="midtowntg.com",
+        required_admin_emails_csv="alice@midtowntg.com, bob@midtowntg.com",
+    )
+
+    assert result["expected_admins_source"] == "explicit"
+    assert result["expected_admins"] == [
+        "alice@midtowntg.com",
+        "bob@midtowntg.com",
+    ]
+    assert result["organizations_missing_expected_admins"] == [
+        {
+            "organization_id": "200",
+            "organization_name": "Beta",
+            "missing_admins": ["bob@midtowntg.com"],
+            "current_internal_admins": ["alice@midtowntg.com"],
+            "total_admin_count": 1,
+            "all_admin_emails": ["alice@midtowntg.com"],
+        }
+    ]
