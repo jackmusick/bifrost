@@ -18,6 +18,7 @@ from features.meraki.workflows.audit_admin_coverage import (
 )
 from features.meraki.workflows.baseline_admins import (
     audit_meraki_admins_against_baseline,
+    remove_meraki_admin_across_organizations,
     sync_meraki_admins_from_baseline,
 )
 from features.meraki.workflows.data_providers import list_meraki_organizations
@@ -580,5 +581,77 @@ async def test_sync_meraki_admins_from_baseline_excludes_orgs(monkeypatch):
             "org_access": "full",
             "tags": [],
             "networks": [],
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remove_meraki_admin_across_organizations(monkeypatch):
+    class FakeClient:
+        def __init__(self) -> None:
+            self.deleted: list[dict] = []
+
+        async def list_organizations(self):
+            return [
+                _organization("100", "Midtown Technology Group"),
+                _organization("200", "Alpha"),
+                _organization("300", "Legacy Org"),
+            ]
+
+        async def list_organization_admins(self, organization_id: str, **_: object):
+            return {
+                "100": [_admin("alice@midtowntg.com", name="Alice")],
+                "200": [
+                    _admin("alice@midtowntg.com", name="Alice"),
+                    _admin("tleuke@midtowntg.com", name="Typo"),
+                ],
+                "300": [
+                    _admin("tleuke@midtowntg.com", name="Typo"),
+                ],
+            }[organization_id]
+
+        async def delete_organization_admin(self, organization_id: str, *, admin_id: str):
+            self.deleted.append(
+                {
+                    "organization_id": organization_id,
+                    "admin_id": admin_id,
+                }
+            )
+
+        async def close(self) -> None:
+            return None
+
+    fake_client = FakeClient()
+
+    async def fake_get_client(scope: str | None = None):
+        return fake_client
+
+    monkeypatch.setattr(meraki, "get_client", fake_get_client)
+
+    result = await remove_meraki_admin_across_organizations(
+        admin_email="tleuke@midtowntg.com",
+        excluded_org_names_csv="Legacy Org",
+        dry_run=False,
+    )
+
+    assert result["admin_email"] == "tleuke@midtowntg.com"
+    assert result["removed"] == [
+        {
+            "organization_id": "200",
+            "organization_name": "Alpha",
+            "email": "tleuke@midtowntg.com",
+            "admin_id": "tleuke@midtowntg.com",
+        }
+    ]
+    assert result["skipped_excluded"] == [
+        {
+            "organization_id": "300",
+            "organization_name": "Legacy Org",
+        }
+    ]
+    assert fake_client.deleted == [
+        {
+            "organization_id": "200",
+            "admin_id": "tleuke@midtowntg.com",
         }
     ]

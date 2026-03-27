@@ -677,6 +677,22 @@ workflows:
     - baseline
     timeout_seconds: 600
     type: workflow
+  ffc07efb-fb27-4218-adda-743db368278e:
+    access_level: authenticated
+    category: Meraki
+    description: Remove a specific Meraki admin email across organizations.
+    endpoint_enabled: false
+    function_name: remove_meraki_admin_across_organizations
+    id: ffc07efb-fb27-4218-adda-743db368278e
+    name: 'Meraki: Remove Admin Across Organizations'
+    path: features/meraki/workflows/baseline_admins.py
+    tags:
+    - meraki
+    - cleanup
+    - admins
+    - remove
+    timeout_seconds: 600
+    type: workflow
   9dd8f037-400b-47c2-be1c-55d42a259541:
     description: Save a working HaloPSA SQL report to knowledge for future reuse.
     function_name: save_halopsa_report

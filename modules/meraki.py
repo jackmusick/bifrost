@@ -307,6 +307,23 @@ class MerakiClient:
         payload = response.json()
         return payload if isinstance(payload, dict) else {}
 
+    async def delete_organization_admin(
+        self,
+        organization_id: str | None = None,
+        *,
+        admin_id: str,
+    ) -> None:
+        resolved_organization_id = organization_id or self._organization_id
+        if not resolved_organization_id:
+            raise RuntimeError(
+                "Meraki organization ID is not available. Configure an org mapping first."
+            )
+
+        await self._request(
+            "DELETE",
+            f"/organizations/{resolved_organization_id}/admins/{admin_id}",
+        )
+
     async def close(self) -> None:
         if self._http is not None:
             await self._http.aclose()

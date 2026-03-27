@@ -359,3 +359,99 @@ async def sync_meraki_admins_from_baseline(
         }
     finally:
         await client.close()
+
+
+@workflow(
+    name="Meraki: Remove Admin Across Organizations",
+    description="Remove a specific Meraki admin email across organizations.",
+    category="Meraki",
+    tags=["meraki", "cleanup", "admins", "remove"],
+)
+async def remove_meraki_admin_across_organizations(
+    admin_email: str,
+    target_org_names_csv: str | None = None,
+    excluded_org_names_csv: str = "",
+    include_account_statuses_csv: str = "ok,pending,unverified",
+    dry_run: bool = True,
+) -> dict:
+    normalized_email = admin_email.strip().lower()
+    if not normalized_email:
+        raise RuntimeError("admin_email is required.")
+
+    client, inventory, _baseline = await _load_org_admin_inventory(
+        baseline_org_name="Midtown Technology Group",
+        include_account_statuses_csv=include_account_statuses_csv,
+    )
+    try:
+        target_org_names = set(_parse_csv(target_org_names_csv))
+        excluded_org_names = set(_parse_csv(excluded_org_names_csv))
+        removed = []
+        skipped_missing = []
+        skipped_errors = []
+        skipped_excluded = []
+
+        for organization_name in sorted(inventory, key=str.lower):
+            result = inventory[organization_name]
+            normalized_org_name = result["organization_name"].strip().lower()
+
+            if target_org_names and normalized_org_name not in target_org_names:
+                continue
+            if normalized_org_name in excluded_org_names:
+                skipped_excluded.append(
+                    {
+                        "organization_id": result["organization_id"],
+                        "organization_name": result["organization_name"],
+                    }
+                )
+                continue
+            if result.get("error"):
+                skipped_errors.append(
+                    {
+                        "organization_id": result["organization_id"],
+                        "organization_name": result["organization_name"],
+                        "error": result["error"],
+                    }
+                )
+                continue
+
+            existing = next(
+                (
+                    admin
+                    for admin in result["admins"]
+                    if admin["email"] == normalized_email
+                ),
+                None,
+            )
+            if existing is None:
+                skipped_missing.append(
+                    {
+                        "organization_id": result["organization_id"],
+                        "organization_name": result["organization_name"],
+                    }
+                )
+                continue
+
+            action = {
+                "organization_id": result["organization_id"],
+                "organization_name": result["organization_name"],
+                "email": normalized_email,
+                "admin_id": existing["id"],
+            }
+            removed.append(action)
+            if not dry_run:
+                await client.delete_organization_admin(
+                    result["organization_id"],
+                    admin_id=existing["id"],
+                )
+
+        return {
+            "admin_email": normalized_email,
+            "excluded_org_names": sorted(excluded_org_names),
+            "dry_run": dry_run,
+            "removed": removed,
+            "skipped_missing_count": len(skipped_missing),
+            "skipped_excluded": skipped_excluded,
+            "skipped_errors": skipped_errors,
+        }
+    finally:
+        await client.close()
