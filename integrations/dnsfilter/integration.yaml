@@ -1,0 +1,9 @@
+id: 82252311-d1d6-4d69-b26f-b42989e60d03
+name: DNSFilter
+list_entities_data_provider_id: 41d3fef1-f134-4ca9-a61a-4c9417151647
+config_schema:
+  - key: api_key
+    type: secret
+    required: true
+    description: DNSFilter API token from Account Settings
+    position: 0
