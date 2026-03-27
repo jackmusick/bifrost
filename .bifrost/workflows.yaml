@@ -1166,3 +1166,31 @@ workflows:
     name: HaloPSA Open Tickets
     path: shared/halopsa/data_providers.py
     type: data_provider
+  70f8bbd0-b93a-43e4-bf05-5599d6c221cf:
+    access_level: authenticated
+    category: Idemeum
+    description: Returns Idemeum customers for org mapping picker.
+    endpoint_enabled: false
+    function_name: list_idemeum_customers
+    id: 70f8bbd0-b93a-43e4-bf05-5599d6c221cf
+    name: 'Idemeum: List Customers'
+    path: features/idemeum/workflows/data_providers.py
+    tags:
+    - idemeum
+    - data-provider
+    timeout_seconds: 60
+    type: data_provider
+  58926179-37af-445d-9f5f-c06d50060c59:
+    access_level: authenticated
+    category: Idemeum
+    description: Sync Idemeum customers to Bifrost organizations.
+    endpoint_enabled: false
+    function_name: sync_idemeum_customers
+    id: 58926179-37af-445d-9f5f-c06d50060c59
+    name: 'Idemeum: Sync Customers'
+    path: features/idemeum/workflows/sync_customers.py
+    tags:
+    - idemeum
+    - sync
+    timeout_seconds: 300
+    type: workflow

@@ -452,3 +452,21 @@ integrations:
     list_entities_data_provider_id: 6e0f976b-8d6b-4c70-8286-ee245194f49d
     mappings: []
     name: IT Glue
+  c2f29cc0-1010-45d3-b4ac-f1bb0776a0a8:
+    config_schema:
+    - description: Idemeum parent tenant base URL (e.g. https://midtowntg.idemeum.com)
+      key: base_url
+      position: 0
+      required: true
+      type: string
+    - description: Idemeum inbound integration API key
+      key: api_key
+      position: 1
+      required: true
+      type: secret
+    entity_id: customer_id
+    entity_id_name: Customer
+    id: c2f29cc0-1010-45d3-b4ac-f1bb0776a0a8
+    list_entities_data_provider_id: 70f8bbd0-b93a-43e4-bf05-5599d6c221cf
+    mappings: []
+    name: Idemeum
