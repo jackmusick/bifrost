@@ -60,6 +60,26 @@ kubectl create secret generic bifrost-secrets \
   --from-literal=BIFROST_S3_SECRET_KEY='your-secret-key'
 ```
 
+**Option A2: create or update from literals without partial replacement**
+
+This is safer than editing a live secret by hand because it always applies the
+full desired secret object in one step:
+
+```bash
+kubectl create secret generic bifrost-secrets \
+  --namespace=bifrost \
+  --from-literal=BIFROST_SECRET_KEY='your-32-char-secret-key-here' \
+  --from-literal=BIFROST_DATABASE_URL='postgresql+asyncpg://user:pass@host:5432/bifrost' \
+  --from-literal=BIFROST_DATABASE_URL_SYNC='postgresql://user:pass@host:5432/bifrost' \
+  --from-literal=BIFROST_RABBITMQ_URL='amqp://bifrost:pass@rabbitmq:5672/' \
+  --from-literal=BIFROST_RABBITMQ_PASSWORD='your-rabbitmq-password' \
+  --from-literal=BIFROST_REDIS_URL='redis://redis:6379/0' \
+  --from-literal=BIFROST_S3_ENDPOINT_URL='https://s3.us-east-1.amazonaws.com' \
+  --from-literal=BIFROST_S3_ACCESS_KEY='your-access-key' \
+  --from-literal=BIFROST_S3_SECRET_KEY='your-secret-key' \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
 **Option B: Edit and apply secret.yaml**
 
 Edit `k8s/secret.yaml` with your values, then:
@@ -67,6 +87,80 @@ Edit `k8s/secret.yaml` with your values, then:
 ```bash
 kubectl apply -f k8s/secret.yaml
 ```
+
+### 2a. Updating Existing Secrets Safely
+
+Avoid ad hoc partial updates unless you are intentionally changing one key and
+have already confirmed the rest of the secret is correct. A bad patch can leave
+the cluster with a mismatched set of credentials.
+
+Preferred update patterns:
+
+1. Re-apply the full secret manifest with `kubectl apply -f k8s/secret.yaml`.
+2. Or re-generate the full secret with `kubectl create secret ... --dry-run=client -o yaml | kubectl apply -f -`.
+
+Use `kubectl patch secret` only for narrow one-key changes when you understand
+the current live secret and want to preserve all other keys exactly as-is.
+
+Before changing a live secret, take a backup:
+
+```bash
+kubectl get secret bifrost-secrets -n bifrost -o yaml > /tmp/bifrost-secrets.backup.yaml
+```
+
+### 2b. Rotating Secrets
+
+Most Bifrost pods consume secrets through `envFrom.secretRef`, so updating the
+Kubernetes `Secret` object does not automatically refresh environment variables
+inside already-running containers. After updating `bifrost-secrets`, restart the
+deployments that consume it:
+
+```bash
+kubectl rollout restart deployment/bifrost-api -n bifrost
+kubectl rollout restart deployment/bifrost-worker -n bifrost
+kubectl rollout restart deployment/bifrost-scheduler -n bifrost
+kubectl rollout restart deployment/bifrost-coding-agent -n bifrost
+kubectl rollout restart deployment/rabbitmq -n bifrost
+```
+
+Wait for the rollouts to finish:
+
+```bash
+kubectl rollout status deployment/bifrost-api -n bifrost
+kubectl rollout status deployment/bifrost-worker -n bifrost
+kubectl rollout status deployment/bifrost-scheduler -n bifrost
+kubectl rollout status deployment/bifrost-coding-agent -n bifrost
+kubectl rollout status deployment/rabbitmq -n bifrost
+```
+
+If you rotate database, RabbitMQ, S3, or OAuth credentials, update the external
+service first, then update `bifrost-secrets`, then restart the Bifrost
+deployments promptly so old and new credentials do not drift.
+
+### 2c. Secret Rotation Smoke Tests
+
+After a secret change or rotation, run these checks before declaring success:
+
+```bash
+# Pods restarted and became Ready
+kubectl get pods -n bifrost
+
+# API logs are clean
+kubectl logs -n bifrost -l app.kubernetes.io/name=bifrost-api --tail=200
+
+# Worker logs are clean
+kubectl logs -n bifrost -l app.kubernetes.io/name=bifrost-worker --tail=200
+
+# Scheduler logs are clean
+kubectl logs -n bifrost -l app.kubernetes.io/name=bifrost-scheduler --tail=200
+```
+
+Then verify the application at the functional layer:
+
+1. Load the Bifrost UI and confirm login works.
+2. Confirm the API can reach PostgreSQL, RabbitMQ, Redis, and S3.
+3. Execute one known-good workflow to confirm background execution still works.
+4. If OAuth or SSO credentials were rotated, test one login or token refresh path.
 
 ### 3. Configure Settings
 
