@@ -8,22 +8,26 @@ as the only access path.
 
 ## Current Working Access Paths
 
-Browser/UI:
-- `https://bifrost-mtg.eu1.netbird.services`
+Canonical direct-mesh path:
+- browser/UI: `https://bifrost-poc-host.netbird.cloud:18443`
+- CLI/API: `https://bifrost-poc-host.netbird.cloud:18443`
 
-CLI/API:
-- `https://bifrost-api-mtg.eu1.netbird.services`
-
-The CLI path is now usable for:
+The direct CLI path is usable for:
 - `bifrost cli api`
 - `bifrost sync`
 - `bifrost watch`
 
 Validated on 2026-03-28:
-- API requests return integration data
+- `GET /health` succeeds on the direct hostname
 - `bifrost sync .` returns `Already up to date.`
 - `scripts/bifrost-watch-dev.sh .` completes initial sync and keeps the
-  WebSocket connected
+  WebSocket connected when pointed at the direct hostname
+
+Historical fallback paths:
+- `https://bifrost-mtg.eu1.netbird.services`
+- `https://bifrost-api-mtg.eu1.netbird.services`
+
+These should no longer be treated as the primary workflow path.
 
 ## Why The Private VIP Path Is Not The Primary Remote Path
 
@@ -55,6 +59,10 @@ Live topology:
   - `bifrost-proxy`
   - `bifrost-poc-host`
 
+Current stable host peer:
+- DNS: `bifrost-poc-host.netbird.cloud`
+- peer is now persistent, not ephemeral
+
 Important resource names currently in NetBird:
 - `kubernetes.default.svc.cluster.local`
 - `client.bifrost.svc.cluster.local`
@@ -64,53 +72,60 @@ Important resource names currently in NetBird:
 
 ## Stateful Host Changes On `bifrost-poc`
 
-The current working CLI/API path depends on stateful changes on the Debian VM
-hosting the cluster:
+The current direct path still depends on stateful host configuration on the
+Debian VM hosting the cluster.
 
+Installed / configured:
 - package installed:
   - `nginx`
-- nginx site added:
+- nginx site files:
   - `/etc/nginx/sites-available/bifrost-api-proxy`
-- nginx site enabled:
+  - `/etc/nginx/sites-available/bifrost-direct`
+- enabled site symlinks:
   - `/etc/nginx/sites-enabled/bifrost-api-proxy`
-- nginx listens on:
-  - `0.0.0.0:18080`
-- backend proxied by nginx:
-  - `http://10.43.69.125:8000`
+  - `/etc/nginx/sites-enabled/bifrost-direct`
+- current direct entrypoint:
+  - `:18443` on `bifrost-poc-host.netbird.cloud`
+- current API helper path:
+  - `:18080`
 
-This host proxy is the stable backend for the NetBird API reverse-proxy service.
+Current host-backed behavior:
+- `:18443` serves both the Bifrost UI shell and API/auth/ws paths
+- `:18080` still serves the API-only helper path
 
 Temporary historical state:
 - a Python host proxy and a `bifrost-api-proxy.service` systemd unit were used
   during debugging
-- that service is now disabled and should be removed in a later cleanup pass
+- that service is now disabled and should be removed
 
 ## Current Tradeoffs
 
 Good:
-- remote browser access works
-- remote CLI access works
+- remote browser access works over direct mesh
+- remote CLI access works over direct mesh
 - `bifrost watch` works remotely again
-- access no longer depends on the lab LAN being directly reachable
+- the stable host peer is persistent now
+- access no longer depends on NetBird hosted reverse proxy
 
 Bad:
-- browser and CLI use separate public NetBird reverse-proxy hostnames
-- the setup still depends on NetBird cloud reverse proxy, which is best effort
-- the Debian host proxy is currently snowflake state
+- the working direct path currently depends on host nginx state
+- `:443` on the stable host still does not behave reliably over NetBird
 - policies still need tightening from broad defaults to a dedicated admin group
+- the old hosted reverse-proxy paths are still present and should be deprecated
 
 ## Recommended Simplification Path
 
 Target architecture:
 - `bifrost-poc-host` remains the stable NetBird routing peer
-- one host-level reverse proxy on `bifrost-poc` handles both UI and API
-- one private hostname is used for browser and CLI
-- TLS is terminated on the host-level proxy with a private CA-backed cert
-- NetBird DNS resolves that private hostname directly to the stable host peer
-- NetBird cloud reverse proxy becomes optional rather than required
+- one canonical hostname is used for browser and CLI
+- that hostname should use normal `:443`
+- k3s ingress should own the canonical `:443` path directly on the host
+- host nginx should no longer be required for normal access
+- NetBird DNS should resolve the canonical hostname directly to the stable host
+  peer
 
 This would reduce:
-- dependency on NetBird cloud proxy infrastructure
+- dependency on host snowflake proxy state
 - reliance on the MetalLB VIP for remote work
 - split-brain browser/CLI hostname behavior
 
@@ -120,6 +135,7 @@ This would reduce:
 2. Remove the temporary in-cluster `bifrost-proxy` path if it is no longer
    needed.
 3. Remove the disabled temporary Python proxy service from `bifrost-poc`.
-4. Codify the host nginx proxy as managed config instead of snowflake state.
-5. Decide whether to migrate away from NetBird cloud reverse proxy entirely once
-   the stable host-backed private hostname is ready.
+4. Investigate and fix why direct host `:443` still hangs over NetBird while
+   direct host `:18443` works.
+5. Once `:443` is reliable, remove the host nginx workaround and deprecated
+   hosted reverse-proxy assumptions.
