@@ -7,7 +7,15 @@ from bifrost.integration_definition import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
+def _find_repo_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "integrations").is_dir():
+            return parent
+    raise RuntimeError(f"Could not locate repo root from {current}")
+
+
+REPO_ROOT = _find_repo_root()
 
 
 def test_load_dnsfilter_integration_definition() -> None:
