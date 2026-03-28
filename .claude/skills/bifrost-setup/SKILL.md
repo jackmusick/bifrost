@@ -6,6 +6,7 @@ description: Set up Bifrost SDK - install CLI, authenticate, configure MCP serve
 # Bifrost Setup
 
 Treat the upstream-supported setup flow as the default contract. If this fork uses extra local conveniences, keep them clearly labeled as fork-local rather than presenting them as the standard path.
+Use this as the Claude-specific adapter for setup. Repo-wide setup policy lives in `AGENTS.md`; Codex-specific workflow lives in `.codex/skills/bifrost-setup/`.
 
 ## Introduction
 
@@ -34,10 +35,14 @@ echo "Python: $BIFROST_PYTHON_CMD ($BIFROST_PYTHON_VERSION) | Pip: $BIFROST_PIP_
 Based on the environment state:
 
 1. **All true** -> Setup complete! Inform user they're ready to use `/bifrost:build`
-2. **SDK installed + logged in, MCP not configured** -> SDK-first development is ready! MCP is optional — the CLI (`bifrost api`, `bifrost watch`) handles most operations. MCP is only needed for creating forms/apps/agents and knowledge search. Ask if they want to configure it.
+2. **SDK installed + logged in, MCP not configured** -> SDK-first development is ready. MCP is optional. Ask about MCP only if they need Claude-side tool access.
 3. **SDK not installed** -> Go to SDK Installation
 4. **SDK installed but not logged in** -> Go to Login
 5. **Logged in but MCP not configured** -> Go to MCP Configuration (optional)
+
+Before giving longer guidance, prefer the repo-level defaults from `AGENTS.md`:
+- local source + CLI + credentials are enough for most repo work
+- MCP is not required for Codex or general repo development
 
 ## SDK Installation
 
@@ -111,6 +116,11 @@ If MCP was skipped (SDK-first only), tell the user:
 > Setup complete! You're ready to use `/bifrost:build` for SDK-first development.
 >
 > Use `bifrost watch` to auto-sync file changes and `bifrost api` for platform operations. MCP can be added later if you need `create_form`, `create_app`, or knowledge search.
+
+## Boundary
+
+- Keep Claude-only MCP instructions here.
+- Do not restate the repo's full setup policy here when `AGENTS.md` or `.codex/skills/bifrost-setup/` already covers it.
 
 ## Troubleshooting
 
