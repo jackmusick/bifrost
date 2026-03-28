@@ -271,7 +271,6 @@ For component lists, hooks API, CSS examples, sandbox constraints — grep `/tmp
 - Keep Claude-specific environment checks, MCP-only mode, and Claude command choices here.
 - Keep repo policy in `AGENTS.md`.
 - Keep Codex task workflows in `.codex/skills/`.
-- **Logs:** `bifrost api GET /api/executions/{id}`
 
 ## Debugging
 
