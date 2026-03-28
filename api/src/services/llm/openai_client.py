@@ -107,6 +107,23 @@ class OpenAIClient(BaseLLMClient):
         if openai_tools:
             kwargs["tools"] = openai_tools
 
+        # Log tool_call IDs to debug duplicate ID issues (e.g. Minimax)
+        tc_ids_in_history = []
+        for m in openai_messages:
+            if isinstance(m, dict) and m.get("tool_calls"):
+                for tc in m["tool_calls"]:
+                    tc_id = tc.get("id", "?") if isinstance(tc, dict) else getattr(tc, "id", "?")
+                    tc_ids_in_history.append(tc_id)
+        if tc_ids_in_history:
+            unique_ids = set(tc_ids_in_history)
+            if len(unique_ids) < len(tc_ids_in_history):
+                logger.warning(
+                    "Duplicate tool_call IDs being sent to LLM: %s",
+                    tc_ids_in_history,
+                )
+            else:
+                logger.debug("Tool_call IDs in history: %s", tc_ids_in_history)
+
         # Track tool calls being built across chunks
         tool_call_builders: dict[int, dict[str, Any]] = {}
         input_tokens = None

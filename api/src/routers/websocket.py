@@ -676,7 +676,6 @@ async def _process_chat_message(
                     conversation=conversation,
                     user_message=message,
                     stream=True,
-                    is_platform_admin=user.is_superuser,
                     local_id=local_id,
                 ):
                     # Track partial content from deltas
