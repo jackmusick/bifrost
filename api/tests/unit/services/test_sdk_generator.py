@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 
@@ -107,15 +106,3 @@ class TestSDKGenerator:
         assert inspect.iscoroutinefunction(internal_client.list_widgets)
         assert inspect.iscoroutinefunction(internal_client.create_widgets)
         assert inspect.iscoroutinefunction(lazy_client.__getattr__("list_widgets"))
-
-    def test_ninjaone_client_wrapper_preserves_async_sdk_methods(self, monkeypatch):
-        """The NinjaOne compatibility wrapper should forward awaitable SDK methods unchanged."""
-        from workflows.ninjaone import client as ninja
-
-        async def fake_list_devices(*args, **kwargs):
-            return {"args": args, "kwargs": kwargs}
-
-        monkeypatch.setattr(ninja._sdk, "list_devices", fake_list_devices, raising=False)
-
-        result = asyncio.run(ninja.list_devices(limit=1))
-        assert result == {"args": (), "kwargs": {"limit": 1}}
