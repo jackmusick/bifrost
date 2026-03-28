@@ -138,6 +138,7 @@ def execute_workflow_sync(
     input_data: dict | None = None,
     max_wait: float = 30.0,
     request_sync: bool = False,
+    request_timeout: float | None = None,
 ) -> dict:
     """Execute a workflow and poll until completion.
 
@@ -152,6 +153,7 @@ def execute_workflow_sync(
         input_data: Input parameters for the workflow
         max_wait: Maximum time to wait for completion (seconds)
         request_sync: If True, ask the API to block until worker completion
+        request_timeout: Optional timeout for the initial execute request
 
     Returns:
         The execution result dict with status, result, error, etc.
@@ -167,6 +169,7 @@ def execute_workflow_sync(
             "input_data": input_data or {},
             "sync": request_sync,
         },
+        timeout=request_timeout,
     )
     assert response.status_code == 200, f"Execute failed: {response.text}"
     data = response.json()
