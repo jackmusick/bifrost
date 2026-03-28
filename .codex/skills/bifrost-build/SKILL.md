@@ -7,6 +7,8 @@ description: Build or modify Bifrost workflows, forms, agents, and related userl
 
 Use local source and the Bifrost CLI first when they are available. Treat `.bifrost/` as discovery or transitional metadata, not the default authored surface.
 
+When local practice has drifted from upstream expectations, prefer the upstream-supported implementation pattern unless there is a clear repo-specific reason to diverge.
+
 ## Workflow
 
 1. Check prerequisites.

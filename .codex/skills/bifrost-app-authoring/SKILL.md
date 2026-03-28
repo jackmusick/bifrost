@@ -7,6 +7,8 @@ description: Design and implement Bifrost apps within the platform's frontend co
 
 Design the app first, then implement it within Bifrost's container and platform constraints.
 
+Default to upstream-supported app structure and data-flow patterns. Treat fork-local shortcuts as exceptions that need justification, not as the normal path.
+
 ## Workflow
 
 1. Start with the UX, not code.

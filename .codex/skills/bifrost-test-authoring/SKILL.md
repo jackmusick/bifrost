@@ -7,6 +7,8 @@ description: Create or update tests that follow Bifrost upstream conventions. Us
 
 Write tests the same way the upstream repo expects them to be written: fast unit tests in isolation, E2E tests only when real services are required, and no accidental dependence on a specific checkout or container layout.
 
+When local tests have drifted from upstream conventions, align the tests to upstream first. Do not preserve the drift by broadening the local harness unless that surface is genuinely part of the upstream-supported unit-test contract.
+
 ## Workflow
 
 1. Classify the test before writing code.
@@ -21,7 +23,8 @@ Write tests the same way the upstream repo expects them to be written: fast unit
 3. Use real checked-in fixtures only when source-backed behavior is the thing under test.
    - If a unit test must load repo files such as `integrations/*/integration.yaml` or `workflows/*`, make the dependency explicit.
    - Resolve repo root by searching for the required directory, not by assuming a fixed number of parents.
-   - If the CI test container needs repo-root content, update the test harness mounts instead of relying on local-only visibility.
+   - Prefer synthetic fixtures under `tmp_path` when they cover the behavior just as well.
+   - Update the test harness mounts only when the upstream-supported unit-test surface truly includes those repo-root files.
 
 4. Match the repo's test style.
    - Keep assertions focused on behavior, not implementation trivia.

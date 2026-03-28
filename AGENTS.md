@@ -59,6 +59,7 @@ These require rebuild or rollout behavior, not workspace sync alone.
 - Unit tests belong in `api/tests/unit/` and should isolate business logic with controlled inputs and mocks.
 - E2E tests belong in `api/tests/e2e/` and should be used only when real services or cross-process behavior are required.
 - Do not move a test to E2E just to hide brittle path, import, or mount assumptions.
+- When local code, tests, or harness behavior drift from upstream expectations, prefer bringing them back to the upstream pattern instead of normalizing the drift with broader local-only workarounds.
 - CI failures should be diagnosed from the actual GitHub Actions logs, not only from generic annotations.
 
 ## CLI Boundaries

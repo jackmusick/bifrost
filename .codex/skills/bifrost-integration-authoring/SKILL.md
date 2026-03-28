@@ -7,6 +7,8 @@ description: Add or update a Bifrost vendor integration using the established re
 
 Follow the repo's repeated first-class vendor pattern instead of inventing a one-off structure for each integration.
 
+If the fork contains older or convenience-only integration patterns, prefer the upstream-established authoring pattern unless a concrete repo-specific constraint requires otherwise.
+
 ## Workflow
 
 1. Classify the integration work.

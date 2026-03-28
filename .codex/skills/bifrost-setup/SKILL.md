@@ -7,6 +7,8 @@ description: Set up or verify a Bifrost development environment. Use when checki
 
 Establish whether the machine can do Bifrost work through local source and the CLI before assuming any SDK-first workflow.
 
+Treat the upstream-supported setup flow as the default contract. If this fork uses extra conveniences or shortcuts, keep them clearly marked as fork-local.
+
 ## Workflow
 
 1. Detect current state first.

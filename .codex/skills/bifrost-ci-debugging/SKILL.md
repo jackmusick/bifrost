@@ -7,6 +7,8 @@ description: Diagnose and fix Bifrost CI failures. Use when a GitHub Actions run
 
 Treat CI failures as either a real code/test regression or a harness/environment regression. Determine which one it is before editing code.
 
+If the failing behavior comes from local drift away from upstream conventions, prefer restoring the upstream pattern over teaching CI about a fork-local assumption.
+
 ## Workflow
 
 1. Identify the exact failing job and step.
@@ -31,6 +33,7 @@ Treat CI failures as either a real code/test regression or a harness/environment
    - test logic if the assertions are wrong
    - code if behavior regressed
    - CI/test harness if local-only assets are missing from the container
+   - prefer removing hidden repo-layout coupling over permanently mounting more of the checkout into unit-test containers
    - avoid masking a harness problem by weakening the test
 
 ## Rules

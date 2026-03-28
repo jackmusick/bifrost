@@ -5,6 +5,8 @@ description: Set up Bifrost SDK - install CLI, authenticate, configure MCP serve
 
 # Bifrost Setup
 
+Treat the upstream-supported setup flow as the default contract. If this fork uses extra local conveniences, keep them clearly labeled as fork-local rather than presenting them as the standard path.
+
 ## Introduction
 
 Before running any commands, introduce the setup process to the user:
