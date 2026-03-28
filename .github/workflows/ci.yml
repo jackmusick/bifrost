@@ -8,18 +8,19 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   API_IMAGE: jackmusick/bifrost-api
   CLIENT_IMAGE: jackmusick/bifrost-client
 
 jobs:
-  # =============================================================================
-  # Test Job - Always runs, gates all releases
-  # =============================================================================
-  test:
+  unit-tests:
     runs-on: ubuntu-latest
-    name: Tests
+    name: Unit Tests
 
     steps:
       - name: Checkout repository
@@ -28,25 +29,41 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Run all tests with coverage
+      - name: Run unit tests with coverage
         run: |
           chmod +x test.sh
-          ./test.sh --coverage --ci
+          ./test.sh --coverage --ci --unit-only
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
-          flags: api
-          name: api-coverage
+          flags: api-unit
+          name: api-unit-coverage
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    name: E2E Tests
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run E2E tests
+        run: |
+          chmod +x test.sh
+          ./test.sh --ci --e2e-only
 
   # =============================================================================
   # Build API Image - Only on version tags, after tests pass
   # =============================================================================
   build-api:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [unit-tests, e2e-tests]
     runs-on: ubuntu-latest
     name: Build API Image
     permissions:
@@ -102,7 +119,7 @@ jobs:
   # =============================================================================
   build-client:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [unit-tests, e2e-tests]
     runs-on: ubuntu-latest
     name: Build Client Image
     permissions:

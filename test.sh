@@ -7,6 +7,8 @@
 # Usage:
 #   ./test.sh                          # Run ALL backend tests (unit + e2e)
 #   ./test.sh --coverage               # Run all tests with coverage report
+#   ./test.sh --unit-only              # Run only unit tests
+#   ./test.sh --e2e-only               # Run only E2E tests
 #   ./test.sh --wait                   # Wait before cleanup (for debugging)
 #   ./test.sh tests/unit/ -v           # Run only unit tests
 #   ./test.sh tests/e2e/ -v            # Run only E2E tests
@@ -39,6 +41,8 @@ LOCAL_MODE=false
 RESET_DB=false
 NO_RESET=false
 CI_MODE=false
+UNIT_ONLY=false
+E2E_ONLY=false
 PYTEST_ARGS=()
 PLAYWRIGHT_ARGS=()
 
@@ -58,6 +62,10 @@ for arg in "$@"; do
         WAIT_MODE=true
     elif [ "$arg" = "--ci" ]; then
         CI_MODE=true
+    elif [ "$arg" = "--unit-only" ]; then
+        UNIT_ONLY=true
+    elif [ "$arg" = "--e2e-only" ]; then
+        E2E_ONLY=true
     elif [ "$arg" = "--e2e" ]; then
         # Legacy flag - E2E now runs by default, kept for backwards compatibility
         true
@@ -87,6 +95,11 @@ for arg in "$@"; do
         PYTEST_ARGS+=("$arg")
     fi
 done
+
+if [ "$UNIT_ONLY" = true ] && [ "$E2E_ONLY" = true ]; then
+    echo "ERROR: --unit-only and --e2e-only cannot be used together"
+    exit 1
+fi
 
 # =============================================================================
 # Docker log export directory (skipped in CI mode)
@@ -555,7 +568,119 @@ done
 TEST_EXIT_CODE=0
 
 if [ "$CLIENT_ONLY" = false ]; then
-    if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
+    if [ "$UNIT_ONLY" = true ]; then
+        echo ""
+        echo "============================================================"
+        echo "Running unit tests only..."
+        echo "============================================================"
+        echo ""
+
+        UNIT_CMD=("pytest")
+        if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
+            UNIT_CMD+=("tests/" "--ignore=tests/e2e/" "-v")
+        else
+            UNIT_CMD+=("${PYTEST_ARGS[@]}")
+        fi
+        if [ -n "$LOG_DIR" ]; then
+            UNIT_CMD+=("--junitxml=/tmp/bifrost/unit-results.xml")
+        fi
+        if [ "$COVERAGE" = true ]; then
+            UNIT_CMD+=("--cov=src" "--cov-report=term-missing" "--cov-report=xml:/app/coverage.xml")
+        fi
+
+        trap - ERR
+        set +e
+        if [ -n "$LOG_DIR" ]; then
+            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${UNIT_CMD[@]}" 2>&1 | tee "$LOG_DIR/test-runner.log"
+        else
+            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${UNIT_CMD[@]}"
+        fi
+        TEST_EXIT_CODE=${PIPESTATUS[0]}
+        set -e
+
+        if [ "$COVERAGE" = true ]; then
+            echo ""
+            echo "Copying coverage report..."
+            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner cat /app/coverage.xml > coverage.xml 2>/dev/null || true
+        fi
+
+        echo ""
+        echo "============================================================"
+        if [ $TEST_EXIT_CODE -eq 0 ]; then
+            echo "Unit tests completed successfully!"
+        else
+            echo "Unit tests failed with exit code $TEST_EXIT_CODE"
+        fi
+        echo "============================================================"
+
+    elif [ "$E2E_ONLY" = true ]; then
+        echo ""
+        echo "============================================================"
+        echo "Starting API and Worker for E2E tests..."
+        echo "============================================================"
+        echo ""
+
+        docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build
+
+        echo "Waiting for API to be ready..."
+        for i in {1..60}; do
+            if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "API is ready!"
+                break
+            fi
+            if [ $i -eq 60 ]; then
+                echo "ERROR: API failed to start within 60 seconds"
+                exit 1
+            fi
+            echo "  Waiting for API... (attempt $i/60)"
+            sleep 1
+        done
+
+        echo ""
+        echo "============================================================"
+        echo "Running E2E tests only..."
+        echo "============================================================"
+        echo ""
+
+        E2E_CMD=("pytest")
+        if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
+            E2E_CMD+=("tests/e2e/" "-v")
+        else
+            E2E_CMD+=("${PYTEST_ARGS[@]}")
+        fi
+        if [ -n "$LOG_DIR" ]; then
+            E2E_CMD+=("--junitxml=/tmp/bifrost/e2e-results.xml")
+        fi
+        if [ "$COVERAGE" = true ]; then
+            E2E_CMD+=("--cov=src" "--cov-report=term-missing" "--cov-report=xml:/app/coverage.xml")
+        fi
+
+        trap - ERR
+        set +e
+        if [ -n "$LOG_DIR" ]; then
+            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${E2E_CMD[@]}" 2>&1 | tee "$LOG_DIR/test-runner.log"
+        else
+            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${E2E_CMD[@]}"
+        fi
+        TEST_EXIT_CODE=${PIPESTATUS[0]}
+        set -e
+
+        if [ "$COVERAGE" = true ]; then
+            echo ""
+            echo "Copying coverage report..."
+            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner cat /app/coverage.xml > coverage.xml 2>/dev/null || true
+        fi
+
+        echo ""
+        echo "============================================================"
+        if [ $TEST_EXIT_CODE -eq 0 ]; then
+            echo "E2E tests completed successfully!"
+        else
+            echo "E2E tests failed with exit code $TEST_EXIT_CODE"
+        fi
+        echo "============================================================"
+
+    elif [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
         # =================================================================
         # Default: Two-phase execution
         # =================================================================

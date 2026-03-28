@@ -4,6 +4,8 @@ E2E tests for workflow execution.
 Tests sync/async execution, polling, cancellation, and execution history.
 """
 
+import uuid
+
 import pytest
 
 from tests.e2e.conftest import poll_until, write_and_register, execute_workflow_sync
@@ -1365,7 +1367,7 @@ class TestSDKWorkflowExecute:
     @pytest.fixture(scope="class")
     def org_target_workflow(self, e2e_client, platform_admin, org1):
         """Create an org-scoped target workflow that will be called by name."""
-        name = "e2e_sdk_execute_target"
+        name = f"e2e_sdk_execute_target_{uuid.uuid4().hex[:8]}"
         path = f"{name}.py"
         content = f'''"""Target workflow for SDK execute test."""
 from bifrost import workflow
@@ -1396,9 +1398,12 @@ async def {name}(ping: str = "default"):
         )
 
     @pytest.fixture(scope="class")
-    def org_caller_workflow(self, e2e_client, platform_admin, org1):
+    def org_caller_workflow(
+        self, e2e_client, platform_admin, org1, org_target_workflow,
+    ):
         """Create an org-scoped workflow that calls another workflow by name."""
-        name = "e2e_sdk_execute_caller"
+        name = f"e2e_sdk_execute_caller_{uuid.uuid4().hex[:8]}"
+        target_name = org_target_workflow["name"]
         path = f"{name}.py"
         content = f'''"""Caller workflow — uses workflows.execute() by name."""
 import traceback
@@ -1409,7 +1414,7 @@ from bifrost import workflow, workflows
     description="Calls another workflow by name via SDK",
     execution_mode="sync",
 )
-async def {name}(target_name: str = "e2e_sdk_execute_target"):
+async def {name}(target_name: str = "{target_name}"):
     try:
         exec_id = await workflows.execute(
             workflow=target_name,
