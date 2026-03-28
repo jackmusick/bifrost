@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bifrost Build"
+  short_description: "Build Bifrost artifacts the supported way"
+  default_prompt: "Use $bifrost-build to create or modify Bifrost workflows, forms, agents, or apps using the supported workflow."

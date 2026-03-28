@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bifrost Test Authoring"
+  short_description: "Write Bifrost tests the upstream way"
+  default_prompt: "Use $bifrost-test-authoring to add or update tests that follow Bifrost upstream conventions."
