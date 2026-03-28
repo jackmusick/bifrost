@@ -8,6 +8,7 @@ description: Build Bifrost workflows, forms, and apps. Use when user wants to cr
 Create and debug Bifrost artifacts.
 
 When local practice and upstream expectations diverge, align the build or test pattern to upstream first. Do not preserve drift by expanding local harness assumptions unless that surface is part of the upstream-supported workflow.
+Use this as the Claude-specific adapter for build work. Repo-wide policy lives in `AGENTS.md`; Codex-native workflow details live in `.codex/skills/bifrost-build/`, `.codex/skills/bifrost-app-authoring/`, `.codex/skills/bifrost-integration-authoring/`, and `.codex/skills/bifrost-test-authoring/`.
 
 ## First: Check Prerequisites
 
@@ -41,8 +42,7 @@ Then use `Grep/Read` on `/tmp/bifrost-docs/llms.txt` whenever you need reference
 ### Principles
 
 - **Local first.** Use Glob, Read, and Grep for discovery when source is available.
-- **Treat `.bifrost/` as generated workspace metadata.** It is useful for discovery and transitional sync workflows, but it is not a safe long-term source-of-truth assumption in this fork.
-- **Write locally, sync intentionally.** Prefer entity files and normal source code as the primary authored surface. If a local watch/sync flow still requires manifest updates for new entities, keep them minimal and expect regeneration/import to overwrite them.
+- **Follow `AGENTS.md` for repo policy.** In particular: `.bifrost/` is transitional metadata, local git is canonical, and userland vs platform/runtime changes follow different paths.
 - **Never use MCP for discovery** (`list_*`), reading code (`list_content`, `search_content`), or docs when a local workspace exists.
 
 ### Before Building
@@ -109,6 +109,7 @@ Then use these IDs in all files — workflow code, manifest entries, form/agent 
 | `bifrost api <METHOD> <path>` | Bifrost platform API client ONLY — inspect executions, validate apps, check platform state. NOT for third-party APIs. |
 | `bifrost push` | One-shot upload — **interactive TUI, user must run manually** |
 | `bifrost pull` | One-shot download — **interactive TUI, user must run manually** |
+
 ### Platform Operations
 
 | Need | Command |
@@ -173,12 +174,14 @@ If the user doesn't want to run watch and asks to deploy, tell them to run `bifr
 
 Preflight (runs automatically in watch): manifest YAML, file existence, Python syntax, ruff linting, UUID cross-references, orphan detection.
 
-### Manifest Transition Rule
+### Repo Policy Reminder
 
-- Do not build new workflow habits around hand-authoring `.bifrost/*.yaml`.
-- In this fork, `.bifrost/` may still appear in local watch/sync workflows, but the platform treats it as generated/system-managed state.
-- Prefer source files, platform APIs, and CLI sync operations over manual manifest editing whenever possible.
-- See `docs/plans/2026-03-27-manifest-transition-guidance.md` before doing more repo-model work.
+Do not restate repo-wide policy here beyond what Claude needs to adapt.
+
+For the durable repo rules, use:
+- `AGENTS.md`
+- `docs/plans/2026-03-27-manifest-transition-guidance.md`
+- `docs/plans/2026-03-27-post-github-integration-workflow.md`
 
 ### Workflow Policy Rule
 
@@ -209,6 +212,8 @@ Best for: quick iterations, non-developers, no local git repo.
 Prefer `patch_content` for surgical edits. Use `replace_content` for full file rewrites.
 
 ## Building Apps
+
+Use this section only as a Claude-side bridge. The richer app workflow now lives in `.codex/skills/bifrost-app-authoring/`.
 
 ### Design Workflow
 
@@ -260,7 +265,12 @@ For component lists, hooks API, CSS examples, sandbox constraints — grep `/tmp
 - **Forms:** `$BIFROST_DEV_URL/forms/{form_id}`
 - **Apps:** Preview at `$BIFROST_DEV_URL/apps/{slug}/preview`, publish with `publish_app`, live at `$BIFROST_DEV_URL/apps/{slug}`
 - **Webhooks:** `curl -X POST $BIFROST_DEV_URL/api/hooks/{source_id} -H 'Content-Type: application/json' -d '{...}'`
-- **Logs:** `bifrost api GET /api/executions/{id}`
+
+## Boundary
+
+- Keep Claude-specific environment checks, MCP-only mode, and Claude command choices here.
+- Keep repo policy in `AGENTS.md`.
+- Keep Codex task workflows in `.codex/skills/`.
 
 ## Debugging
 
