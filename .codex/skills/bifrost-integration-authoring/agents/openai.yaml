@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bifrost Integration Authoring"
+  short_description: "Add vendor integrations with the repo pattern"
+  default_prompt: "Use $bifrost-integration-authoring to add or update a Bifrost vendor integration using the established repo pattern."

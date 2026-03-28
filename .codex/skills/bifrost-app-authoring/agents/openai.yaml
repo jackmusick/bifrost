@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bifrost App Authoring"
+  short_description: "Design and build Bifrost apps"
+  default_prompt: "Use $bifrost-app-authoring to design and implement a Bifrost app that matches the platform constraints."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bifrost Setup"
+  short_description: "Set up CLI, auth, and Bifrost context"
+  default_prompt: "Use $bifrost-setup to set up Bifrost CLI access, authentication, and local development context."

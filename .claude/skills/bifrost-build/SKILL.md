@@ -7,6 +7,8 @@ description: Build Bifrost workflows, forms, and apps. Use when user wants to cr
 
 Create and debug Bifrost artifacts.
 
+When local practice and upstream expectations diverge, align the build or test pattern to upstream first. Do not preserve drift by expanding local harness assumptions unless that surface is part of the upstream-supported workflow.
+
 ## First: Check Prerequisites
 
 ```bash

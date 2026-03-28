@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bifrost CI Debugging"
+  short_description: "Debug Bifrost CI failures quickly"
+  default_prompt: "Use $bifrost-ci-debugging to reproduce and fix Bifrost CI failures using the repo and GitHub Actions workflow."
