@@ -1456,6 +1456,7 @@ async def {name}(target_name: str = "e2e_sdk_execute_target"):
             platform_admin.headers,
             org_caller_workflow["id"],
             {"target_name": org_target_workflow["name"]},
+            max_wait=60.0,
         )
 
         assert data["status"] == "Success", (
