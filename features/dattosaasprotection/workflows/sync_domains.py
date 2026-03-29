@@ -1,8 +1,9 @@
 """
-Datto SaaS Protection: Sync Domains
+Datto SaaS Protection: Sync Protected Customers
 
-Syncs Datto SaaS Protection domain records to Bifrost organizations and creates
-IntegrationMappings so org-scoped workflows can resolve the mapped domain ID.
+Syncs Datto SaaS Protection protected customer/domain records to Bifrost
+organizations and creates IntegrationMappings so org-scoped workflows can
+resolve the mapped SaaS customer ID.
 """
 
 from bifrost import workflow
@@ -11,8 +12,8 @@ from modules.dattosaasprotection import DattoSaaSProtectionClient
 
 
 @workflow(
-    name="Datto SaaS Protection: Sync Domains",
-    description="Sync Datto SaaS Protection domains to Bifrost organizations.",
+    name="Datto SaaS Protection: Sync Protected Customers",
+    description="Sync Datto SaaS Protection protected customers to Bifrost organizations.",
     category="Datto SaaS Protection",
     tags=["datto", "saas", "sync"],
 )

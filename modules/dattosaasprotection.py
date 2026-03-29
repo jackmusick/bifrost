@@ -4,7 +4,9 @@ Datto SaaS Protection API client.
 Auth: HTTP Basic using api_key:api_secret
 Base URL: https://api.datto.com/v1
 
-The currently validated read-only surface is limited to `/saas/domains`.
+The validated customer-facing inventory surface is `/saas/domains`, where each
+record represents a protected customer/domain relationship rather than a raw
+DNS object.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import httpx
 
 
 class DattoSaaSProtectionClient:
-    """Focused async client for Datto SaaS Protection domain inventory."""
+    """Focused async client for Datto SaaS Protection protected-customer inventory."""
 
     BASE_URL = "https://api.datto.com/v1"
 
@@ -95,7 +97,7 @@ class DattoSaaSProtectionClient:
         raise RuntimeError(f"Datto SaaS Protection request failed for {method} {path}")
 
     async def list_domains(self) -> list[dict]:
-        """List SaaS domain records."""
+        """List protected customer/domain records."""
         payload = await self._request("GET", "/saas/domains")
         if isinstance(payload, list):
             return payload
@@ -107,7 +109,7 @@ class DattoSaaSProtectionClient:
         return []
 
     async def get_domain(self, saas_customer_id: str | None = None) -> dict:
-        """Resolve a domain record by explicit or mapped SaaS customer ID."""
+        """Resolve a protected customer/domain record by SaaS customer ID."""
         target_customer_id = saas_customer_id or self.saas_customer_id
         if not target_customer_id:
             raise RuntimeError(
@@ -179,7 +181,7 @@ class DattoSaaSProtectionClient:
 
     @staticmethod
     def normalize_domain(domain: dict) -> dict[str, str | None]:
-        """Normalize a Datto SaaS Protection domain record for Bifrost mapping."""
+        """Normalize a protected customer/domain record for Bifrost mapping."""
         domain_id = domain.get("saasCustomerId") or domain.get("id")
         domain_name = domain.get("domain")
         organization_name = domain.get("organizationName") or domain.get("saasCustomerName")
@@ -193,6 +195,8 @@ class DattoSaaSProtectionClient:
         return {
             "id": str(domain_id) if domain_id is not None else None,
             "name": organization_name or domain_name or None,
+            "customer_name": organization_name or domain_name or None,
+            "protected_domain": domain_name or None,
             "domain": domain_name or None,
             "label": label or None,
             "external_subscription_id": (

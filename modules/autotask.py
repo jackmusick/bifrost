@@ -168,14 +168,199 @@ class AutotaskClient:
             "GET",
             f"{self._base_url}/V1.0/Companies/{resolved_company_id}",
         )
-        payload = response.json()
-        return payload if isinstance(payload, dict) else {}
+        return self._unwrap_item(response.json())
+
+    async def update_company(
+        self,
+        *,
+        company_id: str | None = None,
+        company_name: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_company_id = company_id or self._company_id
+        if not resolved_company_id:
+            raise RuntimeError(
+                "Autotask company ID is required to update a company. "
+                "Pass company_id explicitly or configure an org mapping first."
+            )
+
+        payload: dict[str, Any] = {"id": self._coerce_int(resolved_company_id)}
+        if company_name not in (None, ""):
+            payload["companyName"] = company_name
+        if extra_fields:
+            payload.update(extra_fields)
+
+        response = await self._request(
+            "PATCH",
+            f"{self._base_url}/V1.0/Companies",
+            json_body=payload,
+        )
+        updated = response.json()
+        if not isinstance(updated, dict):
+            return {}
+
+        item_id = updated.get("itemId") or resolved_company_id
+        return await self.get_company(str(item_id))
+
+    async def get_ticket(self, ticket_id: str | int) -> dict[str, Any]:
+        response = await self._request(
+            "GET",
+            f"{self._base_url}/V1.0/Tickets/{ticket_id}",
+        )
+        return self._unwrap_item(response.json())
+
+    async def update_ticket(
+        self,
+        ticket_id: str | int,
+        *,
+        status: str | None = None,
+        resolution: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"id": self._coerce_int(ticket_id)}
+        if status not in (None, ""):
+            payload["status"] = self._coerce_int(status)
+        if resolution not in (None, ""):
+            payload["resolution"] = resolution
+        if extra_fields:
+            payload.update(extra_fields)
+
+        response = await self._request(
+            "PATCH",
+            f"{self._base_url}/V1.0/Tickets",
+            json_body=payload,
+        )
+        updated = response.json()
+        if not isinstance(updated, dict):
+            return {}
+
+        item_id = updated.get("itemId") or ticket_id
+        return await self.get_ticket(item_id)
+
+    async def create_ticket_note(
+        self,
+        *,
+        ticket_id: str | int,
+        description: str,
+        note_type: str | None = None,
+        publish: str | None = None,
+        title: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"description": description}
+        if note_type not in (None, ""):
+            payload["noteType"] = self._coerce_int(note_type)
+        if publish not in (None, ""):
+            payload["publish"] = self._coerce_int(publish)
+        if title not in (None, ""):
+            payload["title"] = title
+        if extra_fields:
+            payload.update(extra_fields)
+
+        response = await self._request(
+            "POST",
+            f"{self._base_url}/V1.0/Tickets/{self._coerce_int(ticket_id)}/notes",
+            json_body=payload,
+        )
+        created = response.json()
+        if not isinstance(created, dict):
+            return {}
+        return created
+
+    @staticmethod
+    def _unwrap_item(payload: Any) -> dict[str, Any]:
+        if isinstance(payload, dict):
+            item = payload.get("item")
+            if isinstance(item, dict):
+                return item
+            return payload
+        return {}
 
     @staticmethod
     def normalize_company(company: dict[str, Any]) -> dict[str, str]:
+        company = AutotaskClient._unwrap_item(company)
         return {
             "id": str(company.get("id") or ""),
             "name": str(company.get("companyName") or ""),
+        }
+
+    @staticmethod
+    def _coerce_int(value: Any) -> Any:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.isdigit():
+                return int(stripped)
+            return stripped
+        return value
+
+    async def create_ticket(
+        self,
+        *,
+        title: str,
+        description: str = "",
+        company_id: str | None = None,
+        queue_id: str | None = None,
+        issue_type: str | None = None,
+        sub_issue_type: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        source: str | None = None,
+        due_date: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_company_id = company_id or self._company_id
+        if not resolved_company_id:
+            raise RuntimeError(
+                "Autotask company ID is required to create a ticket. "
+                "Pass company_id explicitly or configure an org mapping first."
+            )
+
+        payload: dict[str, Any] = {
+            "companyID": self._coerce_int(resolved_company_id),
+            "title": title,
+            "description": description,
+        }
+
+        optional_fields = {
+            "queueID": queue_id,
+            "issueType": issue_type,
+            "subIssueType": sub_issue_type,
+            "status": status,
+            "priority": priority,
+            "source": source,
+            "dueDateTime": due_date,
+        }
+        for field_name, field_value in optional_fields.items():
+            if field_value not in (None, ""):
+                payload[field_name] = self._coerce_int(field_value)
+
+        if extra_fields:
+            payload.update(extra_fields)
+
+        response = await self._request(
+            "POST",
+            f"{self._base_url}/V1.0/Tickets",
+            json_body=payload,
+        )
+        created = response.json()
+        if not isinstance(created, dict):
+            return {}
+
+        item_id = created.get("itemId")
+        if item_id not in (None, ""):
+            return await self.get_ticket(item_id)
+
+        return created
+
+    @staticmethod
+    def normalize_ticket(ticket: dict[str, Any]) -> dict[str, str]:
+        ticket = AutotaskClient._unwrap_item(ticket)
+        return {
+            "id": str(ticket.get("id") or ""),
+            "ticket_number": str(ticket.get("ticketNumber") or ""),
+            "company_id": str(ticket.get("companyID") or ""),
+            "title": str(ticket.get("title") or ""),
+            "status": str(ticket.get("status") or ""),
         }
 
     async def close(self) -> None:

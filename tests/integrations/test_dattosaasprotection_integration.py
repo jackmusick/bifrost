@@ -36,6 +36,22 @@ def _domain(
     return item
 
 
+def test_normalize_domain_treats_record_as_customer_org():
+    normalized = dattosaasprotection.DattoSaaSProtectionClient.normalize_domain(
+        {
+            "saasCustomerId": "53124",
+            "organizationName": "Woody & Vaughan, P.C.",
+            "domain": "woodyvaughan.com",
+        }
+    )
+
+    assert normalized["id"] == "53124"
+    assert normalized["name"] == "Woody & Vaughan, P.C."
+    assert normalized["customer_name"] == "Woody & Vaughan, P.C."
+    assert normalized["protected_domain"] == "woodyvaughan.com"
+    assert normalized["label"] == "Woody & Vaughan, P.C. (woodyvaughan.com)"
+
+
 @pytest.mark.asyncio
 async def test_get_client_uses_scoped_mapping(monkeypatch):
     async def fake_get(name: str, scope: str | None = None):

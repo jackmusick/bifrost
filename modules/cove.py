@@ -391,6 +391,36 @@ class CoveClient:
             return await self.get_partner(result)
         return result or {}
 
+    async def update_customer(
+        self,
+        *,
+        partner_id: int | None = None,
+        name: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict:
+        """
+        Update an existing customer partner.
+
+        Uses ModifyPartner and then fetches the updated partner record.
+        """
+        await self._ensure_logged_in()
+        target_partner_id = partner_id or self.partner_id
+        if target_partner_id is None:
+            raise RuntimeError(
+                "Cove partner ID is not available. Configure a partner mapping first."
+            )
+
+        partner_info: dict[str, Any] = {"Id": int(target_partner_id)}
+        if name not in (None, ""):
+            partner_info["Name"] = name
+        if extra_fields:
+            partner_info.update(extra_fields)
+        if len(partner_info) == 1:
+            raise RuntimeError("Provide name or extra_fields to update the Cove customer.")
+
+        await self._rpc_call("ModifyPartner", {"partnerInfo": partner_info})
+        return await self.get_partner(int(target_partner_id))
+
     @staticmethod
     def normalize_partner(partner: dict) -> dict[str, str | None]:
         """Normalize a Cove partner payload to the fields Bifrost mapping needs."""

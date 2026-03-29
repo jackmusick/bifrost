@@ -85,6 +85,66 @@ workflows:
     - autotask
     - sync
     timeout_seconds: 300
+  c2e944d3-fc19-44f3-9696-b7934c6feb9b:
+    access_level: authenticated
+    category: Autotask
+    description: Create an AutoTask ticket for the mapped customer or an explicit company ID.
+    function_name: create_autotask_ticket
+    id: c2e944d3-fc19-44f3-9696-b7934c6feb9b
+    name: 'Autotask: Create Ticket'
+    path: features/autotask/workflows/create_ticket.py
+    tags:
+    - autotask
+    - ticketing
+    timeout_seconds: 300
+  b2c4674b-d41e-4b18-b351-46591fc6b720:
+    access_level: authenticated
+    category: Autotask
+    description: Create an AutoTask note on an existing ticket.
+    function_name: create_autotask_ticket_note
+    id: b2c4674b-d41e-4b18-b351-46591fc6b720
+    name: 'Autotask: Create Ticket Note'
+    path: features/autotask/workflows/create_ticket_note.py
+    tags:
+    - autotask
+    - ticketing
+    timeout_seconds: 300
+  5aaf331c-347d-449e-af64-833fe8fa2951:
+    access_level: authenticated
+    category: Autotask
+    description: Close an AutoTask ticket by setting its status to a completed value.
+    function_name: close_autotask_ticket
+    id: 5aaf331c-347d-449e-af64-833fe8fa2951
+    name: 'Autotask: Close Ticket'
+    path: features/autotask/workflows/close_ticket.py
+    tags:
+    - autotask
+    - ticketing
+    timeout_seconds: 300
+  dd9fbf1e-1a20-41e2-840b-6891df95477e:
+    access_level: authenticated
+    category: Autotask
+    description: Get an AutoTask ticket by ticket ID.
+    function_name: get_autotask_ticket
+    id: dd9fbf1e-1a20-41e2-840b-6891df95477e
+    name: 'Autotask: Get Ticket'
+    path: features/autotask/workflows/get_ticket.py
+    tags:
+    - autotask
+    - ticketing
+    timeout_seconds: 300
+  2cf96644-ed88-43c8-90a3-ebbacbf5f28e:
+    access_level: authenticated
+    category: Autotask
+    description: Get an AutoTask company by explicit company ID or the current org mapping.
+    function_name: get_autotask_company
+    id: 2cf96644-ed88-43c8-90a3-ebbacbf5f28e
+    name: 'Autotask: Get Company'
+    path: features/autotask/workflows/get_company.py
+    tags:
+    - autotask
+    - company
+    timeout_seconds: 300
   0e6f7903-1e67-4db4-af4f-7082bc16efb4:
     access_level: role_based
     category: NetBird

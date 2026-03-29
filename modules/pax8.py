@@ -301,7 +301,7 @@ class Pax8Client:
             if isinstance(value, Address):
                 value = value.to_dict()
             body[api_key] = value
-        return self._request("PUT", f"/companies/{company_id}", json_body=body)
+        return self._request("PATCH", f"/companies/{company_id}", json_body=body)
 
     # =========================================================================
     # Contacts
@@ -773,6 +773,15 @@ class ScopedPax8Client:
                 "Pax8 client requires a mapped company_id for org-scoped access."
             )
         return await self._call("get_company", target_company_id)
+
+    async def update_company(self, company_id: str | None = None, **updates: Any) -> dict:
+        """Update a Pax8 company by explicit or mapped company ID."""
+        target_company_id = company_id or self.company_id
+        if not target_company_id:
+            raise RuntimeError(
+                "Pax8 client requires a mapped company_id for org-scoped access."
+            )
+        return await self._call("update_company", target_company_id, **updates)
 
     async def close(self) -> None:
         """Compatibility no-op for async workflow helpers."""

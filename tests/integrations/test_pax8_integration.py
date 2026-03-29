@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 from bifrost import integrations, organizations
 from features.pax8.workflows.data_providers import list_pax8_companies
 from features.pax8.workflows.sync_companies import sync_pax8_companies
+from features.pax8.workflows.update_company import update_pax8_company
 from modules import pax8
 
 
@@ -152,4 +153,79 @@ async def test_sync_pax8_companies_maps_unmapped_companies(monkeypatch):
     assert mapping_calls == [
         ("Pax8", "org-existing", "200", "Existing Org"),
         ("Pax8", "org-new", "300", "New Org"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_pax8_company(monkeypatch):
+    class FakeClient:
+        async def get_company(self, company_id: str):
+            assert company_id == "735496a8-d0e9-44bb-89e1-176298c1b2ad"
+            return {
+                "id": company_id,
+                "name": "Findling Park Conyers Woody P.C",
+                "phone": "317-555-0100",
+                "website": "https://example.com",
+                "selfServiceAllowed": False,
+                "billOnBehalfOfEnabled": False,
+                "orderApprovalRequired": False,
+                "address": {
+                    "street": "151 N Delaware St #1520",
+                    "city": "Indianapolis",
+                    "stateOrProvince": "IN",
+                    "postalCode": "46204",
+                    "country": "US",
+                },
+            }
+
+        async def update_company(self, company_id: str, **updates):
+            assert company_id == "735496a8-d0e9-44bb-89e1-176298c1b2ad"
+            assert updates["name"] == "Woody & Vaughan, P.C."
+            assert updates["phone"] == "317-555-0100"
+            assert updates["website"] == "https://example.com"
+            assert updates["address"]["postalCode"] == "46204"
+            return {"id": company_id, "name": updates["name"]}
+
+        async def close(self) -> None:
+            return None
+
+    fake_client = FakeClient()
+
+    async def fake_get_client(scope: str | None = None):
+        assert scope == "global"
+        return fake_client
+
+    monkeypatch.setattr(pax8, "get_client", fake_get_client)
+
+    result = await update_pax8_company(
+        company_id="735496a8-d0e9-44bb-89e1-176298c1b2ad",
+        name="Woody & Vaughan, P.C.",
+    )
+
+    assert result == {
+        "company": {
+            "id": "735496a8-d0e9-44bb-89e1-176298c1b2ad",
+            "name": "Woody & Vaughan, P.C.",
+        }
+    }
+
+
+def test_pax8_client_update_company_uses_patch(monkeypatch):
+    client = pax8.Pax8Client("access-token")
+    calls: list[tuple[str, str, dict | None, dict | None]] = []
+
+    def fake_request(self, method: str, path: str, params=None, json_body=None):
+        calls.append((method, path, params, json_body))
+        return {"id": "company-1", "name": json_body["name"]}
+
+    monkeypatch.setattr(pax8.Pax8Client, "_request", fake_request)
+
+    try:
+        result = client.update_company("company-1", name="Renamed Co")
+    finally:
+        client.close()
+
+    assert result == {"id": "company-1", "name": "Renamed Co"}
+    assert calls == [
+        ("PATCH", "/companies/company-1", None, {"name": "Renamed Co"})
     ]

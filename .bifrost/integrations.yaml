@@ -234,6 +234,56 @@ integrations:
       position: 3
       required: true
       type: secret
+    - description: Optional default ticket queue ID used by automation ticket creation
+      key: default_ticket_queue_id
+      position: 4
+      required: false
+      type: string
+    - description: Optional default ticket status ID used by automation ticket creation
+      key: default_ticket_status
+      position: 5
+      required: false
+      type: string
+    - description: Optional default ticket priority ID used by automation ticket creation
+      key: default_ticket_priority
+      position: 6
+      required: false
+      type: string
+    - description: Optional default ticket source ID used by automation ticket creation
+      key: default_ticket_source
+      position: 7
+      required: false
+      type: string
+    - description: Optional default ticket issue type ID used by automation ticket creation
+      key: default_ticket_issue_type
+      position: 8
+      required: false
+      type: string
+    - description: Optional default ticket sub-issue type ID used by automation ticket creation
+      key: default_ticket_sub_issue_type
+      position: 9
+      required: false
+      type: string
+    - description: Optional default completed ticket status ID used by automation close-ticket actions
+      key: default_close_ticket_status
+      position: 10
+      required: false
+      type: string
+    - description: Optional default AutoTask ticket note type ID used by automation note creation
+      key: default_ticket_note_type
+      position: 11
+      required: false
+      type: string
+    - description: Optional default AutoTask ticket note publish value used by automation note creation
+      key: default_ticket_note_publish
+      position: 12
+      required: false
+      type: string
+    - description: Optional default AutoTask ticket note title used when the tenant requires note titles
+      key: default_ticket_note_title
+      position: 13
+      required: false
+      type: string
     entity_id: company_id
     entity_id_name: Company
     id: 7c3f243e-83d1-4d37-93da-2545e85d4cf2
