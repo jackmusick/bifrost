@@ -9,6 +9,7 @@ Authentication:
       x-pod-id: <pod>
 
 The company list under /r/company/companies is the primary org-mapping surface.
+Company writes use /w/company/companies.
 """
 
 from __future__ import annotations
@@ -208,6 +209,64 @@ class ConnectSecureClient:
         data = self._extract_data(payload)
         return data if isinstance(data, dict) else {}
 
+    async def update_company(
+        self,
+        *,
+        company_id: str | None = None,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> dict:
+        resolved_company_id = company_id or self._company_id
+        if not resolved_company_id:
+            raise RuntimeError(
+                "ConnectSecure company ID is not available. Configure an org mapping first."
+            )
+
+        current = await self.get_company(resolved_company_id)
+        data: dict[str, Any] = {"id": int(resolved_company_id)}
+
+        for field in (
+            "old_id",
+            "is_assessment",
+            "name",
+            "description",
+            "is_migrated",
+            "is_deleted",
+            "source_id",
+            "domain",
+            "source",
+            "tags",
+            "manual_tags",
+            "address_country",
+            "address_state",
+            "address_city",
+            "address_zipcode",
+            "customer_name",
+            "meta_info",
+            "tenantid",
+        ):
+            if field in current:
+                data[field] = current[field]
+
+        if name is not None:
+            data["name"] = name
+            if "customer_name" in data:
+                data["customer_name"] = name
+        if description is not None:
+            data["description"] = description
+
+        payload = await self._request(
+            "PATCH",
+            "/w/company/companies",
+            json_body={"id": int(resolved_company_id), "data": data},
+        )
+        result = self._extract_data(payload)
+        if isinstance(result, dict) and result:
+            normalized = self.normalize_company(result)
+            if normalized["id"] and normalized["name"]:
+                return result
+        return await self.get_company(resolved_company_id)
+
     async def list_assets(
         self,
         *,
@@ -286,4 +345,3 @@ async def get_client(scope: str | None = None) -> ConnectSecureClient:
         api_secret=config["api_secret"],
         company_id=getattr(integration, "entity_id", None),
     )
-

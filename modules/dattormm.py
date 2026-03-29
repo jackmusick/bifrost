@@ -97,6 +97,7 @@ class DattoRMMClient:
         url: str,
         *,
         params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> httpx.Response:
         http = await self._get_http()
         response: httpx.Response | None = None
@@ -107,9 +108,11 @@ class DattoRMMClient:
                 method,
                 url,
                 params=params or None,
+                json=json_body,
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "Accept": "application/json",
+                    **({"Content-Type": "application/json"} if json_body is not None else {}),
                 },
             )
 
@@ -198,6 +201,35 @@ class DattoRMMClient:
         )
         payload = response.json()
         return payload if isinstance(payload, dict) else {}
+
+    async def update_site(
+        self,
+        site_uid: str | None = None,
+        *,
+        name: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_site_uid = str(site_uid or self._site_uid or "").strip()
+        if not resolved_site_uid:
+            raise RuntimeError(
+                "Datto RMM site UID is not available. Configure a site mapping first."
+            )
+
+        payload: dict[str, Any] = {}
+        if name not in (None, ""):
+            payload["name"] = name
+        if extra_fields:
+            payload.update(extra_fields)
+        if not payload:
+            raise RuntimeError("Provide name or extra_fields to update the Datto RMM site.")
+
+        response = await self._request(
+            "POST",
+            f"{self._base_uri}/api/v2/site/{resolved_site_uid}",
+            json_body=payload,
+        )
+        updated = response.json()
+        return updated if isinstance(updated, dict) else {}
 
     async def list_site_devices(self, site_uid: str | None = None) -> list[dict]:
         resolved_site_uid = str(site_uid or self._site_uid or "").strip()

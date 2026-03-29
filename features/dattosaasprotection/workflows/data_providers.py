@@ -7,13 +7,13 @@ from modules.dattosaasprotection import DattoSaaSProtectionClient
 
 
 @data_provider(
-    name="Datto SaaS Protection: List Domains",
-    description="Returns Datto SaaS Protection domains for org mapping picker.",
+    name="Datto SaaS Protection: List Protected Customers",
+    description="Returns Datto SaaS Protection protected customers for org mapping picker.",
     category="Datto SaaS Protection",
     tags=["datto", "saas", "data-provider"],
 )
 async def list_dattosaas_domains() -> list[dict]:
-    """Return Datto SaaS Protection domains as {value, label} options."""
+    """Return Datto SaaS Protection protected customers as {value, label} options."""
     from modules.dattosaasprotection import get_client
 
     client = await get_client(scope="global")

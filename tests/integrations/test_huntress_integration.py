@@ -152,3 +152,32 @@ async def test_sync_huntress_organizations_maps_unmapped_organizations(monkeypat
         ("Huntress", "org-existing", "200", "Existing Org"),
         ("Huntress", "org-new", "300", "New Org"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_update_huntress_organization_uses_patch_method(monkeypatch):
+    client = huntress.ScopedHuntressClient(
+        base_url="https://api.huntress.io",
+        api_key="public",
+        api_secret="secret",
+        organization_id="97509",
+    )
+
+    calls: list[tuple[str, tuple, dict]] = []
+
+    async def fake_call(method_name: str, *args, **kwargs):
+        calls.append((method_name, args, kwargs))
+        return {"id": "97509", "name": "Renamed Org"}
+
+    monkeypatch.setattr(client, "_call", fake_call)
+
+    result = await client.update_organization(name="Renamed Org")
+
+    assert result == {"id": "97509", "name": "Renamed Org"}
+    assert calls == [
+        (
+            "update_organizations_2",
+            ("97509", {"name": "Renamed Org"}),
+            {},
+        )
+    ]

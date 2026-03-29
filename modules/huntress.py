@@ -395,6 +395,14 @@ class HuntressAPIReference:
         result = response.json() if response.content else None
         return self._auto_convert(result)
 
+    def update_organizations_2(self, id: str, data: Dict[str, Any] = None, **kwargs) -> Any:
+        """Update Organization"""
+        url = f"{self.base_url}/v1/organizations/{id}"
+        response = self.session.patch(url, json=data, params=kwargs)
+        response.raise_for_status()
+        result = response.json() if response.content else None
+        return self._auto_convert(result)
+
 
     def list_reports(self, **kwargs) -> Any:
         """List Summary Reports"""
@@ -522,6 +530,31 @@ class ScopedHuntressClient:
 
         payload = await self._call("get_organizations_2", target_organization_id)
         return _extract_single(payload, "organization")
+
+    async def update_organization(
+        self,
+        *,
+        organization_id: str | None = None,
+        name: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict:
+        """Update a Huntress organization by explicit or mapped organization ID."""
+        target_organization_id = organization_id or self.organization_id
+        if not target_organization_id:
+            raise RuntimeError(
+                "Huntress client requires a mapped organization_id for org-scoped access."
+            )
+
+        payload: dict[str, Any] = dict(extra_fields or {})
+        if name not in (None, ""):
+            payload["name"] = name
+        if not payload:
+            raise RuntimeError("Provide name or extra_fields to update the Huntress organization.")
+
+        organization = await self._call("update_organizations_2", target_organization_id, payload)
+        if isinstance(organization, dict) and "organization" in organization:
+            return _extract_single(organization, "organization")
+        return organization
 
     async def close(self) -> None:
         """Compatibility no-op for async workflow helpers."""

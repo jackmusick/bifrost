@@ -208,6 +208,35 @@ class MerakiClient:
         payload = response.json()
         return payload if isinstance(payload, dict) else {}
 
+    async def update_organization(
+        self,
+        organization_id: str | None = None,
+        *,
+        name: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict:
+        resolved_organization_id = organization_id or self._organization_id
+        if not resolved_organization_id:
+            raise RuntimeError(
+                "Meraki organization ID is not available. Configure an org mapping first."
+            )
+
+        payload: dict[str, Any] = {}
+        if name not in (None, ""):
+            payload["name"] = name
+        if extra_fields:
+            payload.update(extra_fields)
+        if not payload:
+            raise RuntimeError("Provide name or extra_fields to update the Meraki organization.")
+
+        response = await self._request(
+            "PUT",
+            f"/organizations/{resolved_organization_id}",
+            json_body=payload,
+        )
+        updated = response.json()
+        return updated if isinstance(updated, dict) else {}
+
     async def list_organization_networks(
         self,
         organization_id: str | None = None,

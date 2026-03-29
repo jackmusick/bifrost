@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 from bifrost import integrations, organizations
 from features.connectsecure.workflows.data_providers import list_connectsecure_companies
 from features.connectsecure.workflows.sync_companies import sync_connectsecure_companies
+from features.connectsecure.workflows.update_company import update_connectsecure_company
 from modules import connectsecure
 
 
@@ -164,3 +165,33 @@ async def test_sync_connectsecure_companies_maps_unmapped_companies(monkeypatch)
     ]
     assert fake_client.closed is True
 
+
+@pytest.mark.asyncio
+async def test_update_connectsecure_company(monkeypatch):
+    class FakeClient:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def update_company(self, *, company_id: str, name: str):
+            assert company_id == "2541"
+            assert name == "Woody & Vaughan, P.C."
+            return {"id": "2541", "name": name}
+
+        async def close(self) -> None:
+            self.closed = True
+
+    fake_client = FakeClient()
+
+    async def fake_get_client(scope: str | None = None):
+        assert scope == "global"
+        return fake_client
+
+    monkeypatch.setattr(connectsecure, "get_client", fake_get_client)
+
+    result = await update_connectsecure_company(
+        company_id="2541",
+        name="Woody & Vaughan, P.C.",
+    )
+
+    assert result == {"company": {"id": "2541", "name": "Woody & Vaughan, P.C."}}
+    assert fake_client.closed is True

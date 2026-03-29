@@ -36657,6 +36657,30 @@ class ScopedNinjaOneClient:
             )
         return await self._call("get_organization", target_organization_id)
 
+    async def update_organization(
+        self,
+        organization_id: str | None = None,
+        *,
+        name: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict:
+        target_organization_id = organization_id or self.organization_id
+        if not target_organization_id:
+            raise RuntimeError(
+                "NinjaOne client requires a mapped organization_id for org-scoped access."
+            )
+
+        payload: dict[str, Any] = {}
+        if name not in (None, ""):
+            payload["name"] = name
+        if extra_fields:
+            payload.update(extra_fields)
+        if not payload:
+            raise RuntimeError("Provide name or extra_fields to update the NinjaOne organization.")
+
+        updated = await self._call("patch_organization", target_organization_id, payload)
+        return updated if isinstance(updated, dict) else {}
+
     async def close(self) -> None:
         """Compatibility no-op for async workflow helpers."""
         return None

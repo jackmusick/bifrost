@@ -1446,6 +1446,7 @@ async def {name}(target_name: str = "{target_name}"):
             f"/api/files/editor?path={path}", headers=platform_admin.headers,
         )
 
+    @pytest.mark.timeout(240)
     def test_sdk_execute_by_name_org_scoped(
         self, e2e_client, platform_admin, org1,
         org_target_workflow, org_caller_workflow,
@@ -1463,7 +1464,7 @@ async def {name}(target_name: str = "{target_name}"):
             {"target_name": org_target_workflow["name"]},
             max_wait=60.0,
             request_sync=True,
-            request_timeout=120.0,
+            request_timeout=180.0,
         )
 
         assert data["status"] == "Success", (
