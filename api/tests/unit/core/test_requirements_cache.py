@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.core.requirements_cache import (
+    REQUIREMENTS_CACHE_TTL,
     REQUIREMENTS_KEY,
     CachedRequirements,
     append_package_to_requirements,
@@ -38,15 +39,43 @@ class TestGetRequirements:
             assert result == cached
             mock_redis_client.get.assert_called_once_with(REQUIREMENTS_KEY)
 
-    async def test_returns_none_when_not_cached(self, mock_redis_client):
-        """Test get_requirements returns None when not in cache."""
-        mock_redis_client.get.return_value = None
+    async def test_falls_back_to_s3_on_cache_miss(self, mock_redis_client):
+        """Test get_requirements falls back to S3 when Redis cache is empty."""
+        content = "flask==2.3.0\n"
+        cached = {"content": content, "hash": "abc123"}
 
-        with patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client):
+        # First call returns None (cache miss), second call returns data (after warm)
+        mock_redis_client.get.side_effect = [None, json.dumps(cached)]
+        mock_redis_client.setex = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.read.return_value = content.encode()
+
+        with (
+            patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
+            patch("src.services.repo_storage.RepoStorage", return_value=mock_repo),
+        ):
+            result = await get_requirements()
+
+            assert result == cached
+            # Called twice: first miss, then after warm
+            assert mock_redis_client.get.call_count == 2
+            # S3 was read for fallback
+            mock_repo.read.assert_called_once_with("requirements.txt")
+
+    async def test_returns_none_when_not_in_cache_or_s3(self, mock_redis_client):
+        """Test get_requirements returns None when not in Redis or S3."""
+        mock_redis_client.get.return_value = None
+        mock_redis_client.setex = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.read.side_effect = Exception("NoSuchKey")
+
+        with (
+            patch("src.core.requirements_cache.get_redis_client", return_value=mock_redis_client),
+            patch("src.services.repo_storage.RepoStorage", return_value=mock_repo),
+        ):
             result = await get_requirements()
 
             assert result is None
-            mock_redis_client.get.assert_called_once_with(REQUIREMENTS_KEY)
 
 
 class TestSetRequirements:
@@ -70,7 +99,7 @@ class TestSetRequirements:
             mock_redis_client.setex.assert_called_once()
             call_args = mock_redis_client.setex.call_args
             assert call_args[0][0] == REQUIREMENTS_KEY
-            assert call_args[0][1] == 86400  # 24 hours
+            assert call_args[0][1] == REQUIREMENTS_CACHE_TTL
 
             cached = json.loads(call_args[0][2])
             assert cached["content"] == content

@@ -20,10 +20,11 @@ from sys.modules before each execution to pick up code changes. For package
 installs, the ProcessPoolManager recycles worker processes so fresh Python
 interpreters can see newly installed packages.
 
-Persistence: The ProcessPoolManager calls install_requirements_from_cache()
-once at pool startup to install packages from the cached requirements.txt in
-Redis. Since all child processes share the same filesystem, this single install
-is sufficient. See api/src/core/requirements_cache.py for the full persistence flow.
+Persistence: The ProcessPoolManager calls install_requirements() once at pool
+startup. It reads requirements.txt via get_requirements_sync() (Redis → S3
+fallback), then pip installs. Since all child processes share the same
+filesystem, this single install is sufficient.
+See api/src/core/requirements_cache.py for the full persistence flow.
 """
 
 from __future__ import annotations
@@ -43,110 +44,58 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def install_requirements_from_cache() -> None:
+def install_requirements() -> None:
     """
-    Install packages from cached requirements.txt.
+    Install packages from requirements.txt.
 
-    Called once at pool startup to ensure packages persist across container restarts.
-    Uses synchronous Redis client since this may be called from a thread.
+    Called once at pool startup to ensure user-installed packages persist
+    across container restarts. Reads requirements via get_requirements_sync()
+    which handles Redis → S3 fallback automatically.
 
-    Since all child processes share the same filesystem as the parent (same container),
-    installing once in the parent process is sufficient — child processes inherit
-    the installed packages.
+    Since all child processes share the same filesystem as the parent,
+    installing once in the parent process is sufficient.
 
-    This function never raises - failures are logged and execution continues.
-    This allows the pool to still function even if Redis is unavailable
-    or if the cached requirements are invalid.
-
-    Retry behavior:
-    - 3 attempts for Redis connection errors
-    - 1 second delay between retries
-    - All other errors fail immediately (no retry)
+    This function never raises — failures are logged and execution continues.
     """
     import subprocess
     import tempfile
-    import time
 
-    import redis
+    from src.core.requirements_cache import get_requirements_sync
 
-    # Get Redis URL from environment (check both BIFROST_REDIS_URL and REDIS_URL)
-    redis_url = os.environ.get("BIFROST_REDIS_URL") or os.environ.get("REDIS_URL", "redis://localhost:6379")
+    content = get_requirements_sync()
+    if not content:
+        logger.info("[pool] No requirements.txt found")
+        return
 
-    # Retry logic for Redis connection
-    max_retries = 3
-    retry_delay = 1.0
+    # Write to temp file and install
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write(content)
+        temp_path = f.name
 
-    for attempt in range(max_retries):
+    try:
+        logger.info("[pool] Installing packages from requirements.txt")
+
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", temp_path, "--quiet"],
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minute timeout
+        )
+
+        if result.returncode == 0:
+            pkg_count = len([line for line in content.strip().split("\n") if line.strip()])
+            logger.info(f"[pool] Installed {pkg_count} packages from requirements.txt")
+        else:
+            logger.warning(f"[pool] pip install failed: {result.stderr or result.stdout}")
+
+    except subprocess.TimeoutExpired:
+        logger.warning("[pool] pip install timed out after 5 minutes")
+
+    finally:
         try:
-            # Connect to Redis (sync client)
-            client = redis.from_url(redis_url, decode_responses=True, socket_timeout=5.0)
-
-            # Fetch cached requirements
-            data: str | None = client.get("bifrost:requirements:content")  # type: ignore[assignment]
-            client.close()
-
-            if not data:
-                logger.info("[pool] No cached requirements.txt found")
-                return
-
-            cached: dict[str, Any] = json.loads(data)
-            content = cached.get("content", "")
-
-            if not content.strip():
-                logger.info("[pool] Cached requirements.txt is empty")
-                return
-
-            # Write to temp file and install
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-                f.write(content)
-                temp_path = f.name
-
-            try:
-                logger.info("[pool] Installing packages from cached requirements.txt")
-
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", temp_path, "--quiet"],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,  # 5 minute timeout
-                )
-
-                if result.returncode == 0:
-                    # Count packages
-                    pkg_count = len([line for line in content.strip().split("\n") if line.strip()])
-                    logger.info(f"[pool] Installed {pkg_count} packages from requirements.txt")
-                else:
-                    logger.warning(
-                        f"[pool] pip install failed: {result.stderr or result.stdout}"
-                    )
-            finally:
-                # Clean up temp file
-                try:
-                    os.unlink(temp_path)
-                except OSError:
-                    pass
-
-            return  # Success, exit retry loop
-
-        except redis.ConnectionError as e:
-            if attempt < max_retries - 1:
-                logger.warning(
-                    f"[pool] Redis connection failed (attempt {attempt + 1}/{max_retries}): {e}"
-                )
-                time.sleep(retry_delay)
-            else:
-                logger.warning(
-                    f"[pool] Redis unavailable after {max_retries} attempts, "
-                    "skipping requirements install"
-                )
-
-        except json.JSONDecodeError as e:
-            logger.warning(f"[pool] Invalid JSON in cached requirements: {e}")
-            return
-
-        except subprocess.TimeoutExpired:
-            logger.warning("[pool] pip install timed out after 5 minutes")
-            return
+            os.unlink(temp_path)
+        except OSError:
+            pass
 
         except Exception as e:
             logger.warning(f"[pool] Failed to install requirements: {e}")

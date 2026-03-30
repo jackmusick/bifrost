@@ -9,11 +9,11 @@ Persistence Flow:
 1. User installs package via /api/packages/install
 2. API handler appends package to requirements, saves to S3 + Redis cache
 3. API broadcasts "recycle_workers" to all workers
-4. Workers recycle processes; ProcessPoolManager calls install_requirements_from_cache() once at pool startup
-5. pip install runs from cached requirements.txt (shared filesystem, all workers inherit)
+4. Workers recycle processes; ProcessPoolManager calls install_requirements() at pool startup
+5. pip install runs from requirements.txt (shared filesystem, all workers inherit)
 
+Read path: Redis cache → S3 fallback (re-caches on hit)
 Source of truth: S3 (_repo/requirements.txt) via RepoStorage
-Cache: Redis (bifrost:requirements:content) — pool reads this synchronously at startup
 
 Related Files:
 - api/src/routers/packages.py - Saves requirements + broadcasts recycle
@@ -27,13 +27,15 @@ Key Pattern:
 import hashlib
 import json
 import logging
-from typing import TypedDict
+import os
+from typing import Any, TypedDict
 
 from src.core.redis_client import get_redis_client
 
 logger = logging.getLogger(__name__)
 
 REQUIREMENTS_KEY = "bifrost:requirements:content"
+REQUIREMENTS_CACHE_TTL = 86400  # 24 hours
 
 
 class CachedRequirements(TypedDict):
@@ -45,7 +47,12 @@ class CachedRequirements(TypedDict):
 
 async def get_requirements() -> CachedRequirements | None:
     """
-    Fetch requirements.txt content from cache.
+    Fetch requirements.txt content.
+
+    Lookup order:
+    1. Redis cache (fast path)
+    2. S3 _repo/requirements.txt (fallback, re-caches to Redis)
+    3. None (not found)
 
     Returns:
         CachedRequirements dict if found, None otherwise
@@ -54,7 +61,86 @@ async def get_requirements() -> CachedRequirements | None:
     data = await redis.get(REQUIREMENTS_KEY)
     if data:
         return json.loads(data)
+
+    # Redis miss — fall back to S3
+    if await warm_requirements_cache():
+        data = await redis.get(REQUIREMENTS_KEY)
+        if data:
+            return json.loads(data)
+
     return None
+
+
+def get_requirements_sync() -> str | None:
+    """
+    Fetch requirements.txt content (synchronous).
+
+    Used by install_requirements() which runs in a worker thread.
+    Same lookup order as get_requirements(): Redis → S3 → None.
+
+    Returns:
+        Requirements content string, or None if not found
+    """
+    from src.core.module_cache_sync import _get_s3_client, _get_sync_redis
+
+    try:
+        client = _get_sync_redis()
+        data: str | None = client.get(REQUIREMENTS_KEY)  # type: ignore[assignment]
+        if data:
+            cached: dict[str, Any] = json.loads(data)
+            content = cached.get("content", "")
+            if content.strip():
+                return content
+            return None
+
+        # Redis miss — fall back to S3
+        logger.info("[requirements] Redis cache empty, falling back to S3")
+        content = _read_requirements_from_s3(_get_s3_client)
+        if not content:
+            return None
+
+        # Re-cache to Redis for next time
+        try:
+            content_hash = hashlib.sha256(content.encode()).hexdigest()
+            cached_data = CachedRequirements(content=content, hash=content_hash)
+            client.setex(REQUIREMENTS_KEY, REQUIREMENTS_CACHE_TTL, json.dumps(cached_data))
+            logger.info("[requirements] Re-cached requirements from S3 to Redis")
+        except Exception as e:
+            logger.warning(f"[requirements] Failed to re-cache to Redis: {e}")
+
+        return content
+
+    except Exception as e:
+        logger.warning(f"[requirements] Error reading requirements: {e}")
+        return None
+
+
+def _read_requirements_from_s3(get_client_fn: Any) -> str | None:
+    """Read _repo/requirements.txt from S3 using a sync botocore client."""
+    bucket = os.environ.get("BIFROST_S3_BUCKET")
+    if not bucket:
+        return None
+
+    client = get_client_fn()
+    if client is None:
+        return None
+
+    try:
+        response = client.get_object(Bucket=bucket, Key="_repo/requirements.txt")
+        content = response["Body"].read().decode()
+        if content.strip():
+            logger.info("[requirements] Loaded requirements.txt from S3")
+            return content
+        return None
+    except Exception as e:
+        resp = getattr(e, "response", None)
+        if isinstance(resp, dict):
+            code = resp.get("Error", {}).get("Code", "")
+            if code == "NoSuchKey":
+                logger.info("[requirements] No requirements.txt in S3")
+                return None
+        logger.warning(f"[requirements] S3 read error: {e}")
+        return None
 
 
 async def set_requirements(content: str, content_hash: str) -> None:
@@ -67,7 +153,7 @@ async def set_requirements(content: str, content_hash: str) -> None:
     """
     redis = get_redis_client()
     cached = CachedRequirements(content=content, hash=content_hash)
-    await redis.setex(REQUIREMENTS_KEY, 86400, json.dumps(cached))  # 24hr TTL
+    await redis.setex(REQUIREMENTS_KEY, REQUIREMENTS_CACHE_TTL, json.dumps(cached))
     logger.debug("Cached requirements.txt")
 
 
