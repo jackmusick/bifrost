@@ -101,6 +101,9 @@ async def cleanup_stuck_events() -> dict[str, Any]:
     }
 
     try:
+        # Collect data for WebSocket broadcasts (published after session closes)
+        broadcast_data: list[dict] = []
+
         async with get_db_context() as db:
             delivery_repo = EventDeliveryRepository(db)
             cutoff = datetime.now(timezone.utc) - timedelta(minutes=STUCK_DELIVERY_TIMEOUT_MINUTES)
@@ -147,15 +150,10 @@ async def cleanup_stuck_events() -> dict[str, Any]:
                     await delivery_repo.update_event_status(event.id)
                     results["stale_events_fixed"] += 1
 
-            await db.commit()
-
-            # Broadcast WebSocket updates for affected events
-            from src.core.pubsub import manager
-
+            # Collect broadcast data while we still have the session
             for delivery in stuck_deliveries:
                 if delivery.event and delivery.event.event_source_id:
                     try:
-                        # Get updated delivery counts
                         deliveries = await delivery_repo.get_by_event(delivery.event_id)
                         success_count = sum(
                             1 for d in deliveries if d.status == EventDeliveryStatus.SUCCESS
@@ -163,24 +161,43 @@ async def cleanup_stuck_events() -> dict[str, Any]:
                         failed_count = sum(
                             1 for d in deliveries if d.status == EventDeliveryStatus.FAILED
                         )
-
-                        await manager.publish(
-                            channel=f"event-source:{delivery.event.event_source_id}",
-                            message={
-                                "type": "event_update",
-                                "event": {
-                                    "id": str(delivery.event_id),
-                                    "event_source_id": str(delivery.event.event_source_id),
-                                    "event_type": delivery.event.event_type,
-                                    "status": getattr(delivery.event.status, "value", delivery.event.status),
-                                    "success_count": success_count,
-                                    "failed_count": failed_count,
-                                    "delivery_count": len(deliveries),
-                                },
-                            },
-                        )
+                        broadcast_data.append({
+                            "channel": f"event-source:{delivery.event.event_source_id}",
+                            "event_id": str(delivery.event_id),
+                            "event_source_id": str(delivery.event.event_source_id),
+                            "event_type": delivery.event.event_type,
+                            "status": getattr(delivery.event.status, "value", delivery.event.status),
+                            "success_count": success_count,
+                            "failed_count": failed_count,
+                            "delivery_count": len(deliveries),
+                        })
                     except Exception as e:
-                        logger.warning(f"Failed to broadcast event update: {e}")
+                        logger.warning(f"Failed to collect broadcast data: {e}")
+
+            await db.commit()
+
+        # Broadcast WebSocket updates AFTER session is closed (no DB connection held)
+        from src.core.pubsub import manager
+
+        for data in broadcast_data:
+            try:
+                await manager.publish(
+                    channel=data["channel"],
+                    message={
+                        "type": "event_update",
+                        "event": {
+                            "id": data["event_id"],
+                            "event_source_id": data["event_source_id"],
+                            "event_type": data["event_type"],
+                            "status": data["status"],
+                            "success_count": data["success_count"],
+                            "failed_count": data["failed_count"],
+                            "delivery_count": data["delivery_count"],
+                        },
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast event update: {e}")
 
         # Calculate duration
         end_time = datetime.now(timezone.utc)

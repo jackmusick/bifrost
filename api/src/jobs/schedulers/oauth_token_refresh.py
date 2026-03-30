@@ -74,10 +74,8 @@ async def run_refresh_job(
     }
 
     try:
+        # Phase 1: Load tokens needing refresh (short-lived session)
         async with get_db_context() as db:
-            # Get all tokens that can be refreshed:
-            # - authorization_code tokens with a refresh token
-            # - client_credentials tokens (re-fetch using client credentials, no refresh token needed)
             query = (
                 select(OAuthToken)
                 .join(OAuthToken.provider)
@@ -90,61 +88,109 @@ async def run_refresh_job(
                 )
             )
             result = await db.execute(query)
-            all_tokens = result.scalars().all()
+            all_tokens = list(result.scalars().all())
 
             results["total_connections"] = len(all_tokens)
 
-            # Determine which tokens need refresh
             now = datetime.now(timezone.utc)
 
             if refresh_threshold_minutes is not None:
-                # Automatic: only refresh tokens expiring within threshold
                 refresh_threshold = now + timedelta(minutes=refresh_threshold_minutes)
                 tokens_to_refresh = [
                     t for t in all_tokens
                     if t.expires_at and t.expires_at <= refresh_threshold
                 ]
             else:
-                # Manual: refresh all completed connections
                 tokens_to_refresh = list(all_tokens)
 
             results["needs_refresh"] = len(tokens_to_refresh)
 
+            # Extract data needed for refresh before session closes
+            token_refresh_data = []
             for token in tokens_to_refresh:
-                try:
-                    # Provider is already loaded via selectinload
-                    provider = token.provider
-
-                    if not provider:
-                        results["errors"].append({
-                            "token_id": str(token.id),
-                            "error": "Provider not found",
-                        })
-                        results["refresh_failed"] += 1
-                        continue
-
-                    # Attempt to refresh the token
-                    success = await _refresh_single_token(db, token, provider)
-
-                    if success:
-                        results["refreshed_successfully"] += 1
-                    else:
-                        results["refresh_failed"] += 1
-                        results["errors"].append({
-                            "token_id": str(token.id),
-                            "provider": provider.provider_name,
-                            "error": "Refresh failed",
-                        })
-
-                except Exception as e:
-                    results["refresh_failed"] += 1
+                provider = token.provider
+                if not provider:
                     results["errors"].append({
                         "token_id": str(token.id),
-                        "error": str(e),
+                        "error": "Provider not found",
                     })
-                    logger.error(f"Error refreshing token {token.id}: {e}", exc_info=True)
+                    results["refresh_failed"] += 1
+                    continue
 
-            await db.commit()
+                # Resolve integration for URL templates while session is active
+                integration_entity_id = None
+                if provider.integration_id:
+                    result_int = await db.execute(
+                        select(Integration).where(Integration.id == provider.integration_id)
+                    )
+                    integration = result_int.scalar_one_or_none()
+                    if integration and integration.default_entity_id:
+                        integration_entity_id = integration.default_entity_id
+
+                token_refresh_data.append({
+                    "token_id": token.id,
+                    "provider_id": provider.id,
+                    "provider_name": provider.provider_name,
+                    "oauth_flow_type": provider.oauth_flow_type,
+                    "client_id": provider.client_id,
+                    "encrypted_client_secret": provider.encrypted_client_secret,
+                    "token_url": provider.token_url,
+                    "token_url_defaults": dict(provider.token_url_defaults) if provider.token_url_defaults else {},
+                    "scopes": provider.scopes,
+                    "audience": provider.audience,
+                    "encrypted_refresh_token": token.encrypted_refresh_token,
+                    "integration_entity_id": integration_entity_id,
+                })
+
+        # Phase 2: Refresh tokens via HTTP (no DB connection held)
+        refresh_outcomes: list[dict] = []
+        for td in token_refresh_data:
+            try:
+                outcome = await _refresh_token_http(td)
+                refresh_outcomes.append(outcome)
+
+                if outcome["success"]:
+                    results["refreshed_successfully"] += 1
+                else:
+                    results["refresh_failed"] += 1
+                    results["errors"].append({
+                        "token_id": str(td["token_id"]),
+                        "provider": td["provider_name"],
+                        "error": outcome.get("error", "Refresh failed"),
+                    })
+
+            except Exception as e:
+                results["refresh_failed"] += 1
+                results["errors"].append({
+                    "token_id": str(td["token_id"]),
+                    "error": str(e),
+                })
+                logger.error(f"Error refreshing token {td['token_id']}: {e}", exc_info=True)
+
+        # Phase 3: Persist refresh results (short-lived session)
+        if refresh_outcomes:
+            async with get_db_context() as db:
+                for outcome in refresh_outcomes:
+                    token = await db.get(OAuthToken, outcome["token_id"])
+                    provider = await db.get(OAuthProvider, outcome["provider_id"])
+                    if not token or not provider:
+                        continue
+
+                    if outcome["success"]:
+                        token.encrypted_access_token = outcome["encrypted_access_token"]
+                        token.expires_at = outcome["expires_at"]
+                        if outcome.get("encrypted_refresh_token"):
+                            token.encrypted_refresh_token = outcome["encrypted_refresh_token"]
+                        if outcome.get("scopes"):
+                            token.scopes = outcome["scopes"]
+                        provider.status = "completed"
+                        provider.last_token_refresh = datetime.now(timezone.utc)
+                        provider.status_message = None
+                    else:
+                        provider.status = "failed"
+                        provider.status_message = outcome.get("error", "Refresh failed")[:200]
+
+                await db.commit()
 
         # Calculate duration
         end_time = datetime.now(timezone.utc)
@@ -174,121 +220,95 @@ async def run_refresh_job(
     return results
 
 
-async def _refresh_single_token(
-    db,
-    token: OAuthToken,
-    provider: OAuthProvider,
-) -> bool:
+async def _refresh_token_http(td: dict) -> dict:
     """
-    Refresh a single OAuth token.
+    Refresh a single OAuth token via HTTP (no DB session needed).
 
     Args:
-        db: Database session
-        token: Token to refresh
-        provider: OAuth provider configuration
+        td: Token data dict with provider config and credentials
 
     Returns:
-        True if refresh succeeded, False otherwise
+        Dict with refresh outcome (success, tokens, errors)
     """
+    outcome: dict = {
+        "token_id": td["token_id"],
+        "provider_id": td["provider_id"],
+        "success": False,
+    }
+
     try:
-        # Get client secret if exists
         client_secret = None
-        if provider.encrypted_client_secret:
-            client_secret = decrypt_secret(provider.encrypted_client_secret.decode())
+        if td["encrypted_client_secret"]:
+            client_secret = decrypt_secret(td["encrypted_client_secret"].decode())
 
-        # Build refresh request
-        if not provider.token_url:
-            logger.warning(f"No token URL configured for provider {provider.provider_name}")
-            return False
+        if not td["token_url"]:
+            outcome["error"] = f"No token URL configured for provider {td['provider_name']}"
+            return outcome
 
-        # Resolve URL template placeholders (e.g., {entity_id} -> actual tenant ID)
-        defaults: dict[str, str] = dict(provider.token_url_defaults) if provider.token_url_defaults else {}
-        if provider.integration_id:
-            result_int = await db.execute(
-                select(Integration).where(Integration.id == provider.integration_id)
-            )
-            integration = result_int.scalar_one_or_none()
-            if integration and integration.default_entity_id:
-                defaults["entity_id"] = integration.default_entity_id
+        # Resolve URL template placeholders
+        defaults = dict(td["token_url_defaults"])
+        if td.get("integration_entity_id"):
+            defaults["entity_id"] = td["integration_entity_id"]
 
-        token_url = resolve_url_template(
-            url=provider.token_url,
-            defaults=defaults,
-        )
+        token_url = resolve_url_template(url=td["token_url"], defaults=defaults)
 
-        # Use the shared OAuth provider client
         oauth_client = OAuthProviderClient()
 
-        if provider.oauth_flow_type == "client_credentials":
-            # Client credentials flow: re-fetch token using client credentials
+        if td["oauth_flow_type"] == "client_credentials":
             if not client_secret:
-                logger.warning(f"No client secret for client_credentials provider {provider.provider_name}")
-                return False
+                outcome["error"] = f"No client secret for client_credentials provider {td['provider_name']}"
+                return outcome
 
-            scopes = " ".join(provider.scopes) if provider.scopes else ""
+            scopes = " ".join(td["scopes"]) if td["scopes"] else ""
             success, result = await oauth_client.get_client_credentials_token(
                 token_url=token_url,
-                client_id=provider.client_id,
+                client_id=td["client_id"],
                 client_secret=client_secret,
                 scopes=scopes,
-                audience=provider.audience,
+                audience=td["audience"],
             )
         else:
-            # Authorization code flow: use refresh token
-            if not token.encrypted_refresh_token:
-                logger.warning(f"No refresh token for token {token.id}")
-                return False
+            if not td["encrypted_refresh_token"]:
+                outcome["error"] = f"No refresh token for token {td['token_id']}"
+                return outcome
 
-            refresh_token = decrypt_secret(token.encrypted_refresh_token.decode())
+            refresh_token = decrypt_secret(td["encrypted_refresh_token"].decode())
             success, result = await oauth_client.refresh_access_token(
                 token_url=token_url,
                 refresh_token=refresh_token,
-                client_id=provider.client_id,
+                client_id=td["client_id"],
                 client_secret=client_secret,
-                audience=provider.audience,
+                audience=td["audience"],
             )
 
         if not success:
             error_msg = result.get("error_description", result.get("error", "Refresh failed"))
-            logger.error(f"Token refresh failed for {provider.provider_name}: {error_msg}")
-            provider.status = "failed"
-            provider.status_message = f"Token refresh failed: {error_msg}"
-            return False
+            outcome["error"] = f"Token refresh failed: {error_msg}"
+            return outcome
 
-        # Update token in database
         new_access_token = result.get("access_token")
-        expires_at = result.get("expires_at")
-
         if not new_access_token:
-            logger.error(f"No access token in refresh response for {provider.provider_name}")
-            return False
+            outcome["error"] = f"No access token in refresh response for {td['provider_name']}"
+            return outcome
 
-        # Encrypt and store new tokens
-        token.encrypted_access_token = encrypt_secret(new_access_token).encode()
-        token.expires_at = expires_at
+        outcome["success"] = True
+        outcome["encrypted_access_token"] = encrypt_secret(new_access_token).encode()
+        outcome["expires_at"] = result.get("expires_at")
 
         # Update refresh token only for authorization_code flow
-        if provider.oauth_flow_type != "client_credentials":
-            refresh_token_value = decrypt_secret(token.encrypted_refresh_token.decode()) if token.encrypted_refresh_token else None
-            new_refresh_token = result.get("refresh_token") or refresh_token_value
-            if new_refresh_token:
-                token.encrypted_refresh_token = encrypt_secret(new_refresh_token).encode()
+        if td["oauth_flow_type"] != "client_credentials":
+            old_refresh = decrypt_secret(td["encrypted_refresh_token"].decode()) if td["encrypted_refresh_token"] else None
+            new_refresh = result.get("refresh_token") or old_refresh
+            if new_refresh:
+                outcome["encrypted_refresh_token"] = encrypt_secret(new_refresh).encode()
 
-        # Update scopes if returned
         new_scopes = result.get("scope")
         if new_scopes:
-            token.scopes = new_scopes.split(" ")
+            outcome["scopes"] = new_scopes.split(" ")
 
-        # Update provider status
-        provider.status = "completed"
-        provider.last_token_refresh = datetime.now(timezone.utc)
-        provider.status_message = None
-
-        return True
+        return outcome
 
     except Exception as e:
         logger.error(f"Error refreshing token: {e}", exc_info=True)
-        # Update provider status to indicate error
-        provider.status = "failed"
-        provider.status_message = f"Token refresh failed: {str(e)[:200]}"
-        return False
+        outcome["error"] = f"Token refresh failed: {str(e)[:200]}"
+        return outcome

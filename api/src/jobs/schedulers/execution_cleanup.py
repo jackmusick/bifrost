@@ -51,6 +51,9 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
     now = datetime.now(timezone.utc)
 
     try:
+        # Collect data for WebSocket broadcasts (published after session closes)
+        pubsub_updates: list[dict] = []
+
         session_factory = get_session_factory()
         async with session_factory() as db:
             # Find stuck PENDING executions
@@ -163,22 +166,17 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
 
                     results["total_cleaned"] += 1
 
-                    # Publish update via WebSocket
-                    await publish_execution_update(
-                        str(execution.id),
-                        final_status.value,
-                        {"error": timeout_reason},
-                    )
-                    await publish_history_update(
-                        execution_id=str(execution.id),
-                        status=final_status.value,
-                        executed_by=execution.executed_by,
-                        executed_by_name=execution.executed_by_name,
-                        workflow_name=execution.workflow_name,
-                        org_id=execution.organization_id,
-                        started_at=execution.started_at,
-                        completed_at=now,
-                    )
+                    # Collect data for pubsub (published after session closes)
+                    pubsub_updates.append({
+                        "execution_id": str(execution.id),
+                        "final_status": final_status.value,
+                        "timeout_reason": timeout_reason,
+                        "executed_by": execution.executed_by,
+                        "executed_by_name": execution.executed_by_name,
+                        "workflow_name": execution.workflow_name,
+                        "org_id": execution.organization_id,
+                        "started_at": execution.started_at,
+                    })
 
                 except Exception as e:
                     logger.error(
@@ -193,6 +191,27 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
 
             # Commit all changes
             await db.commit()
+
+        # Publish WebSocket updates AFTER session is closed (no DB connection held)
+        for update in pubsub_updates:
+            try:
+                await publish_execution_update(
+                    update["execution_id"],
+                    update["final_status"],
+                    {"error": update["timeout_reason"]},
+                )
+                await publish_history_update(
+                    execution_id=update["execution_id"],
+                    status=update["final_status"],
+                    executed_by=update["executed_by"],
+                    executed_by_name=update["executed_by_name"],
+                    workflow_name=update["workflow_name"],
+                    org_id=update["org_id"],
+                    started_at=update["started_at"],
+                    completed_at=now,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to publish update for {update['execution_id']}: {e}")
 
         logger.info(
             "Execution cleanup completed",
