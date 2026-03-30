@@ -43,7 +43,10 @@ import psutil
 import redis.asyncio as redis
 
 from src.config import get_settings
-from src.services.execution.simple_worker import run_worker_process as simple_run_worker_process
+from src.services.execution.simple_worker import (
+    install_requirements,
+    run_worker_process as simple_run_worker_process,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +225,9 @@ class ProcessPoolManager:
         # State
         self._shutdown = False
         self._started = False
+        self._started_at: datetime | None = None
+        self._requirements_installed: int = 0
+        self._requirements_total: int = 0
 
         # Async tasks
         self._monitor_task: asyncio.Task[None] | None = None
@@ -317,10 +323,13 @@ class ProcessPoolManager:
 
         self._started = True
         self._shutdown = False
+        self._started_at = datetime.now(timezone.utc)
 
-        # Install cached requirements once (shared filesystem — all child processes inherit)
-        from src.services.execution.simple_worker import install_requirements_from_cache
-        await asyncio.to_thread(install_requirements_from_cache)
+        # Install requirements once (shared filesystem — all child processes inherit)
+        await asyncio.to_thread(install_requirements)
+
+        # Compute requirements status for heartbeat reporting
+        self._update_requirements_status()
 
         # Spawn initial pool
         for _ in range(self.min_workers):
@@ -596,14 +605,28 @@ class ProcessPoolManager:
         1. Check for timed-out executions and kill processes
         2. Check for crashed processes and replace them
         3. Scale down excess idle processes
+        4. Periodically clean stale queue entries (every 60s)
         """
+        import time as _time
+
         logger.info("Monitor loop started")
+        last_queue_cleanup = 0.0
 
         while not self._shutdown:
             try:
                 await self._check_timeouts()
                 await self._check_process_health()
                 await self._maybe_scale_down()
+
+                # Periodic stale queue cleanup
+                now = _time.monotonic()
+                if now - last_queue_cleanup > 60:
+                    last_queue_cleanup = now
+                    try:
+                        from src.services.execution.queue_tracker import cleanup_stale_entries
+                        await cleanup_stale_entries()
+                    except Exception as e:
+                        logger.warning(f"Queue cleanup error: {e}")
             except Exception as e:
                 logger.exception(f"Monitor loop error: {e}")
 
@@ -819,11 +842,11 @@ class ProcessPoolManager:
         reason = command.get("reason", "API request")
         logger.info(f"Processing recycle_all command (reason: {reason})")
 
-        # Install cached requirements before spawning replacement processes
+        # Install requirements before spawning replacement processes
         # (recycle_all is typically triggered after a package install on the API container;
-        # the worker container needs to pip install from the Redis-cached requirements)
-        from src.services.execution.simple_worker import install_requirements_from_cache
-        await asyncio.to_thread(install_requirements_from_cache)
+        # the worker container needs to pip install from requirements.txt)
+        await asyncio.to_thread(install_requirements)
+        self._update_requirements_status()
 
         count, idle_handles = self.mark_for_recycle()
         logger.info(f"Marked {count} processes for recycling ({len(idle_handles)} idle)")
@@ -1510,6 +1533,42 @@ class ProcessPoolManager:
         except Exception as e:
             logger.error(f"Error unregistering worker: {e}")
 
+    def _update_requirements_status(self) -> None:
+        """
+        Compare installed packages against requirements.txt.
+
+        Sets _requirements_installed and _requirements_total for heartbeat reporting.
+        Called after install_requirements() at startup and after recycle_all.
+        """
+        try:
+            from src.core.requirements_cache import get_requirements_sync
+
+            content = get_requirements_sync()
+            if not content:
+                self._requirements_total = 0
+                self._requirements_installed = 0
+                return
+
+            required = {
+                line.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].strip().lower()
+                for line in content.strip().split("\n")
+                if line.strip()
+            }
+            self._requirements_total = len(required)
+
+            installed = {p["name"].lower() for p in _get_installed_packages()}
+            self._requirements_installed = len(required & installed)
+
+            missing = required - installed
+            if missing:
+                logger.warning(f"[pool] Missing required packages: {', '.join(sorted(missing))}")
+            else:
+                logger.info(
+                    f"[pool] All {self._requirements_total} required packages installed"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to check requirements status: {e}")
+
     def _build_heartbeat(self) -> dict[str, Any]:
         """
         Build heartbeat payload with all process state.
@@ -1544,6 +1603,7 @@ class ProcessPoolManager:
             "worker_id": self.worker_id,
             "hostname": os.environ.get("HOSTNAME", "unknown"),
             "status": "online",
+            "started_at": self._started_at.isoformat() if self._started_at else None,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "processes": processes,
             "pool_size": len(self.processes),
@@ -1551,6 +1611,8 @@ class ProcessPoolManager:
             "busy_count": busy_count,
             "min_workers": self.min_workers,
             "max_workers": self.max_workers,
+            "requirements_installed": self._requirements_installed,
+            "requirements_total": self._requirements_total,
         }
 
     def _get_process_memory(self, pid: int | None) -> float:

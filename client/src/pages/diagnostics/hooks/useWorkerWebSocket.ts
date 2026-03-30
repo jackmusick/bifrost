@@ -85,6 +85,8 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 						min_workers: message.min_workers ?? 2,
 						max_workers: message.max_workers ?? 10,
 						processes,
+						requirements_installed: message.requirements_installed ?? null,
+						requirements_total: message.requirements_total ?? null,
 					};
 
 					if (idx >= 0) {
@@ -115,6 +117,8 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 							min_workers: 2,
 							max_workers: 10,
 							processes: [],
+							requirements_installed: null,
+							requirements_total: null,
 						},
 					];
 				});

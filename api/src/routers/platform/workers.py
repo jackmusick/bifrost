@@ -313,6 +313,8 @@ async def list_pools(
                 pool_info.idle_count = hb.get("idle_count", 0)
                 pool_info.busy_count = hb.get("busy_count", 0)
                 pool_info.last_heartbeat = hb.get("timestamp")
+                pool_info.requirements_installed = hb.get("requirements_installed")
+                pool_info.requirements_total = hb.get("requirements_total")
             except json.JSONDecodeError:
                 logger.warning(f"Invalid heartbeat JSON for pool {worker_id}")
 

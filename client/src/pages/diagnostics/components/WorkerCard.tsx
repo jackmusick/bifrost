@@ -10,6 +10,8 @@ import {
 	TrendingUp,
 	TrendingDown,
 	Cpu,
+	PackageCheck,
+	AlertTriangle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -320,6 +322,25 @@ export function PoolCard({ pool, scalingState, progressState }: PoolCardProps) {
 							<span>
 								Last heartbeat: {formatRelativeTime(pool.last_heartbeat)}
 							</span>
+						)}
+						{pool.requirements_total != null && pool.requirements_total > 0 && (
+							<div className="flex items-center gap-1">
+								{pool.requirements_installed === pool.requirements_total ? (
+									<>
+										<PackageCheck className="h-4 w-4 text-green-500" />
+										<span className="text-green-600">
+											Packages: {pool.requirements_installed}/{pool.requirements_total}
+										</span>
+									</>
+								) : (
+									<>
+										<AlertTriangle className="h-4 w-4 text-amber-500" />
+										<span className="text-amber-600">
+											Packages: {pool.requirements_installed ?? 0}/{pool.requirements_total}
+										</span>
+									</>
+								)}
+							</div>
 						)}
 					</div>
 				</CardHeader>

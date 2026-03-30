@@ -44,6 +44,8 @@ export interface PoolSummary {
 	idle_count: number;
 	busy_count: number;
 	last_heartbeat: string | null;
+	requirements_installed: number | null;
+	requirements_total: number | null;
 }
 
 export interface PoolDetail {
@@ -55,6 +57,8 @@ export interface PoolDetail {
 	min_workers: number;
 	max_workers: number;
 	processes: ProcessInfo[];
+	requirements_installed: number | null;
+	requirements_total: number | null;
 }
 
 export interface PoolsListResponse {

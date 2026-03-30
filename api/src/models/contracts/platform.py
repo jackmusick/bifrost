@@ -69,6 +69,14 @@ class PoolSummary(BaseModel):
     idle_count: int = Field(default=0, description="Number of idle processes")
     busy_count: int = Field(default=0, description="Number of busy processes")
     last_heartbeat: str | None = None
+    requirements_installed: int | None = Field(
+        default=None,
+        description="Number of required packages (from requirements.txt) installed on this worker"
+    )
+    requirements_total: int | None = Field(
+        default=None,
+        description="Total number of required packages from requirements.txt"
+    )
 
 
 class PoolDetail(BaseModel):
