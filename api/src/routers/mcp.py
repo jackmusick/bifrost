@@ -179,7 +179,7 @@ def get_mcp_asgi_app():
 
     # Create ASGI app with default path="/mcp" - we mount at root so FastMCP
     # handles /mcp directly without Starlette's trailing slash redirect
-    mcp_app = fastmcp_server.http_app(json_response=True)
+    mcp_app = fastmcp_server.http_app(json_response=True, stateless_http=True)
 
     # Store original lifespan before wrapping
     original_lifespan = getattr(mcp_app, 'lifespan', None)

@@ -320,7 +320,6 @@ class BifrostMCPServer:
             mcp = _FastMCP(
                 self._name,
                 auth=auth,
-                stateless_http=True,
                 website_url=BIFROST_WEBSITE_URL,
                 icons=icons,
             )
@@ -334,7 +333,6 @@ class BifrostMCPServer:
             assert _FastMCP is not None
             self._fastmcp = _FastMCP(
                 self._name,
-                stateless_http=True,
                 website_url=BIFROST_WEBSITE_URL,
                 icons=icons,
             )
