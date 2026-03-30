@@ -49,6 +49,23 @@ Then use `Grep/Read` on `/tmp/bifrost-docs/llms.txt` whenever you need reference
 3. **If webhook:** Get sample payload from user
 4. **What integrations?** Read `.bifrost/integrations.yaml`
 5. **If migrating from Rewst:** Use `/rewst-migration` skill
+6. **If building something new** (new integration, workflow, app, or shared module — not modifying existing):
+   > "It sounds like we're building something new. Would you like me to clone the bifrost-workspace-community repo? It has working examples from the community and might already have what you need."
+
+   If the user agrees:
+   ```bash
+   if [ -d /tmp/bifrost-community ]; then
+     git -C /tmp/bifrost-community pull
+   else
+     git clone https://github.com/jackmusick/bifrost-workspace-community.git /tmp/bifrost-community
+   fi
+   ```
+
+   Then use Glob/Grep/Read on `/tmp/bifrost-community` to find relevant examples. Surface what you find and let the user decide:
+   - **Reference only** — use as inspiration, write fresh code in their workspace
+   - **Port and adapt** — copy relevant files into the workspace and adapt (UUIDs, org references, integration mappings, etc.)
+
+   Only ask once per session. If the user declines, don't ask again.
 
 #### Organization Context for CLI Commands
 
