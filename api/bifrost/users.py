@@ -19,7 +19,10 @@ class users:
     """
 
     @staticmethod
-    async def list(org_id: str | None = None) -> list[UserPublic]:
+    async def list(
+        org_id: str | None = None,
+        include_inactive: bool = False,
+    ) -> list[UserPublic]:
         """
         List users.
 
@@ -28,6 +31,7 @@ class users:
 
         Args:
             org_id: Optional organization ID to filter by (admin only)
+            include_inactive: Include inactive (disabled) users (default: False)
 
         Returns:
             list[UserPublic]: List of user objects
@@ -40,11 +44,14 @@ class users:
             >>> from bifrost import users
             >>> all_users = await users.list()
             >>> org_users = await users.list(org_id="org-123")
+            >>> all_including_disabled = await users.list(include_inactive=True)
         """
         client = get_client()
-        params = {}
+        params: dict[str, str] = {}
         if org_id:
             params["org_id"] = org_id
+        if include_inactive:
+            params["include_inactive"] = "true"
 
         response = await client.get("/api/users", params=params)
         raise_for_status_with_detail(response)
@@ -161,7 +168,7 @@ class users:
     @staticmethod
     async def delete(user_id: str) -> bool:
         """
-        Delete a user (soft delete - sets is_active to false).
+        Permanently delete a user.
 
         Requires: Platform admin privileges
 
