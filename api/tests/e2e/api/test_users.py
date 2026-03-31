@@ -263,3 +263,56 @@ class TestPermanentDelete:
         assert list_resp.status_code == 200
         user_ids = [u["id"] for u in list_resp.json()]
         assert user_id not in user_ids
+
+    def test_can_delete_user_with_role_assignments(self, e2e_client, platform_admin, org1):
+        """Deleting a user with role assignments cleans up the assignments."""
+        # Create a test user
+        create_resp = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": "delete-with-roles@gobifrost.dev",
+                "name": "Delete With Roles",
+                "organization_id": org1["id"],
+                "is_superuser": False,
+            },
+        )
+        assert create_resp.status_code == 201
+        user_id = create_resp.json()["id"]
+
+        # Create a role and assign the user to it
+        role_resp = e2e_client.post(
+            "/api/roles",
+            headers=platform_admin.headers,
+            json={"name": "Temp Role For Delete Test", "description": "test"},
+        )
+        assert role_resp.status_code == 201
+        role_id = role_resp.json()["id"]
+
+        assign_resp = e2e_client.post(
+            f"/api/roles/{role_id}/users",
+            headers=platform_admin.headers,
+            json={"user_ids": [user_id]},
+        )
+        assert assign_resp.status_code == 204
+
+        # Delete the user — should succeed despite role assignments
+        del_resp = e2e_client.delete(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+        )
+        assert del_resp.status_code == 204
+
+        # Verify role still exists but user is gone from it
+        role_users_resp = e2e_client.get(
+            f"/api/roles/{role_id}/users",
+            headers=platform_admin.headers,
+        )
+        assert role_users_resp.status_code == 200
+        assert user_id not in role_users_resp.json().get("user_ids", [])
+
+        # Cleanup: delete the role
+        e2e_client.delete(
+            f"/api/roles/{role_id}",
+            headers=platform_admin.headers,
+        )

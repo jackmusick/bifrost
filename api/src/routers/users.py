@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
@@ -264,6 +264,9 @@ async def delete_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System user cannot be deleted",
         )
+
+    # Clean up role assignments before deleting
+    await db.execute(delete(UserRoleORM).where(UserRoleORM.user_id == db_user.id))
 
     await db.delete(db_user)
     await db.flush()
