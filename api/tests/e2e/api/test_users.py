@@ -231,44 +231,9 @@ class TestDisableEnableUser:
 class TestPermanentDelete:
     """Test permanent user deletion."""
 
-    def test_cannot_delete_active_user(self, e2e_client, platform_admin, org1):
-        """Cannot permanently delete an active user — must disable first."""
+    def test_can_permanently_delete_active_user(self, e2e_client, platform_admin, org1):
+        """Can permanently delete a user without disabling first."""
         # Create a test user (active by default)
-        create_resp = e2e_client.post(
-            "/api/users",
-            headers=platform_admin.headers,
-            json={
-                "email": "nodelete-active@gobifrost.dev",
-                "name": "No Delete Active",
-                "organization_id": org1["id"],
-                "is_superuser": False,
-            },
-        )
-        assert create_resp.status_code == 201
-        user_id = create_resp.json()["id"]
-
-        # Try to delete while active
-        del_resp = e2e_client.delete(
-            f"/api/users/{user_id}",
-            headers=platform_admin.headers,
-        )
-        assert del_resp.status_code == 400
-        assert "disabled" in del_resp.json()["detail"].lower() or "inactive" in del_resp.json()["detail"].lower()
-
-        # Cleanup: disable then delete
-        e2e_client.patch(
-            f"/api/users/{user_id}",
-            headers=platform_admin.headers,
-            json={"is_active": False},
-        )
-        e2e_client.delete(
-            f"/api/users/{user_id}",
-            headers=platform_admin.headers,
-        )
-
-    def test_can_permanently_delete_disabled_user(self, e2e_client, platform_admin, org1):
-        """Can permanently delete a disabled user."""
-        # Create a test user
         create_resp = e2e_client.post(
             "/api/users",
             headers=platform_admin.headers,
@@ -282,22 +247,14 @@ class TestPermanentDelete:
         assert create_resp.status_code == 201
         user_id = create_resp.json()["id"]
 
-        # Disable first
-        disable_resp = e2e_client.patch(
-            f"/api/users/{user_id}",
-            headers=platform_admin.headers,
-            json={"is_active": False},
-        )
-        assert disable_resp.status_code == 200
-
-        # Now permanently delete
+        # Delete directly (no disable step needed)
         del_resp = e2e_client.delete(
             f"/api/users/{user_id}",
             headers=platform_admin.headers,
         )
         assert del_resp.status_code == 204
 
-        # Verify user is gone (even with include_inactive)
+        # Verify user is gone
         list_resp = e2e_client.get(
             "/api/users",
             headers=platform_admin.headers,

@@ -265,12 +265,6 @@ async def delete_user(
             detail="System user cannot be deleted",
         )
 
-    if db_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User must be disabled before permanent deletion",
-        )
-
     await db.delete(db_user)
     await db.flush()
     logger.info(f"Permanently deleted user {user_id}")
