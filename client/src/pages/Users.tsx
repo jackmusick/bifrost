@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
 	Shield,
 	Users as UsersIcon,
@@ -10,6 +10,8 @@ import {
 	Globe,
 	Building2,
 	Star,
+	ArrowUp,
+	ArrowDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,6 +59,18 @@ import type { components } from "@/lib/v1";
 type User = components["schemas"]["UserPublic"];
 type Organization = components["schemas"]["OrganizationPublic"];
 
+type SortColumn = "organization" | "name" | "email" | "type" | "created" | "last_login";
+type SortDirection = "asc" | "desc";
+
+function SortIcon({ column, sortColumn, sortDirection }: { column: SortColumn; sortColumn: SortColumn; sortDirection: SortDirection }) {
+	if (sortColumn !== column) return null;
+	return sortDirection === "asc" ? (
+		<ArrowUp className="inline ml-1 h-3 w-3" />
+	) : (
+		<ArrowDown className="inline ml-1 h-3 w-3" />
+	);
+}
+
 export function Users() {
 	const [selectedUser, setSelectedUser] = useState<User | undefined>();
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -68,6 +82,8 @@ export function Users() {
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
 	);
+	const [sortColumn, setSortColumn] = useState<SortColumn>("name");
+	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
 	const { scope } = useOrgScope();
 	const { user: currentUser, isPlatformAdmin } = useAuth();
@@ -100,6 +116,55 @@ export function Users() {
 
 	// Apply search filter
 	const filteredUsers = useSearch(users || [], searchTerm, ["email", "name"]);
+
+	// Apply sorting
+	const sortedUsers = useMemo(() => {
+		if (!filteredUsers) return [];
+		return [...filteredUsers].sort((a, b) => {
+			const dir = sortDirection === "asc" ? 1 : -1;
+			switch (sortColumn) {
+				case "organization": {
+					const aOrg = a.organization_id
+						? (organizations?.find((o: Organization) => o.id === a.organization_id)?.name || a.organization_id)
+						: "Platform";
+					const bOrg = b.organization_id
+						? (organizations?.find((o: Organization) => o.id === b.organization_id)?.name || b.organization_id)
+						: "Platform";
+					return dir * aOrg.localeCompare(bOrg);
+				}
+				case "name":
+					return dir * (a.name || a.email || "").localeCompare(b.name || b.email || "");
+				case "email":
+					return dir * (a.email || "").localeCompare(b.email || "");
+				case "type": {
+					const aVal = a.is_superuser ? 1 : 0;
+					const bVal = b.is_superuser ? 1 : 0;
+					return dir * (aVal - bVal);
+				}
+				case "created": {
+					const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
+					const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+					return dir * (aDate - bDate);
+				}
+				case "last_login": {
+					const aDate = a.last_login ? new Date(a.last_login).getTime() : 0;
+					const bDate = b.last_login ? new Date(b.last_login).getTime() : 0;
+					return dir * (aDate - bDate);
+				}
+				default:
+					return 0;
+			}
+		});
+	}, [filteredUsers, sortColumn, sortDirection, organizations]);
+
+	const handleSort = (column: SortColumn) => {
+		if (sortColumn === column) {
+			setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+		} else {
+			setSortColumn(column);
+			setSortDirection("asc");
+		}
+	};
 
 	const handleEditUser = (user: User) => {
 		setSelectedUser(user);
@@ -286,25 +351,63 @@ export function Users() {
 							<Skeleton key={i} className="h-12 w-full" />
 						))}
 					</div>
-				) : filteredUsers && filteredUsers.length > 0 ? (
+				) : sortedUsers && sortedUsers.length > 0 ? (
 					<DataTable>
 						<DataTableHeader>
 							<DataTableRow>
 								{isPlatformAdmin && (
-									<DataTableHead className="w-0 whitespace-nowrap">Organization</DataTableHead>
+									<DataTableHead
+										className="w-0 whitespace-nowrap cursor-pointer select-none"
+										onClick={() => handleSort("organization")}
+									>
+										Organization
+										<SortIcon column="organization" sortColumn={sortColumn} sortDirection={sortDirection} />
+									</DataTableHead>
 								)}
-								<DataTableHead>Name</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">Email</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">Type</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">Created</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">Last Login</DataTableHead>
+								<DataTableHead
+									className="cursor-pointer select-none"
+									onClick={() => handleSort("name")}
+								>
+									Name
+									<SortIcon column="name" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
+								<DataTableHead
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
+									onClick={() => handleSort("email")}
+								>
+									Email
+									<SortIcon column="email" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
+								<DataTableHead
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
+									onClick={() => handleSort("type")}
+								>
+									Type
+									<SortIcon column="type" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
+								<DataTableHead
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
+									onClick={() => handleSort("created")}
+								>
+									Created
+									<SortIcon column="created" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
+								<DataTableHead
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
+									onClick={() => handleSort("last_login")}
+								>
+									Last Login
+									<SortIcon column="last_login" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
 								<DataTableHead className="w-0 whitespace-nowrap text-right"></DataTableHead>
 							</DataTableRow>
 						</DataTableHeader>
 						<DataTableBody>
-							{filteredUsers.map((user) => (
+							{sortedUsers.map((user) => (
 								<DataTableRow
 									key={user.id}
+									clickable
+									onClick={() => handleEditUser(user)}
 									className={
 										!user.is_active
 											? "opacity-60"
@@ -365,7 +468,10 @@ export function Users() {
 											: "Never"}
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap text-right">
-										<div className="flex items-center justify-end gap-2">
+										<div
+											className="flex items-center justify-end gap-2"
+											onClick={(e) => e.stopPropagation()}
+										>
 											<Tooltip>
 												<TooltipTrigger asChild>
 													<div className="w-fit">
@@ -405,21 +511,17 @@ export function Users() {
 											>
 												<Edit className="h-4 w-4" />
 											</Button>
-											{!user.is_active && (
-												<Button
-													variant="ghost"
-													size="icon"
-													onClick={() =>
-														handleDeleteUser(
-															user,
-														)
-													}
-													title="Permanently delete"
-													disabled={isSelf(user)}
-												>
-													<Trash2 className="h-4 w-4 text-destructive" />
-												</Button>
-											)}
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() =>
+													handleDeleteUser(user)
+												}
+												title="Permanently delete"
+												disabled={isSelf(user)}
+											>
+												<Trash2 className="h-4 w-4 text-destructive" />
+											</Button>
 										</div>
 									</DataTableCell>
 								</DataTableRow>

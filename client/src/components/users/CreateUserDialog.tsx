@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -12,13 +12,31 @@ import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Shield, AlertCircle, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@/components/ui/command";
+import { Shield, AlertCircle, Loader2, Check, ChevronsUpDown, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCreateUser } from "@/hooks/useUsers";
+import { useRoles, useAssignUsersToRole } from "@/hooks/useRoles";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 
 type Organization = components["schemas"]["OrganizationPublic"];
+type Role = components["schemas"]["RolePublic"];
 
 interface CreateUserDialogProps {
 	open: boolean;
@@ -36,9 +54,16 @@ function CreateUserDialogContent({
 	const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 	const [orgId, setOrgId] = useState<string>("");
 	const [validationError, setValidationError] = useState<string | null>(null);
+	const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
 
+	const queryClient = useQueryClient();
 	const createMutation = useCreateUser();
+	const assignUsersToRole = useAssignUsersToRole();
 	const { data: organizations, isLoading: orgsLoading } = useOrganizations();
+	const { data: allRoles } = useRoles();
+
+	const roles = useMemo(() => (allRoles ?? []) as Role[], [allRoles]);
 
 	// Find the provider org (for auto-selecting when platform admin is chosen)
 	const providerOrg = organizations?.find((org: Organization) => org.is_provider);
@@ -54,6 +79,32 @@ function CreateUserDialogContent({
 			setOrgId("");
 		}
 	};
+
+	const toggleRole = (roleId: string) => {
+		setSelectedRoleIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(roleId)) {
+				next.delete(roleId);
+			} else {
+				next.add(roleId);
+			}
+			return next;
+		});
+	};
+
+	const removeRole = (roleId: string) => {
+		setSelectedRoleIds((prev) => {
+			const next = new Set(prev);
+			next.delete(roleId);
+			return next;
+		});
+	};
+
+	const selectedRoleNames = useMemo(() => {
+		return roles
+			.filter((r) => selectedRoleIds.has(r.id))
+			.map((r) => ({ id: r.id, name: r.name }));
+	}, [roles, selectedRoleIds]);
 
 	const validateForm = (): boolean => {
 		if (!email || !email.includes("@")) {
@@ -80,7 +131,7 @@ function CreateUserDialogContent({
 		}
 
 		try {
-			await createMutation.mutateAsync({
+			const result = await createMutation.mutateAsync({
 				body: {
 					email: email.trim(),
 					name: displayName.trim(),
@@ -89,6 +140,19 @@ function CreateUserDialogContent({
 					organization_id: orgId || null,
 				},
 			});
+
+			// Assign roles if any selected
+			if (selectedRoleIds.size > 0 && result?.id) {
+				for (const roleId of selectedRoleIds) {
+					await assignUsersToRole.mutateAsync({
+						params: { path: { role_id: roleId } },
+						body: { user_ids: [result.id] },
+					});
+				}
+				await queryClient.invalidateQueries({
+					queryKey: ["get", "/api/users/{user_id}/roles"],
+				});
+			}
 
 			toast.success("User created successfully", {
 				description: `${displayName} (${email}) has been added to the platform`,
@@ -105,6 +169,8 @@ function CreateUserDialogContent({
 			});
 		}
 	};
+
+	const isSaving = createMutation.isPending || assignUsersToRole.isPending;
 
 	return (
 		<DialogContent className="sm:max-w-[500px]">
@@ -215,6 +281,87 @@ function CreateUserDialogContent({
 					</p>
 				</div>
 
+				{/* Roles multi-select */}
+				{!isPlatformAdmin && (
+					<div className="space-y-2">
+						<Label>Roles</Label>
+						<Popover open={rolesPopoverOpen} onOpenChange={setRolesPopoverOpen}>
+							<PopoverTrigger asChild>
+								<Button
+									variant="outline"
+									role="combobox"
+									aria-expanded={rolesPopoverOpen}
+									className="w-full justify-between font-normal"
+								>
+									<span className={cn(
+										"truncate",
+										selectedRoleIds.size === 0 && "text-muted-foreground",
+									)}>
+										{selectedRoleIds.size === 0
+											? "Select roles..."
+											: `${selectedRoleIds.size} role${selectedRoleIds.size === 1 ? "" : "s"} selected`}
+									</span>
+									<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+								<Command>
+									<CommandInput placeholder="Search roles..." />
+									<CommandList className="max-h-48 overflow-y-auto">
+										<CommandEmpty>No roles found.</CommandEmpty>
+										<CommandGroup>
+											{roles.map((role) => (
+												<CommandItem
+													key={role.id}
+													value={role.id}
+													keywords={[role.name]}
+													onSelect={() => toggleRole(role.id)}
+												>
+													<div className="flex flex-col flex-1">
+														<span className="font-medium">{role.name}</span>
+														{role.description && (
+															<span className="text-xs text-muted-foreground">
+																{role.description}
+															</span>
+														)}
+													</div>
+													<Check
+														className={cn(
+															"ml-auto h-4 w-4",
+															selectedRoleIds.has(role.id)
+																? "opacity-100"
+																: "opacity-0",
+														)}
+													/>
+												</CommandItem>
+											))}
+										</CommandGroup>
+									</CommandList>
+								</Command>
+							</PopoverContent>
+						</Popover>
+						{selectedRoleNames.length > 0 && (
+							<div className="flex flex-wrap gap-1 mt-1">
+								{selectedRoleNames.map(({ id, name }) => (
+									<Badge key={id} variant="secondary" className="text-xs">
+										{name}
+										<button
+											type="button"
+											className="ml-1 rounded-full outline-none hover:bg-muted"
+											onClick={() => removeRole(id)}
+										>
+											<X className="h-3 w-3" />
+										</button>
+									</Badge>
+								))}
+							</div>
+						)}
+						<p className="text-xs text-muted-foreground">
+							Roles determine which forms this user can access
+						</p>
+					</div>
+				)}
+
 				{isPlatformAdmin && (
 					<Alert>
 						<Shield className="h-4 w-4" />
@@ -231,12 +378,12 @@ function CreateUserDialogContent({
 						type="button"
 						variant="outline"
 						onClick={() => onOpenChange(false)}
-						disabled={createMutation.isPending}
+						disabled={isSaving}
 					>
 						Cancel
 					</Button>
-					<Button type="submit" disabled={createMutation.isPending}>
-						{createMutation.isPending && (
+					<Button type="submit" disabled={isSaving}>
+						{isSaving && (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 						)}
 						Create User

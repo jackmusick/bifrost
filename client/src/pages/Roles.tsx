@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Pencil, Plus, Trash2, UserCog, RefreshCw, Users } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Pencil, Plus, Trash2, UserCog, RefreshCw, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -30,6 +30,18 @@ import { RoleDetailsDialog } from "@/components/roles/RoleDetailsDialog";
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
 
+type SortColumn = "name" | "status" | "created";
+type SortDirection = "asc" | "desc";
+
+function SortIcon({ column, sortColumn, sortDirection }: { column: SortColumn; sortColumn: SortColumn; sortDirection: SortDirection }) {
+	if (sortColumn !== column) return null;
+	return sortDirection === "asc" ? (
+		<ArrowUp className="inline ml-1 h-3 w-3" />
+	) : (
+		<ArrowDown className="inline ml-1 h-3 w-3" />
+	);
+}
+
 export function Roles() {
 	const [selectedRole, setSelectedRole] = useState<Role | undefined>();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -38,6 +50,8 @@ export function Roles() {
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [roleToDelete, setRoleToDelete] = useState<Role | undefined>();
 	const [searchTerm, setSearchTerm] = useState("");
+	const [sortColumn, setSortColumn] = useState<SortColumn>("name");
+	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
 	const { data: roles, isLoading, refetch } = useRoles();
 	const deleteRole = useDeleteRole();
@@ -47,6 +61,39 @@ export function Roles() {
 		"name",
 		"description",
 	]);
+
+	// Apply sorting
+	const sortedRoles = useMemo(() => {
+		if (!filteredRoles) return [];
+		return [...filteredRoles].sort((a, b) => {
+			const dir = sortDirection === "asc" ? 1 : -1;
+			switch (sortColumn) {
+				case "name":
+					return dir * (a.name || "").localeCompare(b.name || "");
+				case "status": {
+					const aVal = a.is_active ? 1 : 0;
+					const bVal = b.is_active ? 1 : 0;
+					return dir * (aVal - bVal);
+				}
+				case "created": {
+					const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
+					const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+					return dir * (aDate - bDate);
+				}
+				default:
+					return 0;
+			}
+		});
+	}, [filteredRoles, sortColumn, sortDirection]);
+
+	const handleSort = (column: SortColumn) => {
+		if (sortColumn === column) {
+			setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+		} else {
+			setSortColumn(column);
+			setSortDirection("asc");
+		}
+	};
 
 	const handleEdit = (role: Role) => {
 		setSelectedRole(role);
@@ -137,23 +184,45 @@ export function Roles() {
 						<Skeleton key={i} className="h-12 w-full" />
 					))}
 				</div>
-			) : filteredRoles && filteredRoles.length > 0 ? (
+			) : sortedRoles && sortedRoles.length > 0 ? (
 				<div className="flex-1 min-h-0">
 					<DataTable className="max-h-full">
 						<DataTableHeader>
 							<DataTableRow>
-								<DataTableHead>Name</DataTableHead>
+								<DataTableHead
+									className="cursor-pointer select-none"
+									onClick={() => handleSort("name")}
+								>
+									Name
+									<SortIcon column="name" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
 								<DataTableHead>Description</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">Status</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap">Created</DataTableHead>
+								<DataTableHead
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
+									onClick={() => handleSort("status")}
+								>
+									Status
+									<SortIcon column="status" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
+								<DataTableHead
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
+									onClick={() => handleSort("created")}
+								>
+									Created
+									<SortIcon column="created" sortColumn={sortColumn} sortDirection={sortDirection} />
+								</DataTableHead>
 								<DataTableHead className="w-0 whitespace-nowrap text-right">
 									Actions
 								</DataTableHead>
 							</DataTableRow>
 						</DataTableHeader>
 						<DataTableBody>
-							{filteredRoles.map((role) => (
-								<DataTableRow key={role.id}>
+							{sortedRoles.map((role) => (
+								<DataTableRow
+									key={role.id}
+									clickable
+									onClick={() => handleViewDetails(role)}
+								>
 									<DataTableCell className="font-medium">
 										{role.name}
 									</DataTableCell>
@@ -185,26 +254,22 @@ export function Roles() {
 											<Button
 												variant="ghost"
 												size="icon"
-												onClick={() =>
-													handleViewDetails(role)
-												}
-												title="View users and forms"
-											>
-												<Users className="h-4 w-4" />
-											</Button>
-											<Button
-												variant="ghost"
-												size="icon"
-												onClick={() => handleEdit(role)}
+												onClick={(e) => {
+													e.stopPropagation();
+													handleEdit(role);
+												}}
+												title="Edit role"
 											>
 												<Pencil className="h-4 w-4" />
 											</Button>
 											<Button
 												variant="ghost"
 												size="icon"
-												onClick={() =>
-													handleDelete(role)
-												}
+												onClick={(e) => {
+													e.stopPropagation();
+													handleDelete(role);
+												}}
+												title="Delete role"
 											>
 												<Trash2 className="h-4 w-4" />
 											</Button>

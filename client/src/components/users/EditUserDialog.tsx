@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -13,8 +13,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
-import { Shield, AlertCircle, Loader2, AlertTriangle } from "lucide-react";
-import { useUpdateUser } from "@/hooks/useUsers";
+import { Badge } from "@/components/ui/badge";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@/components/ui/command";
+import { Shield, AlertCircle, Loader2, AlertTriangle, Check, ChevronsUpDown, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUpdateUser, useUserRoles } from "@/hooks/useUsers";
+import { useRoles, useAssignUsersToRole, useRemoveUserFromRole } from "@/hooks/useRoles";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -22,6 +39,8 @@ import type { components } from "@/lib/v1";
 
 type User = components["schemas"]["UserPublic"];
 type Organization = components["schemas"]["OrganizationPublic"];
+type Role = components["schemas"]["RolePublic"];
+type UserRolesResponse = components["schemas"]["UserRolesResponse"];
 
 interface EditUserDialogProps {
 	user: User | undefined;
@@ -44,10 +63,33 @@ function EditUserDialogContent({
 	);
 	const [orgId, setOrgId] = useState<string>(user.organization_id || "");
 	const [validationError, setValidationError] = useState<string | null>(null);
+	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
+	const [rolesInitialized, setRolesInitialized] = useState(false);
 
+	const queryClient = useQueryClient();
 	const updateMutation = useUpdateUser();
+	const assignUsersToRole = useAssignUsersToRole();
+	const removeUserFromRole = useRemoveUserFromRole();
 	const { data: organizations, isLoading: orgsLoading } = useOrganizations();
+	const { data: allRoles } = useRoles();
+	const { data: userRolesData } = useUserRoles(user.id);
 	const { user: currentUser } = useAuth();
+
+	// Derive initial role IDs from query data (stable reference)
+	const initialRoleIds = useMemo(() => {
+		return new Set((userRolesData as UserRolesResponse)?.role_ids ?? []);
+	}, [userRolesData]);
+
+	// selectedRoleIds tracks the user's current selection; initialized from API on first data load
+	const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+
+	// Initialize once when role data first arrives
+	if (userRolesData && !rolesInitialized) {
+		setRolesInitialized(true);
+		setSelectedRoleIds(initialRoleIds);
+	}
+
+	const roles = useMemo(() => (allRoles ?? []) as Role[], [allRoles]);
 
 	// Find the provider org (for auto-selecting when promoting to platform admin)
 	const providerOrg = organizations?.find((org: Organization) => org.is_provider);
@@ -70,6 +112,32 @@ function EditUserDialogContent({
 			setOrgId("");
 		}
 	};
+
+	const toggleRole = (roleId: string) => {
+		setSelectedRoleIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(roleId)) {
+				next.delete(roleId);
+			} else {
+				next.add(roleId);
+			}
+			return next;
+		});
+	};
+
+	const removeRole = (roleId: string) => {
+		setSelectedRoleIds((prev) => {
+			const next = new Set(prev);
+			next.delete(roleId);
+			return next;
+		});
+	};
+
+	const selectedRoleNames = useMemo(() => {
+		return roles
+			.filter((r) => selectedRoleIds.has(r.id))
+			.map((r) => ({ id: r.id, name: r.name }));
+	}, [roles, selectedRoleIds]);
 
 	const validateForm = (): boolean => {
 		if (!displayName || displayName.trim().length === 0) {
@@ -109,12 +177,18 @@ function EditUserDialogContent({
 					: null,
 		};
 
+		// Compute role changes
+		const rolesToAdd = [...selectedRoleIds].filter((id) => !initialRoleIds.has(id));
+		const rolesToRemove = [...initialRoleIds].filter((id) => !selectedRoleIds.has(id));
+		const hasRoleChanges = rolesToAdd.length > 0 || rolesToRemove.length > 0;
+
 		// If no actual changes, just close
 		if (
 			body.name === null &&
 			body.is_active === null &&
 			body.is_superuser === null &&
-			body.organization_id === null
+			body.organization_id === null &&
+			!hasRoleChanges
 		) {
 			toast.info("No changes to save");
 			onOpenChange(false);
@@ -122,10 +196,38 @@ function EditUserDialogContent({
 		}
 
 		try {
-			await updateMutation.mutateAsync({
-				params: { path: { user_id: user.id } },
-				body,
-			});
+			// Update user fields if changed
+			if (
+				body.name !== null ||
+				body.is_active !== null ||
+				body.is_superuser !== null ||
+				body.organization_id !== null
+			) {
+				await updateMutation.mutateAsync({
+					params: { path: { user_id: user.id } },
+					body,
+				});
+			}
+
+			// Update role assignments
+			for (const roleId of rolesToAdd) {
+				await assignUsersToRole.mutateAsync({
+					params: { path: { role_id: roleId } },
+					body: { user_ids: [user.id] },
+				});
+			}
+			for (const roleId of rolesToRemove) {
+				await removeUserFromRole.mutateAsync({
+					params: { path: { role_id: roleId, user_id: user.id } },
+				});
+			}
+
+			// Invalidate user roles cache so reopening reflects changes
+			if (hasRoleChanges) {
+				await queryClient.invalidateQueries({
+					queryKey: ["get", "/api/users/{user_id}/roles"],
+				});
+			}
 
 			toast.success("User updated successfully", {
 				description: `Changes to ${user.name || user.email} have been saved`,
@@ -142,6 +244,8 @@ function EditUserDialogContent({
 			});
 		}
 	};
+
+	const isSaving = updateMutation.isPending || assignUsersToRole.isPending || removeUserFromRole.isPending;
 
 	return (
 		<DialogContent className="sm:max-w-[500px]">
@@ -276,6 +380,87 @@ function EditUserDialogContent({
 					</p>
 				</div>
 
+				{/* Roles multi-select */}
+				{!isPlatformAdmin && !isEditingSelf && (
+					<div className="space-y-2">
+						<Label>Roles</Label>
+						<Popover open={rolesPopoverOpen} onOpenChange={setRolesPopoverOpen}>
+							<PopoverTrigger asChild>
+								<Button
+									variant="outline"
+									role="combobox"
+									aria-expanded={rolesPopoverOpen}
+									className="w-full justify-between font-normal"
+								>
+									<span className={cn(
+										"truncate",
+										selectedRoleIds.size === 0 && "text-muted-foreground",
+									)}>
+										{selectedRoleIds.size === 0
+											? "Select roles..."
+											: `${selectedRoleIds.size} role${selectedRoleIds.size === 1 ? "" : "s"} selected`}
+									</span>
+									<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+								<Command>
+									<CommandInput placeholder="Search roles..." />
+									<CommandList className="max-h-48 overflow-y-auto">
+										<CommandEmpty>No roles found.</CommandEmpty>
+										<CommandGroup>
+											{roles.map((role) => (
+												<CommandItem
+													key={role.id}
+													value={role.id}
+													keywords={[role.name]}
+													onSelect={() => toggleRole(role.id)}
+												>
+													<div className="flex flex-col flex-1">
+														<span className="font-medium">{role.name}</span>
+														{role.description && (
+															<span className="text-xs text-muted-foreground">
+																{role.description}
+															</span>
+														)}
+													</div>
+													<Check
+														className={cn(
+															"ml-auto h-4 w-4",
+															selectedRoleIds.has(role.id)
+																? "opacity-100"
+																: "opacity-0",
+														)}
+													/>
+												</CommandItem>
+											))}
+										</CommandGroup>
+									</CommandList>
+								</Command>
+							</PopoverContent>
+						</Popover>
+						{selectedRoleNames.length > 0 && (
+							<div className="flex flex-wrap gap-1 mt-1">
+								{selectedRoleNames.map(({ id, name }) => (
+									<Badge key={id} variant="secondary" className="text-xs">
+										{name}
+										<button
+											type="button"
+											className="ml-1 rounded-full outline-none hover:bg-muted"
+											onClick={() => removeRole(id)}
+										>
+											<X className="h-3 w-3" />
+										</button>
+									</Badge>
+								))}
+							</div>
+						)}
+						<p className="text-xs text-muted-foreground">
+							Roles determine which forms this user can access
+						</p>
+					</div>
+				)}
+
 				{isPlatformAdmin && isPromoting && (
 					<Alert>
 						<Shield className="h-4 w-4" />
@@ -304,12 +489,12 @@ function EditUserDialogContent({
 						type="button"
 						variant="outline"
 						onClick={() => onOpenChange(false)}
-						disabled={updateMutation.isPending}
+						disabled={isSaving}
 					>
 						Cancel
 					</Button>
-					<Button type="submit" disabled={updateMutation.isPending}>
-						{updateMutation.isPending && (
+					<Button type="submit" disabled={isSaving}>
+						{isSaving && (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 						)}
 						Save Changes

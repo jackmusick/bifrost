@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Users, FileCode, X, UserPlus, FilePlus } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Users, FileCode, X, UserPlus, FilePlus, Search } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -26,18 +26,21 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	useRoleUsers,
 	useRoleForms,
 	useRemoveUserFromRole,
 } from "@/hooks/useRoles";
+import { useUsers } from "@/hooks/useUsers";
 import { AssignUsersDialog } from "./AssignUsersDialog";
 import { AssignFormsDialog } from "./AssignFormsDialog";
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
 type RoleUsersResponse = components["schemas"]["RoleUsersResponse"];
 type RoleFormsResponse = components["schemas"]["RoleFormsResponse"];
+type User = components["schemas"]["UserPublic"];
 
 interface RoleDetailsDialogProps {
 	role?: Role | undefined;
@@ -56,11 +59,38 @@ export function RoleDetailsDialog({
 	const [isRemoveFormDialogOpen, setIsRemoveFormDialogOpen] = useState(false);
 	const [userToRemove, setUserToRemove] = useState<string | undefined>();
 	const [formToRemove, setFormToRemove] = useState<string | undefined>();
+	const [userSearchTerm, setUserSearchTerm] = useState("");
 
 	const { data: users, isLoading: usersLoading } = useRoleUsers(role?.id);
 	const { data: forms, isLoading: formsLoading } = useRoleForms(role?.id);
+	const { data: allUsers } = useUsers();
 	const removeUser = useRemoveUserFromRole();
-	// const removeForm = useRemoveFormFromRole(); // Not implemented - endpoint not available
+
+	// Build user lookup map
+	const userMap = useMemo(() => {
+		const map = new Map<string, User>();
+		if (allUsers) {
+			for (const u of allUsers as User[]) {
+				map.set(u.id, u);
+			}
+		}
+		return map;
+	}, [allUsers]);
+
+	// Filter users by search term
+	const userIds = useMemo(() => (users as RoleUsersResponse)?.user_ids ?? [], [users]);
+	const filteredUserIds = useMemo(() => {
+		if (!userSearchTerm) return userIds;
+		const term = userSearchTerm.toLowerCase();
+		return userIds.filter((userId) => {
+			const u = userMap.get(userId);
+			if (!u) return userId.toLowerCase().includes(term);
+			return (
+				(u.name && u.name.toLowerCase().includes(term)) ||
+				u.email.toLowerCase().includes(term)
+			);
+		});
+	}, [userIds, userSearchTerm, userMap]);
 
 	if (!role) return null;
 
@@ -91,7 +121,7 @@ export function RoleDetailsDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onClose}>
-			<DialogContent className="sm:max-w-[700px]">
+			<DialogContent className="sm:max-w-[700px] max-h-[85vh] flex flex-col">
 				<DialogHeader>
 					<DialogTitle>{role.name}</DialogTitle>
 					<DialogDescription>
@@ -100,7 +130,7 @@ export function RoleDetailsDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<Tabs defaultValue="users" className="mt-4">
+				<Tabs defaultValue="users" className="mt-4 flex-1 min-h-0 flex flex-col">
 					<TabsList className="grid w-full grid-cols-2">
 						<TabsTrigger value="users">
 							<Users className="mr-2 h-4 w-4" />
@@ -112,8 +142,8 @@ export function RoleDetailsDialog({
 						</TabsTrigger>
 					</TabsList>
 
-					<TabsContent value="users" className="mt-4">
-						<Card>
+					<TabsContent value="users" className="mt-4 flex-1 min-h-0 flex flex-col">
+						<Card className="flex-1 min-h-0 flex flex-col">
 							<CardHeader>
 								<div className="flex items-center justify-between">
 									<div>
@@ -134,8 +164,19 @@ export function RoleDetailsDialog({
 										Assign Users
 									</Button>
 								</div>
+								{userIds.length > 0 && (
+									<div className="relative mt-2">
+										<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+										<Input
+											placeholder="Search users..."
+											value={userSearchTerm}
+											onChange={(e) => setUserSearchTerm(e.target.value)}
+											className="pl-9 h-9"
+										/>
+									</div>
+								)}
 							</CardHeader>
-							<CardContent>
+							<CardContent className="flex-1 min-h-0">
 								{usersLoading ? (
 									<div className="space-y-2">
 										{[...Array(3)].map((_, i) => (
@@ -145,37 +186,41 @@ export function RoleDetailsDialog({
 											/>
 										))}
 									</div>
-								) : users &&
-								  (users as RoleUsersResponse).user_ids &&
-								  (users as RoleUsersResponse).user_ids.length >
-										0 ? (
-									<div className="space-y-2">
-										{(
-											users as RoleUsersResponse
-										).user_ids.map((userId: string) => (
-											<div
-												key={userId}
-												className="flex items-center justify-between rounded-lg border p-3"
-											>
-												<div>
-													<p className="font-medium">
-														{userId}
-													</p>
-													<p className="text-sm text-muted-foreground">
-														User ID: {userId}
-													</p>
-												</div>
-												<Button
-													variant="ghost"
-													size="icon"
-													onClick={() =>
-														handleRemoveUser(userId)
-													}
-												>
-													<X className="h-4 w-4" />
-												</Button>
-											</div>
-										))}
+								) : userIds.length > 0 ? (
+									<div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+										{filteredUserIds.length > 0 ? (
+											filteredUserIds.map((userId: string) => {
+												const u = userMap.get(userId);
+												return (
+													<div
+														key={userId}
+														className="flex items-center justify-between rounded-lg border p-3"
+													>
+														<div>
+															<p className="font-medium">
+																{u?.name || u?.email || userId}
+															</p>
+															<p className="text-sm text-muted-foreground">
+																{u ? u.email : `User ID: ${userId}`}
+															</p>
+														</div>
+														<Button
+															variant="ghost"
+															size="icon"
+															onClick={() =>
+																handleRemoveUser(userId)
+															}
+														>
+															<X className="h-4 w-4" />
+														</Button>
+													</div>
+												);
+											})
+										) : (
+											<p className="text-sm text-muted-foreground text-center py-4">
+												No users match your search
+											</p>
+										)}
 									</div>
 								) : (
 									<div className="flex flex-col items-center justify-center py-8 text-center">
