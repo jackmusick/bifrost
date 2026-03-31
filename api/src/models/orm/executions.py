@@ -61,7 +61,7 @@ class Execution(Base):
     time_saved: Mapped[int] = mapped_column(Integer, default=0)  # Minutes saved
     value: Mapped[float] = mapped_column(Numeric(10, 2), default=0)  # Value generated
 
-    executed_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    executed_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), default=None)
     executed_by_name: Mapped[str] = mapped_column(String(255))
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None

@@ -45,7 +45,7 @@ class Agent(Base):
         ForeignKey("organizations.id"), default=None
     )
     owner_user_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("users.id"), default=None
+        ForeignKey("users.id", ondelete="SET NULL"), default=None
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Knowledge namespaces this agent can search (RAG)
@@ -170,7 +170,7 @@ class Conversation(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     agent_id: Mapped[UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL", onupdate="CASCADE"), nullable=True)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     channel: Mapped[str] = mapped_column(String(50), default="chat")
     title: Mapped[str | None] = mapped_column(String(500), default=None)
     extra_data: Mapped[dict] = mapped_column(JSONB, default={})  # Channel-specific metadata

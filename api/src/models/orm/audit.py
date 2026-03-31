@@ -23,7 +23,7 @@ class AuditLog(Base):
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None
     )
-    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), default=None)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), default=None)
     action: Mapped[str] = mapped_column(String(100))
     resource_type: Mapped[str | None] = mapped_column(String(100), default=None)
     resource_id: Mapped[UUID | None] = mapped_column(default=None)

@@ -222,7 +222,7 @@ async def publish_execution_log(
 async def publish_history_update(
     execution_id: str | UUID,
     status: str,
-    executed_by: str | UUID,
+    executed_by: str | UUID | None,
     executed_by_name: str,
     workflow_name: str,
     org_id: str | UUID | None = None,

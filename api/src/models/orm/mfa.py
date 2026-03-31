@@ -26,7 +26,7 @@ class UserMFAMethod(Base):
     __tablename__ = "user_mfa_methods"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     method_type: Mapped[MFAMethodType] = mapped_column(
         sqlalchemy.Enum(
             MFAMethodType,
@@ -74,7 +74,7 @@ class MFARecoveryCode(Base):
     __tablename__ = "mfa_recovery_codes"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     code_hash: Mapped[str] = mapped_column(String(255))
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
@@ -98,7 +98,7 @@ class TrustedDevice(Base):
     __tablename__ = "trusted_devices"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     device_fingerprint: Mapped[str] = mapped_column(String(64))
     device_name: Mapped[str | None] = mapped_column(String(255), default=None)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -128,7 +128,7 @@ class UserOAuthAccount(Base):
     __tablename__ = "user_oauth_accounts"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     provider_id: Mapped[str] = mapped_column(String(50))
     provider_user_id: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(320))
@@ -157,7 +157,7 @@ class UserPasskey(Base):
     __tablename__ = "user_passkeys"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 
     # WebAuthn credential data (required for verification)
     credential_id: Mapped[bytes] = mapped_column(sqlalchemy.LargeBinary, unique=True)

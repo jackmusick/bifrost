@@ -61,21 +61,29 @@ class User(Base):
 
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="users")
-    roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
+    roles: Mapped[list["UserRole"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
     executions: Mapped[list["Execution"]] = relationship(
-        back_populates="executed_by_user"
+        back_populates="executed_by_user", passive_deletes=True
     )
-    mfa_methods: Mapped[list["UserMFAMethod"]] = relationship(back_populates="user")
+    mfa_methods: Mapped[list["UserMFAMethod"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
     recovery_codes: Mapped[list["MFARecoveryCode"]] = relationship(
-        back_populates="user"
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
-    trusted_devices: Mapped[list["TrustedDevice"]] = relationship(back_populates="user")
+    trusted_devices: Mapped[list["TrustedDevice"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
     oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
-        back_populates="user"
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
-    passkeys: Mapped[list["UserPasskey"]] = relationship(back_populates="user")
+    passkeys: Mapped[list["UserPasskey"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
     developer_context: Mapped["DeveloperContext | None"] = relationship(
-        back_populates="user", uselist=False
+        back_populates="user", uselist=False, cascade="all, delete-orphan", passive_deletes=True
     )
 
     __table_args__ = (
@@ -123,7 +131,7 @@ class UserRole(Base):
 
     __tablename__ = "user_roles"
 
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     role_id: Mapped[UUID] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
     assigned_by: Mapped[str] = mapped_column(String(255))
     assigned_at: Mapped[datetime] = mapped_column(
