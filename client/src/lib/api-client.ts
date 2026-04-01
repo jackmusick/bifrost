@@ -114,6 +114,27 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 /**
+ * Retry a request after token refresh using current auth state.
+ */
+async function retryRequestWithFreshAuth(request: Request): Promise<Response> {
+	const headers = new Headers(request.headers);
+	const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+
+	if (token) {
+		headers.set("Authorization", `Bearer ${token}`);
+	} else {
+		headers.delete("Authorization");
+	}
+
+	return fetch(
+		new Request(request, {
+			headers,
+			credentials: "same-origin",
+		}),
+	);
+}
+
+/**
  * Handle authentication failure - clear session and redirect to login
  */
 function handleAuthFailure(): void {
@@ -245,8 +266,8 @@ baseClient.use({
 			// Attempt token refresh via cookie
 			const refreshed = await refreshAccessToken();
 			if (refreshed) {
-				// Retry original request with fresh credentials
-				return fetch(request.clone());
+				// Retry original request with current credentials
+				return retryRequestWithFreshAuth(request);
 			}
 
 			// Refresh failed - redirect to login
@@ -308,8 +329,8 @@ async function handleAuthResponse(
 		if (!AUTH_ENDPOINTS.some((ep) => url.includes(ep))) {
 			const refreshed = await refreshAccessToken();
 			if (refreshed) {
-				// Retry original request with fresh credentials
-				return fetch(request.clone());
+				// Retry original request with current credentials
+				return retryRequestWithFreshAuth(request);
 			}
 		}
 		handleAuthFailure();
