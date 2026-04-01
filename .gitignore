@@ -199,6 +199,16 @@ Desktop.ini
 .claude/settings.local.json
 .mcp.json
 
+# ==================== BIFROST WORKSPACE ====================
+
+# .bifrost/ is generated/system-managed workspace state (manifests, sync metadata).
+# It must NOT be committed as source-of-truth. Platform state is reconstructed
+# from source under features/, modules/, shared/, apps/, api/, and client/.
+.bifrost/
+
+# Tool-specific session files (superpowers brainstorm, etc.)
+.superpowers/
+
 # ==================== OTHERS ====================
 
 AzuriteConfig
