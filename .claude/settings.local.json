@@ -207,7 +207,11 @@
       "Bash(sort:*)",
       "Bash(python -m pyright:*)",
       "Bash(docker ps:*)",
-      "Bash(ruff check:*)"
+      "Bash(ruff check:*)",
+      "Bash(kubectl get:*)",
+      "Bash(kubectl -n bifrost logs bifrost-api-688d4c4847-zwbkz --tail=500 2>/dev/null | grep -i \"400\\\\|delete.*user\\\\|user.*delete\\\\|user\\\\.delete\" | tail -30)",
+      "Bash(kubectl -n bifrost logs bifrost-api-688d4c4847-zwbkz --tail=2000 2>/dev/null | grep -B5 -A5 \"60c3afba-911d-415a-8adf-77f98b3f5014\" | tail -40)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": [],
