@@ -126,6 +126,7 @@ class WorkflowExecution(BaseModel):
     variables: dict | None
     session_id: str | None
     peak_memory_bytes: int | None
+    process_rss_bytes: int | None
     cpu_total_seconds: float | None
 
 

@@ -292,6 +292,7 @@ class ExecutionRepository:
             variables=execution.variables if user.is_superuser else None,
             execution_context=execution.execution_context if user.is_superuser else None,
             peak_memory_bytes=execution.peak_memory_bytes if user.is_superuser else None,
+            process_rss_bytes=execution.process_rss_bytes if user.is_superuser else None,
             cpu_total_seconds=execution.cpu_total_seconds if user.is_superuser else None,
             # AI usage tracking (available to all users)
             ai_usage=ai_usage_list if ai_usage_list else None,

@@ -76,8 +76,10 @@ Example:
 """
 
 # SDK Modules
+# Most modules are imported eagerly — they share a common httpx dependency via .client.
+# The ai module is lazy-loaded via __getattr__ because it pulls in openai/anthropic
+# (~1,078 modules) which are only needed if a workflow calls ai.complete().
 from .api import api
-from .ai import ai
 from .config import config
 from .executions import executions
 from .email import email
@@ -155,9 +157,26 @@ except ImportError:
         pass
 
 # Enums - try platform module first, fall back to local definitions
+# NOTE: We load src/models/enums.py directly via spec_from_file_location instead of
+# `from src.models.enums import ...` because the normal import triggers
+# src/models/__init__.py which eagerly loads ALL ORM models → sqlalchemy → fastapi
+# (~200 modules, ~50MB). Worker subprocesses never need sqlalchemy.
 try:
-    from src.models.enums import ExecutionStatus, ConfigType, FormFieldType  # type: ignore[assignment]
-except ImportError:
+    import importlib.util as _imputil
+    from pathlib import Path as _Path
+    _enums_path = _Path(__file__).parent.parent / "src" / "models" / "enums.py"
+    _spec = _imputil.spec_from_file_location("_bifrost_enums", str(_enums_path))
+    if _spec and _spec.loader:
+        _enums_mod = _imputil.module_from_spec(_spec)
+        _spec.loader.exec_module(_enums_mod)
+        ExecutionStatus = _enums_mod.ExecutionStatus  # type: ignore[assignment,misc]
+        ConfigType = _enums_mod.ConfigType  # type: ignore[assignment,misc]
+        FormFieldType = _enums_mod.FormFieldType  # type: ignore[assignment,misc]
+        del _enums_mod
+    else:
+        raise ImportError("Could not load enums")
+    del _spec, _enums_path, _Path, _imputil
+except (ImportError, ModuleNotFoundError, OSError):
     from enum import Enum
 
     class ExecutionStatus(str, Enum):  # type: ignore[no-redef]
@@ -183,6 +202,18 @@ except ImportError:
         SELECT = "select"
         CHECKBOX = "checkbox"
         DATE = "date"
+
+# Lazy-load the ai module on first access.
+# bifrost.ai imports openai + anthropic (~1,078 modules, ~100MB) which are only
+# needed if a workflow calls ai.complete(). Lazy loading means lightweight
+# workflows never pay this cost.
+def __getattr__(name: str):
+    if name == "ai":
+        from .ai import ai
+        globals()["ai"] = ai  # Cache so __getattr__ is not called again
+        return ai
+    raise AttributeError(f"module 'bifrost' has no attribute {name!r}")
+
 
 __all__ = [
     # SDK Modules

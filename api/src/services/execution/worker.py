@@ -293,6 +293,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
     except Exception as e:
         import traceback
         logger.exception(f"Worker execution failed: {e}")
+        e.__traceback__ = None  # Free frame references to prevent memory leaks
 
         # Still capture metrics even on failure
         metrics = _capture_metrics(start_rss, start_utime, start_stime)

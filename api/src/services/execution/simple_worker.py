@@ -30,6 +30,7 @@ See api/src/core/requirements_cache.py for the full persistence flow.
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -173,6 +174,25 @@ def run_worker_process(
 
             # Execute and return result
             result = _execute_sync(execution_id, worker_id)
+
+            # Clean up per-execution state to prevent memory leaks
+            try:
+                from bifrost._logging import clear_sequence_counter
+                clear_sequence_counter(execution_id)
+            except Exception:
+                pass
+
+            # Force GC to reclaim circular refs (exception chains, async closures)
+            # before measuring RSS — otherwise dead objects inflate the reading
+            gc.collect()
+
+            # Report current RSS (not peak) so the pool can recycle bloated processes
+            process_rss = _get_process_rss()
+            result["process_rss_bytes"] = process_rss
+            # Also inject into metrics dict for DB persistence
+            if isinstance(result.get("metrics"), dict):
+                result["metrics"]["process_rss_bytes"] = process_rss
+
             result_queue.put(result)
 
             logger.info(
@@ -459,6 +479,22 @@ async def _read_context_from_redis(execution_id: str) -> dict[str, Any] | None:
         return None
     finally:
         await redis_client.aclose()
+
+
+def _get_process_rss() -> int:
+    """Get current process RSS in bytes (not peak).
+
+    Reads VmRSS from /proc/self/status on Linux/Docker.
+    Falls back to 0 if unavailable (e.g., macOS dev).
+    """
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024  # kB to bytes
+    except (OSError, ValueError):
+        pass
+    return 0
 
 
 def _capture_resource_metrics() -> dict[str, Any]:

@@ -92,6 +92,7 @@ class WorkflowExecution(BaseModel):
     session_id: str | None = None  # CLI session ID if executed from local runner
     # Resource metrics (admin only, null for non-admins)
     peak_memory_bytes: int | None = None
+    process_rss_bytes: int | None = None
     cpu_total_seconds: float | None = None
     # Execution model tracking
     execution_model: str | None = None  # 'process' or 'thread' - which worker model ran this

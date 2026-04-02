@@ -499,6 +499,9 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         else:
             status = ExecutionStatus.FAILED
 
+        # Free traceback references — already formatted above
+        original_exc.__traceback__ = None
+
         _, scrubbed_vars, scrubbed_logs, scrubbed_err = _scrub_outputs(
             context, None, captured_variables, logger_output, error_message
         )
@@ -540,6 +543,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                 })
 
         _wf_err_msg = str(e)
+        e.__traceback__ = None  # Free traceback references
+
         _, scrubbed_vars, scrubbed_logs, scrubbed_err = _scrub_outputs(
             context, None, captured_variables, logger_output, _wf_err_msg
         )
@@ -601,6 +606,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                     })
 
         _gen_err_msg = str(e)
+        e.__traceback__ = None  # Free traceback references
+
         _, scrubbed_vars, scrubbed_logs, scrubbed_err = _scrub_outputs(
             context, None, captured_variables, logger_output, _gen_err_msg
         )
@@ -722,6 +729,7 @@ def _script_to_callable(code: str, name: str):
         original_logging = sys.modules.get('logging')
         sys.modules['logging'] = script_logging
 
+        exec_globals: dict[str, Any] = {}
         try:
             # Create execution namespace with bifrost SDK access
             exec_globals = {
@@ -747,6 +755,8 @@ def _script_to_callable(code: str, name: str):
                 sys.modules['logging'] = original_logging
             else:
                 sys.modules.pop('logging', None)
+            # Clear exec namespace to release references to context, params, user objects
+            exec_globals.clear()
 
     # Set function metadata for trace filtering
     script_wrapper.__name__ = name
@@ -1126,6 +1136,9 @@ async def _execute_workflow_with_trace(
         # Wrap exception with captured variables and logs
         exception_to_raise = WorkflowExecutionException(e, captured_vars, workflow_logs)
         result = None
+        # Break traceback reference chain to free frame locals — the traceback
+        # has already been formatted and logged above, so the chain is no longer needed.
+        e.__traceback__ = None
     finally:
         # Note: trace function cleanup is handled in _run_workflow_in_thread
         # Clean up the logging handler

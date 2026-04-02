@@ -53,6 +53,7 @@ class Execution(Base):
 
     # Resource metrics (captured from worker process)
     peak_memory_bytes: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    process_rss_bytes: Mapped[int | None] = mapped_column(BigInteger, default=None)
     cpu_user_seconds: Mapped[float | None] = mapped_column(Float, default=None)
     cpu_system_seconds: Mapped[float | None] = mapped_column(Float, default=None)
     cpu_total_seconds: Mapped[float | None] = mapped_column(Float, default=None)

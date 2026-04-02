@@ -213,6 +213,8 @@ class ExecutionRepository(BaseRepository[Execution]):
         if metrics is not None:
             if "peak_memory_bytes" in metrics:
                 update_values["peak_memory_bytes"] = metrics["peak_memory_bytes"]
+            if "process_rss_bytes" in metrics:
+                update_values["process_rss_bytes"] = metrics["process_rss_bytes"]
             if "cpu_user_seconds" in metrics:
                 update_values["cpu_user_seconds"] = metrics["cpu_user_seconds"]
             if "cpu_system_seconds" in metrics:

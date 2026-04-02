@@ -37,6 +37,15 @@ _local = threading.local()
 _async_sequence_counters: dict[str, int] = {}
 
 
+def clear_sequence_counter(execution_id: str) -> None:
+    """Remove sequence counter for a completed execution.
+
+    Called from simple_worker.py after each execution to prevent
+    unbounded growth of the module-level counter dict.
+    """
+    _async_sequence_counters.pop(str(execution_id), None)
+
+
 def _serialize_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     Ensure metadata is JSON-serializable by converting datetime to ISO strings.

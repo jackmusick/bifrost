@@ -99,8 +99,12 @@ class Settings(BaseSettings):
         description="Seconds to wait after SIGTERM before SIGKILL"
     )
     recycle_after_executions: int = Field(
-        default=0,
-        description="Recycle process after N executions (0 = never)"
+        default=100,
+        description="Recycle process after N executions (0 = never). Safety net for memory leaks."
+    )
+    recycle_memory_mb: int = Field(
+        default=768,
+        description="Recycle process when RSS exceeds this threshold in MB (0 = disabled)"
     )
     worker_heartbeat_interval_seconds: int = Field(
         default=10,

@@ -189,6 +189,7 @@ class ProcessPoolManager:
         execution_timeout_seconds: int = 300,
         graceful_shutdown_seconds: int = 5,
         recycle_after_executions: int = 0,
+        recycle_memory_mb: int = 0,
         heartbeat_interval_seconds: int = 10,
         registration_ttl_seconds: int = 30,
         on_result: ResultCallback | None = None,
@@ -202,6 +203,7 @@ class ProcessPoolManager:
             execution_timeout_seconds: Default execution timeout in seconds
             graceful_shutdown_seconds: Seconds to wait between SIGTERM and SIGKILL
             recycle_after_executions: Recycle process after N executions (0 = never)
+            recycle_memory_mb: Recycle process when RSS exceeds this MB (0 = disabled)
             heartbeat_interval_seconds: Interval for heartbeat publications
             registration_ttl_seconds: TTL for worker registration in Redis
             on_result: Async callback for handling execution results
@@ -211,6 +213,7 @@ class ProcessPoolManager:
         self.execution_timeout_seconds = execution_timeout_seconds
         self.graceful_shutdown_seconds = graceful_shutdown_seconds
         self.recycle_after_executions = recycle_after_executions
+        self.recycle_memory_mb = recycle_memory_mb
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
         self.registration_ttl_seconds = registration_ttl_seconds
         self.on_result = on_result
@@ -1110,8 +1113,25 @@ class ProcessPoolManager:
 
         if self.recycle_after_executions > 0:
             if handle.executions_completed >= self.recycle_after_executions:
+                logger.info(
+                    f"Recycling process {handle.id} after "
+                    f"{handle.executions_completed} executions"
+                )
                 await self._recycle_process(handle)
                 return
+
+        # Memory-based recycling (safety net for Python arena fragmentation)
+        if self.recycle_memory_mb > 0:
+            rss_bytes = result.get("process_rss_bytes", 0)
+            if rss_bytes > 0:
+                rss_mb = rss_bytes / (1024 * 1024)
+                if rss_mb > self.recycle_memory_mb:
+                    logger.info(
+                        f"Recycling {handle.id}: RSS {rss_mb:.0f}MB > "
+                        f"threshold {self.recycle_memory_mb}MB"
+                    )
+                    await self._recycle_process(handle)
+                    return
 
         # Return to IDLE state
         handle.state = ProcessState.IDLE
@@ -1695,6 +1715,7 @@ def get_process_pool() -> ProcessPoolManager:
             execution_timeout_seconds=settings.execution_timeout_seconds,
             graceful_shutdown_seconds=settings.graceful_shutdown_seconds,
             recycle_after_executions=settings.recycle_after_executions,
+            recycle_memory_mb=settings.recycle_memory_mb,
             heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
             registration_ttl_seconds=settings.worker_registration_ttl_seconds,
         )
