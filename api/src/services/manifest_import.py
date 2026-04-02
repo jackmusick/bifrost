@@ -361,6 +361,14 @@ async def import_manifest_from_repo(
         result.warnings.append(f"Entity resolution failed: {e}")
         logger.warning(f"Manifest import entity resolution failed: {e}", exc_info=True)
 
+    # 6b. Refresh MCP tool registry so new/changed tools appear immediately
+    if result.applied and not dry_run:
+        try:
+            from src.services.mcp_server.server import refresh_workflow_tools
+            await refresh_workflow_tools()
+        except Exception as e:
+            logger.warning(f"Failed to refresh MCP workflow tools after manifest import: {e}")
+
     # 7. Regenerate manifest from DB
     try:
         new_manifest = await generate_manifest(db)

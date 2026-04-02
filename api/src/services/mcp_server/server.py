@@ -63,6 +63,10 @@ _TOOL_NAME_TO_WORKFLOW_ID: dict[str, str] = {}
 # Reverse mapping: workflow_id -> tool_name
 _WORKFLOW_ID_TO_TOOL_NAME: dict[str, str] = {}
 
+# Stored references for refresh_workflow_tools()
+_fastmcp_instance: "FastMCP | None" = None
+_default_mcp_context: "MCPContext | None" = None
+
 
 def _normalize_tool_name(name: str) -> str:
     """
@@ -674,6 +678,11 @@ async def _register_workflow_tools(mcp: "FastMCP", context: MCPContext) -> int:
         Number of workflow tools registered
     """
     global _TOOL_NAME_TO_WORKFLOW_ID, _WORKFLOW_ID_TO_TOOL_NAME
+    global _fastmcp_instance, _default_mcp_context
+
+    # Store refs so refresh_workflow_tools() can re-call us
+    _fastmcp_instance = mcp
+    _default_mcp_context = context
 
     if not HAS_FASTMCP or _WorkflowTool is None:
         logger.warning("FastMCP not available, skipping workflow tool registration")
@@ -787,3 +796,35 @@ async def _register_workflow_tools(mcp: "FastMCP", context: MCPContext) -> int:
     except Exception as e:
         logger.exception(f"Error registering workflow tools: {e}")
         return 0
+
+
+async def refresh_workflow_tools() -> int:
+    """Re-register all workflow tools from DB. Removes stale tools.
+
+    Call this after workflow create/update/delete to keep MCP tool list current.
+    """
+    if not _fastmcp_instance or not _default_mcp_context:
+        logger.debug("MCP not initialized, skipping workflow tool refresh")
+        return 0
+
+    old_tool_names = set(_TOOL_NAME_TO_WORKFLOW_ID.keys())
+    count = await _register_workflow_tools(_fastmcp_instance, _default_mcp_context)
+    new_tool_names = set(_TOOL_NAME_TO_WORKFLOW_ID.keys())
+
+    # Remove tools that no longer exist from FastMCP
+    for stale_name in old_tool_names - new_tool_names:
+        try:
+            _fastmcp_instance._tool_manager.remove_tool(stale_name)
+            logger.debug(f"Removed stale MCP tool: {stale_name}")
+        except Exception:
+            pass  # Tool already gone
+
+    added = new_tool_names - old_tool_names
+    removed = old_tool_names - new_tool_names
+    if added or removed:
+        logger.info(
+            f"MCP workflow tools refreshed: {count} total, "
+            f"+{len(added)} added, -{len(removed)} removed"
+        )
+
+    return count

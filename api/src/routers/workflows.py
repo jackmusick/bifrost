@@ -1052,6 +1052,13 @@ async def register_workflow(
     )
     workflow = result.scalar_one()
 
+    # Refresh MCP tool registry so new tools appear immediately
+    try:
+        from src.services.mcp_server.server import refresh_workflow_tools
+        await refresh_workflow_tools()
+    except Exception as e:
+        logger.warning(f"Failed to refresh MCP workflow tools: {e}")
+
     return RegisterWorkflowResponse(
         id=str(workflow.id),
         name=workflow.name,
@@ -1242,6 +1249,13 @@ async def update_workflow(
             await redis_client.invalidate_workflow_metadata_cache(str(workflow.id))
         except Exception as e:
             logger.warning(f"Failed to invalidate caches for workflow {workflow.name}: {e}")
+
+        # Refresh MCP tool registry so updated signatures appear immediately
+        try:
+            from src.services.mcp_server.server import refresh_workflow_tools
+            await refresh_workflow_tools()
+        except Exception as e:
+            logger.warning(f"Failed to refresh MCP workflow tools: {e}")
 
         logger.info(f"Updated workflow '{workflow.name}' organization_id={workflow.organization_id}, access_level={workflow.access_level}")
         return _convert_workflow_orm_to_schema(workflow)
@@ -1872,4 +1886,12 @@ async def delete_workflow(
         logger.info(f"Removed function '{workflow.function_name}' from {workflow.path}")
 
     await db.commit()
+
+    # Refresh MCP tool registry so deleted tools disappear immediately
+    try:
+        from src.services.mcp_server.server import refresh_workflow_tools
+        await refresh_workflow_tools()
+    except Exception as e:
+        logger.warning(f"Failed to refresh MCP workflow tools: {e}")
+
     return {"status": "deleted", "detail": f"Workflow '{workflow.name}' has been removed"}
