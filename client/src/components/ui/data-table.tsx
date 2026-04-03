@@ -106,20 +106,44 @@ DataTableFooter.displayName = "DataTableFooter";
 interface DataTableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 	/** Makes the row appear clickable with cursor and hover state */
 	clickable?: boolean;
+	/** URL for Cmd/Ctrl+click and middle-click to open in new tab */
+	href?: string;
 }
 
 const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
-	({ className, clickable, ...props }, ref) => (
-		<tr
-			ref={ref}
-			className={cn(
-				"border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
-				clickable && "cursor-pointer",
-				className,
-			)}
-			{...props}
-		/>
-	),
+	({ className, clickable, href, onClick, ...props }, ref) => {
+		const handleClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
+			if (href && (e.metaKey || e.ctrlKey)) {
+				e.preventDefault();
+				window.open(href, "_blank");
+				return;
+			}
+			onClick?.(e);
+		};
+
+		const handleMouseUp = (e: React.MouseEvent<HTMLTableRowElement>) => {
+			if (href && e.button === 1) {
+				e.preventDefault();
+				window.open(href, "_blank");
+				return;
+			}
+			props.onMouseUp?.(e);
+		};
+
+		return (
+			<tr
+				ref={ref}
+				className={cn(
+					"border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+					(clickable || href) && "cursor-pointer",
+					className,
+				)}
+				onClick={handleClick}
+				onMouseUp={handleMouseUp}
+				{...props}
+			/>
+		);
+	},
 );
 DataTableRow.displayName = "DataTableRow";
 
