@@ -183,7 +183,6 @@ class WorkflowIndexer:
                     was_inactive = not existing_workflow.is_active
 
                     update_values: dict[str, Any] = {
-                        "name": workflow_name,
                         "function_name": function_name,
                         "path": path,
                         "parameters_schema": parameters_schema,
@@ -194,9 +193,11 @@ class WorkflowIndexer:
                         "updated_at": now,
                     }
 
-                    # description/category/tags: only set initial values (when
-                    # DB field is NULL). YAML manifest and UI edits are the
-                    # source of truth — the indexer never overwrites them.
+                    # name/description/category/tags: only set initial values
+                    # (when DB field is NULL). YAML manifest and UI edits are
+                    # the source of truth — the indexer never overwrites them.
+                    if existing_workflow.name is None:
+                        update_values["name"] = workflow_name
                     if existing_workflow.description is None:
                         initial_desc = decorator_description or docstring_description
                         if initial_desc:
@@ -282,7 +283,6 @@ class WorkflowIndexer:
                     # Operational settings (timeout_seconds, cache_ttl_seconds)
                     # are API/UI-only — never set from code.
                     dp_update_values: dict[str, Any] = {
-                        "name": provider_name,
                         "parameters_schema": parameters_schema,
                         "type": "data_provider",
                         "is_active": True,
@@ -291,9 +291,11 @@ class WorkflowIndexer:
                         "updated_at": now,
                     }
 
-                    # description/category/tags: only set initial values (when
-                    # DB field is NULL). YAML manifest and UI edits are the
-                    # source of truth — the indexer never overwrites them.
+                    # name/description/category/tags: only set initial values
+                    # (when DB field is NULL). YAML manifest and UI edits are
+                    # the source of truth — the indexer never overwrites them.
+                    if existing_dp.name is None:
+                        dp_update_values["name"] = provider_name
                     if existing_dp.description is None:
                         desc = kwargs.get("description")
                         if desc:

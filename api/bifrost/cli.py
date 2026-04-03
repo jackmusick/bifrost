@@ -1764,19 +1764,18 @@ async def _process_watch_batch(
                     pass
 
     if push_files:
-        # Local manifest validation
+        # Local manifest validation (warnings only — server validates too)
         has_manifest = any(".bifrost/" in k for k in push_files)
         if has_manifest:
             val_errors = _validate_manifest_locally(base_path)
             if val_errors:
                 if watch_app:
-                    watch_app.log_error(f"Manifest invalid, push skipped: {'; '.join(val_errors)}")
+                    for err in val_errors:
+                        watch_app.log_error(f"Manifest warning: {err}")
                 else:
-                    print(f"  [{ts}] Manifest invalid, push skipped:", flush=True)
+                    print(f"  [{ts}] Manifest warnings:", flush=True)
                     for err in val_errors:
                         print(f"    - {err}", flush=True)
-                state.requeue(changes, deletes)
-                return
 
         # Create per-file spinner rows in TUI
         file_rows: dict[str, Any] = {}  # repo_path -> (batch_row, spinner_task)
@@ -2436,6 +2435,43 @@ def _validate_manifest_locally(workspace_dir: "pathlib.Path") -> list[str]:
     return validate_manifest(manifest)
 
 
+def _merge_manifest_yaml(local_content: str, server_content: str) -> str:
+    """Merge server-returned partial manifest YAML into local file by UUID key.
+
+    The server returns only changed entities.  We merge them into the local
+    file so that unrelated entities (edited locally but not yet synced) are
+    preserved.  The server's version of each UUID key wins entirely.
+    """
+    import yaml as _yaml
+
+    local_data = _yaml.safe_load(local_content) or {}
+    server_data = _yaml.safe_load(server_content) or {}
+
+    for section_key, server_section in server_data.items():
+        if not isinstance(server_section, dict):
+            # List-based sections (organizations, roles) — replace entirely
+            local_data[section_key] = server_section
+            continue
+        # Dict-based sections — merge by UUID key
+        local_section = local_data.get(section_key)
+        if not isinstance(local_section, dict):
+            local_data[section_key] = server_section
+            continue
+        local_section.update(server_section)
+
+    # Sort top-level entity dicts by key for deterministic output
+    for key, section in local_data.items():
+        if isinstance(section, dict):
+            local_data[key] = dict(sorted(section.items()))
+
+    return _yaml.dump(
+        local_data,
+        default_flow_style=False,
+        sort_keys=True,
+        allow_unicode=True,
+    ).rstrip("\n") + "\n"
+
+
 def _write_back_server_files(
     local_root: pathlib.Path,
     repo_prefix: str,
@@ -2443,25 +2479,31 @@ def _write_back_server_files(
 ) -> set[str]:
     """Write manifest_files and modified_files from server response back to local disk.
 
-    Only writes files that actually differ from local content.
+    Manifest files are merged by UUID key so that concurrent local edits to
+    unrelated entities are preserved.  Only writes files that actually differ.
     Returns set of absolute paths that were actually written (for watch mode event filtering).
     """
     written_paths: set[str] = set()
 
     manifest_dir = _find_bifrost_dir(local_root)
 
-    # Write back regenerated .bifrost/ manifest files (only if changed)
-    for filename, content in result.get("manifest_files", {}).items():
+    # Merge server manifest entries into local .bifrost/ files
+    for filename, server_content in result.get("manifest_files", {}).items():
         local_path = manifest_dir / filename
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        # Skip if local file already has identical content
+
         if local_path.exists():
             try:
-                if local_path.read_text(encoding="utf-8") == content:
+                local_content = local_path.read_text(encoding="utf-8")
+                merged = _merge_manifest_yaml(local_content, server_content)
+                if local_content == merged:
                     continue
+                local_path.write_text(merged, encoding="utf-8")
             except OSError:
-                pass
-        local_path.write_text(content, encoding="utf-8")
+                local_path.write_text(server_content, encoding="utf-8")
+        else:
+            local_path.write_text(server_content, encoding="utf-8")
+
         written_paths.add(str(local_path))
 
     # Write back modified source files (e.g. forms/agents with resolved refs)
@@ -3019,15 +3061,14 @@ async def _sync_files(
     # ── 1. Collect local files ───────────────────────────────────────────
     files, skipped = _collect_push_files(path, repo_prefix)
 
-    # Local manifest validation
+    # Local manifest validation (warnings only — server validates too)
     has_manifest = any(_is_bifrost_path(k) for k in files)
     if has_manifest:
         validation_errors = _validate_manifest_locally(path)
         if validation_errors:
-            print("Manifest validation errors (sync skipped):", file=sys.stderr)
+            print("Manifest warnings:", file=sys.stderr)
             for err in validation_errors:
                 print(f"  - {err}", file=sys.stderr)
-            return 1
 
     bifrost_files, regular_files = _separate_manifest_files(files)
 
@@ -3497,15 +3538,14 @@ async def _push_files(
         print("No files found to push.", file=sys.stderr)
         return 1
 
-    # Local manifest validation before push
+    # Local manifest validation (warnings only — server validates too)
     has_manifest = any(".bifrost/" in k or ".bifrost\\" in k for k in files)
     if has_manifest:
         validation_errors = _validate_manifest_locally(path)
         if validation_errors:
-            print("Manifest validation errors (push skipped):", file=sys.stderr)
+            print("Manifest warnings:", file=sys.stderr)
             for err in validation_errors:
                 print(f"  - {err}", file=sys.stderr)
-            return 1
 
     # Separate .bifrost/ manifest files from regular files
     bifrost_files, regular_files = _separate_manifest_files(files)

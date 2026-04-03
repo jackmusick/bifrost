@@ -2334,8 +2334,9 @@ class TestSplitManifestFormat:
         )
         wf = wf_result.scalar_one_or_none()
         assert wf is not None
-        # Name comes from decorator in code (source of truth), not manifest
-        assert wf.name == "Git Sync Test Workflow"
+        # Name comes from manifest (source of truth); indexer only sets name
+        # on initial registration (when DB field is NULL), not on re-index.
+        assert wf.name == "Legacy Test Workflow"
 
     async def test_pull_integration_preserves_config_values(
         self,

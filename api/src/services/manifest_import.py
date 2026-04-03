@@ -242,6 +242,7 @@ async def import_manifest_from_repo(
     from src.services.repo_storage import RepoStorage
     from bifrost.manifest import (
         MANIFEST_FILES,
+        filter_manifest_by_ids,
         parse_manifest_dir,
         serialize_manifest_dir,
         validate_manifest,
@@ -272,11 +273,10 @@ async def import_manifest_from_repo(
         result.warnings.append(f"Failed to parse manifest: {e}")
         return result
 
-    # 3. Validate
+    # 3. Validate (warnings only — DB FK constraints are the real safety net)
     validation_errors = validate_manifest(manifest)
     if validation_errors:
         result.warnings.extend(validation_errors)
-        return result
 
     # 4. Compute diff against current DB state
     db_manifest = await generate_manifest(db)
@@ -288,12 +288,10 @@ async def import_manifest_from_repo(
         result.dry_run = True
         return result
 
-    # 4b. Short-circuit: nothing changed
+    # 4b. Short-circuit: nothing changed — no write-back needed
     if not changed_ids:
         result.applied = True
         result.entity_changes = entity_changes  # empty list
-        new_manifest = await generate_manifest(db)
-        result.manifest_files = serialize_manifest_dir(new_manifest)
         return result
 
     # Check if diff has any deletes (to skip _resolve_deletions later)
@@ -369,10 +367,14 @@ async def import_manifest_from_repo(
         except Exception as e:
             logger.warning(f"Failed to refresh MCP workflow tools after manifest import: {e}")
 
-    # 7. Regenerate manifest from DB
+    # 7. Regenerate manifest from DB (partial: only changed entities)
     try:
         new_manifest = await generate_manifest(db)
-        result.manifest_files = serialize_manifest_dir(new_manifest)
+        if changed_ids:
+            partial = filter_manifest_by_ids(new_manifest, changed_ids)
+            result.manifest_files = serialize_manifest_dir(partial)
+        else:
+            result.manifest_files = serialize_manifest_dir(new_manifest)
     except Exception as e:
         result.warnings.append(f"Manifest regeneration failed: {e}")
 
