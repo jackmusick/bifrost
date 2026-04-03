@@ -73,9 +73,11 @@ Then use `Grep/Read` on `/tmp/bifrost-docs/llms.txt` whenever you need reference
 - **`bifrost watch`/`sync`**: Files sync based on manifest bindings, not CLI flags — the manifest's org references in `.bifrost/*.yaml` determine where things land
 - **`bifrost api`**: Authenticated API client for inspecting platform state (executions, workflows, etc.). Endpoints that need org context accept it as a parameter in the URL or body, same as the web UI
 
-### Start Watch Mode
+### Syncing and Deployment — NEVER Run Without Being Asked
 
-Before any build work, ensure `bifrost watch` is running. **The user (not the agent) should start watch** because the initial sync may present interactive conflict resolution (TUI).
+**NEVER run `bifrost watch`, `bifrost sync`, `bifrost push`, or `bifrost git push` unless the user explicitly asks you to.** These commands sync local files to the live platform and can trigger interactive prompts, conflict resolution, or unintended deployments. The agent's job is to write files locally — the user controls when and how they are synced.
+
+Before any build work, check if `bifrost watch` is already running:
 
 ```bash
 pgrep -f 'bifrost watch' > /dev/null 2>&1 && echo "RUNNING" || echo "NOT RUNNING"
@@ -119,6 +121,28 @@ Then use these IDs in all files — workflow code, manifest entries, form/agent 
 4. Watch mode syncs file changes to platform (entities must already be in manifests)
 5. Test workflows: `bifrost run <file> --workflow <name> --org <UUID> --params '{...}'`
 6. When happy: `git add && git commit && git push`
+
+### MCP Tool Naming Convention (CRITICAL for Discoverability)
+
+When workflows are exposed as MCP tools (via agents), their `name` field becomes the MCP tool name and `description` becomes the MCP tool description. Claude.ai uses a deferred tool search system where tools compete on relevance ranking across ALL connected MCP servers. Generic names like `list_findings` or `review_runs` get buried by other servers' tools.
+
+**Tool name format:** `{context}_{action}` — prefix every tool name with a distinctive context word from the agent/feature domain.
+
+**Tool description format:** Must include the agent/feature name and enough distinctive vocabulary to win search ranking. Lead with what it does, include the domain context.
+
+Example — Agent Tuning tools:
+
+| Bad name | Good name | Bad description | Good description |
+|----------|-----------|-----------------|------------------|
+| `list_findings` | `list_agent_tuning_findings` | "List findings with filtering" | "List agent tuning findings from Bifrost AI agent run reviews with filtering and pagination" |
+| `review_agent_runs` | `review_agent_tuning_runs` | "Review an agent's recent runs" | "Review a Bifrost AI agent's recent conversation runs and create tuning findings for prompt issues" |
+| `dry_run_prompt` | `dry_run_agent_tuning_prompt` | "Test a candidate prompt" | "Generate a candidate prompt from confirmed agent tuning findings and dry-run test it against historical runs" |
+
+**Rules:**
+1. Every tool name MUST contain a context prefix that identifies its agent/feature (e.g. `agent_tuning_`, `halopsa_`, `documentation_`)
+2. The `description` field MUST mention the agent or feature name — this is what `tool_search` ranks on
+3. Descriptions should be self-contained — someone seeing ONLY the description (no server name) should know what domain this tool belongs to
+4. Follow the convention used by professional MCP servers: `microsoft_docs_search`, `outlook_email_search`, `execute_halopsa_sql`
 
 ### CLI Commands Reference
 
