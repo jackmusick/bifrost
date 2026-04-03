@@ -88,6 +88,7 @@ export function LogsTable({
                         <DataTableRow
                             key={log.id}
                             clickable
+                            href={`/history/${log.execution_id}`}
                             onClick={() => onLogClick(log)}
                             className="cursor-pointer"
                         >
