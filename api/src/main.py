@@ -413,6 +413,18 @@ def create_app() -> FastAPI:
     # Middleware
     # ==========================================================================
 
+    # CORS for MCP OAuth discovery endpoints (/.well-known/*, /register, /authorize, /token)
+    # These routes are on FastAPI directly, not the MCP ASGI app which has its own CORS.
+    # Without this, browser-based MCP clients (e.g. MCP Inspector) can't read discovery responses.
+    from starlette.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["Mcp-Session-Id"],
+    )
+
     # Add CSRF protection middleware
     # Only enforces for cookie-based auth with unsafe methods (POST, PUT, DELETE, PATCH)
     # Bearer token auth is exempt since browsers don't automatically include it
