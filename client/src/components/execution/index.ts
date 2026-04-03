@@ -25,3 +25,4 @@ export {
 // Existing components
 export { PrettyInputDisplay } from "./PrettyInputDisplay";
 export { SafeHTMLRenderer } from "./SafeHTMLRenderer";
+export { ExecutionMetadataBar } from "./ExecutionMetadataBar";
