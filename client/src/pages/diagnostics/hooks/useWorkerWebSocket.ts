@@ -87,6 +87,8 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 						processes,
 						requirements_installed: message.requirements_installed ?? null,
 						requirements_total: message.requirements_total ?? null,
+						memory_current_bytes: (message as any).memory_current_bytes ?? -1,
+						memory_max_bytes: (message as any).memory_max_bytes ?? -1,
 					};
 
 					if (idx >= 0) {

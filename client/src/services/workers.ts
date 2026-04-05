@@ -59,6 +59,8 @@ export interface PoolDetail {
 	processes: ProcessInfo[];
 	requirements_installed: number | null;
 	requirements_total: number | null;
+	memory_current_bytes?: number;
+	memory_max_bytes?: number;
 }
 
 export interface PoolsListResponse {
@@ -237,55 +239,6 @@ export function useQueueStatus(params?: { limit?: number; offset?: number }) {
 }
 
 /**
- * Hook to get global pool configuration
- */
-export function usePoolConfig() {
-	return useQuery<PoolConfigUpdateResponse>({
-		queryKey: ["pools", "config"],
-		queryFn: async () => {
-			const response = await authFetch("/api/platform/workers/config");
-			if (!response.ok) {
-				throw new Error(`Failed to fetch config: ${response.statusText}`);
-			}
-			return response.json();
-		},
-	});
-}
-
-/**
- * Hook to update global pool configuration (min/max workers)
- */
-export function useUpdatePoolConfig() {
-	const queryClient = useQueryClient();
-
-	return useMutation<
-		PoolConfigUpdateResponse,
-		Error,
-		PoolConfigUpdateRequest
-	>({
-		mutationFn: async (config) => {
-			const response = await authFetch(
-				"/api/platform/workers/config",
-				{
-					method: "PATCH",
-					body: JSON.stringify(config),
-				}
-			);
-			if (!response.ok) {
-				const error = await response.json().catch(() => ({}));
-				throw new Error(
-					error.detail || `Failed to update config: ${response.statusText}`
-				);
-			}
-			return response.json();
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["pools"] });
-		},
-	});
-}
-
-/**
  * Hook to recycle all processes in a pool
  */
 export function useRecycleAllProcesses() {
@@ -316,5 +269,42 @@ export function useRecycleAllProcesses() {
 			queryClient.invalidateQueries({ queryKey: ["pools"] });
 		},
 	});
+}
+
+// =============================================================================
+// Worker Metrics (Time-Series for Diagnostics Chart)
+// =============================================================================
+
+export interface WorkerMetricPoint {
+    timestamp: string;
+    worker_id: string;
+    memory_current: number;
+    memory_max: number;
+    fork_count: number;
+    busy_count: number;
+    idle_count: number;
+}
+
+export interface WorkerMetricsResponse {
+    range: string;
+    points: WorkerMetricPoint[];
+}
+
+export function useWorkerMetrics(range: string = "1h") {
+    return useQuery<WorkerMetricsResponse>({
+        queryKey: ["worker-metrics", range],
+        queryFn: async () => {
+            const response = await authFetch(
+                `/api/platform/workers/metrics?range=${range}`
+            );
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to fetch worker metrics: ${response.statusText}`
+                );
+            }
+            return response.json();
+        },
+        refetchInterval: 60_000, // Refresh every 60s to get new data points
+    });
 }
 

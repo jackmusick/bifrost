@@ -11,7 +11,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { useUpdatePoolConfig } from "@/services/workers";
 import { toast } from "sonner";
 
 interface PoolConfigFormProps {
@@ -30,8 +29,6 @@ export function PoolConfigForm({
 	const [minWorkers, setMinWorkers] = useState(currentMin);
 	const [maxWorkers, setMaxWorkers] = useState(currentMax);
 	const [error, setError] = useState<string | null>(null);
-
-	const updateConfig = useUpdatePoolConfig();
 
 	// Reset form when dialog opens (syncs with latest prop values)
 	const handleOpenChange = (newOpen: boolean) => {
@@ -56,23 +53,18 @@ export function PoolConfigForm({
 		return true;
 	};
 
+	const [isSaving, setIsSaving] = useState(false);
+
 	const handleSave = async () => {
 		if (!validate()) return;
 
+		setIsSaving(true);
 		try {
-			const result = await updateConfig.mutateAsync({
-				min_workers: minWorkers,
-				max_workers: maxWorkers,
-			});
-
-			toast.success("Pool configuration updated", {
-				description: `Workers: ${result.new_min}-${result.new_max}`,
-			});
-
+			// TODO(Task 8): re-implement with updated config endpoint
+			toast.info("Pool configuration (coming soon)");
 			onOpenChange(false);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : "Unknown error";
-			toast.error("Failed to update configuration", { description: message });
+		} finally {
+			setIsSaving(false);
 		}
 	};
 
@@ -129,9 +121,9 @@ export function PoolConfigForm({
 					</Button>
 					<Button
 						onClick={handleSave}
-						disabled={updateConfig.isPending || !hasChanges}
+						disabled={isSaving || !hasChanges}
 					>
-						{updateConfig.isPending && (
+						{isSaving && (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 						)}
 						Save Changes

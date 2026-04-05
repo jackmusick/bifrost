@@ -3,7 +3,7 @@ import { RefreshCw, Loader2, WifiOff, Server, Activity, Settings } from "lucide-
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { usePools, useQueueStatus, usePoolConfig } from "@/services/workers";
+import { usePools, useQueueStatus } from "@/services/workers";
 import { getErrorMessage } from "@/lib/api-error";
 import { QueueBadge } from "./QueueBadge";
 import { PoolCard } from "./WorkerCard";
@@ -25,8 +25,6 @@ export function WorkersTab() {
 		refetch: refetchQueue,
 	} = useQueueStatus({ limit: 50 });
 
-	// Global pool configuration
-	const { data: configData } = usePoolConfig();
 	const [configDialogOpen, setConfigDialogOpen] = useState(false);
 
 	// Real-time updates via WebSocket
@@ -47,8 +45,8 @@ export function WorkersTab() {
 	const restPools = poolsData?.pools || [];
 	const pools = wsPools.length > 0 ? wsPools : restPools;
 	const queueItems = queueData?.items || [];
-	const currentMin = configData?.new_min ?? 2;
-	const currentMax = configData?.new_max ?? 10;
+	const currentMin = 2;
+	const currentMax = 10;
 
 	// Compute stats from pools data (real-time from WebSocket)
 	const statsData = useMemo(() => {
