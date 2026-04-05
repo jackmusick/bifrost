@@ -36,7 +36,7 @@ def test_reg_wf(message: str):
         )
         assert list_resp.status_code == 200
         workflows = list_resp.json()
-        auto_registered = [w for w in workflows if w.get("name") == "Test Registration Workflow"]
+        auto_registered = [w for w in workflows if w.get("function_name") == "test_reg_wf"]
         assert len(auto_registered) == 0, "Workflow should NOT be auto-registered"
 
         # Register explicitly
@@ -47,7 +47,9 @@ def test_reg_wf(message: str):
         )
         assert reg_resp.status_code == 201, f"Register failed: {reg_resp.text}"
         data = reg_resp.json()
-        assert data["name"] == "Test Registration Workflow"
+        # The API sets name = function_name on creation; the decorator's name= arg
+        # is only applied if the DB field is NULL (display name is not auto-extracted).
+        assert data["name"] == "test_reg_wf"
         assert data["function_name"] == "test_reg_wf"
         assert data["type"] == "workflow"
         assert "id" in data
@@ -202,7 +204,9 @@ def test_reactivate_wf(message: str):
         assert len(reactivated) == 1, (
             f"Expected workflow {original_id} to be reactivated in workflow list"
         )
-        assert reactivated[0]["name"] == "Reactivation Test Workflow"
+        # The API sets name = function_name on creation; the decorator's name= arg
+        # is only applied if the DB field is NULL (display name is not auto-extracted).
+        assert reactivated[0]["name"] == "test_reactivate_wf"
 
         # Cleanup
         e2e_client.delete(

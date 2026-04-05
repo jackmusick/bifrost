@@ -87,7 +87,7 @@ class TestSDKImportsFromWorkflow:
 
     def test_import_bifrost_executions(self):
         """Test importing executions module"""
-        from bifrost import executions
+        from bifrost.executions import executions
 
         assert hasattr(executions, 'list')
         assert hasattr(executions, 'get')

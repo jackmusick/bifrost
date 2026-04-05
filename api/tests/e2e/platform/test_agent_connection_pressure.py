@@ -170,7 +170,8 @@ class TestConcurrentAgentRuns:
             headers=platform_admin.headers,
         )
         assert runs_resp.status_code == 200
-        runs = runs_resp.json()
+        runs_data = runs_resp.json()
+        runs = runs_data["items"]
         assert len(runs) > 0, "No agent runs found"
 
         run_id = runs[0]["id"]

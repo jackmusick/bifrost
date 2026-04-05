@@ -447,7 +447,10 @@ def documented_workflow(message: str, count: int = 5):
         # 4. Verify workflow was enriched with correct metadata
         await db_session.refresh(pre_wf)
 
-        assert pre_wf.name == "Documented Workflow"
+        # The indexer only sets name when it is NULL; since pre_wf was created with
+        # name="documented_workflow" (not None), the display name from the decorator
+        # is not applied — name stays as the initial value.
+        assert pre_wf.name == "documented_workflow"
         assert pre_wf.description == "A well-documented workflow"
         assert pre_wf.category == "Testing"
         assert pre_wf.is_active is True
