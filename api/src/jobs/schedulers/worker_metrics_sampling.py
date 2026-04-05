@@ -28,9 +28,13 @@ async def sample_worker_metrics() -> dict:
 
     try:
         # Find all registered worker pools in Redis
-        pool_keys = []
-        async for key in redis_client.scan_iter("bifrost:pool:*:heartbeat"):
-            pool_keys.append(key)
+        pool_keys: list[str] = []
+        cursor = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor, match="bifrost:pool:*:heartbeat", count=100)
+            pool_keys.extend(keys)
+            if cursor == 0:
+                break
 
         if not pool_keys:
             return {"workers_sampled": 0}

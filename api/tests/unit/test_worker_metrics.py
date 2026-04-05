@@ -74,6 +74,6 @@ class TestMetricsDownsampling:
             value = int(range_str[:-1])
             if unit == "h":
                 result = timedelta(hours=value)
-            elif unit == "d":
+            else:
                 result = timedelta(days=value)
             assert result == expected
