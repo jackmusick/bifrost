@@ -53,6 +53,78 @@ def get_available_memory_mb() -> int:
         return -1
 
 
+_warned_no_cgroup = False
+
+
+def get_cgroup_memory() -> tuple[int, int]:
+    """
+    Read current and max memory from cgroup v2.
+
+    Returns:
+        Tuple of (current_bytes, max_bytes), or (-1, -1) if unavailable.
+    """
+    global _warned_no_cgroup
+
+    cgroup_current = Path("/sys/fs/cgroup/memory.current")
+    cgroup_max = Path("/sys/fs/cgroup/memory.max")
+
+    if not cgroup_current.exists() or not cgroup_max.exists():
+        if not _warned_no_cgroup:
+            logger.warning(
+                "cgroup v2 memory files not found - cgroup admission disabled. "
+                "This is expected on macOS local development."
+            )
+            _warned_no_cgroup = True
+        return (-1, -1)
+
+    try:
+        with open(cgroup_current) as f:
+            current = int(f.read().strip())
+        with open(cgroup_max) as f:
+            max_raw = f.read().strip()
+            if max_raw == "max":
+                # No memory limit set on container
+                if not _warned_no_cgroup:
+                    logger.warning(
+                        "cgroup memory.max is 'max' (no limit) - "
+                        "cgroup admission disabled. Set a memory limit on the container."
+                    )
+                    _warned_no_cgroup = True
+                return (-1, -1)
+            limit = int(max_raw)
+        return (current, limit)
+    except (OSError, ValueError) as e:
+        logger.warning(f"Failed to read cgroup memory: {e}")
+        return (-1, -1)
+
+
+def has_sufficient_memory_cgroup(threshold: float = 0.85) -> bool:
+    """
+    Check if container has enough memory headroom to fork a new process.
+
+    Args:
+        threshold: Maximum memory usage ratio (0.0-1.0). Default 0.85 (85%).
+
+    Returns:
+        True if usage is at or below threshold, or if cgroup files unavailable.
+        False if memory pressure exceeds threshold.
+    """
+    current, limit = get_cgroup_memory()
+
+    if current < 0 or limit <= 0:
+        return True  # Permissive when unable to check
+
+    ratio = current / limit
+    if ratio > threshold:
+        logger.warning(
+            f"Memory pressure: {ratio:.1%} usage ({current // (1024*1024)}MB / "
+            f"{limit // (1024*1024)}MB) exceeds {threshold:.0%} threshold"
+        )
+        return False
+
+    return True
+
+
 def has_sufficient_memory(threshold_mb: int = 300) -> bool:
     """
     Check if system has enough memory to start a new subprocess.

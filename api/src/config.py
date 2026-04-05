@@ -114,6 +114,10 @@ class Settings(BaseSettings):
         default=30,
         description="TTL in seconds for worker registration in Redis (refreshed by heartbeat)"
     )
+    memory_pressure_threshold: float = Field(
+        default=0.85,
+        description="Reject new forks when container memory usage exceeds this ratio (0.0-1.0)"
+    )
 
     # ==========================================================================
     # Redis

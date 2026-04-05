@@ -6,7 +6,9 @@ from unittest.mock import patch, mock_open
 
 from src.services.execution.memory_monitor import (
     get_available_memory_mb,
+    get_cgroup_memory,
     has_sufficient_memory,
+    has_sufficient_memory_cgroup,
 )
 
 
@@ -113,3 +115,80 @@ class TestHasSufficientMemory:
         ):
             # 350 > 300 (default threshold)
             assert has_sufficient_memory() is True
+
+
+class TestGetCgroupMemory:
+    """Tests for cgroup v2 memory reading."""
+
+    def test_reads_cgroup_memory_current_and_max(self):
+        """Should read memory.current and memory.max from cgroup v2."""
+        with patch("builtins.open", side_effect=[
+            mock_open(read_data="524288000\n")(),   # memory.current = 500MB
+            mock_open(read_data="1073741824\n")(),   # memory.max = 1GB
+        ]):
+            with patch("pathlib.Path.exists", return_value=True):
+                current, limit = get_cgroup_memory()
+                assert current == 524288000
+                assert limit == 1073741824
+
+    def test_returns_negative_when_cgroup_files_missing(self):
+        """Should return (-1, -1) when cgroup files don't exist."""
+        with patch("pathlib.Path.exists", return_value=False):
+            current, limit = get_cgroup_memory()
+            assert current == -1
+            assert limit == -1
+
+    def test_returns_negative_when_memory_max_is_max(self):
+        """Should return (-1, -1) when memory.max is 'max' (no limit set)."""
+        with patch("builtins.open", side_effect=[
+            mock_open(read_data="524288000\n")(),
+            mock_open(read_data="max\n")(),
+        ]):
+            with patch("pathlib.Path.exists", return_value=True):
+                current, limit = get_cgroup_memory()
+                assert current == -1
+                assert limit == -1
+
+    def test_handles_read_error_gracefully(self):
+        """Should return (-1, -1) on read failure."""
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("builtins.open", side_effect=OSError("Permission denied")):
+                current, limit = get_cgroup_memory()
+                assert current == -1
+                assert limit == -1
+
+
+class TestHasSufficientMemoryCgroup:
+    """Tests for cgroup-aware memory pressure check."""
+
+    def test_returns_true_when_below_threshold(self):
+        """Should allow fork when memory usage is below threshold."""
+        with patch(
+            "src.services.execution.memory_monitor.get_cgroup_memory",
+            return_value=(500_000_000, 1_000_000_000),  # 50% usage
+        ):
+            assert has_sufficient_memory_cgroup(threshold=0.85) is True
+
+    def test_returns_false_when_above_threshold(self):
+        """Should reject fork when memory usage exceeds threshold."""
+        with patch(
+            "src.services.execution.memory_monitor.get_cgroup_memory",
+            return_value=(900_000_000, 1_000_000_000),  # 90% usage
+        ):
+            assert has_sufficient_memory_cgroup(threshold=0.85) is False
+
+    def test_returns_true_when_cgroup_unavailable(self):
+        """Should be permissive when cgroup files can't be read."""
+        with patch(
+            "src.services.execution.memory_monitor.get_cgroup_memory",
+            return_value=(-1, -1),
+        ):
+            assert has_sufficient_memory_cgroup(threshold=0.85) is True
+
+    def test_returns_true_at_exact_threshold(self):
+        """Should allow fork when exactly at threshold."""
+        with patch(
+            "src.services.execution.memory_monitor.get_cgroup_memory",
+            return_value=(850_000_000, 1_000_000_000),  # exactly 85%
+        ):
+            assert has_sufficient_memory_cgroup(threshold=0.85) is True
