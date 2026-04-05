@@ -207,7 +207,7 @@ if not handle.is_alive and handle.state != ProcessState.KILLED:
         await _report_crash(handle.current_execution)
 
     # Spawn replacement to maintain min_workers
-    self._spawn_process()
+    self._spawn_or_fork_process()
 ```
 
 ### Cancellation
