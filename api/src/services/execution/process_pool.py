@@ -196,6 +196,26 @@ class _PidWrapper:
 ResultCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
+def _get_private_dirty_kb(pid: int) -> int:
+    """
+    Read Private_Dirty from /proc/{pid}/smaps_rollup.
+
+    Returns the total private dirty memory in KB, which represents
+    the unique (non-shared/COW) memory for this process.
+    Returns -1 if unable to read.
+    """
+    try:
+        with open(f"/proc/{pid}/smaps_rollup") as f:
+            for line in f:
+                if line.startswith("Private_Dirty:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return int(parts[1])
+    except (OSError, ValueError):
+        pass
+    return -1
+
+
 class ProcessPoolManager:
     """
     Manages a pool of worker processes for execution isolation.
@@ -1724,6 +1744,7 @@ class ProcessPoolManager:
                 "process_id": p.id,
                 "state": p.state.value,
                 "memory_mb": self._get_process_memory(p.pid),
+                "private_dirty_kb": _get_private_dirty_kb(p.pid) if p.pid else -1,
                 "uptime_seconds": p.uptime_seconds,
                 "executions_completed": p.executions_completed,
                 "pending_recycle": p.pending_recycle,
