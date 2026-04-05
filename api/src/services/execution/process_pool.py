@@ -43,7 +43,7 @@ import psutil
 import redis.asyncio as redis
 
 from src.config import get_settings
-from src.services.execution.memory_monitor import has_sufficient_memory_cgroup
+from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
 from src.services.execution.simple_worker import (
     install_requirements,
     run_worker_process as simple_run_worker_process,
@@ -1760,6 +1760,8 @@ class ProcessPoolManager:
         idle_count = len([p for p in self.processes.values() if p.state == ProcessState.IDLE])
         busy_count = len([p for p in self.processes.values() if p.state == ProcessState.BUSY])
 
+        memory_current, memory_max = get_cgroup_memory()
+
         return {
             "type": "worker_heartbeat",
             "worker_id": self.worker_id,
@@ -1775,6 +1777,8 @@ class ProcessPoolManager:
             "max_workers": self.max_workers,
             "requirements_installed": self._requirements_installed,
             "requirements_total": self._requirements_total,
+            "memory_current_bytes": memory_current,
+            "memory_max_bytes": memory_max,
         }
 
     def _get_process_memory(self, pid: int | None) -> float:
