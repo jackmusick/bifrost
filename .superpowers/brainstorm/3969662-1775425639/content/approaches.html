@@ -1,0 +1,235 @@
+<h2>Process Pools Redesign: Layout Approaches</h2>
+<p class="subtitle">Pick the overall layout direction. All approaches remove the config dialog and add container memory.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Centered Dashboard</h3>
+      <p>Max-width ~1200px centered container. Memory gauge + stats in a compact header strip. Pools shown as a dense table (not cards) with expandable rows for process detail. Scales cleanly from 1 to 100 pools. Simple and familiar.</p>
+      <div style="margin-top:12px; padding:16px; border-radius:8px; background:rgba(128,128,128,0.08); font-family:monospace; font-size:12px; line-height:1.8;">
+        <div style="max-width:700px; margin:0 auto; text-align:left;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <span style="font-weight:bold;">Process Pools</span>
+            <span style="opacity:0.5;">[ Refresh ]</span>
+          </div>
+          <div style="display:flex; gap:16px; margin-bottom:12px; align-items:center;">
+            <div style="flex:1; background:rgba(128,128,128,0.1); border-radius:6px; padding:8px;">
+              <div style="font-size:10px; opacity:0.5;">MEMORY</div>
+              <div style="background:rgba(128,128,128,0.15); border-radius:4px; height:8px; margin:4px 0;">
+                <div style="background:#3b82f6; border-radius:4px; height:8px; width:55%;"></div>
+              </div>
+              <div style="font-size:10px;">4.2 / 8 GB</div>
+            </div>
+            <div style="text-align:center; padding:0 12px;"><div style="font-size:10px; opacity:0.5;">POOLS</div><div style="font-weight:bold;">3</div></div>
+            <div style="text-align:center; padding:0 12px;"><div style="font-size:10px; opacity:0.5;">FORKS</div><div style="font-weight:bold;">7</div></div>
+            <div style="text-align:center; padding:0 12px;"><div style="font-size:10px; color:#22c55e;">IDLE</div><div style="font-weight:bold; color:#22c55e;">4</div></div>
+            <div style="text-align:center; padding:0 12px;"><div style="font-size:10px; color:#eab308;">BUSY</div><div style="font-weight:bold; color:#eab308;">3</div></div>
+          </div>
+          <div style="border:1px solid rgba(128,128,128,0.2); border-radius:6px; font-size:11px;">
+            <div style="display:flex; padding:6px 10px; border-bottom:1px solid rgba(128,128,128,0.15); opacity:0.5; font-size:10px;">
+              <span style="flex:2;">POOL</span><span style="flex:1;">STATUS</span><span style="flex:1;">FORKS</span><span style="flex:1;">MEM</span><span style="flex:1;">UPTIME</span>
+            </div>
+            <div style="display:flex; padding:8px 10px; border-bottom:1px solid rgba(128,128,128,0.08); cursor:pointer;">
+              <span style="flex:2;">worker-abc12</span><span style="flex:1; color:#22c55e;">online</span><span style="flex:1;">3 (1 busy)</span><span style="flex:1;">1.2 GB</span><span style="flex:1;">2d 4h</span>
+            </div>
+            <div style="display:flex; padding:8px 10px; border-bottom:1px solid rgba(128,128,128,0.08); cursor:pointer;">
+              <span style="flex:2;">worker-def34</span><span style="flex:1; color:#22c55e;">online</span><span style="flex:1;">2 (2 busy)</span><span style="flex:1;">0.8 GB</span><span style="flex:1;">1d 12h</span>
+            </div>
+            <div style="display:flex; padding:8px 10px; cursor:pointer;">
+              <span style="flex:2;">worker-ghi56</span><span style="flex:1; color:#22c55e;">online</span><span style="flex:1;">2 (0 busy)</span><span style="flex:1;">0.6 GB</span><span style="flex:1;">4h</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Memory-First Dashboard</h3>
+      <p>Memory gauge is the hero element at the top — large, prominent, with a stacked bar showing per-pool breakdown by color. Stats are secondary below it. Pools listed as compact cards underneath. Emphasizes "how much resource am I using?" as the primary question.</p>
+      <div style="margin-top:12px; padding:16px; border-radius:8px; background:rgba(128,128,128,0.08); font-family:monospace; font-size:12px; line-height:1.8;">
+        <div style="max-width:700px; margin:0 auto; text-align:left;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <span style="font-weight:bold;">Process Pools</span>
+            <span style="opacity:0.5;">[ Refresh ]</span>
+          </div>
+          <div style="background:rgba(128,128,128,0.06); border-radius:8px; padding:16px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+              <span style="font-size:11px; opacity:0.6;">CONTAINER MEMORY</span>
+              <span style="font-weight:bold;">4.2 / 8.0 GB (52%)</span>
+            </div>
+            <div style="background:rgba(128,128,128,0.15); border-radius:6px; height:24px; display:flex; overflow:hidden;">
+              <div style="background:#3b82f6; width:15%; display:flex; align-items:center; justify-content:center; color:white; font-size:9px;">abc</div>
+              <div style="background:#8b5cf6; width:10%; display:flex; align-items:center; justify-content:center; color:white; font-size:9px;">def</div>
+              <div style="background:#06b6d4; width:8%; display:flex; align-items:center; justify-content:center; color:white; font-size:9px;">ghi</div>
+              <div style="background:rgba(128,128,128,0.1); width:19%; display:flex; align-items:center; justify-content:center; font-size:9px; opacity:0.5;">other</div>
+            </div>
+            <div style="display:flex; gap:12px; margin-top:8px; font-size:10px;">
+              <span><span style="display:inline-block;width:8px;height:8px;background:#3b82f6;border-radius:2px;margin-right:4px;"></span>abc: 1.2 GB</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:#8b5cf6;border-radius:2px;margin-right:4px;"></span>def: 0.8 GB</span>
+              <span><span style="display:inline-block;width:8px;height:8px;background:#06b6d4;border-radius:2px;margin-right:4px;"></span>ghi: 0.6 GB</span>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <div style="flex:1; background:rgba(128,128,128,0.06); border-radius:6px; padding:8px; text-align:center;">
+              <div style="font-size:10px; opacity:0.5;">POOLS</div><div style="font-weight:bold;">3</div>
+            </div>
+            <div style="flex:1; background:rgba(128,128,128,0.06); border-radius:6px; padding:8px; text-align:center;">
+              <div style="font-size:10px; opacity:0.5;">FORKS</div><div style="font-weight:bold;">7</div>
+            </div>
+            <div style="flex:1; background:rgba(128,128,128,0.06); border-radius:6px; padding:8px; text-align:center;">
+              <div style="font-size:10px; color:#22c55e;">IDLE</div><div style="font-weight:bold; color:#22c55e;">4</div>
+            </div>
+            <div style="flex:1; background:rgba(128,128,128,0.06); border-radius:6px; padding:8px; text-align:center;">
+              <div style="font-size:10px; color:#eab308;">BUSY</div><div style="font-weight:bold; color:#eab308;">3</div>
+            </div>
+          </div>
+          <div style="font-size:10px; opacity:0.5; margin-bottom:6px;">POOL LIST</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="background:rgba(128,128,128,0.06); border-radius:6px; padding:10px; display:flex; justify-content:space-between; cursor:pointer;">
+              <span>worker-abc12 <span style="color:#22c55e; font-size:10px;">online</span></span>
+              <span style="opacity:0.6;">3 forks &middot; 1.2 GB &middot; 2d 4h</span>
+            </div>
+            <div style="background:rgba(128,128,128,0.06); border-radius:6px; padding:10px; display:flex; justify-content:space-between; cursor:pointer;">
+              <span>worker-def34 <span style="color:#22c55e; font-size:10px;">online</span></span>
+              <span style="opacity:0.6;">2 forks &middot; 0.8 GB &middot; 1d 12h</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid: Compact Header + Table</h3>
+      <p><strong>Recommended.</strong> Combines the best of both: a compact memory gauge bar inline with the stats (not a hero section), plus a dense pool table for scalability. Memory is visible but doesn't dominate. The table handles 100 pools gracefully with sorting/filtering. Click a row to expand process details with per-process memory bars.</p>
+      <div style="margin-top:12px; padding:16px; border-radius:8px; background:rgba(128,128,128,0.08); font-family:monospace; font-size:12px; line-height:1.8;">
+        <div style="max-width:700px; margin:0 auto; text-align:left;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+              <span style="font-weight:bold;">Process Pools</span>
+              <span style="margin-left:8px; font-size:10px; color:#22c55e;">&#9679; Live</span>
+              <span style="margin-left:8px; font-size:10px; opacity:0.4; border:1px solid rgba(128,128,128,0.3); border-radius:10px; padding:1px 8px;">Queue: 2</span>
+            </div>
+            <span style="opacity:0.5;">[ Refresh ]</span>
+          </div>
+          <div style="display:flex; gap:12px; margin-bottom:16px; align-items:stretch;">
+            <div style="flex:2; background:rgba(128,128,128,0.06); border-radius:8px; padding:12px;">
+              <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:4px;">
+                <span style="opacity:0.5;">CONTAINER MEMORY</span>
+                <span style="font-weight:bold;">4.2 / 8.0 GB</span>
+              </div>
+              <div style="background:rgba(128,128,128,0.15); border-radius:4px; height:10px; margin-bottom:4px;">
+                <div style="background:#3b82f6; border-radius:4px; height:10px; width:52%;"></div>
+              </div>
+              <div style="font-size:10px; opacity:0.4;">52% &middot; Threshold: 85%</div>
+            </div>
+            <div style="flex:0.5; background:rgba(128,128,128,0.06); border-radius:8px; padding:12px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+              <div style="font-size:10px; opacity:0.5;">POOLS</div><div style="font-size:18px; font-weight:bold;">3</div>
+            </div>
+            <div style="flex:0.5; background:rgba(128,128,128,0.06); border-radius:8px; padding:12px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+              <div style="font-size:10px; opacity:0.5;">FORKS</div><div style="font-size:18px; font-weight:bold;">7</div>
+            </div>
+            <div style="flex:0.5; background:rgba(128,128,128,0.06); border-radius:8px; padding:12px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+              <div style="font-size:10px; color:#22c55e;">IDLE</div><div style="font-size:18px; font-weight:bold; color:#22c55e;">4</div>
+            </div>
+            <div style="flex:0.5; background:rgba(128,128,128,0.06); border-radius:8px; padding:12px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+              <div style="font-size:10px; color:#eab308;">BUSY</div><div style="font-size:18px; font-weight:bold; color:#eab308;">3</div>
+            </div>
+          </div>
+          <div style="border:1px solid rgba(128,128,128,0.2); border-radius:8px; font-size:11px; overflow:hidden;">
+            <div style="display:flex; padding:8px 12px; border-bottom:1px solid rgba(128,128,128,0.15); opacity:0.5; font-size:10px; background:rgba(128,128,128,0.04);">
+              <span style="flex:2;">POOL</span><span style="flex:1;">STATUS</span><span style="flex:1;">FORKS</span><span style="flex:1.2;">MEMORY</span><span style="flex:1;">UPTIME</span><span style="flex:0.5;"></span>
+            </div>
+            <div style="display:flex; padding:10px 12px; border-bottom:1px solid rgba(128,128,128,0.08); cursor:pointer; align-items:center;">
+              <span style="flex:2;">worker-abc12</span>
+              <span style="flex:1;"><span style="color:#22c55e; background:rgba(34,197,94,0.1); padding:2px 8px; border-radius:10px; font-size:10px;">online</span></span>
+              <span style="flex:1;">3 <span style="opacity:0.4; font-size:10px;">(1 busy)</span></span>
+              <span style="flex:1.2;">
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  <span style="display:inline-block; width:50px; height:6px; background:rgba(128,128,128,0.15); border-radius:3px; overflow:hidden;">
+                    <span style="display:block; height:100%; width:60%; background:#3b82f6; border-radius:3px;"></span>
+                  </span>
+                  <span style="font-size:10px;">1.2 GB</span>
+                </span>
+              </span>
+              <span style="flex:1; opacity:0.6;">2d 4h</span>
+              <span style="flex:0.5; opacity:0.3;">&#9662;</span>
+            </div>
+            <div style="background:rgba(128,128,128,0.03); padding:12px; border-bottom:1px solid rgba(128,128,128,0.08);">
+              <div style="font-size:10px; opacity:0.5; margin-bottom:8px;">PROCESSES</div>
+              <div style="display:flex; gap:8px;">
+                <div style="flex:1; background:rgba(128,128,128,0.06); border-radius:6px; padding:8px; font-size:10px;">
+                  <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="font-weight:bold;">PID 42381</span>
+                    <span style="color:#22c55e;">idle</span>
+                  </div>
+                  <div>420 MB &middot; 12 jobs &middot; 2d 4h</div>
+                  <div style="background:rgba(128,128,128,0.15); border-radius:3px; height:4px; margin-top:4px;">
+                    <div style="background:#3b82f6; border-radius:3px; height:4px; width:35%;"></div>
+                  </div>
+                </div>
+                <div style="flex:1; background:rgba(234,179,8,0.06); border:1px solid rgba(234,179,8,0.2); border-radius:6px; padding:8px; font-size:10px;">
+                  <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="font-weight:bold;">PID 42395</span>
+                    <span style="color:#eab308;">busy</span>
+                  </div>
+                  <div>580 MB &middot; 8 jobs &middot; 1d 6h</div>
+                  <div style="font-size:9px; opacity:0.5; margin-top:2px;">Running: sync-users (2m 14s)</div>
+                  <div style="background:rgba(128,128,128,0.15); border-radius:3px; height:4px; margin-top:4px;">
+                    <div style="background:#eab308; border-radius:3px; height:4px; width:48%;"></div>
+                  </div>
+                </div>
+                <div style="flex:1; background:rgba(128,128,128,0.06); border-radius:6px; padding:8px; font-size:10px;">
+                  <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="font-weight:bold;">PID 42410</span>
+                    <span style="color:#22c55e;">idle</span>
+                  </div>
+                  <div>380 MB &middot; 5 jobs &middot; 4h</div>
+                  <div style="background:rgba(128,128,128,0.15); border-radius:3px; height:4px; margin-top:4px;">
+                    <div style="background:#3b82f6; border-radius:3px; height:4px; width:32%;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; padding:10px 12px; border-bottom:1px solid rgba(128,128,128,0.08); cursor:pointer; align-items:center;">
+              <span style="flex:2;">worker-def34</span>
+              <span style="flex:1;"><span style="color:#22c55e; background:rgba(34,197,94,0.1); padding:2px 8px; border-radius:10px; font-size:10px;">online</span></span>
+              <span style="flex:1;">2 <span style="opacity:0.4; font-size:10px;">(2 busy)</span></span>
+              <span style="flex:1.2;">
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  <span style="display:inline-block; width:50px; height:6px; background:rgba(128,128,128,0.15); border-radius:3px; overflow:hidden;">
+                    <span style="display:block; height:100%; width:40%; background:#3b82f6; border-radius:3px;"></span>
+                  </span>
+                  <span style="font-size:10px;">0.8 GB</span>
+                </span>
+              </span>
+              <span style="flex:1; opacity:0.6;">1d 12h</span>
+              <span style="flex:0.5; opacity:0.3;">&#9662;</span>
+            </div>
+            <div style="display:flex; padding:10px 12px; cursor:pointer; align-items:center;">
+              <span style="flex:2;">worker-ghi56</span>
+              <span style="flex:1;"><span style="color:#22c55e; background:rgba(34,197,94,0.1); padding:2px 8px; border-radius:10px; font-size:10px;">online</span></span>
+              <span style="flex:1;">2 <span style="opacity:0.4; font-size:10px;">(0 busy)</span></span>
+              <span style="flex:1.2;">
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  <span style="display:inline-block; width:50px; height:6px; background:rgba(128,128,128,0.15); border-radius:3px; overflow:hidden;">
+                    <span style="display:block; height:100%; width:30%; background:#3b82f6; border-radius:3px;"></span>
+                  </span>
+                  <span style="font-size:10px;">0.6 GB</span>
+                </span>
+              </span>
+              <span style="flex:1; opacity:0.6;">4h</span>
+              <span style="flex:0.5; opacity:0.3;">&#9662;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

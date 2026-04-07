@@ -1,0 +1,270 @@
+<h2>Revised: Process Pools Dashboard</h2>
+<p class="subtitle">Aggregate chart at top, container table below, expandable fork details. Click to select preferred chart style.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Process Pools — Revised Layout</div>
+  <div class="mockup-body" style="padding:20px; font-family:-apple-system,system-ui,sans-serif; font-size:13px; max-width:900px; margin:0 auto;">
+
+    <!-- Header -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:18px; font-weight:600;">Process Pools</span>
+        <span style="font-size:11px; color:#22c55e; display:flex; align-items:center; gap:4px;">
+          <span style="width:6px; height:6px; background:#22c55e; border-radius:50%; display:inline-block;"></span>
+          Live
+        </span>
+        <span style="font-size:10px; opacity:0.4; border:1px solid rgba(128,128,128,0.3); border-radius:10px; padding:2px 8px;">Queue: 2</span>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span style="font-size:11px; opacity:0.4;">3 containers &middot; 12 forks</span>
+        <span style="opacity:0.3; border:1px solid rgba(128,128,128,0.3); border-radius:4px; padding:4px 10px; font-size:11px; cursor:pointer;">Refresh</span>
+      </div>
+    </div>
+
+    <!-- Aggregate Memory Chart Area -->
+    <div style="background:rgba(128,128,128,0.04); border:1px solid rgba(128,128,128,0.12); border-radius:10px; padding:20px; margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+        <div>
+          <div style="font-size:11px; opacity:0.5; text-transform:uppercase; letter-spacing:0.5px;">Total Memory Usage</div>
+          <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
+            <span style="font-size:28px; font-weight:700;">12.6 GB</span>
+            <span style="font-size:13px; opacity:0.5;">/ 24.0 GB across 3 containers</span>
+          </div>
+          <div style="font-size:11px; opacity:0.4; margin-top:2px;">52% utilized &middot; Pressure threshold: 85%</div>
+        </div>
+        <div style="display:flex; gap:4px; font-size:10px;">
+          <span style="padding:3px 10px; border-radius:4px; background:rgba(59,130,246,0.1); color:#3b82f6; cursor:pointer;">1h</span>
+          <span style="padding:3px 10px; border-radius:4px; opacity:0.4; cursor:pointer;">6h</span>
+          <span style="padding:3px 10px; border-radius:4px; opacity:0.4; cursor:pointer;">24h</span>
+          <span style="padding:3px 10px; border-radius:4px; opacity:0.4; cursor:pointer;">7d</span>
+        </div>
+      </div>
+
+      <!-- Simulated area chart -->
+      <div style="position:relative; height:120px; border-bottom:1px solid rgba(128,128,128,0.1); margin-bottom:8px;">
+        <!-- Y-axis labels -->
+        <div style="position:absolute; left:0; top:0; font-size:9px; opacity:0.3;">24 GB</div>
+        <div style="position:absolute; left:0; top:38px; font-size:9px; opacity:0.3;">16 GB</div>
+        <div style="position:absolute; left:0; top:76px; font-size:9px; opacity:0.3;">8 GB</div>
+
+        <!-- Threshold line -->
+        <div style="position:absolute; left:35px; right:0; top:18px; border-top:1px dashed rgba(239,68,68,0.3);"></div>
+        <div style="position:absolute; right:0; top:8px; font-size:9px; color:rgba(239,68,68,0.5);">85%</div>
+
+        <!-- SVG area chart simulation -->
+        <svg viewBox="0 0 400 100" preserveAspectRatio="none" style="position:absolute; left:35px; right:0; top:10px; bottom:0; width:calc(100% - 35px); height:100px;">
+          <!-- Container 1 (bottom layer - blue) -->
+          <path d="M0,70 L20,68 L40,65 L60,60 L80,55 L100,50 L120,48 L140,45 L160,42 L180,45 L200,50 L220,48 L240,44 L260,40 L280,38 L300,35 L320,38 L340,40 L360,42 L380,40 L400,38 L400,100 L0,100 Z" fill="rgba(59,130,246,0.25)" stroke="none"/>
+          <path d="M0,70 L20,68 L40,65 L60,60 L80,55 L100,50 L120,48 L140,45 L160,42 L180,45 L200,50 L220,48 L240,44 L260,40 L280,38 L300,35 L320,38 L340,40 L360,42 L380,40 L400,38" fill="none" stroke="rgba(59,130,246,0.6)" stroke-width="1.5"/>
+
+          <!-- Container 2 (middle layer - purple) -->
+          <path d="M0,85 L20,83 L40,80 L60,78 L80,74 L100,70 L120,68 L140,65 L160,62 L180,64 L200,68 L220,66 L240,63 L260,58 L280,55 L300,52 L320,55 L340,58 L360,60 L380,58 L400,55 L400,100 L0,100 Z" fill="rgba(139,92,246,0.2)" stroke="none"/>
+
+          <!-- Container 3 (top layer - cyan) -->
+          <path d="M0,92 L20,90 L40,88 L60,86 L80,84 L100,82 L120,80 L140,78 L160,76 L180,78 L200,80 L220,79 L240,76 L260,72 L280,70 L300,68 L320,70 L340,72 L360,74 L380,72 L400,70 L400,100 L0,100 Z" fill="rgba(6,182,212,0.15)" stroke="none"/>
+        </svg>
+      </div>
+
+      <!-- Legend -->
+      <div style="display:flex; gap:16px; font-size:10px; padding-left:35px;">
+        <span style="display:flex; align-items:center; gap:4px;">
+          <span style="width:10px; height:3px; background:#3b82f6; border-radius:2px; display:inline-block;"></span>
+          worker-abc12 (4.8 GB)
+        </span>
+        <span style="display:flex; align-items:center; gap:4px;">
+          <span style="width:10px; height:3px; background:#8b5cf6; border-radius:2px; display:inline-block;"></span>
+          worker-def34 (4.6 GB)
+        </span>
+        <span style="display:flex; align-items:center; gap:4px;">
+          <span style="width:10px; height:3px; background:#06b6d4; border-radius:2px; display:inline-block;"></span>
+          worker-ghi56 (3.2 GB)
+        </span>
+      </div>
+    </div>
+
+    <!-- Container/Pool Table -->
+    <div style="border:1px solid rgba(128,128,128,0.15); border-radius:10px; overflow:hidden;">
+      <!-- Table header -->
+      <div style="display:flex; padding:10px 14px; border-bottom:1px solid rgba(128,128,128,0.12); font-size:10px; opacity:0.45; text-transform:uppercase; letter-spacing:0.5px; background:rgba(128,128,128,0.03);">
+        <span style="flex:2;">Container</span>
+        <span style="flex:1;">Status</span>
+        <span style="flex:0.8;">Forks</span>
+        <span style="flex:1.5;">Memory</span>
+        <span style="flex:1;">Uptime</span>
+        <span style="flex:0.5;"></span>
+      </div>
+
+      <!-- Row 1 - Expanded -->
+      <div style="display:flex; padding:12px 14px; border-bottom:1px solid rgba(128,128,128,0.06); cursor:pointer; align-items:center; background:rgba(59,130,246,0.02);">
+        <span style="flex:2; font-weight:500;">
+          <span style="display:inline-block; width:8px; height:8px; background:#3b82f6; border-radius:2px; margin-right:6px;"></span>
+          worker-abc12
+        </span>
+        <span style="flex:1;"><span style="color:#22c55e; background:rgba(34,197,94,0.08); padding:2px 8px; border-radius:10px; font-size:10px;">online</span></span>
+        <span style="flex:0.8;">5 <span style="opacity:0.35; font-size:10px;">(2 busy)</span></span>
+        <span style="flex:1.5;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; max-width:80px; height:6px; background:rgba(128,128,128,0.12); border-radius:3px; overflow:hidden;">
+              <div style="height:100%; width:60%; background:#3b82f6; border-radius:3px;"></div>
+            </div>
+            <span style="font-size:11px;">4.8 / 8 GB</span>
+          </div>
+        </span>
+        <span style="flex:1; opacity:0.5; font-size:11px;">2d 4h</span>
+        <span style="flex:0.5; text-align:right; color:#3b82f6;">&#9652;</span>
+      </div>
+
+      <!-- Expanded: Fork table -->
+      <div style="background:rgba(128,128,128,0.02); padding:12px 14px 12px 30px; border-bottom:1px solid rgba(128,128,128,0.1);">
+        <div style="border:1px solid rgba(128,128,128,0.1); border-radius:6px; overflow:hidden; font-size:11px;">
+          <div style="display:flex; padding:6px 10px; border-bottom:1px solid rgba(128,128,128,0.08); font-size:9px; opacity:0.4; text-transform:uppercase; background:rgba(128,128,128,0.03);">
+            <span style="flex:1;">PID</span>
+            <span style="flex:1;">State</span>
+            <span style="flex:1.5;">Memory</span>
+            <span style="flex:1;">Jobs Done</span>
+            <span style="flex:2;">Current Execution</span>
+            <span style="flex:0.8;">Uptime</span>
+          </div>
+          <div style="display:flex; padding:7px 10px; border-bottom:1px solid rgba(128,128,128,0.05); align-items:center;">
+            <span style="flex:1; font-family:monospace; font-size:11px;">42381</span>
+            <span style="flex:1;"><span style="color:#22c55e; font-size:10px;">idle</span></span>
+            <span style="flex:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">
+                <span style="display:inline-block; width:36px; height:4px; background:rgba(128,128,128,0.12); border-radius:2px; overflow:hidden;">
+                  <span style="display:block; height:100%; width:35%; background:#3b82f6; border-radius:2px;"></span>
+                </span>
+                420 MB
+              </span>
+            </span>
+            <span style="flex:1;">12</span>
+            <span style="flex:2; opacity:0.3;">&mdash;</span>
+            <span style="flex:0.8; opacity:0.5;">2d 4h</span>
+          </div>
+          <div style="display:flex; padding:7px 10px; border-bottom:1px solid rgba(128,128,128,0.05); align-items:center; background:rgba(234,179,8,0.03);">
+            <span style="flex:1; font-family:monospace; font-size:11px;">42395</span>
+            <span style="flex:1;"><span style="color:#eab308; font-size:10px;">busy</span></span>
+            <span style="flex:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">
+                <span style="display:inline-block; width:36px; height:4px; background:rgba(128,128,128,0.12); border-radius:2px; overflow:hidden;">
+                  <span style="display:block; height:100%; width:48%; background:#eab308; border-radius:2px;"></span>
+                </span>
+                580 MB
+              </span>
+            </span>
+            <span style="flex:1;">8</span>
+            <span style="flex:2; font-size:10px;">
+              <span style="opacity:0.7;">sync-users</span>
+              <span style="opacity:0.35; margin-left:4px;">2m 14s</span>
+            </span>
+            <span style="flex:0.8; opacity:0.5;">1d 6h</span>
+          </div>
+          <div style="display:flex; padding:7px 10px; border-bottom:1px solid rgba(128,128,128,0.05); align-items:center; background:rgba(234,179,8,0.03);">
+            <span style="flex:1; font-family:monospace; font-size:11px;">42402</span>
+            <span style="flex:1;"><span style="color:#eab308; font-size:10px;">busy</span></span>
+            <span style="flex:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">
+                <span style="display:inline-block; width:36px; height:4px; background:rgba(128,128,128,0.12); border-radius:2px; overflow:hidden;">
+                  <span style="display:block; height:100%; width:52%; background:#eab308; border-radius:2px;"></span>
+                </span>
+                510 MB
+              </span>
+            </span>
+            <span style="flex:1;">15</span>
+            <span style="flex:2; font-size:10px;">
+              <span style="opacity:0.7;">ticket-import</span>
+              <span style="opacity:0.35; margin-left:4px;">45s</span>
+            </span>
+            <span style="flex:0.8; opacity:0.5;">2d 4h</span>
+          </div>
+          <div style="display:flex; padding:7px 10px; border-bottom:1px solid rgba(128,128,128,0.05); align-items:center;">
+            <span style="flex:1; font-family:monospace; font-size:11px;">42410</span>
+            <span style="flex:1;"><span style="color:#22c55e; font-size:10px;">idle</span></span>
+            <span style="flex:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">
+                <span style="display:inline-block; width:36px; height:4px; background:rgba(128,128,128,0.12); border-radius:2px; overflow:hidden;">
+                  <span style="display:block; height:100%; width:32%; background:#3b82f6; border-radius:2px;"></span>
+                </span>
+                380 MB
+              </span>
+            </span>
+            <span style="flex:1;">5</span>
+            <span style="flex:2; opacity:0.3;">&mdash;</span>
+            <span style="flex:0.8; opacity:0.5;">4h</span>
+          </div>
+          <div style="display:flex; padding:7px 10px; align-items:center;">
+            <span style="flex:1; font-family:monospace; font-size:11px;">42418</span>
+            <span style="flex:1;"><span style="color:#22c55e; font-size:10px;">idle</span></span>
+            <span style="flex:1.5;">
+              <span style="display:inline-flex; align-items:center; gap:4px;">
+                <span style="display:inline-block; width:36px; height:4px; background:rgba(128,128,128,0.12); border-radius:2px; overflow:hidden;">
+                  <span style="display:block; height:100%; width:28%; background:#3b82f6; border-radius:2px;"></span>
+                </span>
+                340 MB
+              </span>
+            </span>
+            <span style="flex:1;">3</span>
+            <span style="flex:2; opacity:0.3;">&mdash;</span>
+            <span style="flex:0.8; opacity:0.5;">2h</span>
+          </div>
+        </div>
+        <div style="margin-top:8px; text-align:right;">
+          <span style="font-size:10px; color:#ef4444; opacity:0.6; cursor:pointer; padding:3px 8px; border:1px solid rgba(239,68,68,0.2); border-radius:4px;">Recycle All</span>
+        </div>
+      </div>
+
+      <!-- Row 2 - Collapsed -->
+      <div style="display:flex; padding:12px 14px; border-bottom:1px solid rgba(128,128,128,0.06); cursor:pointer; align-items:center;">
+        <span style="flex:2; font-weight:500;">
+          <span style="display:inline-block; width:8px; height:8px; background:#8b5cf6; border-radius:2px; margin-right:6px;"></span>
+          worker-def34
+        </span>
+        <span style="flex:1;"><span style="color:#22c55e; background:rgba(34,197,94,0.08); padding:2px 8px; border-radius:10px; font-size:10px;">online</span></span>
+        <span style="flex:0.8;">4 <span style="opacity:0.35; font-size:10px;">(3 busy)</span></span>
+        <span style="flex:1.5;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; max-width:80px; height:6px; background:rgba(128,128,128,0.12); border-radius:3px; overflow:hidden;">
+              <div style="height:100%; width:58%; background:#8b5cf6; border-radius:3px;"></div>
+            </div>
+            <span style="font-size:11px;">4.6 / 8 GB</span>
+          </div>
+        </span>
+        <span style="flex:1; opacity:0.5; font-size:11px;">1d 12h</span>
+        <span style="flex:0.5; text-align:right; opacity:0.3;">&#9662;</span>
+      </div>
+
+      <!-- Row 3 - Collapsed -->
+      <div style="display:flex; padding:12px 14px; cursor:pointer; align-items:center;">
+        <span style="flex:2; font-weight:500;">
+          <span style="display:inline-block; width:8px; height:8px; background:#06b6d4; border-radius:2px; margin-right:6px;"></span>
+          worker-ghi56
+        </span>
+        <span style="flex:1;"><span style="color:#22c55e; background:rgba(34,197,94,0.08); padding:2px 8px; border-radius:10px; font-size:10px;">online</span></span>
+        <span style="flex:0.8;">3 <span style="opacity:0.35; font-size:10px;">(0 busy)</span></span>
+        <span style="flex:1.5;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; max-width:80px; height:6px; background:rgba(128,128,128,0.12); border-radius:3px; overflow:hidden;">
+              <div style="height:100%; width:40%; background:#06b6d4; border-radius:3px;"></div>
+            </div>
+            <span style="font-size:11px;">3.2 / 8 GB</span>
+          </div>
+        </span>
+        <span style="flex:1; opacity:0.5; font-size:11px;">4h</span>
+        <span style="flex:0.5; text-align:right; opacity:0.3;">&#9662;</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div style="margin-top:24px; padding:16px; background:rgba(128,128,128,0.04); border-radius:8px;">
+  <h3 style="margin-top:0;">Key Design Decisions</h3>
+  <ul style="font-size:14px; line-height:1.8; opacity:0.8;">
+    <li><strong>Stacked area chart</strong> — shows aggregate memory over time, with per-container color breakdown. Time range selector (1h/6h/24h/7d).</li>
+    <li><strong>85% pressure threshold</strong> — dashed red line on chart so you can see when you're approaching the admission-control cutoff.</li>
+    <li><strong>Container table</strong> — dense rows with inline memory bars. Color-coded dots match chart legend. Expandable to show forks.</li>
+    <li><strong>Fork sub-table</strong> — not cards. PID, state, memory, jobs, current execution, uptime. Scales to dozens of forks per container.</li>
+    <li><strong>No config dialog</strong> — removed entirely. No min/max workers UI.</li>
+    <li><strong>Responsive</strong> — max-width ~900px centered container.</li>
+    <li><strong>Persisted history</strong> — backend stores periodic snapshots for chart data, survives page refreshes.</li>
+  </ul>
+</div>
