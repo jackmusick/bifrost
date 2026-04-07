@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from src.services.execution.agent_helpers import (
@@ -23,7 +23,7 @@ class TestResolveAgentTools:
                 "parameters": {"type": "object", "properties": {}},
             }
         ]
-        mock_session = AsyncMock()
+        mock_session = MagicMock()
         mock_agent = MagicMock()
         mock_agent.id = uuid4()
         mock_agent.tools = []
@@ -48,7 +48,7 @@ class TestResolveAgentTools:
                 "parameters": {"type": "object", "properties": {}},
             }
         ]
-        mock_session = AsyncMock()
+        mock_session = MagicMock()
         mock_agent = MagicMock()
         mock_agent.id = uuid4()
         mock_agent.tools = []
@@ -61,11 +61,10 @@ class TestResolveAgentTools:
         assert "search_knowledge" in tool_names
 
     @pytest.mark.asyncio
-    @pytest.mark.filterwarnings("ignore::RuntimeWarning")
     @patch("src.services.mcp_server.server.get_system_tools", return_value=[])
     async def test_no_tools_returns_empty(self, _mock_get_system_tools):
         """Agent with no tools returns empty lists."""
-        mock_session = AsyncMock()
+        mock_session = MagicMock()
         mock_agent = MagicMock()
         mock_agent.id = uuid4()
         mock_agent.tools = []

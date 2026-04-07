@@ -320,14 +320,24 @@ class ProcessPoolManager:
         return self._redis
 
     async def _start_template(self) -> None:
-        """Start the template process for fork-based workers."""
-        self._template = TemplateProcess()
+        """Start the template process for fork-based workers.
+
+        The new TemplateProcess is only assigned to self._template AFTER
+        start() completes successfully. This prevents fork() from racing
+        against the startup ready-handshake on the same pipe — if
+        self._template were assigned beforehand, a concurrent
+        route_execution → _spawn_or_fork_process → template.fork() could
+        consume the "ready" message intended for start()'s recv.
+        """
+        new_template = TemplateProcess()
         try:
-            await asyncio.to_thread(self._template.start)
-            logger.info(f"Template process started (PID={self._template.pid})")
+            await asyncio.to_thread(new_template.start)
         except Exception as e:
             logger.error(f"Failed to start template process: {e}. Falling back to spawn.")
             self._template = None
+            return
+        self._template = new_template
+        logger.info(f"Template process started (PID={self._template.pid})")
 
     async def restart_template(self) -> None:
         """

@@ -199,7 +199,7 @@ class TestForkBasedExecution:
         """Timeout should still kill forked processes."""
         # Bake a short timeout into the workflow definition itself
         # (WorkflowExecutionRequest has no per-request timeout override)
-        put_resp = e2e_client.put(
+        put_resp = e2e_client.patch(
             f"/api/workflows/{timeout_workflow['id']}",
             headers=platform_admin.headers,
             json={"timeout_seconds": 3},
