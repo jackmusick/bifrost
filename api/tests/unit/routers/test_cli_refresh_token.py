@@ -147,6 +147,81 @@ class TestRefreshTokenClientCredentials:
         mock_db.add.assert_not_called()
         assert mock_existing_token.expires_at == expires_at
 
+    @pytest.mark.asyncio
+    async def test_falls_back_to_integration_entity_id_when_default_missing(self):
+        """Should resolve {entity_id} from integration.entity_id if needed."""
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="Microsoft Graph")
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        provider_id = uuid4()
+        integration_id = uuid4()
+
+        mock_provider = MagicMock()
+        mock_provider.id = provider_id
+        mock_provider.provider_name = "Microsoft Graph"
+        mock_provider.client_id = "ms-client-id"
+        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.token_url = "https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "client_credentials"
+        mock_provider.scopes = ["https://graph.microsoft.com/.default"]
+        mock_provider.integration_id = integration_id
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = mock_provider
+        token_result = MagicMock()
+        token_result.scalars.return_value.first.return_value = None
+
+        mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+
+        mock_token_response = {
+            "access_token": "fresh-ms-token",
+            "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=str(uuid4())),
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
+            patch("src.core.security.encrypt_secret", return_value="encrypted-new-token"),
+            patch("src.repositories.integrations.IntegrationsRepository") as mock_repo_class,
+        ):
+            mock_repo = MagicMock()
+            mock_repo.get_mapping_by_org = AsyncMock(return_value=None)
+            integration = MagicMock()
+            integration.default_entity_id = None
+            integration.entity_id = "tenant-123"
+            mock_repo.get_by_id = AsyncMock(return_value=integration)
+            mock_repo_class.return_value = mock_repo
+
+            mock_instance = MagicMock()
+            mock_instance.get_client_credentials_token = AsyncMock(
+                return_value=(True, mock_token_response)
+            )
+            mock_client_class.return_value = mock_instance
+
+            result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert result.access_token == "fresh-ms-token"
+        mock_instance.get_client_credentials_token.assert_called_once_with(
+            token_url="https://login.microsoftonline.com/tenant-123/oauth2/v2.0/token",
+            client_id="ms-client-id",
+            client_secret="decrypted-secret",
+            scopes="https://graph.microsoft.com/.default",
+            audience=None,
+        )
+
 
 class TestRefreshTokenAuthorizationCode:
     """Test refresh_token endpoint for authorization_code flows."""

@@ -1112,10 +1112,10 @@ async def sdk_integrations_refresh_token(
             if mapping:
                 entity_id = mapping.entity_id
             else:
-                # Fall back to integration's default_entity_id
+                # Fall back to the integration's configured entity identifier
                 integration = await repo.get_by_id(provider.integration_id)
                 if integration:
-                    entity_id = integration.default_entity_id
+                    entity_id = integration.default_entity_id or integration.entity_id
 
         # Decrypt client secret
         client_secret = None

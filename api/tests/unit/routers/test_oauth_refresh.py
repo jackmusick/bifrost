@@ -132,3 +132,30 @@ class TestOAuthRefreshEndpointLogic:
         provider.encrypted_client_secret = b"some-secret"
         has_client_secret = provider.encrypted_client_secret is not None
         assert has_client_secret is True
+
+
+class TestUrlResolutionDefaults:
+    """Test entity_id resolution for OAuth URL templates."""
+
+    @pytest.mark.asyncio
+    async def test_uses_integration_entity_id_when_default_missing(self):
+        """Refresh routes should fall back to integration.entity_id."""
+        from src.routers.oauth_connections import get_url_resolution_defaults
+
+        provider = MagicMock()
+        provider.token_url_defaults = {}
+        provider.integration_id = "integration-123"
+
+        integration = MagicMock()
+        integration.default_entity_id = None
+        integration.entity_id = "tenant-123"
+
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = integration
+
+        db = AsyncMock()
+        db.execute.return_value = result
+
+        defaults = await get_url_resolution_defaults(db, provider)
+
+        assert defaults == {"entity_id": "tenant-123"}

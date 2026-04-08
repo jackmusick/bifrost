@@ -124,8 +124,10 @@ async def run_refresh_job(
                         select(Integration).where(Integration.id == provider.integration_id)
                     )
                     integration = result_int.scalar_one_or_none()
-                    if integration and integration.default_entity_id:
-                        integration_entity_id = integration.default_entity_id
+                    if integration:
+                        integration_entity_id = (
+                            integration.default_entity_id or integration.entity_id
+                        )
 
                 token_refresh_data.append({
                     "token_id": token.id,

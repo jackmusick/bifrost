@@ -58,7 +58,7 @@ async def get_url_resolution_defaults(
     OAuth URLs may contain {entity_id} placeholders that need to be resolved
     before making HTTP requests. This function gathers the default values
     from the provider's token_url_defaults and the linked integration's
-    default_entity_id.
+    resolved entity identifier.
     """
     defaults: dict[str, str] = dict(provider.token_url_defaults) if provider.token_url_defaults else {}
 
@@ -68,8 +68,10 @@ async def get_url_resolution_defaults(
             select(Integration).where(Integration.id == provider.integration_id)
         )
         integration = result.scalar_one_or_none()
-        if integration and integration.default_entity_id:
-            defaults["entity_id"] = integration.default_entity_id
+        if integration:
+            integration_entity_id = integration.default_entity_id or integration.entity_id
+            if integration_entity_id:
+                defaults["entity_id"] = integration_entity_id
 
     return defaults
 
