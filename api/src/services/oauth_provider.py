@@ -7,8 +7,18 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import aiohttp
+from sqlalchemy import select
+
+from src.core.security import decrypt_secret, encrypt_secret
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from src.models.orm.oauth import OAuthProvider, OAuthToken
 
 logger = logging.getLogger(__name__)
 
@@ -353,3 +363,274 @@ class OAuthProviderClient:
         logger.debug(f"Parsed token response: expires_at={result['expires_at']}, has_refresh={result['refresh_token'] is not None}")
 
         return result
+
+
+# =============================================================================
+# Shared OAuth refresh primitives
+#
+# These helpers are the single source of truth for OAuth token refresh used
+# by all three refresh entry points:
+#   - the scheduler (src/jobs/schedulers/oauth_token_refresh.py)
+#   - the SDK endpoint (src/routers/cli.py:sdk_integrations_refresh_token)
+#   - the connections router (src/routers/oauth_connections.py:refresh_token)
+#
+# The {entity_id} URL placeholder fallback lives in exactly one place here
+# (build_token_refresh_context) so the three sites cannot drift.
+# =============================================================================
+
+
+async def get_url_resolution_defaults(
+    db: "AsyncSession",
+    provider: "OAuthProvider",
+) -> dict[str, str]:
+    """
+    Build the ``defaults`` dict for :func:`resolve_url_template` from a
+    provider and its linked integration.
+
+    This is the shared helper used by non-refresh OAuth URL resolution paths
+    (authorize URL building, callback token exchange). Refresh paths should
+    use :func:`build_token_refresh_context` instead, which also carries the
+    encrypted secrets and token metadata.
+
+    Resolves ``{entity_id}`` via the integration fallback chain
+    (``default_entity_id`` → ``entity_id``). Note that the authorize/callback
+    flows don't have an org context, so the org-mapping lookup is skipped.
+    """
+    from src.models.orm import Integration
+
+    defaults: dict[str, str] = (
+        dict(provider.token_url_defaults) if provider.token_url_defaults else {}
+    )
+
+    if provider.integration_id:
+        result = await db.execute(
+            select(Integration).where(Integration.id == provider.integration_id)
+        )
+        integration = result.scalar_one_or_none()
+        if integration:
+            resolved = integration.default_entity_id or integration.entity_id
+            if resolved:
+                defaults["entity_id"] = resolved
+
+    return defaults
+
+
+async def build_token_refresh_context(
+    db: "AsyncSession",
+    provider: "OAuthProvider",
+    token: "OAuthToken | None" = None,
+    org_id: UUID | None = None,
+) -> dict[str, Any]:
+    """
+    Build the token context dict consumed by ``refresh_oauth_token_http``.
+
+    Handles ``{entity_id}`` URL placeholder resolution with the canonical
+    fallback chain:
+
+      1. org-scoped integration mapping's ``entity_id`` (if ``org_id`` is
+         provided and a mapping exists for this integration)
+      2. ``integration.default_entity_id``
+      3. ``integration.entity_id``
+
+    The resolved value is injected into the returned ``token_url_defaults``
+    dict under the ``entity_id`` key so ``resolve_url_template`` picks it up
+    via the ``defaults`` path (keeping all three refresh sites on the same
+    signature).
+
+    Args:
+        db: Active async session (used to load the linked integration and,
+            if ``org_id`` is set, the org mapping).
+        provider: The ``OAuthProvider`` being refreshed.
+        token: Optional stored ``OAuthToken`` (required for authorization_code
+            flows, ignored for client_credentials).
+        org_id: Optional organization context; when set, an org mapping is
+            consulted before falling back to the integration defaults.
+
+    Returns:
+        A dict matching the shape ``refresh_oauth_token_http`` expects.
+    """
+    from src.models.orm import Integration, IntegrationMapping
+
+    token_url_defaults: dict[str, str] = (
+        dict(provider.token_url_defaults) if provider.token_url_defaults else {}
+    )
+
+    resolved_entity_id: str | None = None
+    if provider.integration_id:
+        # 1. Org mapping (explicit per-tenant override)
+        if org_id is not None:
+            mapping_result = await db.execute(
+                select(IntegrationMapping).where(
+                    IntegrationMapping.integration_id == provider.integration_id,
+                    IntegrationMapping.organization_id == org_id,
+                )
+            )
+            mapping = mapping_result.scalar_one_or_none()
+            if mapping and mapping.entity_id:
+                resolved_entity_id = mapping.entity_id
+
+        # 2/3. Integration defaults — always consulted if mapping didn't resolve
+        if resolved_entity_id is None:
+            integration_result = await db.execute(
+                select(Integration).where(Integration.id == provider.integration_id)
+            )
+            integration = integration_result.scalar_one_or_none()
+            if integration:
+                resolved_entity_id = (
+                    integration.default_entity_id or integration.entity_id
+                )
+
+    if resolved_entity_id:
+        token_url_defaults["entity_id"] = resolved_entity_id
+
+    return {
+        "token_id": token.id if token else None,
+        "provider_id": provider.id,
+        "provider_name": provider.provider_name,
+        "oauth_flow_type": provider.oauth_flow_type,
+        "client_id": provider.client_id,
+        "encrypted_client_secret": provider.encrypted_client_secret,
+        "token_url": provider.token_url,
+        "token_url_defaults": token_url_defaults,
+        "scopes": provider.scopes,
+        "audience": provider.audience,
+        "encrypted_refresh_token": token.encrypted_refresh_token if token else None,
+    }
+
+
+async def refresh_oauth_token_http(td: dict[str, Any]) -> dict[str, Any]:
+    """
+    Execute a single OAuth token refresh over HTTP.
+
+    Does **not** touch the database. Callers supply a context dict built
+    by ``build_token_refresh_context`` (or an equivalently-shaped dict for
+    the scheduler's batch loop) and handle persistence themselves because
+    the three call sites have divergent persistence shapes (cache
+    invalidation, repo.store_token vs in-place update, different response
+    contracts).
+
+    Handles URL template resolution, client_secret decryption, and the
+    ``client_credentials`` vs ``authorization_code`` branching.
+
+    Args:
+        td: Token context dict. See ``build_token_refresh_context`` for the
+            expected shape.
+
+    Returns:
+        An outcome dict with at minimum ``success: bool``. On success, also
+        includes ``encrypted_access_token``, ``expires_at``, optionally
+        ``encrypted_refresh_token`` and ``scopes``. On failure, includes
+        ``error: str``.
+    """
+    outcome: dict[str, Any] = {
+        "token_id": td.get("token_id"),
+        "provider_id": td["provider_id"],
+        "success": False,
+    }
+
+    try:
+        client_secret: str | None = None
+        if td["encrypted_client_secret"]:
+            raw = td["encrypted_client_secret"]
+            client_secret = decrypt_secret(
+                raw.decode() if isinstance(raw, bytes) else raw
+            )
+
+        if not td["token_url"]:
+            outcome["error"] = (
+                f"No token URL configured for provider {td['provider_name']}"
+            )
+            return outcome
+
+        # Resolve URL template placeholders via the defaults dict.
+        # entity_id (when present) was injected into token_url_defaults by
+        # build_token_refresh_context, so this single call path is shared.
+        token_url = resolve_url_template(
+            url=td["token_url"],
+            defaults=td["token_url_defaults"],
+        )
+
+        oauth_client = OAuthProviderClient()
+
+        if td["oauth_flow_type"] == "client_credentials":
+            if not client_secret:
+                outcome["error"] = (
+                    f"No client secret for client_credentials provider "
+                    f"{td['provider_name']}"
+                )
+                return outcome
+
+            scopes = " ".join(td["scopes"]) if td["scopes"] else ""
+            success, result = await oauth_client.get_client_credentials_token(
+                token_url=token_url,
+                client_id=td["client_id"],
+                client_secret=client_secret,
+                scopes=scopes,
+                audience=td["audience"],
+            )
+        else:
+            if not td["encrypted_refresh_token"]:
+                outcome["error"] = (
+                    f"No refresh token for token {td.get('token_id')}"
+                )
+                return outcome
+
+            raw_refresh = td["encrypted_refresh_token"]
+            refresh_token_value = decrypt_secret(
+                raw_refresh.decode() if isinstance(raw_refresh, bytes) else raw_refresh
+            )
+            success, result = await oauth_client.refresh_access_token(
+                token_url=token_url,
+                refresh_token=refresh_token_value,
+                client_id=td["client_id"],
+                client_secret=client_secret,
+                audience=td["audience"],
+            )
+
+        if not success:
+            error_msg = result.get(
+                "error_description", result.get("error", "Refresh failed")
+            )
+            outcome["error"] = f"Token refresh failed: {error_msg}"
+            return outcome
+
+        new_access_token = result.get("access_token")
+        if not new_access_token:
+            outcome["error"] = (
+                f"No access token in refresh response for {td['provider_name']}"
+            )
+            return outcome
+
+        outcome["success"] = True
+        outcome["access_token"] = new_access_token
+        outcome["encrypted_access_token"] = encrypt_secret(new_access_token).encode()
+        outcome["expires_at"] = result.get("expires_at")
+
+        # Only authorization_code flow rotates refresh tokens
+        if td["oauth_flow_type"] != "client_credentials":
+            old_refresh = (
+                decrypt_secret(
+                    td["encrypted_refresh_token"].decode()
+                    if isinstance(td["encrypted_refresh_token"], bytes)
+                    else td["encrypted_refresh_token"]
+                )
+                if td["encrypted_refresh_token"]
+                else None
+            )
+            new_refresh = result.get("refresh_token") or old_refresh
+            if new_refresh:
+                outcome["refresh_token"] = new_refresh
+                outcome["encrypted_refresh_token"] = encrypt_secret(
+                    new_refresh
+                ).encode()
+
+        new_scopes = result.get("scope")
+        if new_scopes:
+            outcome["scopes"] = new_scopes.split(" ")
+
+        return outcome
+
+    except Exception as e:
+        logger.error(f"Error refreshing OAuth token: {e}", exc_info=True)
+        outcome["error"] = f"Token refresh failed: {str(e)[:200]}"
+        return outcome

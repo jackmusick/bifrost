@@ -1,4 +1,9 @@
-"""Tests for POST /api/cli/integrations/refresh_token endpoint."""
+"""Tests for POST /api/cli/integrations/refresh_token endpoint.
+
+These tests exercise the adapter-shaped handler; the underlying refresh
+orchestration is covered by
+``api/tests/unit/services/test_refresh_oauth_token_http.py``.
+"""
 
 import pytest
 from datetime import datetime, timedelta, timezone
@@ -31,7 +36,7 @@ class TestRefreshTokenClientCredentials:
         mock_provider.id = provider_id
         mock_provider.provider_name = "Pax8"
         mock_provider.client_id = "pax8-client-id"
-        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.encrypted_client_secret = b"encrypted-secret"
         mock_provider.token_url = "https://login.pax8.com/oauth/token"
         mock_provider.token_url_defaults = {}
         mock_provider.oauth_flow_type = "client_credentials"
@@ -40,11 +45,11 @@ class TestRefreshTokenClientCredentials:
         mock_provider.organization_id = None
         mock_provider.audience = None
 
-        # Mock DB execute for provider lookup
+        # Mock DB execute:
+        #   1. provider lookup
+        #   2. persist-time token lookup (client_credentials branch)
         provider_result = MagicMock()
         provider_result.scalars.return_value.first.return_value = mock_provider
-
-        # Mock DB execute for token lookup (no existing token)
         token_result = MagicMock()
         token_result.scalars.return_value.first.return_value = None
 
@@ -52,16 +57,17 @@ class TestRefreshTokenClientCredentials:
         mock_db.add = MagicMock()
         mock_db.commit = AsyncMock()
 
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
         mock_token_response = {
             "access_token": "fresh-pax8-token",
-            "expires_at": datetime.now(timezone.utc) + timedelta(hours=24),
+            "expires_at": expires_at,
         }
 
         with (
             patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
-            patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
-            patch("src.core.security.encrypt_secret", return_value="encrypted-new-token"),
+            patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-secret"),
+            patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-token"),
         ):
             mock_instance = MagicMock()
             mock_instance.get_client_credentials_token = AsyncMock(
@@ -102,7 +108,7 @@ class TestRefreshTokenClientCredentials:
         mock_provider.id = provider_id
         mock_provider.provider_name = "Pax8"
         mock_provider.client_id = "pax8-client-id"
-        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.encrypted_client_secret = b"encrypted-secret"
         mock_provider.token_url = "https://login.pax8.com/oauth/token"
         mock_provider.token_url_defaults = {}
         mock_provider.oauth_flow_type = "client_credentials"
@@ -120,6 +126,7 @@ class TestRefreshTokenClientCredentials:
         token_result.scalars.return_value.first.return_value = mock_existing_token
 
         mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
+        mock_db.add = MagicMock()
         mock_db.commit = AsyncMock()
 
         expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -131,8 +138,8 @@ class TestRefreshTokenClientCredentials:
         with (
             patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
-            patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
-            patch("src.core.security.encrypt_secret", return_value="encrypted-new-token"),
+            patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-secret"),
+            patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-token"),
         ):
             mock_instance = MagicMock()
             mock_instance.get_client_credentials_token = AsyncMock(
@@ -169,7 +176,7 @@ class TestRefreshTokenAuthorizationCode:
         mock_provider.id = provider_id
         mock_provider.provider_name = "Microsoft"
         mock_provider.client_id = "ms-client-id"
-        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.encrypted_client_secret = b"encrypted-secret"
         mock_provider.token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         mock_provider.token_url_defaults = {}
         mock_provider.oauth_flow_type = "authorization_code"
@@ -180,22 +187,20 @@ class TestRefreshTokenAuthorizationCode:
 
         # Mock stored token with refresh_token
         mock_stored_token = MagicMock()
+        mock_stored_token.id = uuid4()
         mock_stored_token.encrypted_refresh_token = b"encrypted-refresh-token"
 
         provider_result = MagicMock()
         provider_result.scalars.return_value.first.return_value = mock_provider
 
-        # Calls: provider lookup, get_provider_org_token (for refresh), token persist lookup
         token_for_refresh = MagicMock()
         token_for_refresh.scalars.return_value.first.return_value = mock_stored_token
 
-        token_persist_result = MagicMock()
-        token_persist_result.scalars.return_value.first.return_value = None  # no existing token to update
-
+        # In the new adapter-shaped handler, the stored token loaded up front
+        # is the same row we persist into — no second lookup is issued.
         mock_db.execute = AsyncMock(side_effect=[
             provider_result,
             token_for_refresh,
-            token_persist_result,
         ])
         mock_db.commit = AsyncMock()
         mock_db.add = MagicMock()
@@ -210,8 +215,8 @@ class TestRefreshTokenAuthorizationCode:
         with (
             patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
-            patch("src.core.security.decrypt_secret", return_value="decrypted-value"),
-            patch("src.core.security.encrypt_secret", return_value="encrypted-new-value"),
+            patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-value"),
+            patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-value"),
         ):
             mock_instance = MagicMock()
             mock_instance.refresh_access_token = AsyncMock(
@@ -242,7 +247,7 @@ class TestRefreshTokenAuthorizationCode:
         mock_provider.id = uuid4()
         mock_provider.provider_name = "NoRefresh"
         mock_provider.client_id = "client-id"
-        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.encrypted_client_secret = b"encrypted-secret"
         mock_provider.token_url = "https://oauth.example.com/token"
         mock_provider.token_url_defaults = {}
         mock_provider.oauth_flow_type = "authorization_code"
@@ -268,7 +273,6 @@ class TestRefreshTokenAuthorizationCode:
 
         with (
             patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
-            patch("src.core.security.decrypt_secret", return_value="decrypted"),
             pytest.raises(HTTPException) as exc_info,
         ):
             await sdk_integrations_refresh_token(request, mock_user, mock_db)
@@ -325,7 +329,7 @@ class TestRefreshTokenErrorHandling:
         mock_provider.id = uuid4()
         mock_provider.provider_name = "Pax8"
         mock_provider.client_id = "pax8-client-id"
-        mock_provider.encrypted_client_secret = "encrypted-secret"
+        mock_provider.encrypted_client_secret = b"encrypted-secret"
         mock_provider.token_url = "https://login.pax8.com/oauth/token"
         mock_provider.token_url_defaults = {}
         mock_provider.oauth_flow_type = "client_credentials"
@@ -341,7 +345,7 @@ class TestRefreshTokenErrorHandling:
         with (
             patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
-            patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
+            patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-secret"),
             pytest.raises(HTTPException) as exc_info,
         ):
             mock_instance = MagicMock()

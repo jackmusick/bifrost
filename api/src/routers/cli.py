@@ -1074,25 +1074,22 @@ async def sdk_integrations_refresh_token(
 
     The new token is persisted to the database so subsequent integrations.get() calls
     also benefit from the refreshed token.
+
+    The HTTP refresh itself is delegated to the shared primitive
+    :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
+    only owns the provider lookup, context build, and persistence.
     """
-    from src.repositories.integrations import IntegrationsRepository
-    from src.services.oauth_provider import OAuthProviderClient, resolve_url_template
-    from src.core.security import decrypt_secret, encrypt_secret
-    from src.models.orm.oauth import OAuthToken
+    from src.models.orm.oauth import OAuthProvider, OAuthToken
+    from src.services.oauth_provider import (
+        build_token_refresh_context,
+        refresh_oauth_token_http,
+    )
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     try:
-        repo = IntegrationsRepository(db)
-
-        # Find the integration by connection_name (which is the provider_name)
-        # First try via integration name -> oauth_provider
-        provider = None
-        entity_id = None
-
-        # Search by provider_name directly
-        from src.models.orm.oauth import OAuthProvider
+        # Look up provider by connection_name (== provider_name)
         result = await db.execute(
             select(OAuthProvider).where(
                 OAuthProvider.provider_name == request.connection_name
@@ -1106,126 +1103,51 @@ async def sdk_integrations_refresh_token(
                 detail=f"OAuth provider '{request.connection_name}' not found",
             )
 
-        # If provider is linked to an integration, resolve entity_id from mapping
-        if provider.integration_id and org_uuid:
-            mapping = await repo.get_mapping_by_org(provider.integration_id, org_uuid)
-            if mapping:
-                entity_id = mapping.entity_id
-            else:
-                # Fall back to integration's default_entity_id
-                integration = await repo.get_by_id(provider.integration_id)
-                if integration:
-                    entity_id = integration.default_entity_id
-
-        # Decrypt client secret
-        client_secret = None
-        if provider.encrypted_client_secret:
-            try:
-                raw = provider.encrypted_client_secret
-                client_secret = await asyncio.to_thread(
-                    decrypt_secret, raw.decode() if isinstance(raw, bytes) else raw
+        # For authorization_code flow we need the stored token up front so
+        # build_token_refresh_context can carry the encrypted refresh token.
+        stored_token = None
+        if provider.oauth_flow_type == "authorization_code":
+            token_result = await db.execute(
+                select(OAuthToken).where(
+                    OAuthToken.provider_id == provider.id,
+                    OAuthToken.user_id.is_(None),
                 )
-            except Exception:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to decrypt client secret",
-                )
-
-        # Resolve token URL with entity_id
-        resolved_token_url = provider.token_url
-        if provider.token_url and entity_id:
-            resolved_token_url = resolve_url_template(
-                url=provider.token_url,
-                entity_id=entity_id,
-                defaults=provider.token_url_defaults,
             )
-
-        oauth_client = OAuthProviderClient()
-        access_token = None
-        expires_at = None
-        new_refresh_token = None
-
-        if provider.oauth_flow_type == "client_credentials":
-            # Client credentials: fetch a fresh token
-            if not client_secret or not resolved_token_url:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot refresh: missing client_secret or token_url",
-                )
-
-            scopes = " ".join(provider.scopes) if provider.scopes else ""
-            success, result_data = await oauth_client.get_client_credentials_token(
-                token_url=resolved_token_url,
-                client_id=provider.client_id,
-                client_secret=client_secret,
-                scopes=scopes,
-                audience=provider.audience,
-            )
-
-            if not success:
-                error_msg = result_data.get("error_description", result_data.get("error", "Unknown error"))
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Token refresh failed: {error_msg}",
-                )
-
-            access_token = result_data.get("access_token")
-            expires_at_dt = result_data.get("expires_at")
-
-        elif provider.oauth_flow_type == "authorization_code":
-            # Authorization code: use refresh_token
-            # Get stored token to find the refresh_token
-            token_obj = await repo.get_provider_org_token(provider.id)
-            if not token_obj or not token_obj.encrypted_refresh_token:
+            stored_token = token_result.scalars().first()
+            if not stored_token or not stored_token.encrypted_refresh_token:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot refresh: no refresh_token stored for this connection",
                 )
 
-            stored_refresh_token = await asyncio.to_thread(
-                decrypt_secret,
-                token_obj.encrypted_refresh_token.decode()
-                if isinstance(token_obj.encrypted_refresh_token, bytes)
-                else token_obj.encrypted_refresh_token,
-            )
+        # Build the context dict and delegate to the shared primitive.
+        # build_token_refresh_context handles the {entity_id} fallback chain
+        # (org mapping → integration.default_entity_id → integration.entity_id)
+        # in one place so the SDK endpoint, scheduler, and connections router
+        # cannot drift.
+        td = await build_token_refresh_context(
+            db=db,
+            provider=provider,
+            token=stored_token,
+            org_id=org_uuid,
+        )
+        outcome = await refresh_oauth_token_http(td)
 
-            if not resolved_token_url:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot refresh: missing token_url",
-                )
-
-            success, result_data = await oauth_client.refresh_access_token(
-                token_url=resolved_token_url,
-                refresh_token=stored_refresh_token,
-                client_id=provider.client_id,
-                client_secret=client_secret,
-                audience=provider.audience,
-            )
-
-            if not success:
-                error_msg = result_data.get("error_description", result_data.get("error", "Unknown error"))
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Token refresh failed: {error_msg}",
-                )
-
-            access_token = result_data.get("access_token")
-            expires_at_dt = result_data.get("expires_at")
-            new_refresh_token = result_data.get("refresh_token")
-        else:
+        if not outcome["success"]:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported oauth_flow_type: {provider.oauth_flow_type}",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=outcome.get("error", "Token refresh failed"),
             )
 
+        access_token = outcome.get("access_token")
         if not access_token:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Token refresh returned no access_token",
             )
 
-        # Format expires_at for response
+        expires_at_dt = outcome.get("expires_at")
+        expires_at = None
         if expires_at_dt:
             expires_at = (
                 expires_at_dt.isoformat()
@@ -1233,42 +1155,44 @@ async def sdk_integrations_refresh_token(
                 else str(expires_at_dt)
             )
 
-        # Persist the new token to DB
-        token_result = await db.execute(
-            select(OAuthToken).where(
-                OAuthToken.provider_id == provider.id,
-                OAuthToken.user_id.is_(None),
+        # Persist the new token. The SDK endpoint creates a new user_id=NULL
+        # token row if one doesn't already exist — this is distinct from the
+        # connections router (which requires an existing row) and so persistence
+        # remains per-caller.
+        token_obj = stored_token
+        if token_obj is None:
+            # client_credentials path — fetch (or later create) the user_id=NULL row
+            token_result = await db.execute(
+                select(OAuthToken).where(
+                    OAuthToken.provider_id == provider.id,
+                    OAuthToken.user_id.is_(None),
+                )
             )
-        )
-        token_obj = token_result.scalars().first()
-
-        encrypted_access = await asyncio.to_thread(encrypt_secret, access_token)
+            token_obj = token_result.scalars().first()
 
         if token_obj:
-            token_obj.encrypted_access_token = encrypted_access.encode() if isinstance(encrypted_access, str) else encrypted_access
-            if new_refresh_token:
-                encrypted_refresh = await asyncio.to_thread(encrypt_secret, new_refresh_token)
-                token_obj.encrypted_refresh_token = encrypted_refresh.encode() if isinstance(encrypted_refresh, str) else encrypted_refresh
+            token_obj.encrypted_access_token = outcome["encrypted_access_token"]
+            if outcome.get("encrypted_refresh_token"):
+                token_obj.encrypted_refresh_token = outcome["encrypted_refresh_token"]
             if expires_at_dt and hasattr(expires_at_dt, "isoformat"):
                 token_obj.expires_at = expires_at_dt
         else:
-            # Create new token record
             new_token = OAuthToken(
                 organization_id=provider.organization_id,
                 provider_id=provider.id,
-                encrypted_access_token=encrypted_access.encode() if isinstance(encrypted_access, str) else encrypted_access,
-                encrypted_refresh_token=None,
+                encrypted_access_token=outcome["encrypted_access_token"],
+                encrypted_refresh_token=outcome.get("encrypted_refresh_token"),
                 expires_at=expires_at_dt if expires_at_dt and hasattr(expires_at_dt, "isoformat") else None,
                 scopes=provider.scopes or [],
             )
-            if new_refresh_token:
-                encrypted_refresh = await asyncio.to_thread(encrypt_secret, new_refresh_token)
-                new_token.encrypted_refresh_token = encrypted_refresh.encode() if isinstance(encrypted_refresh, str) else encrypted_refresh
             db.add(new_token)
 
         await db.commit()
 
-        logger.info(f"SDK refreshed OAuth token for '{request.connection_name}' by {current_user.email}")
+        logger.info(
+            f"SDK refreshed OAuth token for '{request.connection_name}' "
+            f"by {current_user.email}"
+        )
 
         return SDKIntegrationsRefreshTokenResponse(
             access_token=access_token,

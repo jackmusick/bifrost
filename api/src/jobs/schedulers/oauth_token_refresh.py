@@ -15,10 +15,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 
 from src.core.database import get_db_context
-from src.core.security import decrypt_secret, encrypt_secret
 from src.models import OAuthToken, OAuthProvider
-from src.models.orm import Integration
-from src.services.oauth_provider import OAuthProviderClient, resolve_url_template
+from src.services.oauth_provider import (
+    build_token_refresh_context,
+    refresh_oauth_token_http,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,10 @@ async def run_refresh_job(
 
             results["needs_refresh"] = len(tokens_to_refresh)
 
-            # Extract data needed for refresh before session closes
+            # Build refresh context while the session is active. Phase 2 runs
+            # over HTTP without holding a DB connection, so everything the
+            # shared primitive needs (including the resolved entity_id) must
+            # be baked into these dicts before we leave this block.
             token_refresh_data = []
             for token in tokens_to_refresh:
                 provider = token.provider
@@ -117,36 +121,19 @@ async def run_refresh_job(
                     results["refresh_failed"] += 1
                     continue
 
-                # Resolve integration for URL templates while session is active
-                integration_entity_id = None
-                if provider.integration_id:
-                    result_int = await db.execute(
-                        select(Integration).where(Integration.id == provider.integration_id)
-                    )
-                    integration = result_int.scalar_one_or_none()
-                    if integration and integration.default_entity_id:
-                        integration_entity_id = integration.default_entity_id
-
-                token_refresh_data.append({
-                    "token_id": token.id,
-                    "provider_id": provider.id,
-                    "provider_name": provider.provider_name,
-                    "oauth_flow_type": provider.oauth_flow_type,
-                    "client_id": provider.client_id,
-                    "encrypted_client_secret": provider.encrypted_client_secret,
-                    "token_url": provider.token_url,
-                    "token_url_defaults": dict(provider.token_url_defaults) if provider.token_url_defaults else {},
-                    "scopes": provider.scopes,
-                    "audience": provider.audience,
-                    "encrypted_refresh_token": token.encrypted_refresh_token,
-                    "integration_entity_id": integration_entity_id,
-                })
+                td = await build_token_refresh_context(
+                    db=db,
+                    provider=provider,
+                    token=token,
+                    org_id=None,  # scheduler refreshes globally; no org context
+                )
+                token_refresh_data.append(td)
 
         # Phase 2: Refresh tokens via HTTP (no DB connection held)
         refresh_outcomes: list[dict] = []
         for td in token_refresh_data:
             try:
-                outcome = await _refresh_token_http(td)
+                outcome = await refresh_oauth_token_http(td)
                 refresh_outcomes.append(outcome)
 
                 if outcome["success"]:
@@ -218,97 +205,3 @@ async def run_refresh_job(
         results["errors"].append({"error": str(e)})
 
     return results
-
-
-async def _refresh_token_http(td: dict) -> dict:
-    """
-    Refresh a single OAuth token via HTTP (no DB session needed).
-
-    Args:
-        td: Token data dict with provider config and credentials
-
-    Returns:
-        Dict with refresh outcome (success, tokens, errors)
-    """
-    outcome: dict = {
-        "token_id": td["token_id"],
-        "provider_id": td["provider_id"],
-        "success": False,
-    }
-
-    try:
-        client_secret = None
-        if td["encrypted_client_secret"]:
-            client_secret = decrypt_secret(td["encrypted_client_secret"].decode())
-
-        if not td["token_url"]:
-            outcome["error"] = f"No token URL configured for provider {td['provider_name']}"
-            return outcome
-
-        # Resolve URL template placeholders
-        defaults = dict(td["token_url_defaults"])
-        if td.get("integration_entity_id"):
-            defaults["entity_id"] = td["integration_entity_id"]
-
-        token_url = resolve_url_template(url=td["token_url"], defaults=defaults)
-
-        oauth_client = OAuthProviderClient()
-
-        if td["oauth_flow_type"] == "client_credentials":
-            if not client_secret:
-                outcome["error"] = f"No client secret for client_credentials provider {td['provider_name']}"
-                return outcome
-
-            scopes = " ".join(td["scopes"]) if td["scopes"] else ""
-            success, result = await oauth_client.get_client_credentials_token(
-                token_url=token_url,
-                client_id=td["client_id"],
-                client_secret=client_secret,
-                scopes=scopes,
-                audience=td["audience"],
-            )
-        else:
-            if not td["encrypted_refresh_token"]:
-                outcome["error"] = f"No refresh token for token {td['token_id']}"
-                return outcome
-
-            refresh_token = decrypt_secret(td["encrypted_refresh_token"].decode())
-            success, result = await oauth_client.refresh_access_token(
-                token_url=token_url,
-                refresh_token=refresh_token,
-                client_id=td["client_id"],
-                client_secret=client_secret,
-                audience=td["audience"],
-            )
-
-        if not success:
-            error_msg = result.get("error_description", result.get("error", "Refresh failed"))
-            outcome["error"] = f"Token refresh failed: {error_msg}"
-            return outcome
-
-        new_access_token = result.get("access_token")
-        if not new_access_token:
-            outcome["error"] = f"No access token in refresh response for {td['provider_name']}"
-            return outcome
-
-        outcome["success"] = True
-        outcome["encrypted_access_token"] = encrypt_secret(new_access_token).encode()
-        outcome["expires_at"] = result.get("expires_at")
-
-        # Update refresh token only for authorization_code flow
-        if td["oauth_flow_type"] != "client_credentials":
-            old_refresh = decrypt_secret(td["encrypted_refresh_token"].decode()) if td["encrypted_refresh_token"] else None
-            new_refresh = result.get("refresh_token") or old_refresh
-            if new_refresh:
-                outcome["encrypted_refresh_token"] = encrypt_secret(new_refresh).encode()
-
-        new_scopes = result.get("scope")
-        if new_scopes:
-            outcome["scopes"] = new_scopes.split(" ")
-
-        return outcome
-
-    except Exception as e:
-        logger.error(f"Error refreshing token: {e}", exc_info=True)
-        outcome["error"] = f"Token refresh failed: {str(e)[:200]}"
-        return outcome

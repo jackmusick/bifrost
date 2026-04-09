@@ -28,7 +28,12 @@ from src.models import (
 )
 from src.core.auth import Context, CurrentSuperuser
 from src.models import OAuthProvider, OAuthToken
-from src.services.oauth_provider import resolve_url_template
+from src.services.oauth_provider import (
+    build_token_refresh_context,
+    get_url_resolution_defaults,
+    refresh_oauth_token_http,
+    resolve_url_template,
+)
 
 # Import cache invalidation
 try:
@@ -42,36 +47,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/oauth", tags=["OAuth Connections"])
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
-async def get_url_resolution_defaults(
-    db: AsyncSession,
-    provider: OAuthProvider,
-) -> dict[str, str]:
-    """Get defaults for URL template resolution from provider and linked integration.
-
-    OAuth URLs may contain {entity_id} placeholders that need to be resolved
-    before making HTTP requests. This function gathers the default values
-    from the provider's token_url_defaults and the linked integration's
-    default_entity_id.
-    """
-    defaults: dict[str, str] = dict(provider.token_url_defaults) if provider.token_url_defaults else {}
-
-    if provider.integration_id:
-        from src.models.orm import Integration
-        result = await db.execute(
-            select(Integration).where(Integration.id == provider.integration_id)
-        )
-        integration = result.scalar_one_or_none()
-        if integration and integration.default_entity_id:
-            defaults["entity_id"] = integration.default_entity_id
-
-    return defaults
 
 
 # =============================================================================
@@ -680,10 +655,12 @@ async def refresh_token(
 
     For client_credentials flow: Fetches a new token using client credentials.
     For authorization_code flow: Uses the stored refresh token.
-    """
-    from src.core.security import decrypt_secret, encrypt_secret
-    from src.services.oauth_provider import OAuthProviderClient
 
+    The HTTP refresh itself is delegated to the shared primitive
+    :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
+    only owns the provider lookup, context build, persistence, and cache
+    invalidation.
+    """
     repo = OAuthConnectionRepository(ctx.db)
     org_id = ctx.org_id
 
@@ -701,58 +678,50 @@ async def refresh_token(
             detail="No token URL configured for this connection",
         )
 
-    # Resolve URL template placeholders (e.g., {entity_id} -> actual tenant ID)
-    defaults = await get_url_resolution_defaults(ctx.db, provider)
-    resolved_token_url = resolve_url_template(
-        url=provider.token_url,
-        defaults=defaults,
-    )
-
-    oauth_client = OAuthProviderClient()
-
-    # Handle client_credentials flow differently - no refresh token needed
-    if provider.oauth_flow_type == "client_credentials":
-        # Decrypt client secret (required for client_credentials)
-        if not provider.encrypted_client_secret:
+    # For authorization_code flows we need the stored token up front.
+    stored_token: OAuthToken | None = None
+    if provider.oauth_flow_type != "client_credentials":
+        stored_token = await repo.get_token(connection_name, org_id)
+        if not stored_token or not stored_token.encrypted_refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Client secret is required for client_credentials flow",
+                detail="No refresh token available for this connection",
             )
 
-        try:
-            client_secret = decrypt_secret(provider.encrypted_client_secret.decode())
-        except Exception as e:
-            logger.error(f"Failed to decrypt client secret: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to decrypt credentials",
-            )
-
-        # Get scopes
-        scopes = " ".join(provider.scopes) if provider.scopes else ""
-
-        # Fetch new token using client credentials
-        success, result = await oauth_client.get_client_credentials_token(
-            token_url=resolved_token_url,
-            client_id=provider.client_id,
-            client_secret=client_secret,
-            scopes=scopes,
-            audience=provider.audience,
+    if provider.oauth_flow_type == "client_credentials" and not provider.encrypted_client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client secret is required for client_credentials flow",
         )
 
-        if not success:
-            error_msg = result.get("error_description", result.get("error", "Token fetch failed"))
-            provider.status = "failed"
-            provider.status_message = error_msg
-            await ctx.db.flush()
-            return RefreshTokenResponse(
-                success=False,
-                message=error_msg,
-                expires_at=None,
-            )
+    # Build context and delegate. The {entity_id} fallback chain lives in
+    # build_token_refresh_context so this handler, the SDK endpoint, and the
+    # scheduler cannot drift.
+    td = await build_token_refresh_context(
+        db=ctx.db,
+        provider=provider,
+        token=stored_token,
+        org_id=org_id,
+    )
+    outcome = await refresh_oauth_token_http(td)
 
-        # Store or update token
-        new_expires_at = result.get("expires_at")
+    if not outcome["success"]:
+        error_msg = outcome.get("error", "Refresh failed")
+        provider.status = "failed"
+        provider.status_message = error_msg
+        await ctx.db.flush()
+        return RefreshTokenResponse(
+            success=False,
+            message=error_msg,
+            expires_at=None,
+        )
+
+    new_expires_at = outcome.get("expires_at")
+
+    # Persistence differs per flow to preserve existing behavior:
+    #   - client_credentials uses repo.store_token (may create the row)
+    #   - authorization_code updates the existing row in place
+    if provider.oauth_flow_type == "client_credentials":
         if not new_expires_at:
             # Default to 1 hour from now if no expiry provided
             new_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -760,7 +729,7 @@ async def refresh_token(
         await repo.store_token(
             connection_name=connection_name,
             org_id=org_id,
-            access_token=result["access_token"],
+            access_token=outcome["access_token"],
             refresh_token=None,  # client_credentials doesn't have refresh tokens
             expires_at=new_expires_at,
             scopes=provider.scopes,
@@ -769,56 +738,13 @@ async def refresh_token(
         logger.info(f"Client credentials token acquired for {connection_name}")
 
     else:
-        # authorization_code flow - use refresh token
-        token = await repo.get_token(connection_name, org_id)
+        # Update the token row we already loaded above.
+        assert stored_token is not None  # narrowed by the guard above
+        stored_token.encrypted_access_token = outcome["encrypted_access_token"]
+        if outcome.get("encrypted_refresh_token"):
+            stored_token.encrypted_refresh_token = outcome["encrypted_refresh_token"]
+        stored_token.expires_at = new_expires_at
 
-        if not token or not token.encrypted_refresh_token:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No refresh token available for this connection",
-            )
-
-        # Decrypt secrets
-        try:
-            refresh_token_value = decrypt_secret(token.encrypted_refresh_token.decode())
-            client_secret = None
-            if provider.encrypted_client_secret:
-                client_secret = decrypt_secret(provider.encrypted_client_secret.decode())
-        except Exception as e:
-            logger.error(f"Failed to decrypt credentials: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to decrypt credentials",
-            )
-
-        # Call OAuth provider to refresh token
-        success, result = await oauth_client.refresh_access_token(
-            token_url=resolved_token_url,
-            refresh_token=refresh_token_value,
-            client_id=provider.client_id,
-            client_secret=client_secret,
-            audience=provider.audience,
-        )
-
-        if not success:
-            error_msg = result.get("error_description", result.get("error", "Refresh failed"))
-            provider.status = "failed"
-            provider.status_message = error_msg
-            await ctx.db.flush()
-            return RefreshTokenResponse(
-                success=False,
-                message=error_msg,
-                expires_at=None,
-            )
-
-        # Update token in database
-        token.encrypted_access_token = encrypt_secret(result["access_token"]).encode()
-        if result.get("refresh_token"):
-            token.encrypted_refresh_token = encrypt_secret(result["refresh_token"]).encode()
-        new_expires_at = result.get("expires_at")
-        token.expires_at = new_expires_at
-
-        # Update provider
         provider.status = "completed"
         provider.status_message = None
         provider.last_token_refresh = datetime.now(timezone.utc)
