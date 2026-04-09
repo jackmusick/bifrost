@@ -37,6 +37,13 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 const EXECUTION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const TERMINAL_STATUSES: ExecutionStatus[] = [
+	"Success",
+	"Failed",
+	"CompletedWithErrors",
+	"Timeout",
+	"Cancelled",
+];
 
 export interface UseWorkflowMutationResult<T> {
 	execute: (params?: Record<string, unknown>) => Promise<T>;
@@ -306,6 +313,57 @@ export function useWorkflowMutation<T = unknown>(
 				channel,
 				timeout,
 			});
+
+			// Fast workflows can complete before the WebSocket callback is attached.
+			// Check once immediately after subscribing so the hook does not stay
+			// unresolved when the terminal event was missed.
+			try {
+				const execution = await getExecution(execId);
+				if (
+					TERMINAL_STATUSES.includes(
+						execution.status as ExecutionStatus,
+					)
+				) {
+					const currentStore = useExecutionStreamStore.getState();
+					currentStore.updateStatus(
+						execId,
+						execution.status as ExecutionStatus,
+					);
+					currentStore.completeExecution(
+						execId,
+						undefined,
+						execution.status as ExecutionStatus,
+					);
+
+					const pending = deferredMapRef.current.get(execId);
+					if (pending) {
+						if (
+							execution.status === "Success" ||
+							execution.status === "CompletedWithErrors"
+						) {
+							const result = execution.result as T;
+							if (mountedRef.current) {
+								setData(result);
+								setIsLoading(false);
+							}
+							pending.resolve(result);
+						} else {
+							const errMsg =
+								execution.error_message ||
+								`Workflow ${execution.status}`;
+							if (mountedRef.current) {
+								setError(errMsg);
+								setIsLoading(false);
+							}
+							pending.reject(new Error(errMsg));
+						}
+						cleanupExecution(execId);
+					}
+				}
+			} catch {
+				// Ignore immediate status fetch failures; the normal WebSocket path
+				// still handles ordinary execution flow.
+			}
 
 			return deferred.promise;
 		},
