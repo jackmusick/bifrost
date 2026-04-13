@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -294,7 +294,7 @@ class BifrostMCPServer:
         if not HAS_FASTMCP:
             raise ImportError(
                 "fastmcp is required for MCP access. "
-                "Install it with: pip install 'fastmcp>=2.0,<3'"
+                "Install it with: pip install 'fastmcp>=3.2.0,<4'"
             )
 
         # Build icon list for branding
@@ -507,7 +507,7 @@ async def create_user_mcp_server(
 _WorkflowTool: type | None = None
 
 if HAS_FASTMCP:
-    from fastmcp.tools import Tool as _FastMCPTool  # type: ignore[import-not-found]
+    from fastmcp.tools import Tool as _FastMCPTool
 
     class WorkflowTool(_FastMCPTool):
         """

@@ -31,7 +31,6 @@ redis  # Includes async support (aioredis merged in v5.0)
 # =============================================================================
 pyjwt[crypto]  # JWT tokens
 pwdlib[bcrypt]  # Modern password hashing
-python-jose[cryptography]  # Alternative JWT (compatibility)
 cryptography  # Encryption utilities
 pyotp  # TOTP/HOTP for MFA
 webauthn>=2.0.0  # WebAuthn/Passkeys support
@@ -114,7 +113,7 @@ anthropic  # Anthropic Claude API client
 # MCP (Model Context Protocol)
 # =============================================================================
 mcp>=1.26.0  # Model Context Protocol SDK - structuredContent support requires 1.26+
-fastmcp>=2.0,<3  # FastMCP for MCP server (internal + external access)
+fastmcp>=3.2.0,<4  # FastMCP for MCP server (internal + external access)
 
 # =============================================================================
 # Vector Store (Knowledge/RAG)

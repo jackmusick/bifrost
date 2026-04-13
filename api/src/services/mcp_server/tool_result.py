@@ -13,7 +13,7 @@ that don't support structuredContent can still parse the full data.
 import json
 from typing import Any
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 
 def success_result(display_text: str, data: dict[str, Any] | None = None) -> ToolResult:

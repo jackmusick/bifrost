@@ -9,7 +9,7 @@ import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Callable
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
