@@ -27,7 +27,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import multiprocessing
 import os
 import signal
 import subprocess
@@ -36,7 +35,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from multiprocessing import Queue as MPQueue
 from queue import Empty
 from typing import Any, Awaitable, Callable
 
@@ -45,10 +43,7 @@ import redis.asyncio as redis
 
 from src.config import get_settings
 from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
-from src.services.execution.simple_worker import (
-    install_requirements,
-    run_worker_process as simple_run_worker_process,
-)
+from src.services.execution.simple_worker import install_requirements
 from src.services.execution.template_process import TemplateProcess
 
 logger = logging.getLogger(__name__)
@@ -123,22 +118,22 @@ class ProcessHandle:
 
     Attributes:
         id: Unique identifier for this process handle (e.g., "process-1")
-        process: The multiprocessing.Process instance
-        pid: Process ID (set after process.start())
+        process: _PidWrapper around the forked child PID
+        pid: Process ID of the forked child
         state: Current ProcessState
-        work_queue: Queue for sending execution_ids to process
-        result_queue: Queue for receiving results from process
-        started_at: When the process was spawned
+        work_queue: Pipe-backed send queue for execution_ids
+        result_queue: Pipe-backed recv queue for results
+        started_at: When the process was forked
         current_execution: Info about current execution (if BUSY)
         executions_completed: Number of executions this process has completed
     """
 
     id: str
-    process: Any  # multiprocessing.Process or SpawnProcess
+    process: Any  # _PidWrapper
     pid: int | None
     state: ProcessState
-    work_queue: MPQueue  # type: ignore[type-arg]
-    result_queue: MPQueue  # type: ignore[type-arg]
+    work_queue: Any  # _SendQueue from template_process
+    result_queue: Any  # _RecvQueue from template_process
     started_at: datetime
     current_execution: ExecutionInfo | None = None
     executions_completed: int = 0
@@ -326,18 +321,17 @@ class ProcessPoolManager:
         start() completes successfully. This prevents fork() from racing
         against the startup ready-handshake on the same pipe — if
         self._template were assigned beforehand, a concurrent
-        route_execution → _spawn_or_fork_process → template.fork() could
+        route_execution → _fork_process → template.fork() could
         consume the "ready" message intended for start()'s recv.
+
+        Raises on failure. The caller (ProcessPoolManager.start) must not
+        catch this — the worker process should crash-loop so Kubernetes
+        restarts it and the failure is visible.
         """
         new_template = TemplateProcess()
-        try:
-            await asyncio.to_thread(new_template.start)
-        except Exception as e:
-            logger.error(f"Failed to start template process: {e}. Falling back to spawn.")
-            self._template = None
-            return
+        await asyncio.to_thread(new_template.start)
         self._template = new_template
-        logger.info(f"Template process started (PID={self._template.pid})")
+        logger.info(f"Template process started (PID={new_template.pid})")
 
     async def restart_template(self) -> None:
         """
@@ -383,70 +377,55 @@ class ProcessPoolManager:
 
         # 5. Respawn to min_workers
         for _ in range(self.min_workers):
-            self._spawn_or_fork_process()
+            self._fork_process()
 
-    def _spawn_or_fork_process(self, persistent: bool | None = None) -> ProcessHandle:
+    def _fork_process(self, persistent: bool | None = None) -> ProcessHandle:
         """
         Create a new worker process by forking from the template.
 
-        If the template is not running (e.g., during tests), falls back
-        to multiprocessing.spawn.
+        Requires the template process to be running. The caller must
+        ensure the pool has been started (and therefore _start_template
+        has completed) before invoking this method.
 
         Args:
             persistent: If None, inferred from self.min_workers > 0.
                         If True, child loops. If False, child runs once.
 
         Returns:
-            ProcessHandle instance for the new process.
+            ProcessHandle instance for the new forked worker.
+
+        Raises:
+            RuntimeError: If the template process is not alive.
         """
+        if self._template is None or not self._template.is_alive():
+            raise RuntimeError(
+                "Cannot fork worker: template process is not running. "
+                "ProcessPoolManager.start() must complete before forking workers."
+            )
+
         if persistent is None:
             persistent = self.min_workers > 0
 
         self._process_counter += 1
         process_id = f"process-{self._process_counter}"
 
-        if self._template is not None and self._template.is_alive():
-            # Fork from template (COW memory sharing)
-            child_pid, work_queue, result_queue = self._template.fork(
-                worker_id=process_id,
-                persistent=persistent,
-            )
+        # Fork from template (COW memory sharing)
+        child_pid, work_queue, result_queue = self._template.fork(
+            worker_id=process_id,
+            persistent=persistent,
+        )
 
-            handle = ProcessHandle(
-                id=process_id,
-                process=_PidWrapper(child_pid),
-                pid=child_pid,
-                state=ProcessState.IDLE,
-                work_queue=work_queue,
-                result_queue=result_queue,
-                started_at=datetime.now(timezone.utc),
-                current_execution=None,
-                executions_completed=0,
-            )
-        else:
-            # Fallback to spawn (tests, or template not yet started)
-            ctx = multiprocessing.get_context("spawn")
-            work_queue_mp: MPQueue[str] = ctx.Queue()
-            result_queue_mp: MPQueue[dict[str, Any]] = ctx.Queue()
-
-            process = ctx.Process(
-                target=simple_run_worker_process,
-                args=(work_queue_mp, result_queue_mp, process_id),
-                name=process_id,
-            )
-            process.start()
-
-            handle = ProcessHandle(
-                id=process_id,
-                process=process,
-                pid=process.pid,
-                state=ProcessState.IDLE,
-                work_queue=work_queue_mp,
-                result_queue=result_queue_mp,
-                started_at=datetime.now(timezone.utc),
-                current_execution=None,
-                executions_completed=0,
-            )
+        handle = ProcessHandle(
+            id=process_id,
+            process=_PidWrapper(child_pid),
+            pid=child_pid,
+            state=ProcessState.IDLE,
+            work_queue=work_queue,
+            result_queue=result_queue,
+            started_at=datetime.now(timezone.utc),
+            current_execution=None,
+            executions_completed=0,
+        )
 
         self.processes[process_id] = handle
         logger.info(f"Created worker {process_id} (PID={handle.pid}, persistent={persistent})")
@@ -485,7 +464,7 @@ class ProcessPoolManager:
 
         # Spawn initial pool
         for _ in range(self.min_workers):
-            self._spawn_or_fork_process()
+            self._fork_process()
 
         # Register in Redis
         await self._register_worker()
@@ -676,7 +655,7 @@ class ProcessPoolManager:
         if idle is None:
             # Scale up if possible
             if len(self.processes) < self.max_workers:
-                idle = self._spawn_or_fork_process()
+                idle = self._fork_process()
             else:
                 # Wait for a process to become idle
                 idle = await self._wait_for_idle_process()
@@ -796,7 +775,7 @@ class ProcessPoolManager:
 
                 # Spawn replacement if below min_workers
                 if len(self.processes) < self.min_workers:
-                    self._spawn_or_fork_process()
+                    self._fork_process()
 
     async def _kill_process(self, handle: ProcessHandle) -> None:
         """
@@ -856,30 +835,40 @@ class ProcessPoolManager:
 
         Subscribes to the bifrost:cancel channel and handles cancellation
         requests by killing the process handling the target execution.
+
+        Reconnects on any failure. The pubsub object is created inside the
+        outer loop so a dropped Redis connection results in a fresh pubsub
+        on the next iteration rather than looping on a dead one.
         """
         logger.info("Cancel listener loop started")
 
-        r = await self._get_redis()
-        pubsub = r.pubsub()
-        await pubsub.subscribe("bifrost:cancel")
-
         while not self._shutdown:
+            pubsub = None
             try:
-                message = await pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=1.0
-                )
-                if message and message["type"] == "message":
-                    data = json.loads(message["data"])
-                    execution_id = data.get("execution_id")
-                    if execution_id:
-                        await self._handle_cancel_request(execution_id)
-            except Exception as e:
-                logger.error(f"Cancel listener error: {e}")
-                await asyncio.sleep(1.0)
+                r = await self._get_redis()
+                pubsub = r.pubsub()
+                await pubsub.subscribe("bifrost:cancel")
 
-        await pubsub.unsubscribe("bifrost:cancel")
-        await pubsub.aclose()
+                while not self._shutdown:
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=1.0,
+                    )
+                    if message and message["type"] == "message":
+                        data = json.loads(message["data"])
+                        execution_id = data.get("execution_id")
+                        if execution_id:
+                            await self._handle_cancel_request(execution_id)
+            except Exception as e:
+                logger.error(f"Cancel listener error: {e}; reconnecting in 1s")
+                await asyncio.sleep(1.0)
+            finally:
+                if pubsub is not None:
+                    try:
+                        await pubsub.unsubscribe("bifrost:cancel")
+                        await pubsub.aclose()
+                    except Exception:
+                        pass
 
         logger.info("Cancel listener loop stopped")
 
@@ -891,29 +880,39 @@ class ProcessPoolManager:
         - recycle_process: Recycle a specific process by PID
         - recycle_all: Mark all processes for recycling
         - resize: Update min/max workers and scale accordingly
+
+        Reconnects on any failure. The pubsub object is created inside the
+        outer loop so a dropped Redis connection results in a fresh pubsub
+        on the next iteration rather than looping on a dead one.
         """
         channel = f"bifrost:pool:{self.worker_id}:commands"
         logger.info(f"Command listener loop started on channel {channel}")
 
-        r = await self._get_redis()
-        pubsub = r.pubsub()
-        await pubsub.subscribe(channel)
-
         while not self._shutdown:
+            pubsub = None
             try:
-                message = await pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=1.0
-                )
-                if message and message["type"] == "message":
-                    data = json.loads(message["data"])
-                    await self._handle_command(data)
-            except Exception as e:
-                logger.error(f"Command listener error: {e}")
-                await asyncio.sleep(1.0)
+                r = await self._get_redis()
+                pubsub = r.pubsub()
+                await pubsub.subscribe(channel)
 
-        await pubsub.unsubscribe(channel)
-        await pubsub.aclose()
+                while not self._shutdown:
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=1.0,
+                    )
+                    if message and message["type"] == "message":
+                        data = json.loads(message["data"])
+                        await self._handle_command(data)
+            except Exception as e:
+                logger.error(f"Command listener error: {e}; reconnecting in 1s")
+                await asyncio.sleep(1.0)
+            finally:
+                if pubsub is not None:
+                    try:
+                        await pubsub.unsubscribe(channel)
+                        await pubsub.aclose()
+                    except Exception:
+                        pass
 
         logger.info("Command listener loop stopped")
 
@@ -1034,7 +1033,7 @@ class ProcessPoolManager:
                 # Remove from pool and replace
                 del self.processes[handle.id]
                 if len(self.processes) < self.min_workers:
-                    self._spawn_or_fork_process()
+                    self._fork_process()
 
                 return
 
@@ -1090,7 +1089,7 @@ class ProcessPoolManager:
 
         # Spawn replacements to maintain min_workers
         while len(self.processes) < self.min_workers:
-            self._spawn_or_fork_process()
+            self._fork_process()
 
     async def _report_crash(self, exec_info: ExecutionInfo) -> None:
         """
@@ -1282,7 +1281,7 @@ class ProcessPoolManager:
         del self.processes[handle.id]
 
         # Spawn replacement immediately so we maintain worker count
-        self._spawn_or_fork_process()
+        self._fork_process()
 
         # Then terminate the old process (this includes grace period wait)
         await self._terminate_process(handle)
@@ -1323,7 +1322,7 @@ class ProcessPoolManager:
         # graceful shutdown wait. Only delete if still present.
         if target.id in self.processes:
             del self.processes[target.id]
-        self._spawn_or_fork_process()
+        self._fork_process()
 
         return True
 

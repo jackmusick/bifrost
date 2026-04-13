@@ -1,45 +1,35 @@
 """
-Simple Worker Process for Execution Isolation.
+Execution helpers for forked worker processes.
 
-This module provides a straightforward worker process that runs executions
-one at a time in a simple loop. It's designed to be spawned by ProcessPoolManager
-and communicate via multiprocessing queues.
+This module provides the helpers that forked children (spawned by
+TemplateProcess via os.fork) use to run an execution:
 
-Key features:
-- Simple loop: wait for execution_id -> execute -> return result
-- Graceful SIGTERM handling (complete current work or exit)
-- Reuses existing engine.execute() for actual execution
-- Context is read from Redis, result is returned via queue
+- install_requirements(): called once at pool startup to pip-install
+  user requirements. All forked children inherit the resulting
+  filesystem, so installing once in the parent is sufficient.
+- _clear_workspace_modules(): called before each execution so workflow
+  code changes are picked up from Redis.
+- _execute_sync() / _execute_async(): run a single execution given an
+  execution_id (context is read from Redis, result is returned).
+- _get_process_rss() / _get_pss_bytes() / _capture_resource_metrics():
+  per-process memory/resource reporting used by the pool for recycling
+  bloated children.
 
-Each worker process handles one execution at a time, providing clean
-isolation between executions.
-
-IMPORTANT: Workers are long-lived processes. Workspace modules (workflows,
-data providers) are loaded from Redis via the virtual import hook and cleared
-from sys.modules before each execution to pick up code changes. For package
-installs, the ProcessPoolManager recycles worker processes so fresh Python
-interpreters can see newly installed packages.
-
-Persistence: The ProcessPoolManager calls install_requirements() once at pool
-startup. It reads requirements.txt via get_requirements_sync() (Redis → S3
-fallback), then pip installs. Since all child processes share the same
-filesystem, this single install is sufficient.
-See api/src/core/requirements_cache.py for the full persistence flow.
+All callers live in template_process.py (fork path) and process_pool.py
+(install_requirements at pool startup). There is no longer a
+multiprocessing.spawn code path — forked children are created by
+template_process.fork() and communicate via pipe-backed send/recv queues.
 """
 
 from __future__ import annotations
 
 import asyncio
-import gc
 import json
 import logging
 import os
 import resource
-import signal
 import sys
 from datetime import datetime, timezone
-from multiprocessing import Queue
-from queue import Empty
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -101,129 +91,6 @@ def install_requirements() -> None:
         except Exception as e:
             logger.warning(f"[pool] Failed to install requirements: {e}")
             return
-
-
-def run_worker_process(
-    work_queue: Queue,
-    result_queue: Queue,
-    worker_id: str,
-) -> None:
-    """
-    Entry point for worker process.
-
-    Simple loop: wait for execution_id -> execute -> return result.
-    Designed to be the target of multiprocessing.Process().
-
-    Args:
-        work_queue: Queue to receive execution_ids from ProcessPoolManager
-        result_queue: Queue to send results back to ProcessPoolManager
-        worker_id: Unique identifier for this worker (for logging)
-    """
-    # Configure logging for this worker process
-    logging.basicConfig(
-        level=logging.INFO,
-        format=f"[{worker_id}] %(levelname)s - %(message)s"
-    )
-
-    # Ensure user site-packages is in sys.path
-    # When pip installs packages as a non-root user, they go to ~/.local/lib/pythonX.Y/site-packages.
-    # Python's site.py only adds this path if the directory exists at interpreter startup.
-    # If packages are installed AFTER the parent process started (creating the directory),
-    # spawned subprocesses won't have it in sys.path even though they're fresh interpreters
-    # (multiprocessing.spawn copies sys.path from the parent).
-    import site
-    user_site = site.getusersitepackages()
-    if site.ENABLE_USER_SITE and os.path.exists(user_site) and user_site not in sys.path:
-        sys.path.insert(0, user_site)
-        logger.info(f"Added user site-packages to sys.path: {user_site}")
-
-    # Install virtual import hook (after default finders so filesystem is checked first)
-    from src.services.execution.virtual_import import install_virtual_import_hook
-    install_virtual_import_hook()
-
-    # Setup signal handler for graceful shutdown
-    shutdown_requested = False
-
-    def handle_sigterm(signum: int, frame: Any) -> None:
-        nonlocal shutdown_requested
-        shutdown_requested = True
-        logger.info(f"Worker {worker_id} received SIGTERM, will exit after current work")
-
-    signal.signal(signal.SIGTERM, handle_sigterm)
-    signal.signal(signal.SIGINT, handle_sigterm)
-
-    logger.info(f"Worker {worker_id} started (PID={os.getpid()})")
-
-    execution_id: str | None = None
-
-    while not shutdown_requested:
-        try:
-            # Block waiting for work (with timeout to check shutdown flag)
-            try:
-                execution_id = work_queue.get(timeout=1.0)
-            except Empty:
-                continue
-
-            if execution_id is None:
-                continue
-
-            logger.info(f"Worker {worker_id} processing execution: {execution_id[:8]}...")
-
-            # Clear workspace modules so we pick up any code changes from Redis
-            _clear_workspace_modules()
-
-            # Execute and return result
-            result = _execute_sync(execution_id, worker_id)
-
-            # Clean up per-execution state to prevent memory leaks
-            try:
-                from bifrost._logging import clear_sequence_counter
-                clear_sequence_counter(execution_id)
-            except Exception:
-                pass
-
-            # Force GC to reclaim circular refs (exception chains, async closures)
-            # before measuring RSS — otherwise dead objects inflate the reading
-            gc.collect()
-
-            # Report current RSS (not peak) so the pool can recycle bloated processes
-            process_rss = _get_process_rss()
-            result["process_rss_bytes"] = process_rss
-            # Also inject into metrics dict for DB persistence
-            if isinstance(result.get("metrics"), dict):
-                result["metrics"]["process_rss_bytes"] = process_rss
-
-            result_queue.put(result)
-
-            logger.info(
-                f"Worker {worker_id} completed execution: {execution_id[:8]}... "
-                f"success={result.get('success', False)}"
-            )
-
-            # Reset for next iteration
-            execution_id = None
-
-        except KeyboardInterrupt:
-            logger.info(f"Worker {worker_id} interrupted")
-            break
-        except Exception as e:
-            logger.exception(f"Worker {worker_id} error: {e}")
-            # Try to report error if we have an execution_id
-            if execution_id is not None:
-                try:
-                    result_queue.put({
-                        "execution_id": execution_id,
-                        "success": False,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                        "duration_ms": 0,
-                        "worker_id": worker_id,
-                    })
-                except Exception:
-                    pass  # Best effort
-                execution_id = None
-
-    logger.info(f"Worker {worker_id} exiting")
 
 
 def _clear_workspace_modules() -> None:

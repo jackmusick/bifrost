@@ -71,14 +71,19 @@ class WorkflowExecutionConsumer(BaseConsumer):
         self._pool_started = False
 
     async def start(self) -> None:
-        """Start the consumer and process pool."""
-        # Call parent start to set up RabbitMQ connection
-        await super().start()
+        """Start the process pool, then begin consuming messages.
 
-        # Start process pool
+        The pool must be fully ready (including the template process) before
+        RabbitMQ can deliver work — otherwise route_execution would run while
+        the template is still starting, and there would be no valid way to
+        create worker processes for incoming messages.
+        """
         await self._pool.start()
         self._pool_started = True
         logger.info("Process pool started")
+
+        # Only now begin accepting messages from RabbitMQ.
+        await super().start()
 
     async def stop(self) -> None:
         """Stop the consumer and process pool."""

@@ -15,8 +15,8 @@ Can be scaled horizontally (replicas: N) for increased throughput.
 
 import asyncio
 import logging
+import os
 import signal
-import sys
 
 from src.config import get_settings
 from src.core.database import init_db, close_db
@@ -63,25 +63,63 @@ class Worker:
         self._consumers: list = []
 
     async def start(self) -> None:
-        """Start the worker."""
+        """Start the worker.
+
+        On any startup failure, fully tear down whatever has been started
+        so the process can exit cleanly. Without this, a partially-started
+        worker leaks its process pool's template child process, which in
+        turn blocks Python's multiprocessing atexit cleanup inside
+        waitpid() — leaving PID 1 hung forever and the container looking
+        healthy to Kubernetes even though the worker is dead.
+        """
         self.running = True
         logger.info("Starting Bifrost Worker...")
         logger.info(f"Environment: {self.settings.environment}")
 
-        # Initialize database connection
-        logger.info("Initializing database connection...")
-        await init_db()
-        logger.info("Database connection established")
+        try:
+            # Initialize database connection
+            logger.info("Initializing database connection...")
+            await init_db()
+            logger.info("Database connection established")
 
-        # Initialize and start RabbitMQ consumers
-        logger.info("Starting RabbitMQ consumers...")
-        await self._start_consumers()
+            # Initialize and start RabbitMQ consumers
+            logger.info("Starting RabbitMQ consumers...")
+            await self._start_consumers()
+        except Exception:
+            logger.error("Startup failed; tearing down partially-started worker")
+            await self._cleanup_after_failed_start()
+            raise
 
         logger.info("Bifrost Worker started")
         logger.info("Waiting for messages... (Ctrl+C to stop)")
 
         # Keep running until shutdown
         await self._shutdown_event.wait()
+
+    async def _cleanup_after_failed_start(self) -> None:
+        """Best-effort teardown of any resources started before a failure.
+
+        Called when start() raises partway through. Must be tolerant of
+        consumers that never got past __init__, and of consumers whose
+        own stop() might also fail.
+        """
+        for consumer in self._consumers:
+            try:
+                await consumer.stop()
+            except Exception as e:
+                logger.error(
+                    f"Error stopping consumer {consumer.queue_name} during cleanup: {e}"
+                )
+
+        try:
+            await rabbitmq.close()
+        except Exception as e:
+            logger.error(f"Error closing RabbitMQ pools during cleanup: {e}")
+
+        try:
+            await close_db()
+        except Exception as e:
+            logger.error(f"Error closing DB during cleanup: {e}")
 
     async def _start_consumers(self) -> None:
         """Start all RabbitMQ consumers."""
@@ -144,7 +182,13 @@ async def main() -> None:
         await worker.start()
     except Exception as e:
         logger.error(f"Worker error: {e}", exc_info=True)
-        sys.exit(1)
+        # Hard-exit bypassing atexit handlers. Python's multiprocessing
+        # atexit will otherwise block in waitpid() if any subprocess is
+        # still running (e.g., a template child that cleanup failed to
+        # stop), leaving PID 1 hung and the container "healthy" to k8s
+        # despite the worker being dead. Force exit here so kubelet sees
+        # the container terminate and restarts it.
+        os._exit(1)
 
 
 if __name__ == "__main__":

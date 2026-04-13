@@ -237,7 +237,7 @@ class TestProcessPoolManagerStart:
             pool.processes[handle.id] = handle
             return handle
 
-        pool._spawn_or_fork_process = mock_spawn
+        pool._fork_process = mock_spawn
 
         # Mock Redis and background tasks
         with patch.object(pool, "_get_redis", new_callable=AsyncMock) as mock_redis:
@@ -341,7 +341,7 @@ class TestProcessPoolManagerRouting:
             pool.processes["process-2"] = new_handle
             return new_handle
 
-        pool._spawn_or_fork_process = mock_spawn
+        pool._fork_process = mock_spawn
 
         # Mock Redis
         with patch.object(pool, "_write_context_to_redis", new_callable=AsyncMock):
@@ -458,7 +458,7 @@ class TestProcessPoolManagerTimeouts:
 
         pool._kill_process = mock_kill
         pool._report_timeout = mock_report_timeout
-        pool._spawn_or_fork_process = mock_spawn
+        pool._fork_process = mock_spawn
 
         await pool._check_timeouts()
 
@@ -525,7 +525,7 @@ class TestProcessPoolManagerCrashDetection:
             return new_handle
 
         pool._report_crash = mock_report_crash
-        pool._spawn_or_fork_process = mock_spawn
+        pool._fork_process = mock_spawn
 
         await pool._check_process_health()
 
@@ -585,7 +585,7 @@ class TestProcessPoolManagerRecycle:
             return new_handle
 
         pool._terminate_process = mock_terminate
-        pool._spawn_or_fork_process = mock_spawn
+        pool._fork_process = mock_spawn
 
         result = await pool.recycle_process(12345)
 
@@ -983,7 +983,7 @@ class TestMinWorkersZero:
     @pytest.mark.asyncio
     async def test_start_with_zero_workers_spawns_none(self, pool_zero):
         """Pool with min_workers=0 should have no processes after start."""
-        with patch.object(pool_zero, '_spawn_or_fork_process') as mock_spawn:
+        with patch.object(pool_zero, '_fork_process') as mock_spawn:
             with patch.object(pool_zero, '_register_worker', new_callable=AsyncMock):
                 with patch.object(pool_zero, '_start_template', new_callable=AsyncMock):
                     pool_zero._started = True
@@ -1030,7 +1030,7 @@ class TestAdmissionControl:
             return_value=True,
         ):
             with patch.object(pool, '_write_context_to_redis', new_callable=AsyncMock):
-                with patch.object(pool, '_spawn_or_fork_process', return_value=mock_handle):
+                with patch.object(pool, '_fork_process', return_value=mock_handle):
                     pool.processes["process-1"] = mock_handle
                     await pool.route_execution("exec-123", {"timeout_seconds": 300})
                     assert mock_handle.state == ProcessState.BUSY

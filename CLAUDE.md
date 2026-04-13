@@ -138,6 +138,10 @@ client/
 
 ## Project-Specific Rules
 
+### No dead code, no unrequested fallbacks
+
+Never leave dead code, commented-out code, unused helpers, or "just in case" fallback branches behind. Never add a fallback, compatibility shim, or alternate code path that the user did not explicitly ask for — these get forgotten and become latent bugs (see the `multiprocessing.spawn` fallback in `process_pool.py` that silently leaked ~800 MB per pod in production). If you think a fallback might be warranted, **ask first**. When removing a code path, also remove everything that was only reachable from it in the same change.
+
 ### Backend (Python/FastAPI)
 
 -   **Models**: All Pydantic models MUST be defined in `api/shared/models.py`
