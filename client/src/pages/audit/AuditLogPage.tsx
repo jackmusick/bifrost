@@ -8,6 +8,7 @@ import {
 	DataTable,
 	DataTableBody,
 	DataTableCell,
+	DataTableFooter,
 	DataTableHead,
 	DataTableHeader,
 	DataTableRow,
@@ -188,7 +189,7 @@ export function AuditLogPage() {
 			</div>
 
 			{/* Content */}
-			<div className="flex-1 overflow-hidden flex flex-col">
+			<div className="flex-1 overflow-hidden flex flex-col min-h-0">
 				{error && (
 					<Alert variant="destructive" className="mb-4">
 						<AlertCircle className="h-4 w-4" />
@@ -204,88 +205,87 @@ export function AuditLogPage() {
 						<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
 					</div>
 				) : filteredEntries.length > 0 ? (
-					<div className="border rounded-lg overflow-hidden flex-1 flex flex-col">
-						<div className="flex-1 overflow-auto">
-							<DataTable className="relative w-full caption-bottom text-sm">
-								<DataTableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-									<DataTableRow>
-										<DataTableHead>Timestamp</DataTableHead>
-										<DataTableHead>Action</DataTableHead>
-										<DataTableHead>Outcome</DataTableHead>
-										<DataTableHead>Actor</DataTableHead>
-										<DataTableHead>Resource</DataTableHead>
-										<DataTableHead>IP</DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{filteredEntries.map((entry: AuditLogEntry) => (
-										<DataTableRow key={entry.id}>
-											<DataTableCell className="font-mono text-xs whitespace-nowrap">
-												{new Date(entry.timestamp).toLocaleString()}
-											</DataTableCell>
-											<DataTableCell>
-												<Badge variant="secondary">{entry.action}</Badge>
-											</DataTableCell>
-											<DataTableCell>
-												<Badge
-													variant={
-														entry.outcome === "failure"
-															? "destructive"
-															: "default"
-													}
-													className="capitalize"
-												>
-													{entry.outcome}
-												</Badge>
-											</DataTableCell>
-											<DataTableCell className="text-sm">
-												{entry.actor.user_email ||
-													entry.actor.user_name ||
-													(entry.source !== "http"
-														? `(${entry.source})`
-														: "(unauthenticated)")}
-											</DataTableCell>
-											<DataTableCell className="text-sm text-muted-foreground">
-												{entry.resource_type
-													? `${entry.resource_type}${entry.resource_id ? ` / ${entry.resource_id.slice(0, 8)}` : ""}`
-													: "-"}
-											</DataTableCell>
-											<DataTableCell className="text-xs font-mono text-muted-foreground">
-												{entry.ip_address || "-"}
-											</DataTableCell>
-										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
-						</div>
-
-						<div className="border-t bg-background px-4 py-3 flex items-center justify-between">
-							<div className="text-sm text-muted-foreground">
-								{filteredEntries.length} event
-								{filteredEntries.length !== 1 ? "s" : ""} on this page
-							</div>
-							<div className="flex gap-2">
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={handlePreviousPage}
-									disabled={currentPage === 0}
-								>
-									<ChevronLeft className="h-4 w-4 mr-2" />
-									Previous
-								</Button>
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={handleNextPage}
-									disabled={!data?.continuation_token}
-								>
-									Next
-									<ChevronRight className="h-4 w-4 ml-2" />
-								</Button>
-							</div>
-						</div>
-					</div>
+					<DataTable>
+						<DataTableHeader>
+							<DataTableRow>
+								<DataTableHead>Timestamp</DataTableHead>
+								<DataTableHead>Action</DataTableHead>
+								<DataTableHead>Outcome</DataTableHead>
+								<DataTableHead>Actor</DataTableHead>
+								<DataTableHead>Resource</DataTableHead>
+								<DataTableHead>IP</DataTableHead>
+							</DataTableRow>
+						</DataTableHeader>
+						<DataTableBody>
+							{filteredEntries.map((entry: AuditLogEntry) => (
+								<DataTableRow key={entry.id}>
+									<DataTableCell className="font-mono text-xs whitespace-nowrap">
+										{new Date(entry.timestamp).toLocaleString()}
+									</DataTableCell>
+									<DataTableCell>
+										<Badge variant="secondary">{entry.action}</Badge>
+									</DataTableCell>
+									<DataTableCell>
+										<Badge
+											variant={
+												entry.outcome === "failure"
+													? "destructive"
+													: "default"
+											}
+											className="capitalize"
+										>
+											{entry.outcome}
+										</Badge>
+									</DataTableCell>
+									<DataTableCell className="text-sm">
+										{entry.actor.user_email ||
+											entry.actor.user_name ||
+											(entry.source !== "http"
+												? `(${entry.source})`
+												: "(unauthenticated)")}
+									</DataTableCell>
+									<DataTableCell className="text-sm text-muted-foreground">
+										{entry.resource_type
+											? `${entry.resource_type}${entry.resource_id ? ` / ${entry.resource_id.slice(0, 8)}` : ""}`
+											: "-"}
+									</DataTableCell>
+									<DataTableCell className="text-xs font-mono text-muted-foreground">
+										{entry.ip_address || "-"}
+									</DataTableCell>
+								</DataTableRow>
+							))}
+						</DataTableBody>
+						<DataTableFooter>
+							<DataTableRow>
+								<DataTableCell colSpan={3} className="text-sm text-muted-foreground">
+									{filteredEntries.length} event
+									{filteredEntries.length !== 1 ? "s" : ""} on this page
+								</DataTableCell>
+								<DataTableCell colSpan={3} className="text-right">
+									<div className="flex gap-2 justify-end">
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={handlePreviousPage}
+											disabled={currentPage === 0}
+										>
+											<ChevronLeft className="h-4 w-4 mr-2" />
+											Previous
+										</Button>
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={handleNextPage}
+											disabled={!data?.continuation_token}
+										>
+											Next
+											<ChevronRight className="h-4 w-4 ml-2" />
+										</Button>
+									</div>
+								</DataTableCell>
+							</DataTableRow>
+						</DataTableFooter>
+					</DataTable>
 				) : (
 					<Card>
 						<CardContent className="flex flex-col items-center justify-center py-12 text-center">

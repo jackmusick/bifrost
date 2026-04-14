@@ -3,13 +3,15 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * DataTable - A standardized table component with sticky headers and consistent styling.
+ * DataTable - A standardized table component with sticky header/footer and internal scrolling.
  *
- * Features:
- * - Sticky header with backdrop blur
- * - Consistent hover states
- * - Click-to-navigate row support
- * - Overflow handling
+ * The table body scrolls while header and footer stay pinned. The component
+ * sizes to its content by default — use `max-h-full` or a height-constrained
+ * parent to cap it at available space.
+ *
+ * IMPORTANT: Parent containers must NOT have `overflow-auto` — DataTable owns
+ * its own scroll context. Parents should use `flex-1 min-h-0` to provide
+ * height constraints without creating a competing scroll container.
  *
  * Usage:
  * ```tsx
@@ -24,41 +26,57 @@ import { cn } from "@/lib/utils";
  *       <DataTableCell>Value</DataTableCell>
  *     </DataTableRow>
  *   </DataTableBody>
+ *   <DataTableFooter>
+ *     <DataTableRow>
+ *       <DataTableCell colSpan={2}>Footer content</DataTableCell>
+ *     </DataTableRow>
+ *   </DataTableFooter>
  * </DataTable>
  * ```
  */
 
-interface DataTableProps extends React.HTMLAttributes<HTMLDivElement> {
-	/** Optional fixed height for the table container */
-	fixedHeight?: boolean;
-}
+const DataTable = React.forwardRef<
+	HTMLDivElement,
+	React.HTMLAttributes<HTMLDivElement>
+>(({ className, children, ...props }, ref) => {
+	// Extract footer outside the scroll container so the scrollbar
+	// only covers the header + body area. Footer stays pinned at bottom.
+	const footer: React.ReactNode[] = [];
+	const rest: React.ReactNode[] = [];
 
-const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
-	({ className, fixedHeight, children, ...props }, ref) => (
+	React.Children.forEach(children, (child) => {
+		if (React.isValidElement(child) && child.type === DataTableFooter) {
+			footer.push(child);
+		} else {
+			rest.push(child);
+		}
+	});
+
+	return (
 		<div
 			ref={ref}
 			className={cn(
 				"border rounded-lg overflow-hidden bg-card",
-				// Make DataTable flex-aware: fill available space and enable shrinking for scroll
-				"flex flex-col flex-1 min-h-0",
-				fixedHeight && "h-full",
+				"flex flex-col min-h-0 max-h-full",
 				className,
 			)}
 			{...props}
 		>
-			<div
-				className={cn(
-					"overflow-auto flex-1 min-h-0",
-					fixedHeight && "h-full",
-				)}
-			>
-				<table className="relative w-full caption-bottom text-sm">
-					{children}
+			<div className="overflow-auto flex-1 min-h-0">
+				<table className="w-full text-sm">
+					{rest}
 				</table>
 			</div>
+			{footer.length > 0 && (
+				<div className="flex-shrink-0 border-t">
+					<table className="w-full text-sm">
+						{footer}
+					</table>
+				</div>
+			)}
 		</div>
-	),
-);
+	);
+});
 DataTable.displayName = "DataTable";
 
 const DataTableHeader = React.forwardRef<
@@ -68,7 +86,7 @@ const DataTableHeader = React.forwardRef<
 	<thead
 		ref={ref}
 		className={cn(
-			"sticky top-0 bg-background/80 backdrop-blur-sm z-10 [&_tr]:border-b",
+			"sticky top-0 bg-background z-10 [&_tr]:border-b",
 			className,
 		)}
 		{...props}
@@ -95,7 +113,7 @@ const DataTableFooter = React.forwardRef<
 	<tfoot
 		ref={ref}
 		className={cn(
-			"sticky bottom-0 border-t bg-background/80 backdrop-blur-sm z-10 font-medium [&>tr]:last:border-b-0",
+			"bg-background font-medium [&>tr]:last:border-b-0",
 			className,
 		)}
 		{...props}
