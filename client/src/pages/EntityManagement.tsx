@@ -714,7 +714,7 @@ export function EntityManagement() {
 	);
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+		<div className="h-full flex flex-col space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>

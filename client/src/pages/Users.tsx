@@ -277,7 +277,7 @@ export function Users() {
 		!!(currentUser && user.id === currentUser.id);
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6 max-w-7xl mx-auto">
+		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-4xl font-extrabold tracking-tight">
@@ -344,7 +344,7 @@ export function Users() {
 			</div>
 
 			{/* Content */}
-			<div className="flex-1 min-h-0 overflow-auto">
+			<div className="flex-1 min-h-0">
 				{isLoading ? (
 					<div className="space-y-2">
 						{[...Array(5)].map((_, i) => (

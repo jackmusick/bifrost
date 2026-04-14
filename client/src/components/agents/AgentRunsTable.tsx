@@ -218,7 +218,7 @@ export function AgentRunsTable({ isPlatformAdmin }: AgentRunsTableProps) {
 
 				<TabsContent
 					value={statusFilter}
-					className="mt-4 flex-1 min-h-0 overflow-auto"
+					className="mt-4 flex-1 min-h-0"
 				>
 					{isLoading ? (
 						<div className="flex items-center justify-center py-12">

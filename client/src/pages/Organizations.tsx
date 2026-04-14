@@ -141,7 +141,7 @@ export function Organizations() {
 	};
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6 max-w-7xl mx-auto">
+		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
 			{/* Header: title left, actions right */}
 			<div className="flex items-center justify-between">
 				<div>

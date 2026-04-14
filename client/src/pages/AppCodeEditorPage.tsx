@@ -151,7 +151,7 @@ export function AppCodeEditorPage() {
 	// Show creation form for new apps
 	if (!appCreated) {
 		return (
-			<div className="h-[calc(100vh-8rem)] flex flex-col">
+			<div className="h-full flex flex-col">
 				{/* Header */}
 				<div className="flex items-center justify-between pb-4">
 					<div className="flex items-center gap-4">
@@ -247,7 +247,7 @@ export function AppCodeEditorPage() {
 	const hasDraft = existingApp?.has_unpublished_changes;
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col -mx-6 lg:-mx-8 -mb-6 lg:-mb-8">
+		<div className="h-full flex flex-col -mx-6 lg:-mx-8 -mb-6 lg:-mb-8">
 			{/* Header */}
 			<div className="flex items-center justify-between px-4 py-2 border-b bg-background">
 				<div className="flex items-center gap-4">

@@ -254,7 +254,7 @@ export function Workflows() {
 	};
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6 max-w-7xl mx-auto">
+		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
 			<div className="flex items-center justify-between">
 				<div>
 					<div className="flex items-center gap-3">
@@ -393,7 +393,7 @@ export function Workflows() {
 				)}
 
 				{/* Content Area */}
-				<div className="flex-1 min-w-0 overflow-auto">
+				<div className="flex-1 min-w-0 min-h-0">
 					{isLoading ? (
 						viewMode === "grid" ? (
 							<div className={"grid gap-4 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]"}>

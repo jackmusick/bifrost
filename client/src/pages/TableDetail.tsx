@@ -223,7 +223,7 @@ export function TableDetail() {
 	}
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-4">
+		<div className="h-full flex flex-col space-y-4">
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
@@ -308,8 +308,8 @@ export function TableDetail() {
 						</div>
 					) : displayDocuments.length > 0 ? (
 						<div className="flex-1 min-h-0 flex flex-col">
-							<div className="flex-1 min-h-0 overflow-auto">
-								<DataTable className="max-h-full">
+							<div className="flex-1 min-h-0">
+								<DataTable>
 									<DataTableHeader>
 										<DataTableRow>
 											<DataTableHead className="w-[200px]">

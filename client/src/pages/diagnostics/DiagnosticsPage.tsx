@@ -27,7 +27,7 @@ export function DiagnosticsPage() {
 	}
 
 	return (
-		<div className="h-[calc(100vh-8rem)] flex flex-col space-y-6">
+		<div className="h-full flex flex-col space-y-6">
 			{/* Header - aligned with WorkersTab's inner container */}
 			<div className="max-w-[900px] mx-auto w-full">
 				<h1 className="text-4xl font-extrabold tracking-tight">
