@@ -183,6 +183,26 @@ def run_async(coro_fn: Callable[..., Coroutine[Any, Any, Any]]) -> Callable[...,
     return wrapper
 
 
+def _apply_flags(
+    flags: list[Callable[[Callable[..., Any]], Callable[..., Any]]],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Apply a list of Click option decorators in stable order.
+
+    DTO-driven flags are built in :func:`bifrost.dto_flags.build_cli_flags`
+    and need to be attached to the underlying command function before
+    ``pass_resolver`` / ``run_async`` wrap it. Apply in reverse so the first
+    decorator in the list lands closest to the function (leftmost in the
+    final ``--help``).
+    """
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        for flag in reversed(flags):
+            fn = flag(fn)
+        return fn
+
+    return decorator
+
+
 def pass_resolver(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Inject a fresh :class:`BifrostClient` + :class:`RefResolver` per invocation.
 
@@ -219,6 +239,7 @@ def entity_group(name: str, help_text: str) -> click.Group:
 
 
 __all__ = [
+    "_apply_flags",
     "entity_group",
     "json_output_option",
     "output_result",

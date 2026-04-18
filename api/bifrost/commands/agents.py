@@ -27,7 +27,7 @@ generic DTO-driven surface:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -41,26 +41,9 @@ from bifrost.dto_flags import (
 from bifrost.refs import RefResolver
 from src.models.contracts.agents import AgentCreate, AgentUpdate
 
-from .base import entity_group, output_result, pass_resolver, run_async
+from .base import _apply_flags, entity_group, output_result, pass_resolver, run_async
 
 agents_group = entity_group("agents", "Manage agents.")
-
-
-def _apply_flags(
-    flags: list[Callable[[Callable[..., Any]], Callable[..., Any]]],
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Apply a list of Click option decorators in stable order.
-
-    Mirrors the helper in :mod:`bifrost.commands.orgs` — see that module for
-    the rationale on reverse-iteration.
-    """
-
-    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        for flag in reversed(flags):
-            fn = flag(fn)
-        return fn
-
-    return decorator
 
 
 def _load_str_file(value: str | None) -> str | None:

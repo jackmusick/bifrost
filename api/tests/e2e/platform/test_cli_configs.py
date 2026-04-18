@@ -21,47 +21,17 @@ hits.
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
-from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.configs import configs_group  # noqa: E402
+from bifrost.commands.configs import configs_group
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Construct a ``BifrostClient`` bound to the E2E API + admin JWT.
-
-    Replaces the thread-local singleton for the duration of the test so the
-    command's ``pass_resolver`` plumbing hands our client to the command body.
-    """
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
-
-
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``configs_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(
-        configs_group, args, standalone_mode=False, catch_exceptions=False
-    )
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(configs_group, args)``."""
+    return lambda args: invoke_cli(configs_group, args)
 
 
 def _cleanup_config(e2e_client, platform_admin, config_id: str) -> None:
@@ -76,7 +46,7 @@ class TestCliConfigs:
     """End-to-end coverage for ``bifrost configs`` commands."""
 
     def test_set_creates_then_updates(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``configs set`` acts as an upsert: first call POSTs, second PUTs."""
         key = f"cli_cfg_{uuid4().hex[:8]}"
@@ -103,7 +73,7 @@ class TestCliConfigs:
             _cleanup_config(e2e_client, platform_admin, config_id)
 
     def test_delete_secret_requires_confirm(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """Deleting a secret-type config without ``--confirm`` refuses."""
         key = f"cli_secret_{uuid4().hex[:8]}"
@@ -151,7 +121,7 @@ class TestCliConfigs:
             _cleanup_config(e2e_client, platform_admin, config_id)
 
     def test_update_without_value_preserves_existing(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``configs update --description X`` must NOT clear the stored value."""
         key = f"cli_keep_{uuid4().hex[:8]}"

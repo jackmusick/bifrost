@@ -18,53 +18,24 @@ exercised here is identical to what a real user hits.
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
-from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_dto_flags.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.orgs import orgs_group  # noqa: E402
+from bifrost.commands.orgs import orgs_group
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Construct a ``BifrostClient`` bound to the E2E API + admin JWT.
-
-    Replaces the thread-local singleton for the duration of the test so the
-    command's ``pass_resolver`` plumbing hands our client to the command body.
-    """
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
-
-
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``orgs_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    # ``--json`` goes at the group level; callers append it when needed.
-    return runner.invoke(orgs_group, args, standalone_mode=False, catch_exceptions=False)
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(orgs_group, args)``."""
+    return lambda args: invoke_cli(orgs_group, args)
 
 
 @pytest.mark.e2e
 class TestCliOrgs:
     """End-to-end coverage for ``bifrost orgs`` commands."""
 
-    def test_list_returns_platform_admin_org(self, cli_client) -> None:
+    def test_list_returns_platform_admin_org(self, cli_client, _invoke) -> None:
         """``orgs list --json`` returns at least the seeded provider org."""
         result = _invoke(["--json", "list"])
         assert result.exit_code == 0, result.output
@@ -76,7 +47,9 @@ class TestCliOrgs:
             assert "id" in item
             assert "name" in item
 
-    def test_create_update_delete_roundtrip(self, cli_client, e2e_client, platform_admin) -> None:
+    def test_create_update_delete_roundtrip(
+        self, cli_client, _invoke, e2e_client, platform_admin
+    ) -> None:
         """Full CRUD cycle: create → update → delete by name ref."""
         original_name = f"cli-org-{uuid4().hex[:8]}"
         renamed = f"cli-org-renamed-{uuid4().hex[:8]}"
@@ -123,7 +96,9 @@ class TestCliOrgs:
             f"Org {renamed} should be absent from active list after delete"
         )
 
-    def test_update_by_uuid(self, cli_client, e2e_client, platform_admin) -> None:
+    def test_update_by_uuid(
+        self, cli_client, _invoke, e2e_client, platform_admin
+    ) -> None:
         """Update accepts a UUID ref directly (ref resolver pass-through)."""
         name = f"cli-uuid-{uuid4().hex[:8]}"
         renamed = f"cli-uuid-new-{uuid4().hex[:8]}"

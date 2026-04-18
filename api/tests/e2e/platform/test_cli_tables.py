@@ -19,39 +19,17 @@ distinct from ``result.output``; we assert the rename warning appears in
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
-from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.tables import tables_group  # noqa: E402
+from bifrost.commands.tables import tables_group
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Bind a ``BifrostClient`` to the E2E API + admin JWT for the CLI run.
-
-    Replaces the thread-local singleton for the duration of the test so the
-    command's ``pass_resolver`` plumbing hands our client to the command body.
-    """
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(tables_group, args)``."""
+    return lambda args: invoke_cli(tables_group, args)
 
 
 @pytest.fixture
@@ -66,14 +44,6 @@ def schema_yaml_path(tmp_path):
         "    type: integer\n"
     )
     return schema_file
-
-
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``tables_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(
-        tables_group, args, standalone_mode=False, catch_exceptions=False
-    )
 
 
 def _create_table_via_api(e2e_client, headers, name: str) -> str:
@@ -103,6 +73,7 @@ class TestCliTables:
     def test_create_with_schema_file_then_rename_warning(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         schema_yaml_path,
@@ -163,6 +134,7 @@ class TestCliTables:
     def test_update_reassigns_application_via_app_ref(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
     ):
@@ -206,6 +178,7 @@ class TestCliTables:
     def test_list_returns_wrapped_payload(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
     ):

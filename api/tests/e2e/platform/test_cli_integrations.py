@@ -17,36 +17,18 @@ Covers the mutation surface from Task 5g of the CLI mutation surface plan:
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.integrations import integrations_group  # noqa: E402
+from bifrost.commands.integrations import integrations_group
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Bind a ``BifrostClient`` to the E2E API + admin JWT for the CLI run."""
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(integrations_group, args)``."""
+    return lambda args: invoke_cli(integrations_group, args)
 
 
 @pytest.fixture
@@ -82,20 +64,12 @@ def schema_yaml_one_key(tmp_path):
     return schema_file
 
 
-def _invoke(args: list[str]):
-    """Invoke ``integrations_group`` via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(
-        integrations_group, args, standalone_mode=False, catch_exceptions=False
-    )
-
-
 @pytest.mark.e2e
 class TestCliIntegrations:
     """End-to-end coverage for ``bifrost integrations`` commands."""
 
     def test_create_with_config_schema_file(
-        self, cli_client, e2e_client, platform_admin, schema_yaml_path
+        self, cli_client, _invoke, e2e_client, platform_admin, schema_yaml_path
     ):
         """``integrations create --config-schema @file`` loads the YAML."""
         name = f"cli-integ-{uuid4().hex[:8]}"
@@ -127,6 +101,7 @@ class TestCliIntegrations:
     def test_update_refuses_removed_keys_without_force(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         schema_yaml_path,
@@ -188,7 +163,7 @@ class TestCliIntegrations:
             )
 
     def test_add_mapping_resolves_refs(
-        self, cli_client, e2e_client, platform_admin, org1
+        self, cli_client, _invoke, e2e_client, platform_admin, org1
     ):
         """``add-mapping`` resolves integration and org refs by name."""
         name = f"cli-integ-map-{uuid4().hex[:8]}"
@@ -221,7 +196,7 @@ class TestCliIntegrations:
             )
 
     def test_update_mapping_preserves_oauth_token_id(
-        self, cli_client, e2e_client, platform_admin, org1, oauth_token_seed,
+        self, cli_client, _invoke, e2e_client, platform_admin, org1, oauth_token_seed,
     ):
         """``update-mapping`` must NOT clobber ``oauth_token_id`` when unset.
 

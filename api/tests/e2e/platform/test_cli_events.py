@@ -16,36 +16,19 @@ Covers Task 5j of the CLI mutation surface plan:
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
 from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py / test_cli_forms.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.events import events_group  # noqa: E402
-from tests.e2e.conftest import write_and_register  # noqa: E402
+from bifrost.commands.events import events_group
+from tests.e2e.conftest import write_and_register
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Bind a ``BifrostClient`` to the E2E API + admin JWT for the CLI run."""
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(events_group, args)``."""
+    return lambda args: invoke_cli(events_group, args)
 
 
 @pytest.fixture
@@ -100,14 +83,6 @@ def second_registered_workflow(e2e_client, platform_admin):
     }
 
 
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``events_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(
-        events_group, args, standalone_mode=False, catch_exceptions=False
-    )
-
-
 @pytest.mark.e2e
 class TestCliEvents:
     """End-to-end coverage for ``bifrost events`` commands."""
@@ -115,6 +90,7 @@ class TestCliEvents:
     def test_create_schedule_source_with_flat_flags(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
     ) -> None:
@@ -150,6 +126,7 @@ class TestCliEvents:
     def test_subscribe_workflow_and_update_event_type(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         registered_workflow,
@@ -204,6 +181,7 @@ class TestCliEvents:
     def test_update_subscription_rejects_workflow_change(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         registered_workflow,

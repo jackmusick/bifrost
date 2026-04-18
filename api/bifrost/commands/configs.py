@@ -23,7 +23,7 @@ exist yet.
 from __future__ import annotations
 
 import sys
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID
 
 import click
@@ -38,32 +38,13 @@ from bifrost.refs import RefResolver
 from src.models.contracts.config import ConfigCreate, ConfigUpdate
 from src.models.enums import ConfigType
 
-from .base import entity_group, output_result, pass_resolver, run_async
+from .base import _apply_flags, entity_group, output_result, pass_resolver, run_async
 
 configs_group = entity_group("configs", "Manage configuration values.")
 
 # Enum choices for the ``--type`` flag on ``set``. Mirrors the ``type`` field on
 # ``SetConfigRequest`` (and ``ConfigCreate.config_type`` after aliasing).
 _CONFIG_TYPE_CHOICES = [member.value for member in ConfigType]
-
-
-def _apply_flags(
-    flags: list[Callable[[Callable[..., Any]], Callable[..., Any]]],
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Apply a list of Click option decorators in stable order.
-
-    DTO-driven flags are built in :func:`build_cli_flags` and need to be
-    attached to the underlying command function before ``pass_resolver`` /
-    ``run_async`` wrap it. Apply in reverse so the first decorator in the
-    list lands closest to the function (leftmost in the final ``--help``).
-    """
-
-    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        for flag in reversed(flags):
-            fn = flag(fn)
-        return fn
-
-    return decorator
 
 
 _CREATE_FLAGS = build_cli_flags(

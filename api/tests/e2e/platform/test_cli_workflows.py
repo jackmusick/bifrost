@@ -28,19 +28,12 @@ exercised here is identical to what a real user hits.
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
 from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.workflows import workflows_group  # noqa: E402
+from bifrost.commands.workflows import workflows_group
 
 
 _WORKFLOW_SOURCE = '''"""Test workflow used by bifrost workflows CLI E2E."""
@@ -56,31 +49,9 @@ def {function_name}(name: str = "world") -> str:
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Construct a ``BifrostClient`` bound to the E2E API + admin JWT.
-
-    Replaces the thread-local singleton for the duration of the test so the
-    command's ``pass_resolver`` plumbing hands our client to the command body.
-    """
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
-
-
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``workflows_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(
-        workflows_group, args, standalone_mode=False, catch_exceptions=False
-    )
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(workflows_group, args)``."""
+    return lambda args: invoke_cli(workflows_group, args)
 
 
 def _register_workflow(
@@ -149,7 +120,7 @@ def _create_role(e2e_client, platform_admin, *, name: str) -> str:
 class TestCliWorkflows:
     """End-to-end coverage for ``bifrost workflows`` commands."""
 
-    def test_list_returns_payload(self, cli_client) -> None:
+    def test_list_returns_payload(self, cli_client, _invoke) -> None:
         """``workflows list --json`` returns a JSON array of workflow metadata."""
         result = _invoke(["--json", "list"])
         assert result.exit_code == 0, result.output
@@ -162,7 +133,7 @@ class TestCliWorkflows:
             assert "name" in item
 
     def test_update_by_name_roundtrip(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``workflows update <name> --description ...`` patches via name ref."""
         fn = f"cli_wf_update_{uuid4().hex[:8]}"
@@ -194,7 +165,7 @@ class TestCliWorkflows:
             _invoke(["--json", "delete", wf_id, "--force"])
 
     def test_update_by_path_func_ref(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """Ref resolver accepts ``path::func`` for workflows."""
         fn = f"cli_wf_pathfunc_{uuid4().hex[:8]}"
@@ -220,7 +191,7 @@ class TestCliWorkflows:
             _invoke(["--json", "delete", wf_id, "--force"])
 
     def test_delete_force_bypasses_deactivation_check(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``workflows delete --force`` removes the workflow unconditionally."""
         fn = f"cli_wf_delete_{uuid4().hex[:8]}"
@@ -241,7 +212,7 @@ class TestCliWorkflows:
         assert wf_id not in ids
 
     def test_grant_and_revoke_role(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``grant-role`` and ``revoke-role`` update the roles endpoint."""
         fn = f"cli_wf_role_{uuid4().hex[:8]}"
@@ -291,7 +262,7 @@ class TestCliWorkflows:
             )
 
     def test_revoke_role_missing_returns_exit_1(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """Revoking a role that isn't granted surfaces the server 404 as exit 1.
 
@@ -334,7 +305,7 @@ class TestCliWorkflowsRegisterHelp:
     check so a missing ``--path`` / ``--function-name`` argument fails loudly.
     """
 
-    def test_register_help_lists_required_flags(self) -> None:
+    def test_register_help_lists_required_flags(self, _invoke) -> None:
         result = _invoke(["register", "--help"])
         assert result.exit_code == 0, result.output
         assert "--path" in result.output

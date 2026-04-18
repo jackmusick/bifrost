@@ -19,45 +19,17 @@ hits.
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
-from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.agents import agents_group  # noqa: E402
+from bifrost.commands.agents import agents_group
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Construct a ``BifrostClient`` bound to the E2E API + admin JWT.
-
-    Replaces the thread-local singleton for the duration of the test so the
-    command's ``pass_resolver`` plumbing hands our client to the command body.
-    """
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
-
-
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``agents_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(agents_group, args, standalone_mode=False, catch_exceptions=False)
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(agents_group, args)``."""
+    return lambda args: invoke_cli(agents_group, args)
 
 
 @pytest.mark.e2e
@@ -67,6 +39,7 @@ class TestCliAgents:
     def test_create_update_delete_roundtrip(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         tmp_path,

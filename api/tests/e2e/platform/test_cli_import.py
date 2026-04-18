@@ -25,39 +25,17 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
-import sys
 from uuid import UUID, uuid4
 
 import click
 import pytest
 
-# Standalone bifrost package import (mirrors test_cli_export.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.export import _export_impl  # noqa: E402
-from bifrost.commands.import_cmd import (  # noqa: E402
+from bifrost.commands.export import _export_impl
+from bifrost.commands.import_cmd import (
     _import_impl,
     _validate_bundle_dir,
     handle_import,
 )
-
-
-@pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Provide a BifrostClient bound to the E2E stack + admin JWT."""
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
 
 
 def _seed_workflow(e2e_client, headers, slug: str) -> None:

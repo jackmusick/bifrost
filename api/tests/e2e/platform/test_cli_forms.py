@@ -15,40 +15,18 @@ The tests run a real workflow + schema fixture so the ref resolver and
 from __future__ import annotations
 
 import json
-import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
-from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.forms import forms_group  # noqa: E402
-from tests.e2e.conftest import write_and_register  # noqa: E402
+from bifrost.commands.forms import forms_group
+from tests.e2e.conftest import write_and_register
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Bind a ``BifrostClient`` to the E2E API + admin JWT for the CLI run.
-
-    Replaces the thread-local singleton for the duration of the test so the
-    command's ``pass_resolver`` plumbing hands our client to the command body.
-    """
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(forms_group, args)``."""
+    return lambda args: invoke_cli(forms_group, args)
 
 
 @pytest.fixture
@@ -95,14 +73,6 @@ def schema_yaml_path(tmp_path):
     return schema_file
 
 
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``forms_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(
-        forms_group, args, standalone_mode=False, catch_exceptions=False
-    )
-
-
 @pytest.mark.e2e
 class TestCliForms:
     """End-to-end coverage for ``bifrost forms`` commands."""
@@ -110,6 +80,7 @@ class TestCliForms:
     def test_create_with_workflow_ref_and_schema_file(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         registered_workflow,
@@ -147,6 +118,7 @@ class TestCliForms:
     def test_update_by_name_ref(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         registered_workflow,
@@ -187,6 +159,7 @@ class TestCliForms:
     def test_delete_soft_deletes_form(
         self,
         cli_client,
+        _invoke,
         e2e_client,
         platform_admin,
         registered_workflow,

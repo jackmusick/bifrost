@@ -22,44 +22,17 @@ from __future__ import annotations
 
 import json
 import pathlib
-import sys
 from uuid import uuid4
 
 import pytest
-from click.testing import CliRunner
 
-# Standalone bifrost package import (mirrors test_cli_orgs.py).
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
-
-from bifrost import client as bifrost_client_module  # noqa: E402
-from bifrost.client import BifrostClient  # noqa: E402
-from bifrost.commands.apps import apps_group  # noqa: E402
+from bifrost.commands.apps import apps_group
 
 
 @pytest.fixture
-def cli_client(e2e_api_url, platform_admin):
-    """Construct a ``BifrostClient`` bound to the E2E API + admin JWT.
-
-    Replaces the thread-local singleton for the duration of the test so the
-    command's ``pass_resolver`` plumbing hands our client to the command body.
-    """
-    client = BifrostClient(e2e_api_url, platform_admin.access_token)
-    previous = getattr(bifrost_client_module._thread_local, "bifrost_client", None)
-    bifrost_client_module._thread_local.bifrost_client = client
-    try:
-        yield client
-    finally:
-        if previous is None:
-            if hasattr(bifrost_client_module._thread_local, "bifrost_client"):
-                del bifrost_client_module._thread_local.bifrost_client
-        else:
-            bifrost_client_module._thread_local.bifrost_client = previous
-
-
-def _invoke(args: list[str]) -> "object":
-    """Invoke ``apps_group`` with the given CLI args via CliRunner."""
-    runner = CliRunner()
-    return runner.invoke(apps_group, args, standalone_mode=False, catch_exceptions=False)
+def _invoke(invoke_cli):
+    """Per-file binding: ``_invoke(args)`` → ``invoke_cli(apps_group, args)``."""
+    return lambda args: invoke_cli(apps_group, args)
 
 
 def _write_package_json(tmp_path: pathlib.Path, deps: dict[str, str]) -> pathlib.Path:
@@ -82,7 +55,7 @@ class TestCliApps:
     """End-to-end coverage for ``bifrost apps`` commands."""
 
     def test_create_with_deps_makes_two_rest_calls(
-        self, cli_client, e2e_client, platform_admin, tmp_path
+        self, cli_client, _invoke, e2e_client, platform_admin, tmp_path
     ) -> None:
         """``apps create --deps @package.json`` creates the app and PUTs deps.
 
@@ -135,7 +108,7 @@ class TestCliApps:
         _invoke(["--json", "delete", app_id])
 
     def test_create_without_deps_skips_dependencies_call(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``apps create`` without ``--deps`` makes only the POST — no deps key."""
         slug = f"cli-app-nodeps-{uuid4().hex[:8]}"
@@ -162,7 +135,7 @@ class TestCliApps:
         _invoke(["--json", "delete", app_id])
 
     def test_update_metadata_via_patch(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``apps update <ref>`` PATCHes metadata (patch-without-draft)."""
         slug = f"cli-app-upd-{uuid4().hex[:8]}"
@@ -195,7 +168,7 @@ class TestCliApps:
         _invoke(["--json", "delete", app_id])
 
     def test_set_deps_direct_put(
-        self, cli_client, e2e_client, platform_admin, tmp_path
+        self, cli_client, _invoke, e2e_client, platform_admin, tmp_path
     ) -> None:
         """``apps set-deps <ref>`` PUTs to /dependencies without touching metadata."""
         slug = f"cli-app-setdeps-{uuid4().hex[:8]}"
@@ -227,7 +200,7 @@ class TestCliApps:
         _invoke(["--json", "delete", app_id])
 
     def test_delete_by_slug(
-        self, cli_client, e2e_client, platform_admin
+        self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:
         """``apps delete <ref>`` removes the app; subsequent GET returns 404."""
         slug = f"cli-app-del-{uuid4().hex[:8]}"
