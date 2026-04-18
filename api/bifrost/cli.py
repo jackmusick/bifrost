@@ -367,6 +367,10 @@ def main(args: list[str] | None = None) -> int:
         if command == "pull":
             return handle_pull(args[1:])
 
+        if command == "import":
+            from bifrost.commands.import_cmd import handle_import
+            return handle_import(args[1:])
+
         if command == "export":
             from bifrost.commands.export import handle_export
             return handle_export(args[1:])
@@ -410,6 +414,7 @@ Commands:
   push        Push local files to Bifrost platform (alias for sync)
   pull        Pull files from Bifrost platform to local directory (alias for sync)
   export      Export a workspace bundle (optionally portable/scrubbed)
+  import      Apply a bundle to the current environment
   watch       Watch for file changes and auto-push
   api         Generic authenticated API request
   migrate-imports  Rewrite "bifrost" imports into user/lucide/router imports
