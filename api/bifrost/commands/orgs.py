@@ -1,14 +1,158 @@
-"""Placeholder for bifrost orgs CLI commands.
+"""CLI commands for managing organizations.
 
-Commands in this module are added by Tasks 5a–5j of the CLI mutation surface
-plan. The empty group is registered here so :mod:`bifrost.commands.__init__`
-can import it while other subgroups are still being filled in.
+Implements Task 5a of the CLI mutation surface plan:
+
+* ``bifrost orgs list`` → ``GET /api/organizations``
+* ``bifrost orgs create`` → ``POST /api/organizations`` (body from
+  :class:`OrganizationCreate`)
+* ``bifrost orgs update <ref>`` → ``PATCH /api/organizations/{uuid}`` (body
+  from :class:`OrganizationUpdate`; unset flags omitted by
+  :func:`assemble_body`)
+* ``bifrost orgs delete <ref>`` → ``DELETE /api/organizations/{uuid}``
+
+Flags are generated from the DTOs via :func:`build_cli_flags` with the
+exclude list in :data:`DTO_EXCLUDES` — so ``domain``, ``settings`` and
+``is_provider`` are intentionally not surfaced (see the plan's cross-cutting
+exclusion rationale).
 """
 
 from __future__ import annotations
 
-from .base import entity_group
+from typing import Any, Callable
 
-orgs_group = entity_group("orgs", "orgs commands (scaffolding — see plan tasks 5a–5j).")
+import click
+
+from bifrost.client import BifrostClient
+from bifrost.dto_flags import (
+    DTO_EXCLUDES,
+    DTO_REF_LOOKUPS,
+    assemble_body,
+    build_cli_flags,
+)
+from bifrost.refs import RefResolver
+from src.models.contracts.organizations import (
+    OrganizationCreate,
+    OrganizationUpdate,
+)
+
+from .base import entity_group, output_result, pass_resolver, run_async
+
+orgs_group = entity_group("orgs", "Manage organizations.")
+
+
+def _apply_flags(
+    flags: list[Callable[[Callable[..., Any]], Callable[..., Any]]],
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Apply a list of Click option decorators in stable order.
+
+    DTO-driven flags are built in :func:`build_cli_flags` and need to be
+    attached to the underlying command function before ``pass_resolver`` /
+    ``run_async`` wrap it. Apply in reverse so the first decorator in the
+    list lands closest to the function (leftmost in the final ``--help``).
+    """
+
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        for flag in reversed(flags):
+            fn = flag(fn)
+        return fn
+
+    return decorator
+
+
+_CREATE_FLAGS = build_cli_flags(
+    OrganizationCreate,
+    exclude=DTO_EXCLUDES.get("OrganizationCreate", set()),
+    verb_ref_lookups=DTO_REF_LOOKUPS.get("OrganizationCreate", {}),
+)
+
+_UPDATE_FLAGS = build_cli_flags(
+    OrganizationUpdate,
+    exclude=DTO_EXCLUDES.get("OrganizationUpdate", set()),
+    verb_ref_lookups=DTO_REF_LOOKUPS.get("OrganizationUpdate", {}),
+)
+
+
+@orgs_group.command("list")
+@click.pass_context
+@pass_resolver
+@run_async
+async def list_orgs(
+    ctx: click.Context,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,  # noqa: ARG001 - kept for signature parity
+) -> None:
+    """List all organizations."""
+    response = await client.get("/api/organizations")
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)
+
+
+@orgs_group.command("create")
+@_apply_flags(_CREATE_FLAGS)
+@click.pass_context
+@pass_resolver
+@run_async
+async def create_org(
+    ctx: click.Context,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+    **fields: Any,
+) -> None:
+    """Create a new organization."""
+    body = await assemble_body(OrganizationCreate, fields, resolver=resolver)
+    response = await client.post("/api/organizations", json=body)
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)
+
+
+@orgs_group.command("update")
+@click.argument("ref")
+@_apply_flags(_UPDATE_FLAGS)
+@click.pass_context
+@pass_resolver
+@run_async
+async def update_org(
+    ctx: click.Context,
+    ref: str,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+    **fields: Any,
+) -> None:
+    """Update an organization.
+
+    ``REF`` is a UUID or organization name. Names are resolved via
+    :class:`RefResolver`; ambiguous names fail loudly with the candidate list.
+    """
+    org_uuid = await resolver.resolve("org", ref)
+    body = await assemble_body(OrganizationUpdate, fields, resolver=resolver)
+    response = await client.patch(f"/api/organizations/{org_uuid}", json=body)
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)
+
+
+@orgs_group.command("delete")
+@click.argument("ref")
+@click.pass_context
+@pass_resolver
+@run_async
+async def delete_org(
+    ctx: click.Context,
+    ref: str,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+) -> None:
+    """Delete (soft-delete) an organization.
+
+    ``REF`` is a UUID or organization name.
+    """
+    org_uuid = await resolver.resolve("org", ref)
+    response = await client.delete(f"/api/organizations/{org_uuid}")
+    response.raise_for_status()
+    output_result({"deleted": org_uuid}, ctx=ctx)
+
 
 __all__ = ["orgs_group"]
