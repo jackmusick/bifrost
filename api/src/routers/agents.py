@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
-from src.core.auth import CurrentActiveUser, CurrentSuperuser
+from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
 from src.core.org_filter import resolve_org_filter
 from src.models.contracts.agents import (
@@ -28,8 +28,6 @@ from src.models.contracts.agents import (
     AgentUpdate,
     AccessibleKnowledgeSource,
     AccessibleTool,
-    AssignDelegationsToAgentRequest,
-    AssignToolsToAgentRequest,
 )
 from src.models.orm import Agent, AgentDelegation, AgentRole, AgentTool, Role, Workflow
 from src.repositories.agents import AgentRepository
@@ -873,80 +871,6 @@ async def get_agent_tools(
     ]
 
 
-@router.post("/{agent_id}/tools", status_code=status.HTTP_201_CREATED)
-async def assign_tools_to_agent(
-    agent_id: UUID,
-    request: AssignToolsToAgentRequest,
-    db: DbSession,
-    user: CurrentSuperuser,
-) -> list[dict]:
-    """Assign tools to an agent (platform admin only)."""
-    result = await db.execute(
-        select(Agent).where(Agent.id == agent_id)
-    )
-    agent = result.scalar_one_or_none()
-
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {agent_id} not found",
-        )
-
-    # Validate all tool references before proceeding
-    await _validate_agent_references(
-        db=db,
-        tool_ids=request.workflow_ids,
-        delegated_agent_ids=None,
-    )
-
-    added_tools = []
-    for workflow_id in request.workflow_ids:
-        try:
-            workflow_uuid = UUID(workflow_id)
-            result = await db.execute(
-                select(Workflow)
-                .where(Workflow.id == workflow_uuid)
-                .where(Workflow.type == "tool")
-                .where(Workflow.is_active.is_(True))
-            )
-            workflow = result.scalar_one_or_none()
-            if workflow:
-                # Check if already assigned
-                existing = await db.execute(
-                    select(AgentTool)
-                    .where(AgentTool.agent_id == agent_id)
-                    .where(AgentTool.workflow_id == workflow.id)
-                )
-                if not existing.scalar_one_or_none():
-                    db.add(AgentTool(agent_id=agent_id, workflow_id=workflow.id))
-                    added_tools.append({
-                        "id": str(workflow.id),
-                        "name": workflow.name,
-                    })
-        except ValueError:
-            logger.warning(f"Invalid workflow ID: {workflow_id}")
-
-    await db.flush()
-
-    return added_tools
-
-
-@router.delete("/{agent_id}/tools/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_tool_from_agent(
-    agent_id: UUID,
-    workflow_id: UUID,
-    db: DbSession,
-    user: CurrentSuperuser,
-) -> None:
-    """Remove a tool from an agent (platform admin only)."""
-    await db.execute(
-        delete(AgentTool)
-        .where(AgentTool.agent_id == agent_id)
-        .where(AgentTool.workflow_id == workflow_id)
-    )
-    await db.flush()
-
-
 # =============================================================================
 # Delegation Assignment Endpoints
 # =============================================================================
@@ -981,80 +905,3 @@ async def get_agent_delegations(
         )
 
     return [AgentSummary.model_validate(a) for a in agent.delegated_agents]
-
-
-@router.post("/{agent_id}/delegations", status_code=status.HTTP_201_CREATED)
-async def assign_delegations_to_agent(
-    agent_id: UUID,
-    request: AssignDelegationsToAgentRequest,
-    db: DbSession,
-    user: CurrentSuperuser,
-) -> list[AgentSummary]:
-    """Assign delegation targets to an agent (platform admin only)."""
-    result = await db.execute(
-        select(Agent).where(Agent.id == agent_id)
-    )
-    agent = result.scalar_one_or_none()
-
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {agent_id} not found",
-        )
-
-    # Validate all delegation references before proceeding
-    await _validate_agent_references(
-        db=db,
-        tool_ids=None,
-        delegated_agent_ids=request.agent_ids,
-        agent_id=agent_id,  # For self-delegation check
-    )
-
-    added_delegations = []
-    for delegate_id in request.agent_ids:
-        try:
-            delegate_uuid = UUID(delegate_id)
-            if delegate_uuid == agent_id:
-                continue  # Can't delegate to self
-
-            result = await db.execute(
-                select(Agent)
-                .where(Agent.id == delegate_uuid)
-                .where(Agent.is_active.is_(True))
-            )
-            delegate = result.scalar_one_or_none()
-            if delegate:
-                # Check if already assigned
-                existing = await db.execute(
-                    select(AgentDelegation)
-                    .where(AgentDelegation.parent_agent_id == agent_id)
-                    .where(AgentDelegation.child_agent_id == delegate.id)
-                )
-                if not existing.scalar_one_or_none():
-                    db.add(AgentDelegation(
-                        parent_agent_id=agent_id,
-                        child_agent_id=delegate.id,
-                    ))
-                    added_delegations.append(AgentSummary.model_validate(delegate))
-        except ValueError:
-            logger.warning(f"Invalid delegate agent ID: {delegate_id}")
-
-    await db.flush()
-
-    return added_delegations
-
-
-@router.delete("/{agent_id}/delegations/{delegate_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_delegation_from_agent(
-    agent_id: UUID,
-    delegate_id: UUID,
-    db: DbSession,
-    user: CurrentSuperuser,
-) -> None:
-    """Remove a delegation from an agent (platform admin only)."""
-    await db.execute(
-        delete(AgentDelegation)
-        .where(AgentDelegation.parent_agent_id == agent_id)
-        .where(AgentDelegation.child_agent_id == delegate_id)
-    )
-    await db.flush()

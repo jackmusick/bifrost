@@ -398,16 +398,6 @@ class AssignAgentsToRoleRequest(BaseModel):
     agent_ids: list[str] = Field(..., min_length=1)
 
 
-class AssignToolsToAgentRequest(BaseModel):
-    """Request for assigning tools (workflows) to an agent."""
-    workflow_ids: list[str] = Field(..., min_length=1)
-
-
-class AssignDelegationsToAgentRequest(BaseModel):
-    """Request for assigning delegation targets to an agent."""
-    agent_ids: list[str] = Field(..., min_length=1)
-
-
 # ==================== UNIFIED TOOLS ====================
 
 

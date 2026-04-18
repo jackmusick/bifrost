@@ -3638,6 +3638,10 @@ export interface paths {
          *
          *     The new token is persisted to the database so subsequent integrations.get() calls
          *     also benefit from the refreshed token.
+         *
+         *     The HTTP refresh itself is delegated to the shared primitive
+         *     :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
+         *     only owns the provider lookup, context build, and persistence.
          */
         post: operations["sdk_integrations_refresh_token_api_cli_integrations_refresh_token_post"];
         delete?: never;
@@ -4604,32 +4608,8 @@ export interface paths {
          */
         get: operations["get_agent_tools_api_agents__agent_id__tools_get"];
         put?: never;
-        /**
-         * Assign Tools To Agent
-         * @description Assign tools to an agent (platform admin only).
-         */
-        post: operations["assign_tools_to_agent_api_agents__agent_id__tools_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents/{agent_id}/tools/{workflow_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
         post?: never;
-        /**
-         * Remove Tool From Agent
-         * @description Remove a tool from an agent (platform admin only).
-         */
-        delete: operations["remove_tool_from_agent_api_agents__agent_id__tools__workflow_id__delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4648,32 +4628,8 @@ export interface paths {
          */
         get: operations["get_agent_delegations_api_agents__agent_id__delegations_get"];
         put?: never;
-        /**
-         * Assign Delegations To Agent
-         * @description Assign delegation targets to an agent (platform admin only).
-         */
-        post: operations["assign_delegations_to_agent_api_agents__agent_id__delegations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agents/{agent_id}/delegations/{delegate_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
         post?: never;
-        /**
-         * Remove Delegation From Agent
-         * @description Remove a delegation from an agent (platform admin only).
-         */
-        delete: operations["remove_delegation_from_agent_api_agents__agent_id__delegations__delegate_id__delete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6057,7 +6013,7 @@ export interface paths {
         post?: never;
         /**
          * Delete event source
-         * @description Soft delete (deactivate) an event source (Platform admin only).
+         * @description Permanently delete an event source and all its subscriptions, events, and deliveries (Platform admin only).
          */
         delete: operations["delete_source_api_events_sources__source_id__delete"];
         options?: never;
@@ -6105,7 +6061,7 @@ export interface paths {
         post?: never;
         /**
          * Delete subscription
-         * @description Soft delete an event subscription (Platform admin only).
+         * @description Permanently delete an event subscription (Platform admin only).
          */
         delete: operations["delete_subscription_api_events_sources__source_id__subscriptions__subscription_id__delete"];
         options?: never;
@@ -6845,13 +6801,61 @@ export interface paths {
          * Get all compiled files for rendering
          * @description Return all files as compiled JS, ready for client-side execution.
          *
-         *     Reads entirely from S3 (_apps/{app_id}/{mode}/).  If any compilable
-         *     files still contain raw TSX/TS (pre-compilation era), the entire app
-         *     is batch-compiled and the results written back to S3.
+         *     Reads entirely from S3 (_apps/{app_id}/{mode}/). Compilation happens on
+         *     write in file_ops; this endpoint only serves what's there.
          *
          *     Unlike /files, this returns only `path` + `code` (no source).
          */
         get: operations["render_app_api_applications__app_id__render_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/bundle-manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the bundle manifest for an app (esbuild path)
+         * @description Return the manifest.json describing the bundled app.
+         *
+         *     Manifest includes entry JS, CSS (if any), and a base URL where the
+         *     hashed chunk files can be fetched. Chunks are served by
+         *     /bundle-asset/{filename}.
+         *
+         *     If no manifest exists yet, triggers a build and returns that one.
+         */
+        get: operations["get_bundle_manifest_api_applications__app_id__bundle_manifest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/bundle-asset/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve a bundled asset file (JS/CSS/sourcemap)
+         * @description Stream a bundled asset file from S3.
+         *
+         *     The browser loads these via <script type="module" src="...">, so
+         *     correct MIME types matter.
+         */
+        get: operations["get_bundle_asset_api_applications__app_id__bundle_asset__filename__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8438,14 +8442,6 @@ export interface components {
             agent_ids: string[];
         };
         /**
-         * AssignDelegationsToAgentRequest
-         * @description Request for assigning delegation targets to an agent.
-         */
-        AssignDelegationsToAgentRequest: {
-            /** Agent Ids */
-            agent_ids: string[];
-        };
-        /**
          * AssignFormsToRoleRequest
          * @description Request model for assigning forms to a role
          */
@@ -8466,14 +8462,6 @@ export interface components {
              * @description List of role IDs to assign
              */
             role_ids: string[];
-        };
-        /**
-         * AssignToolsToAgentRequest
-         * @description Request for assigning tools (workflows) to an agent.
-         */
-        AssignToolsToAgentRequest: {
-            /** Workflow Ids */
-            workflow_ids: string[];
         };
         /**
          * AssignUsersToRoleRequest
@@ -11981,7 +11969,7 @@ export interface components {
             /** Form Schema */
             form_schema: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema-Input"];
+            } | components["schemas"]["FormSchema"];
             /** @default role_based */
             access_level: components["schemas"]["FormAccessLevel"] | null;
             /**
@@ -12014,95 +12002,7 @@ export interface components {
          * FormField
          * @description Form field definition
          */
-        "FormField-Input": {
-            /**
-             * Name
-             * @description Parameter name for workflow
-             */
-            name: string;
-            /**
-             * Label
-             * @description Display label (optional for markdown/html types)
-             */
-            label?: string | null;
-            type: components["schemas"]["FormFieldType"];
-            /**
-             * Required
-             * @default false
-             */
-            required: boolean;
-            /** Validation */
-            validation?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Data Provider Id
-             * @description Data provider ID for dynamic options
-             */
-            data_provider_id?: string | null;
-            /**
-             * Data Provider Inputs
-             * @description Input configurations for data provider parameters
-             */
-            data_provider_inputs?: {
-                [key: string]: components["schemas"]["DataProviderInputConfig"];
-            } | null;
-            /** Default Value */
-            default_value?: unknown | null;
-            /** Placeholder */
-            placeholder?: string | null;
-            /** Help Text */
-            help_text?: string | null;
-            /**
-             * Visibility Expression
-             * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
-             */
-            visibility_expression?: string | null;
-            /**
-             * Options
-             * @description Options for radio/select fields
-             */
-            options?: {
-                [key: string]: string;
-            }[] | null;
-            /**
-             * Allowed Types
-             * @description Allowed MIME types for file uploads
-             */
-            allowed_types?: string[] | null;
-            /**
-             * Multiple
-             * @description Allow multiple file uploads
-             */
-            multiple?: boolean | null;
-            /**
-             * Max Size Mb
-             * @description Maximum file size in MB
-             */
-            max_size_mb?: number | null;
-            /**
-             * Content
-             * @description Static content for markdown/HTML components
-             */
-            content?: string | null;
-            /**
-             * Allow As Query Param
-             * @description Whether this field's value can be populated from URL query parameters
-             */
-            allow_as_query_param?: boolean | null;
-            /**
-             * Auto Fill
-             * @description Map of sibling field names to metadata paths. When this field's data provider returns results, auto-populate sibling fields from the first result's metadata. Example: {"employee_count": "recommended_employee_count"}
-             */
-            auto_fill?: {
-                [key: string]: string;
-            } | null;
-        };
-        /**
-         * FormField
-         * @description Form field definition
-         */
-        "FormField-Output": {
+        FormField: {
             /**
              * Name
              * @description Parameter name for workflow
@@ -12219,7 +12119,7 @@ export interface components {
             /** Form Schema */
             form_schema?: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema-Output"] | null;
+            } | components["schemas"]["FormSchema"] | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
             /** Organization Id */
             organization_id?: string | null;
@@ -12240,23 +12140,12 @@ export interface components {
          * FormSchema
          * @description Form schema with field definitions
          */
-        "FormSchema-Input": {
+        FormSchema: {
             /**
              * Fields
              * @description Max 50 fields per form
              */
-            fields: components["schemas"]["FormField-Input"][];
-        };
-        /**
-         * FormSchema
-         * @description Form schema with field definitions
-         */
-        "FormSchema-Output": {
-            /**
-             * Fields
-             * @description Max 50 fields per form
-             */
-            fields: components["schemas"]["FormField-Output"][];
+            fields: components["schemas"]["FormField"][];
         };
         /**
          * FormStartupResponse
@@ -12293,7 +12182,7 @@ export interface components {
             /** Form Schema */
             form_schema?: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema-Input"] | null;
+            } | components["schemas"]["FormSchema"] | null;
             /** Is Active */
             is_active?: boolean | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
@@ -18370,10 +18259,10 @@ export interface components {
          */
         WorkerMetricPoint: {
             /**
-             * Timestamp
-             * @description ISO timestamp
+             * Group
+             * @description Formatted time bucket label
              */
-            timestamp: string;
+            group: string;
             /**
              * Worker Id
              * @description Container/pool identifier
@@ -26713,73 +26602,6 @@ export interface operations {
             };
         };
     };
-    assign_tools_to_agent_api_agents__agent_id__tools_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignToolsToAgentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_tool_from_agent_api_agents__agent_id__tools__workflow_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-                workflow_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_agent_delegations_api_agents__agent_id__delegations_get: {
         parameters: {
             query?: never;
@@ -26799,71 +26621,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AgentSummary"][];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assign_delegations_to_agent_api_agents__agent_id__delegations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AssignDelegationsToAgentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_delegation_from_agent_api_agents__agent_id__delegations__delegate_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-                delegate_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -31156,6 +30913,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppRenderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bundle_manifest_api_applications__app_id__bundle_manifest_get: {
+        parameters: {
+            query?: {
+                mode?: components["schemas"]["FileMode"];
+            };
+            header?: never;
+            path: {
+                /** @description Application UUID */
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bundle_asset_api_applications__app_id__bundle_asset__filename__get: {
+        parameters: {
+            query?: {
+                mode?: components["schemas"]["FileMode"];
+            };
+            header?: never;
+            path: {
+                /** @description Application UUID */
+                app_id: string;
+                /** @description Bundle asset filename */
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -4,7 +4,8 @@
  * Provides hooks for:
  * - Listing and fetching agents
  * - Creating, updating, and deleting agents
- * - Managing agent tools and delegations
+ * - Reading agent tools and delegations (membership changes go through
+ *   the full-agent PUT via `useUpdateAgent`)
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -162,116 +163,6 @@ export function useDeleteAgent() {
 	});
 }
 
-/** Hook to assign tools to an agent */
-export function useAssignAgentTools() {
-	const queryClient = useQueryClient();
-
-	return $api.useMutation("post", "/api/agents/{agent_id}/tools", {
-		onSuccess: (_data, variables) => {
-			const agentId = (variables.params as { path: { agent_id: string } })
-				.path.agent_id;
-			queryClient.invalidateQueries({
-				queryKey: [
-					"get",
-					"/api/agents/{agent_id}/tools",
-					{ params: { path: { agent_id: agentId } } },
-				],
-			});
-			toast.success("Tools assigned");
-		},
-		onError: (error) => {
-			toast.error("Failed to assign tools", {
-				description: getErrorMessage(error, "Unknown error"),
-			});
-		},
-	});
-}
-
-/** Hook to remove a tool from an agent */
-export function useRemoveAgentTool() {
-	const queryClient = useQueryClient();
-
-	return $api.useMutation(
-		"delete",
-		"/api/agents/{agent_id}/tools/{workflow_id}",
-		{
-			onSuccess: (_data, variables) => {
-				const agentId = (
-					variables.params as {
-						path: { agent_id: string; workflow_id: string };
-					}
-				).path.agent_id;
-				queryClient.invalidateQueries({
-					queryKey: [
-						"get",
-						"/api/agents/{agent_id}/tools",
-						{ params: { path: { agent_id: agentId } } },
-					],
-				});
-				toast.success("Tool removed");
-			},
-			onError: (error) => {
-				toast.error("Failed to remove tool", {
-					description: getErrorMessage(error, "Unknown error"),
-				});
-			},
-		},
-	);
-}
-
-/** Hook to assign delegations to an agent */
-export function useAssignAgentDelegations() {
-	const queryClient = useQueryClient();
-
-	return $api.useMutation("post", "/api/agents/{agent_id}/delegations", {
-		onSuccess: (_data, variables) => {
-			const agentId = (variables.params as { path: { agent_id: string } })
-				.path.agent_id;
-			queryClient.invalidateQueries({
-				queryKey: [
-					"get",
-					"/api/agents/{agent_id}/delegations",
-					{ params: { path: { agent_id: agentId } } },
-				],
-			});
-			toast.success("Delegations assigned");
-		},
-		onError: (error) => {
-			toast.error("Failed to assign delegations", {
-				description: getErrorMessage(error, "Unknown error"),
-			});
-		},
-	});
-}
-
-/** Hook to remove a delegation from an agent */
-export function useRemoveAgentDelegation() {
-	const queryClient = useQueryClient();
-
-	return $api.useMutation(
-		"delete",
-		"/api/agents/{agent_id}/delegations/{delegate_id}",
-		{
-			onSuccess: (_data, variables) => {
-				const agentId = (
-					variables.params as {
-						path: { agent_id: string; delegate_id: string };
-					}
-				).path.agent_id;
-				queryClient.invalidateQueries({
-					queryKey: [
-						"get",
-						"/api/agents/{agent_id}/delegations",
-						{ params: { path: { agent_id: agentId } } },
-					],
-				});
-				toast.success("Delegation removed");
-			},
-			onError: (error) => {
-				toast.error("Failed to remove delegation", {
-					description: getErrorMessage(error, "Unknown error"),
-				});
-			},
-		},
-	);
-}
+// Tool and delegation membership is now managed via the full-agent PUT
+// (`useUpdateAgent`) — callers send the complete `tool_ids` /
+// `delegated_agent_ids` lists with adds/removes already applied.

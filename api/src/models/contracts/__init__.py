@@ -120,8 +120,6 @@ from src.models.contracts.agents import (
     AgentSummary,
     AgentUpdate,
     AssignAgentsToRoleRequest,
-    AssignDelegationsToAgentRequest,
-    AssignToolsToAgentRequest,
     ChatRequest,
     ChatResponse,
     ChatStreamChunk,
@@ -625,8 +623,6 @@ __all__ = [
     "ToolCall",
     "ToolResult",
     "AssignAgentsToRoleRequest",
-    "AssignToolsToAgentRequest",
-    "AssignDelegationsToAgentRequest",
     "RoleAgentsResponse",
     # Executions
     "ExecutionBase",

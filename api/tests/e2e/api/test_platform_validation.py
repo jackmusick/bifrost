@@ -272,7 +272,7 @@ class TestAgentReferenceValidation:
         e2e_client.delete(f"/api/agents/{agent_id}", headers=platform_admin.headers)
 
     def test_assign_invalid_tool_to_agent(self, e2e_client, platform_admin):
-        """Assigning non-existent tool to agent returns 422."""
+        """Assigning non-existent tool to agent returns 422 via PUT /api/agents/{id}."""
         # Create a valid agent first
         create_response = e2e_client.post(
             "/api/agents",
@@ -287,12 +287,12 @@ class TestAgentReferenceValidation:
         assert create_response.status_code == 201
         agent_id = create_response.json()["id"]
 
-        # Try to assign non-existent tool
+        # Try to assign non-existent tool via full agent PUT
         fake_tool_id = str(uuid4())
-        assign_response = e2e_client.post(
-            f"/api/agents/{agent_id}/tools",
+        assign_response = e2e_client.put(
+            f"/api/agents/{agent_id}",
             headers=platform_admin.headers,
-            json={"workflow_ids": [fake_tool_id]},
+            json={"tool_ids": [fake_tool_id]},
         )
         assert assign_response.status_code == 422, f"Expected 422, got {assign_response.status_code}"
 
@@ -300,7 +300,7 @@ class TestAgentReferenceValidation:
         e2e_client.delete(f"/api/agents/{agent_id}", headers=platform_admin.headers)
 
     def test_assign_invalid_delegation_to_agent(self, e2e_client, platform_admin):
-        """Assigning non-existent delegation target to agent returns 422."""
+        """Assigning non-existent delegation target to agent returns 422 via PUT /api/agents/{id}."""
         # Create a valid agent first
         create_response = e2e_client.post(
             "/api/agents",
@@ -315,12 +315,12 @@ class TestAgentReferenceValidation:
         assert create_response.status_code == 201
         agent_id = create_response.json()["id"]
 
-        # Try to assign non-existent delegation target
+        # Try to assign non-existent delegation target via full agent PUT
         fake_agent_id = str(uuid4())
-        assign_response = e2e_client.post(
-            f"/api/agents/{agent_id}/delegations",
+        assign_response = e2e_client.put(
+            f"/api/agents/{agent_id}",
             headers=platform_admin.headers,
-            json={"agent_ids": [fake_agent_id]},
+            json={"delegated_agent_ids": [fake_agent_id]},
         )
         assert assign_response.status_code == 422, f"Expected 422, got {assign_response.status_code}"
 
