@@ -31,6 +31,7 @@ from src.models.contracts.tables import (
     TablePublic,
     TableUpdate,
 )
+from src.models.orm.applications import Application
 from src.models.orm.tables import Document, Table
 from src.repositories.org_scoped import OrgScopedRepository
 
@@ -133,17 +134,29 @@ class TableRepository(OrgScopedRepository[Table]):
         table_id: UUID,
         data: TableUpdate,
     ) -> Table | None:
-        """Update a table by ID."""
+        """Update a table by ID.
+
+        Raises:
+            ValueError: If `application_id` is set but the application does not exist
+                or does not belong to the table's organization.
+        """
         query = select(self.model).where(self.model.id == table_id)
         result = await self.session.execute(query)
         table = result.scalar_one_or_none()
         if not table:
             return None
 
+        if data.name is not None:
+            table.name = data.name
         if data.description is not None:
             table.description = data.description
         if data.schema is not None:
             table.schema = data.schema
+        if data.application_id is not None:
+            await _validate_application_for_table(
+                self.session, data.application_id, table.organization_id
+            )
+            table.application_id = data.application_id
 
         await self.session.flush()
         await self.session.refresh(table)
@@ -164,6 +177,34 @@ class TableRepository(OrgScopedRepository[Table]):
 
         logger.info(f"Deleted table '{table.name}' (id={table_id})")
         return True
+
+
+async def _validate_application_for_table(
+    session: AsyncSession,
+    application_id: UUID,
+    table_organization_id: UUID | None,
+) -> None:
+    """Ensure `application_id` exists and is compatible with the table's org scope.
+
+    Rules:
+    - Application must exist.
+    - A global table (organization_id IS NULL) may only link to a global app.
+    - An org-scoped table may only link to apps in the same org or a global app.
+
+    Raises:
+        ValueError: If the application is missing or org-mismatched.
+    """
+    result = await session.execute(
+        select(Application).where(Application.id == application_id)
+    )
+    app = result.scalar_one_or_none()
+    if app is None:
+        raise ValueError(f"Application '{application_id}' not found")
+
+    if app.organization_id is not None and app.organization_id != table_organization_id:
+        raise ValueError(
+            f"Application '{application_id}' does not belong to the table's organization"
+        )
 
 
 def _escape_like(value: str) -> str:
@@ -557,7 +598,13 @@ async def update_table(
 ) -> TablePublic:
     """Update table metadata by ID (platform admin only)."""
     repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
-    table = await repo.update_table(table_id, data)
+    try:
+        table = await repo.update_table(table_id, data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
 
     if not table:
         raise HTTPException(
