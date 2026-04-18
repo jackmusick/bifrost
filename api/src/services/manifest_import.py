@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 import yaml
@@ -29,6 +29,8 @@ from bifrost.manifest import (
 )
 
 logger = logging.getLogger(__name__)
+
+RoleResolution = Literal["uuid", "name"]
 
 
 # =============================================================================
@@ -352,6 +354,123 @@ async def _resolve_agent_content(
 
 
 # =============================================================================
+# Cross-environment rebinding helpers
+# =============================================================================
+
+
+async def _resolve_role_names(db: AsyncSession, names: list[str]) -> list[str]:
+    """Resolve role display names to UUID strings against the target DB.
+
+    Fails loud on any unknown name. Returned list preserves input order.
+    """
+    from src.models.orm.users import Role
+
+    if not names:
+        return []
+    result = await db.execute(select(Role.id, Role.name).where(Role.name.in_(list(set(names)))))
+    by_name: dict[str, str] = {row[1]: str(row[0]) for row in result.all()}
+    resolved: list[str] = []
+    for name in names:
+        role_id = by_name.get(name)
+        if role_id is None:
+            raise ValueError(f"unknown role: {name} — create it first in the target env.")
+        resolved.append(role_id)
+    return resolved
+
+
+async def _apply_role_name_resolution(db: AsyncSession, manifest: "Manifest") -> "Manifest":
+    """Return a copy of the manifest with ``role_names`` → ``roles`` resolved.
+
+    Entities affected: workflows, forms, agents, apps. If an entity carries
+    both ``role_names`` (new) and ``roles`` (legacy), ``role_names`` wins
+    when ``role_resolution='name'``.  Missing names raise ``ValueError``.
+    """
+    def _copy_with_resolved(entity, resolved: list[str]):
+        return entity.model_copy(update={"roles": resolved, "role_names": None})
+
+    # Workflows
+    new_workflows: dict[str, object] = {}
+    for key, mwf in manifest.workflows.items():
+        if mwf.role_names is not None:
+            resolved = await _resolve_role_names(db, list(mwf.role_names))
+            new_workflows[key] = _copy_with_resolved(mwf, resolved)
+        else:
+            new_workflows[key] = mwf
+
+    # Forms
+    new_forms: dict[str, object] = {}
+    for key, mform in manifest.forms.items():
+        if mform.role_names is not None:
+            resolved = await _resolve_role_names(db, list(mform.role_names))
+            new_forms[key] = _copy_with_resolved(mform, resolved)
+        else:
+            new_forms[key] = mform
+
+    # Agents
+    new_agents: dict[str, object] = {}
+    for key, magent in manifest.agents.items():
+        if magent.role_names is not None:
+            resolved = await _resolve_role_names(db, list(magent.role_names))
+            new_agents[key] = _copy_with_resolved(magent, resolved)
+        else:
+            new_agents[key] = magent
+
+    # Apps
+    new_apps: dict[str, object] = {}
+    for key, mapp in manifest.apps.items():
+        if mapp.role_names is not None:
+            resolved = await _resolve_role_names(db, list(mapp.role_names))
+            new_apps[key] = _copy_with_resolved(mapp, resolved)
+        else:
+            new_apps[key] = mapp
+
+    return manifest.model_copy(update={
+        "workflows": new_workflows,
+        "forms": new_forms,
+        "agents": new_agents,
+        "apps": new_apps,
+    })
+
+
+def _rewrite_org_ids(manifest: "Manifest", target_organization_id: UUID) -> "Manifest":
+    """Return a copy of the manifest with every entity's ``organization_id``
+    rewritten to ``target_organization_id``.
+
+    Does NOT touch ``manifest.organizations`` (the bundle-level org list); the
+    caller guards against that combination and rejects before calling here.
+    """
+    target = str(target_organization_id)
+
+    def _with_org(entity):
+        return entity.model_copy(update={"organization_id": target})
+
+    new_workflows = {k: _with_org(v) for k, v in manifest.workflows.items()}
+    new_forms = {k: _with_org(v) for k, v in manifest.forms.items()}
+    new_agents = {k: _with_org(v) for k, v in manifest.agents.items()}
+    new_apps = {k: _with_org(v) for k, v in manifest.apps.items()}
+    new_configs = {k: _with_org(v) for k, v in manifest.configs.items()}
+    new_tables = {k: _with_org(v) for k, v in manifest.tables.items()}
+    new_events = {k: _with_org(v) for k, v in manifest.events.items()}
+
+    # Integrations have per-mapping org_id; rewrite each mapping.
+    new_integrations: dict[str, object] = {}
+    for k, minteg in manifest.integrations.items():
+        new_mappings = [m.model_copy(update={"organization_id": target}) for m in minteg.mappings]
+        new_integrations[k] = minteg.model_copy(update={"mappings": new_mappings})
+
+    return manifest.model_copy(update={
+        "workflows": new_workflows,
+        "forms": new_forms,
+        "agents": new_agents,
+        "apps": new_apps,
+        "configs": new_configs,
+        "tables": new_tables,
+        "events": new_events,
+        "integrations": new_integrations,
+    })
+
+
+# =============================================================================
 # Standalone manifest import (no git, reads from S3)
 # =============================================================================
 
@@ -371,6 +490,8 @@ async def import_manifest_from_repo(
     db: AsyncSession,
     delete_removed_entities: bool = False,
     dry_run: bool = False,
+    target_organization_id: UUID | None = None,
+    role_resolution: RoleResolution = "uuid",
 ) -> ManifestImportResult:
     """Import manifest from S3 _repo/.bifrost/ into DB.
 
@@ -382,6 +503,19 @@ async def import_manifest_from_repo(
     5. Runs indexer side-effects for forms/agents
     6. Regenerates manifest from DB
     7. Returns ManifestImportResult
+
+    Cross-environment rebinding:
+    - ``target_organization_id``: when set, every entity in the bundle is
+      rewritten to belong to this organization before upsert. Applies to
+      forms, agents, workflows, apps, integrations, configs, tables, event
+      sources, and integration mappings. Does NOT apply to organizations
+      themselves — if the bundle carries an ``organizations`` section and
+      this override is set, the import is rejected with a ``ValueError``
+      surfaced as HTTP 422 at the router level.
+    - ``role_resolution``: ``"uuid"`` (default) assumes role UUIDs in the
+      bundle match the target environment. ``"name"`` reads ``role_names``
+      from each entity and resolves them to UUIDs in the target DB; missing
+      names raise ``ValueError`` before any DB writes.
     """
     from src.services.repo_storage import RepoStorage
     from bifrost.manifest import (
@@ -421,6 +555,22 @@ async def import_manifest_from_repo(
     validation_errors = validate_manifest(manifest)
     if validation_errors:
         result.warnings.extend(validation_errors)
+
+    # 3a. Cross-env guard: orgs section incompatible with target_organization_id
+    if target_organization_id is not None and manifest.organizations:
+        raise ValueError(
+            "cannot carry organizations section when target_organization_id is set — "
+            "drop the orgs section or remove the target."
+        )
+
+    # 3b. Pre-resolve role names when requested. Fails loud before any DB writes.
+    if role_resolution == "name":
+        manifest = await _apply_role_name_resolution(db, manifest)
+
+    # 3c. Rewrite organization_id on every entity when override is set.
+    # Does NOT touch manifest.organizations (guarded above).
+    if target_organization_id is not None:
+        manifest = _rewrite_org_ids(manifest, target_organization_id)
 
     # 4. Compute diff against current DB state
     db_manifest = await generate_manifest(db)

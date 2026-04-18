@@ -67,6 +67,10 @@ class ManifestWorkflow(BaseModel):
     type: str = Field(default="workflow", description="workflow | tool | data_provider")
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)")
     roles: list[str] = Field(default_factory=list, description="Role UUIDs that can access this workflow")
+    role_names: list[str] | None = Field(
+        default=None,
+        description="Role display names (used by portable bundles; resolved to UUIDs on import)",
+    )
     access_level: str = Field(default="authenticated", description="role_based | authenticated | public")
     endpoint_enabled: bool = Field(default=False, description="Expose as HTTP API endpoint")
     timeout_seconds: int = Field(default=1800, description="Max execution time in seconds. 0 = no timeout. Default 1800 (30 min), max 86400 (24h).")
@@ -95,6 +99,10 @@ class ManifestForm(BaseModel):
     # -- Environment-specific fields (NOT portable; do not include when sharing) --
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)")
     roles: list[str] = Field(default_factory=list, description="Role UUIDs that can access this form")
+    role_names: list[str] | None = Field(
+        default=None,
+        description="Role display names (used by portable bundles; resolved to UUIDs on import)",
+    )
     access_level: str | None = Field(default=None, description="role_based | authenticated | public")
     # -- Portable content (inline) --
     description: str | None = Field(default=None, description="Form description")
@@ -123,6 +131,10 @@ class ManifestAgent(BaseModel):
     # -- Environment-specific fields (NOT portable; do not include when sharing) --
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)")
     roles: list[str] = Field(default_factory=list, description="Role UUIDs that can access this agent")
+    role_names: list[str] | None = Field(
+        default=None,
+        description="Role display names (used by portable bundles; resolved to UUIDs on import)",
+    )
     access_level: str | None = Field(default=None, description="role_based | authenticated | public")
     # -- Portable content (inline) --
     description: str | None = Field(default=None, description="Agent description")
@@ -148,6 +160,10 @@ class ManifestApp(BaseModel):
     dependencies: dict[str, str] = Field(default_factory=dict, description="NPM packages {name: version}")
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)")
     roles: list[str] = Field(default_factory=list, description="Role UUIDs that can access this app")
+    role_names: list[str] | None = Field(
+        default=None,
+        description="Role display names (used by portable bundles; resolved to UUIDs on import)",
+    )
     access_level: str | None = Field(default=None, description="role_based | authenticated | public")
 
 
