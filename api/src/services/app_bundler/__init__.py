@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from bifrost.platform_names import PLATFORM_EXPORT_NAMES
 from src.services.app_storage import AppStorageService
 from src.services.repo_storage import RepoStorage
 
@@ -45,74 +46,16 @@ DEFAULT_EXTERNALS = [
 Mode = Literal["preview", "live"]
 
 
-# Names we expose as named exports of the synthesized `bifrost` package.
-# Each resolves at runtime to globalThis.__bifrost_platform.<name>, which the
-# host page sets from app-code-runtime.ts's `$` registry.
+# Canonical set of names the `bifrost` package exposes to user code.
+# Single source of truth lives in `bifrost/platform_names.py` so the CLI
+# (which can't import from src.*) and the bundler share one list. The drift
+# test in `tests/unit/test_platform_names_match_runtime.py` guards against
+# the client's runtime `$` registry growing names this list doesn't cover.
 #
-# User components bypass this list — they get real re-exports from ./components/*.
-_PLATFORM_EXPORT_NAMES: set[str] = {
-    # React
-    "React", "Fragment", "Suspense", "lazy", "memo", "forwardRef",
-    "useState", "useEffect", "useCallback", "useMemo", "useRef",
-    "useContext", "useReducer", "useLayoutEffect", "useId",
-    "useTransition", "useDeferredValue", "useImperativeHandle",
-    # Router
-    "Outlet", "Link", "NavLink", "Navigate", "useNavigate", "navigate",
-    "useLocation", "useParams", "useSearchParams", "useOutletContext",
-    # Platform
-    "useUser", "useAppState",
-    "useWorkflowQuery", "useWorkflowMutation",
-    "RequireRole",
-    # Utilities
-    "cn", "clsx", "twMerge", "format",
-    "formatDate", "formatDateShort", "formatTime", "formatRelativeTime",
-    "formatBytes", "formatNumber", "formatCost", "formatDuration",
-    # Toast
-    "toast",
-    # UI components
-    "Button", "Input", "Label", "Textarea", "Checkbox", "Switch",
-    "Select", "SelectContent", "SelectGroup", "SelectItem", "SelectLabel",
-    "SelectTrigger", "SelectValue", "SelectSeparator",
-    "RadioGroup", "RadioGroupItem", "Combobox", "MultiCombobox",
-    "TagsInput", "Slider",
-    "Card", "CardHeader", "CardFooter", "CardTitle", "CardAction",
-    "CardDescription", "CardContent",
-    "Badge", "Avatar", "AvatarImage", "AvatarFallback",
-    "Alert", "AlertTitle", "AlertDescription",
-    "Skeleton", "Progress",
-    "Tabs", "TabsList", "TabsTrigger", "TabsContent",
-    "Dialog", "DialogClose", "DialogContent", "DialogDescription",
-    "DialogFooter", "DialogHeader", "DialogTitle", "DialogTrigger",
-    "AlertDialog", "AlertDialogTrigger", "AlertDialogContent",
-    "AlertDialogHeader", "AlertDialogFooter", "AlertDialogTitle",
-    "AlertDialogDescription", "AlertDialogAction", "AlertDialogCancel",
-    "Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger",
-    "Popover", "PopoverContent", "PopoverTrigger", "PopoverAnchor",
-    "Sheet", "SheetClose", "SheetContent", "SheetDescription",
-    "SheetFooter", "SheetHeader", "SheetTitle", "SheetTrigger",
-    "Command", "CommandDialog", "CommandEmpty", "CommandGroup",
-    "CommandInput", "CommandItem", "CommandList", "CommandSeparator",
-    "Table", "TableHeader", "TableBody", "TableFooter",
-    "TableHead", "TableRow", "TableCell", "TableCaption",
-    "Accordion", "AccordionContent", "AccordionItem", "AccordionTrigger",
-    "Collapsible", "CollapsibleContent", "CollapsibleTrigger",
-    "Toggle", "ToggleGroup", "ToggleGroupItem",
-    "Separator",
-    "DropdownMenu", "DropdownMenuContent", "DropdownMenuItem",
-    "DropdownMenuLabel", "DropdownMenuSeparator", "DropdownMenuTrigger",
-    "DropdownMenuGroup", "DropdownMenuPortal",
-    "DropdownMenuCheckboxItem", "DropdownMenuRadioGroup",
-    "DropdownMenuRadioItem",
-    "DropdownMenuShortcut", "DropdownMenuSub", "DropdownMenuSubContent",
-    "DropdownMenuSubTrigger",
-    "Calendar", "DateRangePicker",
-    # Lucide icons — this is the pain point. Lucide has ~1000 icons and
-    # we can't reasonably enumerate them all here. User code like
-    # `import { Phone, Mail } from "bifrost"` needs these to exist as
-    # named exports. Approach: bundler inspects user source for
-    # `import {...} from "bifrost"` and auto-adds any name not already
-    # in this set. Done in _write_bifrost_package via extract_used_names.
-}
+# Lucide icons (~1000 of them) are NOT enumerated here; names imported from
+# "bifrost" that aren't in this set (and aren't user components) are resolved
+# by the bundler as lucide-react re-exports. See `_write_bifrost_package`.
+_PLATFORM_EXPORT_NAMES: frozenset[str] = PLATFORM_EXPORT_NAMES
 
 
 @dataclass
@@ -394,15 +337,18 @@ class BundlerService:
 
         Re-exports, in order of priority:
         1. User components from ./components/**/*.tsx (real ES re-exports,
-           esbuild bundles the actual source)
+           esbuild bundles the actual source) — only names user code
+           imports from "bifrost"
         2. Lucide icons that user code imports from "bifrost" (re-exported
            from the real lucide-react package — external at runtime)
-        3. Everything else in _PLATFORM_EXPORT_NAMES as a proxy over
-           globalThis.__bifrost_platform (populated by BundledAppShell
-           before mount())
+        3. React Router primitives (always re-exported, cheap)
+        4. Platform names in _PLATFORM_EXPORT_NAMES that user code actually
+           imports from "bifrost" — proxied over globalThis.__bifrost_platform
+           (populated by BundledAppShell before mount())
 
-        This keeps existing user code working without a migration while
-        letting new code use `./components/Foo` or `lucide-react` directly.
+        The platform proxy table is filtered by `imported_names` rather than
+        emitted in full: post-Phase-3 migrated apps import a handful of
+        platform names, not the full 50+-name table.
         """
         pkg_dir = src_dir / "node_modules" / "bifrost"
         pkg_dir.mkdir(parents=True, exist_ok=True)
@@ -553,6 +499,11 @@ class BundlerService:
         # Grabbing real references (not proxies) means React components —
         # which may be forwardRef / memo / lazy / plain function — are
         # passed through unchanged. Proxies break forwardRef etc.
+        #
+        # Only emit proxies for platform names user code actually imports
+        # from "bifrost". Post-Phase-3 most apps import a small subset;
+        # emitting the full table bloats every bundle. If `imported_names`
+        # is empty (no bifrost imports at all) this loop emits nothing.
         lines.append("")
         lines.append(
             "const _p = globalThis.__bifrost_platform || {};"
@@ -561,7 +512,10 @@ class BundlerService:
         # to avoid duplicate export errors.
         router_re_exported = {"Link", "NavLink", "Navigate", "useNavigate"}
         platform_names = (
-            _PLATFORM_EXPORT_NAMES - user_names - lucide_names - router_re_exported
+            (_PLATFORM_EXPORT_NAMES & imported_names)
+            - user_names
+            - lucide_names
+            - router_re_exported
         )
         for n in sorted(platform_names):
             lines.append(f"export const {n} = _p[{n!r}];")

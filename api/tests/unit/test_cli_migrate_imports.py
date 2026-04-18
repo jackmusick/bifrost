@@ -262,3 +262,222 @@ def test_noop_file_with_only_platform_imports(tmp_path: pathlib.Path) -> None:
 
     r = migrate_file(src_file, app, set(), PLATFORM, LUCIDE)
     assert not r.changed
+
+
+# ---------------------------------------------------------------------------
+# 8. Platform/lucide collision — platform wins
+# ---------------------------------------------------------------------------
+
+
+def test_platform_wins_on_lucide_collision(tmp_path: pathlib.Path) -> None:
+    """Badge, Sheet, Dialog, Table, Command exist in BOTH platform and lucide-react.
+
+    Precedence: platform wins. These names must stay in the "bifrost" import
+    and must NOT be rewritten to "lucide-react".
+    """
+    collision_platform = PLATFORM | {"Badge", "Sheet", "Dialog", "Table", "Command"}
+    collision_lucide = LUCIDE | {"Badge", "Sheet", "Table", "Command"}  # Dialog isn't in lucide
+
+    app = _make_app(tmp_path)
+    src_file = app / "_layout.tsx"
+    _write(src_file, (
+        'import { Badge, Sheet, Dialog, Table, Command } from "bifrost";\n'
+        "export default function L(){return null;}\n"
+    ))
+
+    results = migrate_app(app, collision_platform, collision_lucide)
+    changed = [r for r in results if r.changed]
+    # No changes expected — every name is platform and stays in "bifrost".
+    assert changed == []
+
+
+# ---------------------------------------------------------------------------
+# 9. Lucide-only names — move to lucide-react (plain + aliased forms)
+# ---------------------------------------------------------------------------
+
+
+def test_lucide_only_names_move_to_lucide_react(tmp_path: pathlib.Path) -> None:
+    """Edit, AlertTriangle, CheckCircle, Loader2 live only in lucide-react."""
+    lucide = LUCIDE | {"Edit", "AlertTriangle", "CheckCircle", "Loader2"}
+
+    app = _make_app(tmp_path)
+    src_file = app / "_layout.tsx"
+    _write(src_file, (
+        'import { Edit, AlertTriangle, CheckCircle, Loader2 } from "bifrost";\n'
+        "export default function L(){return null;}\n"
+    ))
+
+    results = migrate_app(app, PLATFORM, lucide)
+    changed = [r for r in results if r.changed]
+    assert len(changed) == 1
+    updated = changed[0].updated
+
+    assert '"lucide-react"' in updated
+    assert "Edit" in updated
+    assert "AlertTriangle" in updated
+    assert "CheckCircle" in updated
+    assert "Loader2" in updated
+    # None of them should remain in a "bifrost" import.
+    assert 'from "bifrost"' not in updated
+
+
+def test_lucide_aliased_names_move_to_lucide_react(tmp_path: pathlib.Path) -> None:
+    """Aliased forms like `Edit as EditIcon` must also be rewritten and keep the alias."""
+    lucide = LUCIDE | {"Edit", "AlertTriangle", "Loader2"}
+
+    app = _make_app(tmp_path)
+    src_file = app / "_layout.tsx"
+    _write(src_file, (
+        'import { Edit as EditIcon, AlertTriangle as WarnIcon, Loader2 } from "bifrost";\n'
+        "export default function L(){return null;}\n"
+    ))
+
+    results = migrate_app(app, PLATFORM, lucide)
+    changed = [r for r in results if r.changed]
+    assert len(changed) == 1
+    updated = changed[0].updated
+
+    assert "Edit as EditIcon" in updated
+    assert "AlertTriangle as WarnIcon" in updated
+    assert "Loader2" in updated
+    assert '"lucide-react"' in updated
+    assert 'from "bifrost"' not in updated
+
+
+# ---------------------------------------------------------------------------
+# 10. Named-export user component → named import (not default)
+# ---------------------------------------------------------------------------
+
+
+def test_named_export_user_component_becomes_named_import(tmp_path: pathlib.Path) -> None:
+    """`export function Foo` → `import { Foo } from "./components/Foo"` (NOT default)."""
+    app = _make_app(tmp_path, components={
+        "Foo": "export function Foo(){return null;}\n",  # named export only
+    })
+    src_file = app / "_layout.tsx"
+    _write(src_file, 'import { Foo, Button } from "bifrost";\n')
+
+    results = migrate_app(app, PLATFORM, LUCIDE)
+    changed = [r for r in results if r.changed]
+    assert len(changed) == 1
+    updated = changed[0].updated
+
+    assert 'import { Foo } from "./components/Foo";' in updated
+    # Explicitly NOT the default form.
+    assert 'import Foo from "./components/Foo";' not in updated
+    assert 'import { Button } from "bifrost";' in updated
+
+
+# ---------------------------------------------------------------------------
+# 11. Multi-line unrelated import — inserted lines must not corrupt it
+# ---------------------------------------------------------------------------
+
+
+def test_multiline_unrelated_import_preserved(tmp_path: pathlib.Path) -> None:
+    """A pre-existing multi-line `import { A, B, C } from "recharts";` must stay
+    intact when the migrator inserts a new import (e.g. moved lucide icons)
+    after the import block.
+    """
+    lucide = LUCIDE | {"ChevronDown"}
+
+    app = _make_app(tmp_path)
+    src_file = app / "_layout.tsx"
+    _write(src_file, (
+        "import {\n"
+        "  LineChart,\n"
+        "  Line,\n"
+        "  XAxis,\n"
+        '} from "recharts";\n'
+        'import { Button, ChevronDown } from "bifrost";\n'
+        "\n"
+        "export default function L(){return null;}\n"
+    ))
+
+    results = migrate_app(app, PLATFORM, lucide)
+    changed = [r for r in results if r.changed]
+    assert len(changed) == 1
+    updated = changed[0].updated
+
+    # The multi-line recharts import must survive unchanged.
+    assert (
+        "import {\n"
+        "  LineChart,\n"
+        "  Line,\n"
+        "  XAxis,\n"
+        '} from "recharts";'
+    ) in updated
+    # The new lucide import must exist as its own line.
+    assert 'import { ChevronDown } from "lucide-react";' in updated
+    # And Button must still be imported from bifrost.
+    assert 'import { Button } from "bifrost";' in updated
+
+
+# ---------------------------------------------------------------------------
+# 12. Lowercase platform names inferred from usage
+# ---------------------------------------------------------------------------
+
+
+def test_lowercase_platform_names_inferred_from_usage(tmp_path: pathlib.Path) -> None:
+    """`cn`, `toast`, `format` are lowercase platform exports. The inference
+    pass must pick them up from usage even though they're not PascalCase.
+    """
+    platform = PLATFORM | {"cn", "toast", "format"}
+
+    app = _make_app(tmp_path)
+    src_file = app / "pages" / "index.tsx"
+    _write(src_file, (
+        'import { Button } from "bifrost";\n'
+        "\n"
+        "export default function Page(){\n"
+        '  const cls = cn("foo", "bar");\n'
+        "  toast.success('hi');\n"
+        "  const d = format(new Date(), 'yyyy');\n"
+        "  return <Button className={cls}>{d}</Button>;\n"
+        "}\n"
+    ))
+
+    results = migrate_app(app, platform, LUCIDE)
+    changed = [r for r in results if r.changed]
+    assert len(changed) == 1
+    updated = changed[0].updated
+
+    # All three lowercase names must be merged into the bifrost import.
+    assert "cn" in updated
+    assert "toast" in updated
+    assert "format" in updated
+    # Single merged bifrost import containing all four names.
+    for name in ("Button", "cn", "toast", "format"):
+        assert name in updated
+    # Only one `from "bifrost"` import statement.
+    assert updated.count('from "bifrost"') == 1
+
+
+# ---------------------------------------------------------------------------
+# 13. False-positive guard — names inside import bodies aren't "references"
+# ---------------------------------------------------------------------------
+
+
+def test_names_in_import_body_not_counted_as_references(tmp_path: pathlib.Path) -> None:
+    """A name that appears ONLY inside another `import { ... } from "x"` body
+    must not trigger an auto-import. Otherwise `import { Button as MyButton }
+    from "bifrost"` would flag `Button` as a reference and re-add it.
+    """
+    # `Card` is a platform name. It appears ONLY inside the import body.
+    # The file uses `MyCard` everywhere in JSX, so the unaliased `Card` is
+    # NOT actually referenced. Migrator must not auto-import `Card`.
+    app = _make_app(tmp_path)
+    src_file = app / "_layout.tsx"
+    _write(src_file, (
+        'import { Card as MyCard } from "bifrost";\n'
+        "\n"
+        "export default function L(){\n"
+        "  return <MyCard />;\n"
+        "}\n"
+    ))
+
+    results = migrate_app(app, PLATFORM, LUCIDE)
+    # No changes should be made — `Card as MyCard` is complete; `Card`
+    # appearing inside the import body does NOT count as a reference that
+    # needs auto-importing.
+    changed = [r for r in results if r.changed]
+    assert changed == []

@@ -96,6 +96,13 @@ export {
 // Lucide icons — wildcard re-export so any icon name is available from "bifrost".
 // Migrated apps import from "lucide-react" directly; this keeps un-migrated apps
 // working until the final cleanup.
+//
+// Four icon names collide with shadcn UI component exports below: Badge, Sheet,
+// Table, Command. Platform wins on collision — the shadcn components are what
+// user code meant when it wrote `import { Badge } from "bifrost"`. Those four
+// shadcn modules are re-exported with explicit named re-exports (not `export *`)
+// further down, so TypeScript treats them as overrides of this wildcard rather
+// than ambiguous duplicates.
 export * from "lucide-react";
 
 // Platform hooks & components
@@ -121,12 +128,23 @@ export * from "@/components/ui/input";
 export * from "@/components/ui/label";
 export * from "@/components/ui/textarea";
 export * from "@/components/ui/card";
-export * from "@/components/ui/badge";
+// Explicit re-export: Badge collides with lucide-react's Badge icon. Platform wins.
+export { Badge, badgeVariants } from "@/components/ui/badge";
 export * from "@/components/ui/avatar";
 export * from "@/components/ui/checkbox";
 export * from "@/components/ui/switch";
 export * from "@/components/ui/select";
-export * from "@/components/ui/table";
+// Explicit re-export: Table collides with lucide-react's Table icon. Platform wins.
+export {
+	Table,
+	TableHeader,
+	TableBody,
+	TableFooter,
+	TableHead,
+	TableRow,
+	TableCell,
+	TableCaption,
+} from "@/components/ui/table";
 export * from "@/components/ui/tabs";
 export * from "@/components/ui/dialog";
 export * from "@/components/ui/dropdown-menu";
@@ -142,10 +160,31 @@ export * from "@/components/ui/slider";
 export * from "@/components/ui/toggle";
 export * from "@/components/ui/toggle-group";
 export * from "@/components/ui/hover-card";
-export * from "@/components/ui/command";
+// Explicit re-export: Command collides with lucide-react's Command icon. Platform wins.
+export {
+	Command,
+	CommandDialog,
+	CommandInput,
+	CommandList,
+	CommandEmpty,
+	CommandGroup,
+	CommandItem,
+	CommandShortcut,
+	CommandSeparator,
+} from "@/components/ui/command";
 export * from "@/components/ui/alert-dialog";
 export * from "@/components/ui/context-menu";
-export * from "@/components/ui/sheet";
+// Explicit re-export: Sheet collides with lucide-react's Sheet icon. Platform wins.
+export {
+	Sheet,
+	SheetTrigger,
+	SheetClose,
+	SheetContent,
+	SheetHeader,
+	SheetFooter,
+	SheetTitle,
+	SheetDescription,
+} from "@/components/ui/sheet";
 export * from "@/components/ui/separator";
 export * from "@/components/ui/combobox";
 export * from "@/components/ui/pagination";

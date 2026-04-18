@@ -276,7 +276,7 @@ Before writing any app code, design what you're building.
    - Router: `import { Link, NavLink, useNavigate } from "react-router-dom"` — NOT from `"bifrost"`
    - Your own components: `import SearchInput from "./components/SearchInput"` — default imports, relative paths, NOT from `"bifrost"`, NOT auto-injected
 2. **Every `<PascalCase>` tag needs an explicit import.** No more auto-injection. If the tag is a user component, default-import it from `./components/Name`.
-3. **Migrating an older app?** Run `bifrost migrate-imports` from the workspace root to auto-rewrite every file.
+3. **Migrating an older app?** Run `bifrost migrate-imports` from the workspace root to auto-rewrite every file. **Always review the diff** — the classifier doesn't do full scope analysis, so if it added an import for a name you declared locally (e.g. a destructured parameter or a type-only identifier that shadows a platform export), reject and fix by hand.
 4. **Root layout:** `_layout.tsx` uses `<Outlet />`, NOT `{children}`
 5. **Workflow hooks:** Always use UUIDs, never names — `useWorkflowQuery("uuid-here")`
 6. **Fixed-height container:** Your app renders in a fixed-height box — manage your own scrolling

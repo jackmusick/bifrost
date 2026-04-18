@@ -9,6 +9,14 @@ Rewrites `import { ... } from "bifrost"` statements in app TSX/TS files:
 
 Also infers missing user-component imports from JSX usage.
 
+Known limitations
+-----------------
+This classifier uses regex, not an AST. It does NOT track function
+parameters, destructured bindings, or type-level identifiers. A
+user-declared PascalCase name that shadows a platform export may be
+incorrectly imported. Always review the diff before applying -- the
+CLI prints one by default (see `bifrost migrate-imports --help`).
+
 Standalone: no dependencies on src.*.
 """
 from __future__ import annotations
@@ -16,14 +24,11 @@ from __future__ import annotations
 import difflib
 import pathlib
 import re
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 
 # React Router primitives previously re-exported from "bifrost".
 _ROUTER_NAMES: set[str] = {"Link", "NavLink", "Navigate", "useNavigate"}
-
-# Names that look like PascalCase tags but are JSX intrinsics / React constructs
-# we should never try to auto-import.
-_JSX_NON_COMPONENT_PREFIXES = ("React.", "this.")
 
 
 @dataclass
@@ -113,12 +118,6 @@ def load_lucide_icon_names(dts_path: pathlib.Path | None = None) -> set[str]:
 # Matches any `import { ... } from "bifrost"` or `'bifrost'` — multiline.
 _BIFROST_IMPORT_RE = re.compile(
     r'import\s*\{([^}]*)\}\s*from\s*["\']bifrost["\'];?',
-    re.DOTALL,
-)
-
-# Matches existing named imports from arbitrary modules (for merging).
-_NAMED_IMPORT_RE = re.compile(
-    r'import\s*\{([^}]*)\}\s*from\s*["\']([^"\']+)["\'];?',
     re.DOTALL,
 )
 
@@ -337,14 +336,6 @@ def _relpath_parts(target: pathlib.Path, start: pathlib.Path) -> list[str]:
     return up + down
 
 
-def _extract_jsx_tag_names(src: str) -> set[str]:
-    """Find all PascalCase JSX tag names in the source (e.g. `<SearchInput ... />`)."""
-    # Matches <Name ...> or <Name/> or <Name.Sub ...> (we only take Name).
-    # Avoid nested `</Name>` duplicates by also scanning closings, de-duped by set.
-    opens = re.findall(r"<\s*([A-Z][A-Za-z0-9_]*)", src)
-    return set(opens)
-
-
 def _locally_declared_names(src: str) -> set[str]:
     """Names declared locally in the file that shouldn't be auto-imported.
 
@@ -479,8 +470,8 @@ def migrate_file(
     source_file: pathlib.Path,
     app_dir: pathlib.Path,
     user_components: dict[str, str],
-    platform_names: set[str],
-    lucide_names: set[str],
+    platform_names: AbstractSet[str],
+    lucide_names: AbstractSet[str],
 ) -> FileMigrationResult:
     """
     Apply all migrations to a single source file.
@@ -726,8 +717,8 @@ def migrate_file(
 
 def migrate_app(
     app_dir: pathlib.Path,
-    platform_names: set[str],
-    lucide_names: set[str],
+    platform_names: AbstractSet[str],
+    lucide_names: AbstractSet[str],
 ) -> list[FileMigrationResult]:
     """Run migration on every TSX/TS file in an app, return results (changed + unchanged)."""
     user_components = list_user_components(app_dir)

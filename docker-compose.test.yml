@@ -177,6 +177,7 @@ services:
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
+      - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/alembic:/app/alembic:ro
@@ -232,6 +233,7 @@ services:
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
+      - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
     depends_on:
@@ -276,6 +278,7 @@ services:
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
+      - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - test-mounts:/mounts
@@ -338,6 +341,7 @@ services:
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
+      - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/scripts:/app/scripts:ro  # Scripts for migration utilities
@@ -346,6 +350,9 @@ services:
       - ./api/alembic.ini:/app/alembic.ini:ro
       - ./api/pytest.ini:/app/pytest.ini:ro
       - ./api/pyproject.toml:/app/pyproject.toml:ro
+      - ./client/src:/client/src:ro  # Read-only — the drift test in
+                                      # tests/unit/test_platform_names_match_runtime.py
+                                      # parses app-code-runtime.ts to detect new platform exports.
       - test-coverage:/coverage  # Shared coverage data across phases
       - /tmp/bifrost:/tmp/bifrost  # Host-mounted for test results (junitxml)
     working_dir: /app

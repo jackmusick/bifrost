@@ -39,6 +39,11 @@ import httpx
 # Import credentials module directly (it's standalone)
 import bifrost.credentials as credentials
 from bifrost.client import BifrostClient
+# Canonical platform export list. Shared with api/src/services/app_bundler.
+# A drift test (tests/unit/test_platform_names_match_runtime.py) keeps this
+# in step with the client's runtime `$` registry so new platform exports
+# can't ship without the classifier and bundler knowing about them.
+from bifrost.platform_names import PLATFORM_EXPORT_NAMES as _PLATFORM_EXPORT_NAMES
 
 # Default ignore patterns applied even without a .gitignore file.
 # .bifrost/ is always force-included via negation.
@@ -4027,64 +4032,19 @@ async def _api_request(method: str, endpoint: str, body: Any | None, client: "Bi
 # ---------------------------------------------------------------------------
 # migrate-imports
 # ---------------------------------------------------------------------------
-
-# Duplicated from api/src/services/app_bundler/__init__.py because this CLI
-# module cannot import from src.*. Keep in sync.
-_PLATFORM_EXPORT_NAMES: set[str] = {
-    "React", "Fragment", "Suspense", "lazy", "memo", "forwardRef",
-    "useState", "useEffect", "useCallback", "useMemo", "useRef",
-    "useContext", "useReducer", "useLayoutEffect", "useId",
-    "useTransition", "useDeferredValue", "useImperativeHandle",
-    "Outlet", "Link", "NavLink", "Navigate", "useNavigate", "navigate",
-    "useLocation", "useParams", "useSearchParams", "useOutletContext",
-    "useUser", "useAppState",
-    "useWorkflowQuery", "useWorkflowMutation",
-    "RequireRole",
-    "cn", "clsx", "twMerge", "format",
-    "formatDate", "formatDateShort", "formatTime", "formatRelativeTime",
-    "formatBytes", "formatNumber", "formatCost", "formatDuration",
-    "toast",
-    "Button", "Input", "Label", "Textarea", "Checkbox", "Switch",
-    "Select", "SelectContent", "SelectGroup", "SelectItem", "SelectLabel",
-    "SelectTrigger", "SelectValue", "SelectSeparator",
-    "RadioGroup", "RadioGroupItem", "Combobox", "MultiCombobox",
-    "TagsInput", "Slider",
-    "Card", "CardHeader", "CardFooter", "CardTitle", "CardAction",
-    "CardDescription", "CardContent",
-    "Badge", "Avatar", "AvatarImage", "AvatarFallback",
-    "Alert", "AlertTitle", "AlertDescription",
-    "Skeleton", "Progress",
-    "Tabs", "TabsList", "TabsTrigger", "TabsContent",
-    "Dialog", "DialogClose", "DialogContent", "DialogDescription",
-    "DialogFooter", "DialogHeader", "DialogTitle", "DialogTrigger",
-    "AlertDialog", "AlertDialogTrigger", "AlertDialogContent",
-    "AlertDialogHeader", "AlertDialogFooter", "AlertDialogTitle",
-    "AlertDialogDescription", "AlertDialogAction", "AlertDialogCancel",
-    "Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger",
-    "Popover", "PopoverContent", "PopoverTrigger", "PopoverAnchor",
-    "Sheet", "SheetClose", "SheetContent", "SheetDescription",
-    "SheetFooter", "SheetHeader", "SheetTitle", "SheetTrigger",
-    "Command", "CommandDialog", "CommandEmpty", "CommandGroup",
-    "CommandInput", "CommandItem", "CommandList", "CommandSeparator",
-    "Table", "TableHeader", "TableBody", "TableFooter",
-    "TableHead", "TableRow", "TableCell", "TableCaption",
-    "Accordion", "AccordionContent", "AccordionItem", "AccordionTrigger",
-    "Collapsible", "CollapsibleContent", "CollapsibleTrigger",
-    "Toggle", "ToggleGroup", "ToggleGroupItem",
-    "Separator",
-    "DropdownMenu", "DropdownMenuContent", "DropdownMenuItem",
-    "DropdownMenuLabel", "DropdownMenuSeparator", "DropdownMenuTrigger",
-    "DropdownMenuGroup", "DropdownMenuPortal",
-    "DropdownMenuCheckboxItem", "DropdownMenuRadioGroup",
-    "DropdownMenuRadioItem",
-    "DropdownMenuShortcut", "DropdownMenuSub", "DropdownMenuSubContent",
-    "DropdownMenuSubTrigger",
-    "Calendar", "DateRangePicker",
-}
+# _PLATFORM_EXPORT_NAMES is imported at the top of this file from
+# bifrost.platform_names (the canonical shared source).
 
 
 def handle_migrate_imports(args: list[str]) -> int:
-    """bifrost migrate-imports [PATH] [--dry-run] [--yes]"""
+    """bifrost migrate-imports [PATH] [--dry-run] [--yes] [--skip-diff]
+
+    Diff-first workflow: the unified diff is printed before any write, including
+    when --yes is passed. The classifier uses regex (not an AST) so it cannot
+    distinguish a platform name used as an expression from a local binding that
+    shadows it -- always review the diff. Use --skip-diff with --yes to
+    suppress the diff output in scripted runs where you've already reviewed.
+    """
     if args and args[0] in ("--help", "-h"):
         print("""
 Usage: bifrost migrate-imports [path] [options]
@@ -4099,12 +4059,18 @@ Classifier precedence (first match wins):
 
 Also infers missing user-component imports from JSX usage.
 
+ALWAYS review the diff before applying. The classifier uses regex, not a
+full scope analysis: if it added an import for a name you declared locally
+(e.g. a destructured parameter that happens to match a platform export),
+reject the change and fix by hand.
+
 Arguments:
   path                  App dir or workspace containing apps/* (default: current directory)
 
 Options:
-  --dry-run             Print unified diff, do not write
-  --yes                 Skip confirmation prompt
+  --dry-run             Print unified diff, do not write or prompt
+  --yes, -y             Apply without the confirmation prompt (diff is still printed)
+  --skip-diff           Suppress diff output. Only valid with --yes (scripted runs)
   --help, -h            Show this help message
 """.strip())
         return 0
@@ -4118,6 +4084,7 @@ Options:
 
     dry_run = False
     yes = False
+    skip_diff = False
     path_arg: str | None = None
 
     for a in args:
@@ -4125,6 +4092,8 @@ Options:
             dry_run = True
         elif a in ("--yes", "-y"):
             yes = True
+        elif a == "--skip-diff":
+            skip_diff = True
         elif a.startswith("-"):
             print(f"Unknown option: {a}", file=sys.stderr)
             return 1
@@ -4133,6 +4102,13 @@ Options:
         else:
             print(f"Unexpected argument: {a}", file=sys.stderr)
             return 1
+
+    if skip_diff and not yes:
+        print("Error: --skip-diff requires --yes (it only makes sense for scripted runs).", file=sys.stderr)
+        return 1
+    if skip_diff and dry_run:
+        print("Error: --skip-diff is incompatible with --dry-run (dry-run exists to show the diff).", file=sys.stderr)
+        return 1
 
     root = pathlib.Path(path_arg).resolve() if path_arg else pathlib.Path.cwd()
     if not root.exists():
@@ -4163,7 +4139,13 @@ Options:
         print(f"\n{len(changed)} file(s) would change across {len(apps_touched)} app dir(s).")
         return 0
 
-    # Summary first
+    # Diff first so the user always has scrollback to review, unless explicitly
+    # suppressed in a scripted `--yes --skip-diff` run.
+    if not skip_diff:
+        for r in changed:
+            print(render_diff(r), end="")
+
+    # Summary after the diff
     for r in changed:
         print(str(r.path))
         for line in r.summary_lines():
@@ -4171,6 +4153,7 @@ Options:
     print(f"\n{len(changed)} file(s) will change across {len(apps_touched)} app dir(s).")
 
     if not yes:
+        print("Review the diff above -- the classifier doesn't do full scope analysis.")
         try:
             reply = input("Proceed? [y/N] ").strip().lower()
         except EOFError:
