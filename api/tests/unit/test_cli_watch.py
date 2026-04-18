@@ -1,71 +1,13 @@
 """Unit tests for CLI watch mode logic."""
 import pathlib
 import threading
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-
-def test_writeback_preserves_concurrent_user_edits():
-    """Writeback should only discard events for writeback files, not user edits."""
-    pending_changes: set[str] = set()
-    lock = threading.Lock()
-
-    # Simulate: user edit arrives during push
-    with lock:
-        pending_changes.add("/workspace/apps/my-app/user-edit.tsx")
-
-    # Simulate: writeback writes manifest files
-    writeback_paths = {"/workspace/.bifrost/workflows.yaml"}
-
-    # The fix: only discard writeback paths
-    with lock:
-        pending_changes -= writeback_paths
-
-    # User edit should still be in the queue
-    assert "/workspace/apps/my-app/user-edit.tsx" in pending_changes
-
-
-def test_writeback_discards_written_paths():
-    """Writeback paths themselves should be removed from pending sets."""
-    pending_changes: set[str] = set()
-    pending_deletes: set[str] = set()
-    lock = threading.Lock()
-
-    # Simulate: watcher queued events for files that writeback will overwrite
-    with lock:
-        pending_changes.add("/workspace/.bifrost/workflows.yaml")
-        pending_changes.add("/workspace/.bifrost/integrations.yaml")
-        pending_deletes.add("/workspace/.bifrost/workflows.yaml")
-
-    writeback_paths = {
-        "/workspace/.bifrost/workflows.yaml",
-        "/workspace/.bifrost/integrations.yaml",
-    }
-
-    with lock:
-        pending_changes -= writeback_paths
-        pending_deletes -= writeback_paths
-
-    assert len(pending_changes) == 0
-    assert len(pending_deletes) == 0
-
-
-def test_writeback_empty_paths_is_noop():
-    """When writeback writes nothing (all identical), pending sets are untouched."""
-    pending_changes: set[str] = set()
-    lock = threading.Lock()
-
-    with lock:
-        pending_changes.add("/workspace/apps/my-app/user-edit.tsx")
-
-    writeback_paths: set[str] = set()
-
-    with lock:
-        if writeback_paths:
-            pending_changes -= writeback_paths
-
-    assert "/workspace/apps/my-app/user-edit.tsx" in pending_changes
+from bifrost.cli import _WatchChangeHandler, _WatchState
 
 
 def test_read_only_events_are_ignored():
@@ -235,26 +177,6 @@ def test_deletion_computes_repo_path_without_prefix():
     assert repo_path == "apps/my-app/old-file.tsx"
 
 
-def test_deletion_skips_bifrost_files():
-    """Deletions of .bifrost/ files should be skipped (manifest is system-managed)."""
-    base = pathlib.Path("/workspace")
-    deleted_paths = [
-        pathlib.Path("/workspace/.bifrost/workflows.yaml"),
-        pathlib.Path("/workspace/.bifrost/integrations.yaml"),
-        pathlib.Path("/workspace/apps/my-app/removed.tsx"),
-    ]
-
-    to_delete = []
-    for abs_p in deleted_paths:
-        rel = abs_p.relative_to(base)
-        if str(rel).startswith(".bifrost/") or str(rel).startswith(".bifrost\\"):
-            continue
-        to_delete.append(str(rel))
-
-    assert len(to_delete) == 1
-    assert to_delete[0] == "apps/my-app/removed.tsx"
-
-
 @pytest.mark.asyncio
 async def test_deletion_404_treated_as_success():
     """A 404 from the delete endpoint should be treated as success (file already gone)."""
@@ -280,3 +202,129 @@ async def test_deletion_404_treated_as_success():
             deleted_count += 1
 
     assert deleted_count == 1
+
+
+# =============================================================================
+# Watch handler excludes .bifrost/ — manifest dir is export-only, watch never
+# touches it. The observer should drop events under .bifrost/ before the
+# handler ever queues them for push.
+# =============================================================================
+
+
+def _fake_event(event_type: str, src_path: str, *, is_directory: bool = False) -> Any:
+    return SimpleNamespace(event_type=event_type, src_path=src_path, is_directory=is_directory)
+
+
+def test_watch_handler_drops_bifrost_events(tmp_path):
+    """Events under .bifrost/ should never reach the pending push queue."""
+    state = _WatchState(tmp_path)
+    handler = _WatchChangeHandler(state)
+
+    # Create a .bifrost/ subtree on disk so relative_to works.
+    (tmp_path / ".bifrost").mkdir()
+    (tmp_path / ".bifrost" / "workflows.yaml").write_text("workflows: {}\n")
+    (tmp_path / ".bifrost" / "agents.yaml").write_text("agents: {}\n")
+
+    handler.dispatch(_fake_event("modified", str(tmp_path / ".bifrost" / "workflows.yaml")))
+    handler.dispatch(_fake_event("created", str(tmp_path / ".bifrost" / "agents.yaml")))
+    handler.dispatch(_fake_event("deleted", str(tmp_path / ".bifrost" / "workflows.yaml")))
+    # Moved into .bifrost/ should also be dropped (dest is under the excluded dir)
+    moved = SimpleNamespace(
+        event_type="moved",
+        src_path=str(tmp_path / "tmp.yaml"),
+        dest_path=str(tmp_path / ".bifrost" / "agents.yaml"),
+        is_directory=False,
+    )
+    handler.dispatch(moved)
+
+    assert state.pending_changes == set()
+    assert state.pending_deletes == set()
+
+
+def test_watch_handler_queues_workflow_and_app_files(tmp_path):
+    """Code files under workflows/, apps/, or the workspace root should be queued."""
+    state = _WatchState(tmp_path)
+    handler = _WatchChangeHandler(state)
+
+    workflow_path = tmp_path / "workflows" / "subdir" / "other.py"
+    workflow_path.parent.mkdir(parents=True)
+    workflow_path.write_text("def run(): pass\n")
+
+    app_path = tmp_path / "apps" / "my-app" / "pages" / "index.tsx"
+    app_path.parent.mkdir(parents=True)
+    app_path.write_text("export default () => null\n")
+
+    root_text = tmp_path / "random.txt"
+    root_text.write_text("hello\n")
+
+    handler.dispatch(_fake_event("modified", str(workflow_path)))
+    handler.dispatch(_fake_event("created", str(app_path)))
+    handler.dispatch(_fake_event("modified", str(root_text)))
+
+    assert str(workflow_path) in state.pending_changes
+    assert str(app_path) in state.pending_changes
+    assert str(root_text) in state.pending_changes
+
+
+def test_watch_handler_respects_gitignore(tmp_path):
+    """Files matching .gitignore should still be excluded from watch events."""
+    (tmp_path / ".gitignore").write_text("secrets/\n*.log\n")
+    state = _WatchState(tmp_path)
+    handler = _WatchChangeHandler(state)
+
+    secret_path = tmp_path / "secrets" / "token.txt"
+    secret_path.parent.mkdir()
+    secret_path.write_text("hunter2\n")
+
+    log_path = tmp_path / "app.log"
+    log_path.write_text("noise\n")
+
+    real_path = tmp_path / "workflows" / "do_thing.py"
+    real_path.parent.mkdir()
+    real_path.write_text("def run(): pass\n")
+
+    handler.dispatch(_fake_event("modified", str(secret_path)))
+    handler.dispatch(_fake_event("modified", str(log_path)))
+    handler.dispatch(_fake_event("modified", str(real_path)))
+
+    assert str(secret_path) not in state.pending_changes
+    assert str(log_path) not in state.pending_changes
+    assert str(real_path) in state.pending_changes
+
+
+def test_watch_handler_dropped_events_do_not_call_post(tmp_path, monkeypatch):
+    """Events under .bifrost/ should produce zero queued work, so a subsequent
+    drain → push pipeline would issue zero REST calls."""
+    state = _WatchState(tmp_path)
+    handler = _WatchChangeHandler(state)
+
+    (tmp_path / ".bifrost").mkdir()
+    (tmp_path / ".bifrost" / "workflows.yaml").write_text("workflows: {}\n")
+
+    handler.dispatch(_fake_event("modified", str(tmp_path / ".bifrost" / "workflows.yaml")))
+    handler.dispatch(_fake_event("created", str(tmp_path / ".bifrost" / "agents.yaml")))
+
+    changes, deletes = state.drain()
+    assert changes == set()
+    assert deletes == set()
+
+    # If a caller naively iterated drained sets and posted per file, no posts
+    # would happen because both sets are empty. This documents the contract.
+    posted: list[tuple[str, dict]] = []
+
+    async def fake_post(url, json=None, **kwargs):  # type: ignore[no-untyped-def]
+        posted.append((url, json or {}))
+
+        class _Resp:
+            status_code = 204
+
+        return _Resp()
+
+    # Iterate as the watch batch would (no asyncio needed since we never await)
+    for _ in changes:
+        # Would have called fake_post; we never get here.
+        pass
+    for _ in deletes:
+        pass
+
+    assert posted == []

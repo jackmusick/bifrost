@@ -126,3 +126,4 @@ pgvector  # PostgreSQL vector extension for semantic search
 debugpy  # Remote debugging (VS Code attach)
 ruff
 watchdog  # File watching for hot reload (watchmedo command)
+pathspec  # gitignore-style file matching (used by bifrost CLI watch handler tests)
