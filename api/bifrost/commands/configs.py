@@ -32,7 +32,6 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
     build_cli_flags,
 )
 from bifrost.refs import RefResolver
@@ -96,6 +95,38 @@ async def list_configs(
     output_result(response.json(), ctx=ctx)
 
 
+async def _build_create_body(
+    resolver: RefResolver,
+    *,
+    key: Any,
+    value: Any,
+    config_type: Any,
+    description: Any,
+    organization: Any,
+) -> dict[str, Any]:
+    """Build a POST /api/config body for ``create`` / ``set``.
+
+    ``ConfigCreate`` declares ``value: dict`` but the REST endpoint accepts
+    ``SetConfigRequest.value: str``, so ``assemble_body(ConfigCreate, ...)``
+    would mangle the plain-string value. This helper mirrors the wire
+    shape directly.
+    """
+    if not key:
+        raise click.UsageError("--key is required")
+    if value is None:
+        raise click.UsageError("--value is required")
+    body: dict[str, Any] = {
+        "key": key,
+        "value": value,
+        "type": config_type or ConfigType.STRING.value,
+    }
+    if description is not None:
+        body["description"] = description
+    if organization is not None:
+        body["organization_id"] = await resolver.resolve("org", str(organization))
+    return body
+
+
 @configs_group.command("create")
 @_apply_flags(_CREATE_FLAGS)
 @click.pass_context
@@ -109,7 +140,14 @@ async def create_config(
     **fields: Any,
 ) -> None:
     """Create a new configuration value."""
-    body = await assemble_body(ConfigCreate, fields, resolver=resolver)
+    body = await _build_create_body(
+        resolver,
+        key=fields.get("key"),
+        value=fields.get("value"),
+        config_type=fields.get("config_type"),
+        description=fields.get("description"),
+        organization=fields.get("organization_id"),
+    )
     response = await client.post("/api/config", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
@@ -139,7 +177,14 @@ async def update_config(
     the plaintext value is never returned and cannot be round-tripped).
     """
     config_uuid = await resolver.resolve("config", ref)
-    body = await assemble_body(ConfigUpdate, fields, resolver=resolver)
+    # Same DTO/wire-shape mismatch as create — build manually.
+    body: dict[str, Any] = {}
+    if fields.get("value") is not None:
+        body["value"] = fields["value"]
+    if fields.get("config_type") is not None:
+        body["type"] = fields["config_type"]
+    if fields.get("description") is not None:
+        body["description"] = fields["description"]
     response = await client.put(f"/api/config/{config_uuid}", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)

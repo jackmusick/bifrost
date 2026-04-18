@@ -35,25 +35,6 @@ def _ref_error_payload(exc: Exception) -> dict[str, Any]:
     return {"detail": str(exc)}
 
 
-async def _assemble_config_body(
-    context: Any, fields: dict[str, Any], *, is_update: bool
-) -> dict[str, Any]:
-    from bifrost.dto_flags import DTO_EXCLUDES, assemble_body
-    from bifrost.refs import RefResolver
-    from src.models.contracts.config import ConfigCreate, ConfigUpdate
-
-    model_cls = ConfigUpdate if is_update else ConfigCreate
-    exclude = DTO_EXCLUDES.get(model_cls.__name__, set())
-
-    async with rest_client(context) as http:
-        resolver = RefResolver(http)
-        return await assemble_body(
-            model_cls,
-            {k: v for k, v in fields.items() if k not in exclude},
-            resolver=resolver,
-        )
-
-
 async def list_configs(context: Any) -> ToolResult:
     """List configs visible to the caller — ``GET /api/config``."""
     logger.info("MCP list_configs (HTTP bridge)")
@@ -70,14 +51,16 @@ async def list_configs(context: Any) -> ToolResult:
 async def create_config(
     context: Any,
     key: str,
-    value: dict[str, Any],
+    value: str,
     config_type: str | None = None,
     description: str | None = None,
     organization_id: str | None = None,
 ) -> ToolResult:
     """Create a config — ``POST /api/config``.
 
-    ``value`` is a dict per the :class:`ConfigCreate` contract. ``config_type``
+    ``value`` is a string per the server's :class:`SetConfigRequest` contract
+    (the REST endpoint treats the value as a string even for JSON-typed
+    configs — the caller serializes any structured data). ``config_type``
     accepts the :class:`ConfigType` enum values (``string``, ``integer``,
     ``boolean``, ``json``, ``secret``). ``organization_id`` is a ref (UUID,
     name) or ``None`` for global scope — resolved via :class:`RefResolver`.
@@ -85,17 +68,29 @@ async def create_config(
     if not key:
         return error_result("key is required")
 
-    fields = {
-        "key": key,
-        "value": value,
-        "config_type": config_type,
-        "description": description,
-        "organization_id": organization_id,
-    }
-    try:
-        body = await _assemble_config_body(context, fields, is_update=False)
-    except Exception as exc:
-        return error_result(f"invalid input: {exc}", _ref_error_payload(exc))
+    # The internal ``ConfigCreate`` DTO declares ``value: dict`` but the
+    # public ``SetConfigRequest`` endpoint expects ``value: str``. Build
+    # the body manually (mirroring ``bifrost configs set``) instead of
+    # routing through ``assemble_body(ConfigCreate, ...)``, which would
+    # attempt ``json.loads(value)`` on the string.
+    body: dict[str, Any] = {"key": key, "value": value}
+    if config_type is not None:
+        body["type"] = config_type  # wire key is ``type``, not ``config_type``
+    if description is not None:
+        body["description"] = description
+    if organization_id is not None:
+        try:
+            async with rest_client(context) as http:
+                from bifrost.refs import RefResolver
+                resolver = RefResolver(http)
+                body["organization_id"] = await resolver.resolve(
+                    "org", organization_id
+                )
+        except Exception as exc:
+            return error_result(
+                f"could not resolve organization {organization_id!r}",
+                _ref_error_payload(exc),
+            )
 
     status_code, resp = await call_rest(context, "POST", "/api/config", json_body=body)
     if status_code not in (200, 201):
@@ -109,13 +104,14 @@ async def create_config(
 async def update_config(
     context: Any,
     config_ref: str,
-    value: dict[str, Any] | None = None,
+    value: str | None = None,
     config_type: str | None = None,
     description: str | None = None,
 ) -> ToolResult:
     """Update a config — ``PUT /api/config/{uuid}``.
 
-    ``config_ref`` is a UUID or config ``key``. Omitting ``value`` preserves
+    ``config_ref`` is a UUID or config ``key``. ``value`` is a string (the
+    REST endpoint stores values as strings). Omitting ``value`` preserves
     the stored value (the server honours unset-means-omit; particularly
     important for secret-type configs).
     """
@@ -134,15 +130,16 @@ async def update_config(
                 _ref_error_payload(exc),
             )
 
-    fields = {
-        "value": value,
-        "config_type": config_type,
-        "description": description,
-    }
-    try:
-        body = await _assemble_config_body(context, fields, is_update=True)
-    except Exception as exc:
-        return error_result(f"invalid input: {exc}", _ref_error_payload(exc))
+    # Same DTO/wire-shape mismatch as create_config — build the body
+    # manually. Unset fields are omitted so the server's omit-unset
+    # semantics preserve the stored value (critical for secret configs).
+    body: dict[str, Any] = {}
+    if value is not None:
+        body["value"] = value
+    if config_type is not None:
+        body["type"] = config_type
+    if description is not None:
+        body["description"] = description
 
     status_code, resp = await call_rest(
         context, "PUT", f"/api/config/{config_uuid}", json_body=body

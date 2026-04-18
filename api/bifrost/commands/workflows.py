@@ -198,11 +198,16 @@ async def delete_workflow(
     returns 409 if the workflow has dependents; pass ``--force`` to bypass.
     """
     workflow_uuid = await resolver.resolve("workflow", ref)
-    body: dict[str, Any] = {"force_deactivation": True} if force else {}
-    response = await client.delete(
-        f"/api/workflows/{workflow_uuid}",
-        json=body,
-    )
+    if force:
+        # httpx's AsyncClient.delete does not accept a json body; use the
+        # generic request() helper so force_deactivation can reach the server.
+        response = await client.request(
+            "DELETE",
+            f"/api/workflows/{workflow_uuid}",
+            json={"force_deactivation": True},
+        )
+    else:
+        response = await client.delete(f"/api/workflows/{workflow_uuid}")
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
 

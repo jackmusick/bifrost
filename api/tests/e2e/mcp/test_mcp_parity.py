@@ -260,7 +260,7 @@ class TestMcpParityConfigs:
         create_result = await create_config(
             admin_context,
             key=key,
-            value={"inner": "initial"},
+            value="initial",
             config_type="string",
             description="created by test_mcp_parity",
         )
@@ -272,7 +272,7 @@ class TestMcpParityConfigs:
         update_result = await update_config(
             admin_context,
             config_ref=config_id,
-            value={"inner": "updated"},
+            value="updated",
         )
         assert update_result.structured_content is not None
         assert "error" not in update_result.structured_content

@@ -473,8 +473,25 @@ class BifrostClient:
         return await self._request_with_refresh("patch", path, **kwargs)
 
     async def delete(self, path: str, **kwargs) -> httpx.Response:
-        """Make DELETE request."""
+        """Make DELETE request.
+
+        httpx's ``AsyncClient.delete()`` does not accept a ``json=`` body;
+        if you need to send a body with DELETE, use :meth:`request` instead.
+        """
         return await self._request_with_refresh("delete", path, **kwargs)
+
+    async def request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Make an arbitrary-method HTTP request with token refresh.
+
+        Needed for verbs whose shortcut method on ``httpx.AsyncClient`` does
+        not accept a body (DELETE) but whose REST endpoint expects one.
+        """
+        http = self._get_async_client()
+        response = await http.request(method.upper(), path, **kwargs)
+        if response.status_code == 401:
+            if await self._refresh_and_update():
+                response = await http.request(method.upper(), path, **kwargs)
+        return response
 
     def stream(self, method: str, path: str, **kwargs):
         """
