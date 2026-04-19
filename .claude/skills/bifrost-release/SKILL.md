@@ -24,13 +24,43 @@ git log --oneline origin/main..HEAD
 
 Report: any uncommitted changes, how many commits ahead of origin.
 
-### 2. Push
+### 2. Run local unit tests (sanity check)
+
+```bash
+./test.sh tests/unit/
+```
+
+**If tests fail:** show the failures and stop. Do not push until they pass.
+
+### 3. Summarize commits since last release
+
+```bash
+git describe --tags --abbrev=0 2>/dev/null || echo "no-prior-tag"
+```
+
+Then run:
+```bash
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+git log ${LAST_TAG}..HEAD --oneline 2>/dev/null || git log --oneline origin/main..HEAD
+```
+
+Present the summary as:
+
+> **Commits since `<last-tag>`:**
+>
+> ⚠️ **Breaking changes:** *(list any commits whose message contains `BREAKING`, `breaking change`, or uses the `!:` conventional-commit marker — e.g., `feat!:`, `fix!:`. If none, omit this section.)*
+>
+> **All commits:**
+> - `<sha>` `<message>`
+> - ...
+
+### 4. Push
 
 ```bash
 git push origin main
 ```
 
-### 3. Tell the user what happens next
+### 5. Tell the user what happens next
 
 > "Pushed. CI will now:
 > 1. Run **unit tests** (fast ~2 min) — if they pass:
@@ -58,7 +88,26 @@ Ask: "What version? (current git describe: run `git describe --tags --always`)"
 
 The tag must start with `v` — e.g., `v2.1.0`.
 
-### 2. Run pre-tag checks
+### 2. Summarize commits since last release
+
+```bash
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+git log ${LAST_TAG}..HEAD --oneline
+```
+
+Present the summary as:
+
+> **Commits since `<last-tag>`:**
+>
+> ⚠️ **Breaking changes:** *(list any commits whose message contains `BREAKING`, `breaking change`, or uses the `!:` conventional-commit marker — e.g., `feat!:`, `fix!:`. If none, omit this section.)*
+>
+> **All commits:**
+> - `<sha>` `<message>`
+> - ...
+
+Show this to the user and confirm they want to proceed with tagging.
+
+### 3. Run pre-tag checks
 
 ```bash
 ./scripts/release-check.sh <tag>
@@ -72,14 +121,14 @@ This verifies:
 
 **If it fails:** show the failures and stop. Do not proceed.
 
-### 3. Tag and push
+### 4. Tag and push
 
 ```bash
 git tag <tag>
 git push origin <tag>
 ```
 
-### 4. Tell the user what happens next
+### 5. Tell the user what happens next
 
 > "Tag `<tag>` pushed. CI will now:
 > 1. Run **unit tests + E2E tests** (both required for a release, ~12 min total)
