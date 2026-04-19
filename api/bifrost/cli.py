@@ -339,6 +339,12 @@ def main(args: list[str] | None = None) -> int:
         print_help()
         return 0
 
+    # Handle --version / -V before lowercasing (they're flags, not commands)
+    if args[0] in ("--version", "-V"):
+        from bifrost import __version__
+        print(f"bifrost {__version__}")
+        return 0
+
     try:
         command = args[0].lower()
 
@@ -421,6 +427,9 @@ Commands:
   login       Authenticate with device authorization flow
   logout      Clear stored credentials and sign out
   help        Show this help message
+
+Flags:
+  -V, --version   Print the installed CLI version
 
 Entity mutation commands (see 'bifrost <entity> --help'):
   orgs         Manage organizations

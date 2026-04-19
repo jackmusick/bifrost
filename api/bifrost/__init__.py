@@ -271,4 +271,21 @@ __all__ = [
     'ConfigurationError',
 ]
 
-__version__ = '2.0.0'
+import os as _os
+import subprocess as _subprocess
+
+
+def _compute_version() -> str:
+    if v := _os.environ.get("BIFROST_VERSION"):
+        return v
+    try:
+        return _subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            text=True,
+            stderr=_subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+
+__version__ = _compute_version()
