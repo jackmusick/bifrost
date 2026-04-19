@@ -7,7 +7,7 @@ set -e
 
 # Defaults
 TAG=$(git describe --tags --always --dirty 2>/dev/null || echo "latest")
-REGISTRY="jackmusick"
+REGISTRY="ghcr.io/jackmusick"
 PUSH=false
 BUILD_API=true
 BUILD_CLIENT=true
@@ -28,7 +28,7 @@ usage() {
     echo ""
     echo "Options:"
     echo "  -t, --tag TAG        Version tag (default: latest)"
-    echo "  -r, --registry REG   Docker registry/namespace (default: jackmusick)"
+    echo "  -r, --registry REG   Docker registry/namespace (default: ghcr.io/jackmusick)"
     echo "  -p, --push           Push images to registry after building"
     echo "  --api-only           Build only the API image"
     echo "  --client-only        Build only the client image"
