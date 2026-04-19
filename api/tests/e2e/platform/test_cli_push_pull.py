@@ -366,7 +366,7 @@ def test_push_with_delete_removed_entities(e2e_client, platform_admin):
         "delete_removed_entities": False,
     })
     assert resp1.status_code == 200
-    assert resp1.json()["applied"] is True
+    assert resp1.json()["applied"] is True, f"Step 2 import failed: {resp1.json()}"
 
     # Step 3: Import empty manifest with delete_removed_entities=True
     resp2 = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers, json={
@@ -495,8 +495,8 @@ def test_incremental_import_skips_unchanged(e2e_client, platform_admin):
     })
     assert resp1.status_code == 200
     data1 = resp1.json()
-    assert data1["applied"] is True
-    assert len(data1.get("entity_changes", [])) > 0, "First import should have entity_changes"
+    assert data1["applied"] is True, f"First import failed: {data1}"
+    assert len(data1.get("entity_changes", [])) > 0, f"First import should have entity_changes but got: {data1}"
 
     # Second import — same manifest, should have no changes for our specific workflow
     resp2 = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers, json={
