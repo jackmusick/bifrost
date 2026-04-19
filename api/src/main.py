@@ -81,6 +81,7 @@ from src.routers import (
     platform_workers_router,
     platform_queue_router,
     platform_stuck_router,
+    version_router,
 )
 
 # Configure logging
@@ -510,6 +511,7 @@ def create_app() -> FastAPI:
 
     # Register routers
     app.include_router(health_router)
+    app.include_router(version_router)
     app.include_router(auth_router)
     app.include_router(mfa_router)
     app.include_router(oauth_router)

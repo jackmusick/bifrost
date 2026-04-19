@@ -60,6 +60,7 @@ from src.routers.platform import (
     queue_router as platform_queue_router,
     stuck_router as platform_stuck_router,
 )
+from src.routers.version import router as version_router
 
 __all__ = [
     "auth_router",
@@ -121,4 +122,5 @@ __all__ = [
     "platform_workers_router",
     "platform_queue_router",
     "platform_stuck_router",
+    "version_router",
 ]
