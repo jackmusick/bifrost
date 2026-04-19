@@ -154,6 +154,7 @@ Example — Agent Tuning tools:
 | `bifrost api <METHOD> <path>` | Bifrost platform API client ONLY — inspect executions, validate apps, check platform state. NOT for third-party APIs. |
 | `bifrost push` | One-shot upload — **interactive TUI, user must run manually** |
 | `bifrost pull` | One-shot download — **interactive TUI, user must run manually** |
+| `bifrost migrate-imports` | Rewrite `import from "bifrost"` statements to use `lucide-react` / `react-router-dom` / relative paths. **Always review the diff** before applying — the classifier uses regex, not AST, so a local binding that shadows a platform name can be misclassified. |
 
 ### Platform Operations
 
@@ -270,140 +271,44 @@ Before writing any app code, design what you're building.
 
 ### Critical App Rules
 
-1. **Imports:** Four sources, each with its own role:
-   - Platform (UI, hooks, utils): `import { Button, Card, useWorkflowQuery, useState } from "bifrost"`
-   - Icons: `import { Phone, Mail } from "lucide-react"` — NOT from `"bifrost"`
-   - Router: `import { Link, NavLink, useNavigate } from "react-router-dom"` — NOT from `"bifrost"`
-   - Your own components: `import SearchInput from "./components/SearchInput"` — default imports, relative paths, NOT from `"bifrost"`, NOT auto-injected
-2. **Every `<PascalCase>` tag needs an explicit import.** No more auto-injection. If the tag is a user component, default-import it from `./components/Name`.
-3. **Migrating an older app?** Run `bifrost migrate-imports` from the workspace root to auto-rewrite every file. **Always review the diff** — the classifier doesn't do full scope analysis, so if it added an import for a name you declared locally (e.g. a destructured parameter or a type-only identifier that shadows a platform export), reject and fix by hand.
-4. **Root layout:** `_layout.tsx` uses `<Outlet />`, NOT `{children}`
-5. **Workflow hooks:** Always use UUIDs, never names — `useWorkflowQuery("uuid-here")`
-6. **Fixed-height container:** Your app renders in a fixed-height box — manage your own scrolling
-7. **Custom CSS:** `styles.css` at app root, dark mode via `.dark` selector
-8. **Dependencies:** Declare npm packages in `app.yaml` (max 20, loaded from esm.sh)
-9. **Default exports:** Every custom component file in `components/` MUST have a default export
-
-For component lists, hooks API, CSS examples, sandbox constraints — grep `/tmp/bifrost-docs/llms.txt`.
+1. **Every `<PascalCase>` tag and identifier needs an explicit import.** There is no auto-injection. See [import-patterns.md](import-patterns.md) for which name comes from which source.
+2. **Root layout:** `_layout.tsx` uses `<Outlet />` from `"bifrost"` (or `"react-router-dom"`) — NOT `{children}`.
+3. **Workflow hooks:** Always use UUIDs, never names — `useWorkflowQuery("uuid-here")`.
+4. **Fixed-height container:** Your app renders in a fixed-height box — manage your own scrolling (see [app-patterns.md](app-patterns.md) "Custom components" for layout patterns).
+5. **Custom CSS:** `styles.css` at app root, dark mode via `.dark` selector.
+6. **Dependencies:** Declare npm packages in `app.yaml` (max 20, loaded from esm.sh at runtime — no `package.json` required).
+7. **Default exports:** Every page file MUST have a default export. Components under `components/` may be default or named; the bundler detects which.
+8. **Migrating an older app:** run `bifrost migrate-imports` from the workspace root, then **review the diff** before applying. See [import-patterns.md](import-patterns.md) "Migration notes".
 
 ### App Resilience Rules (MANDATORY)
 
-These patterns are REQUIRED for every app. Skipping them leads to broken apps.
+These patterns are required for every data-fetching page. Full code examples in [app-patterns.md](app-patterns.md).
 
-#### Loading & Error States (every data-fetching page)
+- Handle `isLoading` / `isError` on every `useWorkflowQuery`.
+- Null-safe access: `data?.items?.map(...)`, never `data.items.map(...)`.
+- Every `useWorkflowMutation` must handle errors (toast + stay on page).
+- Verify `useEffect` dep arrays — no stale closures.
+- Custom components go in `components/<Name>.tsx`, imported relatively.
+- Heavy routes: split with `React.lazy(() => import("./pages/heavy"))` + `<Suspense>`.
 
-```tsx
-const { data, isLoading, isError, error } = useWorkflowQuery("uuid");
-if (isLoading) return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>;
-if (isError) return <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{error ?? "Failed to load"}</AlertDescription></Alert>;
-```
+### Platform API Reference
 
-#### Null-safe Data Access
+Every name exported by the `"bifrost"` package is listed in [platform-api.md](platform-api.md) with signature and usage example. The canonical list lives in `api/bifrost/platform_names.py` (`PLATFORM_EXPORT_NAMES`) and a drift test enforces docs match the set.
 
-Always `data?.items?.map(...)`, never `data.items.map(...)`. Workflow queries return `null` before data loads.
-
-#### Mutation Error Handling
-
-Every `useWorkflowMutation` must handle errors with user feedback:
-
-```tsx
-const { execute, isLoading } = useWorkflowMutation("uuid");
-const handleSubmit = async () => {
-  const result = await execute(params);
-  if (result.error) { toast.error(result.error); return; }
-  toast.success("Saved");
-};
-```
-
-#### Dependency Safety
-
-- **Pre-included (no install needed):** `recharts`, `date-fns`, Lucide icons, `clsx`, `tailwind-merge`, `cn`, `format` (date-fns)
-- **Testing unknown packages:** Open browser console on a running app and run:
-  ```js
-  import("https://esm.sh/PACKAGE@VERSION?deps=react@19.1.0,react-dom@19.1.0").then(m => console.log(Object.keys(m)))
-  ```
-- **Animations:** Always prefer Tailwind (`animate-in`, `transition-all`, `duration-200`) + CSS `@keyframes` in `styles.css` over JS animation libraries (complex dep trees, dual-React risk)
-- **Always declare in `app.yaml` dependencies BEFORE importing**
-- Failed ESM loads throw descriptive errors on property access — check browser console
-
-#### Custom Component Rules
-
-- Every custom component file MUST have a default export
-- Verify `components/{Name}.tsx` exists before using `<Name />`
-- Components CAN reference each other (the resolver handles this via topological sort)
-
-### useAppState — Cross-Page State
-
-Zustand-backed `[value, setValue]` tuple, like `useState` but persists across page navigations.
-
-```tsx
-const [selectedClient, setSelectedClient] = useAppState("selectedClient", null);
-```
-
-**Behavior:**
-- Can store anything: primitives, objects, arrays, nested structures
-- Scoped to the app session — cleared on browser refresh or switching apps
-- NOT persistent storage — for permanent data, use workflows to save/load from DB
-
-**Use cases:** Selected item between list/detail pages, filter/sort preferences, multi-step form data, shopping cart, sidebar collapse state.
-
-**Example — list page sets, detail page reads:**
-```tsx
-// List page
-const [, setSelectedClient] = useAppState("selectedClient", null);
-<Button onClick={() => { setSelectedClient(client); navigate("/details"); }}>View</Button>
-
-// Detail page
-const [selectedClient] = useAppState("selectedClient", null);
-if (!selectedClient) return <Navigate to="/" />;
-```
-
-### useUser — Role-Based Access
-
-```tsx
-const user = useUser();
-// user.id: string
-// user.email: string
-// user.name: string
-// user.roles: string[]
-// user.hasRole("Admin"): boolean
-// user.organizationId: string
-```
-
-**Prescribed patterns:**
-
-Page-level guard (first line of component):
-```tsx
-if (!user.hasRole("Admin")) return <Navigate to="/" />;
-```
-
-Section-level guard:
-```tsx
-{user.hasRole("Manager") && <AdminPanel />}
-```
-
-Declarative guard component:
-```tsx
-<RequireRole role="Admin" fallback={<Navigate to="/" />}>
-  <AdminPage />
-</RequireRole>
-```
-
-Layout-level guard (protect all child routes):
-```tsx
-// In _layout.tsx
-const user = useUser();
-if (!user.hasRole("Admin")) return <Navigate to="/" />;
-return <div className="flex h-full"><Sidebar /><Outlet /></div>;
-```
+Common lookups:
+- **`useWorkflowQuery` / `useWorkflowMutation`** — [platform-api.md](platform-api.md) § Hooks
+- **`useUser` / `useAppState` / `RequireRole`** — [platform-api.md](platform-api.md) § Hooks
+- **UI primitives (Button, Card, Dialog, Table, etc.)** — [platform-api.md](platform-api.md) § UI Components
+- **`toast` / `cn` / `format*`** — [platform-api.md](platform-api.md) § Utilities
+- **React Router (Link, useNavigate, etc.)** — [platform-api.md](platform-api.md) § React Router
 
 ### App Workflow (SDK-First)
 
 1. Write files in `apps/{slug}/`
 2. Add entry to `.bifrost/apps.yaml`
-3. `bifrost watch` syncs file changes (auto-validates app dirs after each push). New apps must be added to `.bifrost/apps.yaml` first.
+3. `bifrost watch` syncs file changes (triggers esbuild rebuild + validation after each push). New apps must be added to `.bifrost/apps.yaml` first.
 4. Preview at `$BIFROST_DEV_URL/apps/{slug}/preview`
-5. Fix any validation errors shown in watch output
+5. Fix any validation errors shown in watch output. esbuild errors appear as a banner in the preview and in the diagnostics channel — the last good bundle keeps serving underneath until the error is fixed.
 
 ### App Workflow (MCP-Only)
 
@@ -414,18 +319,20 @@ return <div className="flex h-full"><Sidebar /><Outlet /></div>;
 
 ### Post-Build Validation Checklist (REQUIRED)
 
-After writing all app files, you MUST verify:
+After writing all app files, verify:
 
 1. `_layout.tsx` exists and uses `<Outlet />`
 2. `pages/index.tsx` exists
-3. Every npm import matches an entry in `app.yaml` dependencies (pre-included packages exempt)
+3. Every npm import matches an entry in `app.yaml` dependencies (see [import-patterns.md](import-patterns.md) "User npm deps")
 4. Every `useWorkflowQuery`/`useWorkflowMutation` uses a valid UUID from `.bifrost/workflows.yaml`
-5. Every `<PascalCase />` JSX tag has a matching import at the top of the file (platform from `"bifrost"`, icon from `"lucide-react"`, router from `"react-router-dom"`, or default import from `./components/Name`)
-6. No Lucide icon names imported from `"bifrost"` (move them to `"lucide-react"`)
-7. No `Link`, `NavLink`, `Navigate`, `useNavigate` imported from `"bifrost"` (move them to `"react-router-dom"`)
-8. Run validation: `bifrost api POST /api/applications/{id}/validate` (or MCP `validate_app`)
-9. Review validation output — fix ALL errors before telling user it's ready
-10. Open preview URL and verify pages render (or instruct user to check)
+5. Every `<PascalCase />` JSX tag and every referenced identifier has a matching import — no auto-injection. Cross-reference against [import-patterns.md](import-patterns.md):
+   - Platform names → `"bifrost"`
+   - Icons → `"lucide-react"`
+   - Router primitives → `"react-router-dom"` (preferred) or `"bifrost"` (still works)
+   - User components → relative (`./components/Name`)
+6. Run validation: `bifrost api POST /api/applications/{id}/validate` (or MCP `validate_app`)
+7. Review validation output — fix ALL errors before telling user it's ready
+8. Open preview URL and verify pages render (or instruct user to check)
 
 ## Testing
 
