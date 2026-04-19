@@ -353,6 +353,10 @@ services:
       - ./client/src:/client/src:ro  # Read-only — the drift test in
                                       # tests/unit/test_platform_names_match_runtime.py
                                       # parses app-code-runtime.ts to detect new platform exports.
+      - ./.claude/skills:/.claude/skills:ro  # Read-only — the drift test in
+                                      # tests/unit/test_platform_api_docs.py reads
+                                      # bifrost-build/platform-api.md to enforce docs
+                                      # cover every PLATFORM_EXPORT_NAMES entry.
       - test-coverage:/coverage  # Shared coverage data across phases
       - /tmp/bifrost:/tmp/bifrost  # Host-mounted for test results (junitxml)
     working_dir: /app
@@ -402,7 +406,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:80/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -417,7 +421,7 @@ services:
       dockerfile: Dockerfile.playwright
     container_name: bifrost-test-playwright
     environment:
-      TEST_BASE_URL: http://client:3000
+      TEST_BASE_URL: http://client:80
       TEST_API_URL: http://api:8000
       CI: "true"
     volumes:
