@@ -6,7 +6,7 @@
 set -e
 
 # Defaults
-TAG="latest"
+TAG=$(git describe --tags --always --dirty 2>/dev/null || echo "latest")
 REGISTRY="jackmusick"
 PUSH=false
 BUILD_API=true
@@ -150,10 +150,12 @@ if [ "$BUILD_API" = true ]; then
     echo -e "${YELLOW}Building API image: $API_IMAGE${NC}"
     echo "  Platforms: $PLATFORMS"
 
+    BIFROST_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
     docker buildx build $NO_CACHE \
         --platform "$PLATFORMS" \
         -t "$API_IMAGE" \
         -f api/Dockerfile \
+        --build-arg "BIFROST_VERSION=${BIFROST_VERSION}" \
         $BUILD_OUTPUT \
         .
 
@@ -163,6 +165,7 @@ fi
 
 # Build Client image
 if [ "$BUILD_CLIENT" = true ]; then
+    BIFROST_VERSION=${BIFROST_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")}
     CLIENT_IMAGE="$REGISTRY/bifrost-client:$TAG"
     echo -e "${YELLOW}Building Client image: $CLIENT_IMAGE${NC}"
     echo "  Platforms: $PLATFORMS"
@@ -172,6 +175,7 @@ if [ "$BUILD_CLIENT" = true ]; then
         -t "$CLIENT_IMAGE" \
         -f client/Dockerfile \
         --target production \
+        --build-arg "VITE_BIFROST_VERSION=${BIFROST_VERSION}" \
         $BUILD_OUTPUT \
         ./client
 
