@@ -18,6 +18,7 @@ live at the top of every ``test_cli_*.py``.
 
 from __future__ import annotations
 
+import asyncio
 import pathlib
 import sys
 
@@ -57,3 +58,31 @@ def invoke_cli():
         )
 
     return _invoke
+
+
+async def _clear_s3_bifrost() -> None:
+    """Delete all .bifrost/ files from S3 repo storage."""
+    from src.config import get_settings
+    from src.services.repo_storage import RepoStorage
+
+    settings = get_settings()
+    if not settings.s3_configured:
+        return
+    repo = RepoStorage(settings)
+    paths = await repo.list(".bifrost/")
+    for path in paths:
+        try:
+            await repo.delete(path)
+        except Exception:
+            pass
+
+
+@pytest.fixture(autouse=True)
+def isolate_s3_sync() -> None:
+    """Wipe .bifrost/ from S3 before every sync (non-async) test in this package.
+
+    The async tests get isolation from the ``isolate_s3`` fixture in
+    tests/conftest.py. This covers the sync HTTP-client tests here that
+    can't use async fixtures.
+    """
+    asyncio.run(_clear_s3_bifrost())

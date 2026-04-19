@@ -351,9 +351,7 @@ def test_push_with_delete_removed_entities(e2e_client, platform_admin):
     # Step 1: Write workflow source file
     _write_file(e2e_client, platform_admin.headers, "workflows/del_test_wf.py", wf_py)
 
-    # Step 2: Import manifest so workflow exists in DB.
-    # Pass empty stubs for all other manifest types to overwrite any stale S3 state
-    # left by previous tests (e.g., configs.yaml referencing deleted integrations).
+    # Step 2: Import manifest so workflow exists in DB
     workflows_yaml = (
         f"workflows:\n"
         f"  del_test_wf:\n"
@@ -361,21 +359,9 @@ def test_push_with_delete_removed_entities(e2e_client, platform_admin):
         f"    path: workflows/del_test_wf.py\n"
         f"    function_name: del_test_wf\n"
     )
-    _EMPTY_MANIFESTS = {
-        ".bifrost/configs.yaml": _b64("configs: {}\n"),
-        ".bifrost/integrations.yaml": _b64("integrations: {}\n"),
-        ".bifrost/forms.yaml": _b64("forms: {}\n"),
-        ".bifrost/apps.yaml": _b64("apps: {}\n"),
-        ".bifrost/organizations.yaml": _b64("organizations: []\n"),
-        ".bifrost/roles.yaml": _b64("roles: {}\n"),
-        ".bifrost/tables.yaml": _b64("tables: {}\n"),
-        ".bifrost/events.yaml": _b64("events: {}\n"),
-        ".bifrost/agents.yaml": _b64("agents: {}\n"),
-    }
     resp1 = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers, json={
         "files": {
             ".bifrost/workflows.yaml": _b64(workflows_yaml),
-            **_EMPTY_MANIFESTS,
         },
         "delete_removed_entities": False,
     })
@@ -503,23 +489,9 @@ def test_incremental_import_skips_unchanged(e2e_client, platform_admin):
         f"    function_name: incr_test_wf\n"
     )
 
-    # Empty stubs for all other manifest types — overwrite any stale S3 state
-    # left by previous tests to prevent configs/integrations FK failures.
-    _EMPTY_MANIFESTS = {
-        ".bifrost/configs.yaml": _b64("configs: {}\n"),
-        ".bifrost/integrations.yaml": _b64("integrations: {}\n"),
-        ".bifrost/forms.yaml": _b64("forms: {}\n"),
-        ".bifrost/apps.yaml": _b64("apps: {}\n"),
-        ".bifrost/organizations.yaml": _b64("organizations: []\n"),
-        ".bifrost/roles.yaml": _b64("roles: {}\n"),
-        ".bifrost/tables.yaml": _b64("tables: {}\n"),
-        ".bifrost/events.yaml": _b64("events: {}\n"),
-        ".bifrost/agents.yaml": _b64("agents: {}\n"),
-    }
-
     # First import — should create the workflow
     resp1 = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers, json={
-        "files": {".bifrost/workflows.yaml": _b64(workflows_yaml), **_EMPTY_MANIFESTS},
+        "files": {".bifrost/workflows.yaml": _b64(workflows_yaml)},
     })
     assert resp1.status_code == 200
     data1 = resp1.json()
@@ -528,7 +500,7 @@ def test_incremental_import_skips_unchanged(e2e_client, platform_admin):
 
     # Second import — same manifest, should have no changes for our specific workflow
     resp2 = e2e_client.post("/api/files/manifest/import", headers=platform_admin.headers, json={
-        "files": {".bifrost/workflows.yaml": _b64(workflows_yaml), **_EMPTY_MANIFESTS},
+        "files": {".bifrost/workflows.yaml": _b64(workflows_yaml)},
     })
     assert resp2.status_code == 200
     data2 = resp2.json()

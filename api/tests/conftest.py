@@ -140,6 +140,70 @@ async def db_session(async_session_factory) -> AsyncGenerator[AsyncSession, None
         await session.rollback()
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_s3(request) -> AsyncGenerator[None, None]:
+    """Wipe .bifrost/ from S3 before every async test that touches the repo.
+
+    Prevents stale manifest files written by one test (via manifest/import's
+    ``files`` param or RepoStorage.write) from polluting subsequent tests.
+    Only runs when S3 is configured in the test environment.
+    """
+    # Skip for unit tests — they mock S3 or don't touch it at all.
+    if "unit" in request.fspath.strpath:
+        yield
+        return
+
+    try:
+        from src.config import get_settings
+        from src.services.repo_storage import RepoStorage
+
+        settings = get_settings()
+        if not settings.s3_configured:
+            yield
+            return
+
+        repo = RepoStorage(settings)
+        paths = await repo.list(".bifrost/")
+        for path in paths:
+            try:
+                await repo.delete(path)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    yield
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_redis_module_cache(request) -> AsyncGenerator[None, None]:
+    """Flush Redis module-cache keys before every async test.
+
+    Prevents stale bytecode cached by one test from affecting virtual imports
+    in subsequent tests. Only runs when Redis is reachable.
+    """
+    if "unit" in request.fspath.strpath:
+        yield
+        return
+
+    try:
+        from src.core.redis_client import get_redis_client
+
+        redis = await get_redis_client()
+        # Delete only module-cache keys, not session/rate-limit/pubsub keys
+        cursor = 0
+        while True:
+            cursor, keys = await redis.scan(cursor, match="bifrost:module:*", count=100)
+            if keys:
+                await redis.delete(*keys)
+            if cursor == 0:
+                break
+    except Exception:
+        pass
+
+    yield
+
+
 # ==================== MOCK FIXTURES ====================
 
 
