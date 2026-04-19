@@ -13,6 +13,10 @@ env:
   API_IMAGE: jackmusick/bifrost-api
   CLIENT_IMAGE: jackmusick/bifrost-client
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # =============================================================================
   # Unit Tests - Fast, gates all builds
