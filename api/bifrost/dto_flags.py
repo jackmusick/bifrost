@@ -73,6 +73,9 @@ DTO_EXCLUDES: dict[str, set[str]] = {
     "IntegrationMappingCreate": {"oauth_token_id"},
     "IntegrationMappingUpdate": {"oauth_token_id"},
     # Applications: ``icon`` is UI-managed.
+    # Note: ``repo_path`` is intentionally absent from ApplicationCreate /
+    # ApplicationUpdate — it's mutated via ``bifrost apps replace`` (a narrow
+    # surface with validation), not through the generic create/update flow.
     "ApplicationCreate": {"icon"},
     "ApplicationUpdate": {"icon"},
     # Event sources: the nested ``webhook`` / ``schedule`` objects are
