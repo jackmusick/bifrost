@@ -199,45 +199,44 @@ export async function getDataProviders() {
 
 ### Testing & Quality
 
--   **Tests**: All work requires unit and e2e tests in `api/tests/`
-    -   **IMPORTANT**: Always use `./test.sh` to run tests - it starts all required dependencies (PostgreSQL, RabbitMQ, Redis) in Docker
-    -   Running pytest directly (`python -m pytest`) will FAIL for e2e tests that need database access
-    -   Run all tests: `./test.sh`
-    -   Run specific test file: `./test.sh tests/e2e/platform/test_sdk_from_workflow.py`
-    -   Run specific test: `./test.sh tests/e2e/platform/test_sdk_from_workflow.py::TestSDKFileOperations::test_file_path_sandboxing -v`
-    -   Run with coverage: `./test.sh --coverage`
-    -   Run E2E tests: `./test.sh --e2e`
-    -   **Test results**: `./test.sh` exports JUnit XML to `/tmp/bifrost/test-results.xml` — parse this for pass/fail details instead of grepping stdout
-    -   **Logs**: Container logs are exported to `/tmp/bifrost/*.log` after test runs
+-   **Tests**: All work requires tests. Backend logic → unit tests in `api/tests/unit/`. Endpoint/workflow/integration changes → e2e tests in `api/tests/e2e/`. React components → sibling `*.test.tsx` (vitest). User-facing features → happy-path spec in `client/e2e/` (Playwright).
+    -   **IMPORTANT**: Always use `./test.sh` — it manages the Dockerized test stack (PostgreSQL, Redis, RabbitMQ, MinIO, API, worker). Running pytest directly on the host will FAIL for anything touching DB/queue/cache.
+    -   **Stack lifecycle is separate from test execution.** Boot once per worktree, run tests many times. See the Commands section below.
+    -   **Test results**: `./test.sh` writes JUnit XML to `/tmp/bifrost/test-results.xml` — parse this for pass/fail details instead of grepping stdout.
+    -   **Logs**: Container logs are exported to `/tmp/bifrost-<project>/*.log` after test runs (per-worktree, so parallel worktrees don't clobber each other).
 -   **Type Checking**: Must pass `pyright` (API) and `npm run tsc` (client)
 -   **Linting**: Must pass `ruff check` (API) and `npm run lint` (client)
 
 ### Commands
 
 ```bash
-# Start Development (run from repo root)
-./debug.sh                                # Start full stack with hot reload
+# Dev stack
+./debug.sh                                         # Start dev stack (hot reload)
 
-# Testing (ALWAYS use test.sh - it manages Docker dependencies)
-./test.sh                                 # Run all backend tests
-./test.sh tests/unit/                     # Run unit tests only
-./test.sh tests/e2e/                      # Run E2E tests
-./test.sh tests/e2e/platform/test_sdk_from_workflow.py  # Run specific file
-./test.sh --e2e                           # Run E2E tests (API + workers)
-./test.sh --client                        # Run backend + Playwright E2E tests
-./test.sh --client-dev                    # Fast Playwright iteration (keeps stack)
-./test.sh --coverage                      # Run with coverage report
+# Test stack lifecycle (per worktree, long-lived)
+./test.sh stack up                                 # Boot the test stack for this worktree
+./test.sh stack down                               # Tear it down + remove volumes
+./test.sh stack reset                              # Fast state reset (<2s) — DB clone + redis flush + minio wipe
+./test.sh stack status                             # Is the stack up? What project name?
+
+# Backend tests (stack must be up; state auto-reset before each run)
+./test.sh                                          # Unit tests only (fast default)
+./test.sh unit                                     # Same
+./test.sh e2e                                      # Backend e2e
+./test.sh all                                      # Unit + e2e (mirrors CI)
+./test.sh tests/unit/test_foo.py::test_bar -v      # Passthrough to pytest
+
+# Client tests
+./test.sh client unit                              # Vitest on host (no stack needed)
+./test.sh client e2e                               # Playwright in containers
+./test.sh client e2e --screenshots                 # Capture screenshots for every test (UX review)
+./test.sh client e2e e2e/auth.unauth.spec.ts       # Passthrough to Playwright
+
+# CI (one-shot: boot → all tests → tear down)
+./test.sh ci
 
 # Type Generation (requires dev stack running via ./debug.sh)
 cd client && npm run generate:types       # Regenerate TypeScript types from API
-
-# Individual Container Operations (uses docker-compose.dev.yml via ./debug.sh)
-# If ./debug.sh is running, use these commands:
-docker compose -f docker-compose.dev.yml restart api      # Restart API
-docker compose -f docker-compose.dev.yml logs -f api      # Follow API logs
-docker compose -f docker-compose.dev.yml logs -f worker   # Follow worker logs
-# Or check container status:
-docker ps --filter "name=bifrost"                         # List running containers
 
 # Quality Checks
 cd api && pyright                         # Type check Python
@@ -245,6 +244,8 @@ cd api && ruff check .                    # Lint Python
 cd client && npm run tsc                  # Type check TypeScript
 cd client && npm run lint                 # Lint TypeScript
 ```
+
+**Parallel worktrees:** Each git worktree gets its own isolated test stack (Compose project name is derived from the worktree path). Run `./test.sh stack up` in multiple worktrees simultaneously without conflict.
 
 ### Common Workflows
 
@@ -287,7 +288,10 @@ npm run lint               # Linting - must pass
 
 # 5. Run tests
 cd ..
-./test.sh                  # All tests must pass
+./test.sh stack up         # boot if not already up (per-worktree)
+./test.sh all              # backend unit + e2e
+./test.sh client unit      # vitest component tests
+./test.sh client e2e       # Playwright E2E (skip if no UI changes)
 ```
 
 **This is mandatory for any changes that touch:**
