@@ -16,6 +16,7 @@ import {
 	Tag,
 	PanelLeftClose,
 	Globe,
+	Unlink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -239,6 +240,10 @@ export interface WorkflowSidebarProps {
 	endpointFilter: boolean;
 	/** Callback when endpoint filter changes */
 	onEndpointFilterChange: (enabled: boolean) => void;
+	/** Whether orphaned-only filter is active */
+	orphanedFilter: boolean;
+	/** Callback when orphaned filter changes */
+	onOrphanedFilterChange: (enabled: boolean) => void;
 	/** Organization scope for filtering */
 	scope?: string;
 	/** Callback to close/collapse the sidebar */
@@ -266,6 +271,8 @@ export function WorkflowSidebar({
 	onAgentSelect,
 	endpointFilter,
 	onEndpointFilterChange,
+	orphanedFilter,
+	onOrphanedFilterChange,
 	scope,
 	onClose,
 	className,
@@ -287,7 +294,8 @@ export function WorkflowSidebar({
 		selectedFormId !== null ||
 		selectedAppId !== null ||
 		selectedAgentId !== null ||
-		endpointFilter;
+		endpointFilter ||
+		orphanedFilter;
 
 	const clearFilters = () => {
 		onCategorySelect(null);
@@ -295,10 +303,14 @@ export function WorkflowSidebar({
 		onAppSelect(null);
 		onAgentSelect(null);
 		onEndpointFilterChange(false);
+		onOrphanedFilterChange(false);
 	};
 
 	// Find selected filter name for display
 	const getSelectedFilterName = (): string | null => {
+		if (orphanedFilter) {
+			return "Orphaned";
+		}
 		if (endpointFilter) {
 			return "Endpoint Enabled";
 		}
@@ -403,6 +415,20 @@ export function WorkflowSidebar({
 						<Globe className="h-4 w-4 mr-2 text-muted-foreground" />
 						<span className="truncate flex-1 text-left min-w-0">
 							Endpoint Enabled
+						</span>
+					</button>
+					<button
+						onClick={() => onOrphanedFilterChange(!orphanedFilter)}
+						className={cn(
+							"flex items-center w-full px-6 py-2 text-sm transition-colors",
+							orphanedFilter
+								? "bg-primary/10 text-primary font-medium"
+								: "hover:bg-muted/50 text-foreground",
+						)}
+					>
+						<Unlink className="h-4 w-4 mr-2 text-muted-foreground" />
+						<span className="truncate flex-1 text-left min-w-0">
+							Orphaned
 						</span>
 					</button>
 				</div>
