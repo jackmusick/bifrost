@@ -16,14 +16,11 @@
 #   ./test.sh --e2e                    # Run E2E tests against isolated API
 #   ./test.sh tests/e2e/ --e2e -v      # Run specific E2E tests
 
-name: bifrost-test
-
 services:
   # PostgreSQL Database (Test) - with pgvector extension
   # Uses tmpfs so data is NOT persisted between test runs - fresh database each time
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: bifrost-test-postgres
     environment:
       POSTGRES_DB: bifrost_test
       POSTGRES_USER: bifrost
@@ -41,7 +38,6 @@ services:
   # All services connect through PgBouncer, matching production architecture
   pgbouncer:
     image: edoburu/pgbouncer:latest
-    container_name: bifrost-test-pgbouncer
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -67,7 +63,6 @@ services:
   # RabbitMQ Message Broker (Test)
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    container_name: bifrost-test-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: bifrost
       RABBITMQ_DEFAULT_PASS: bifrost_test
@@ -88,7 +83,6 @@ services:
   # Redis (Test)
   redis:
     image: redis:7-alpine
-    container_name: bifrost-test-redis
     command: redis-server
     # No ports exposed - all access via Docker network
     tmpfs:
@@ -103,7 +97,6 @@ services:
   # Stores workspace files and runtime outputs
   minio:
     image: minio/minio:latest
-    container_name: bifrost-test-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: bifrost
@@ -120,7 +113,6 @@ services:
   # MinIO bucket initialization (Test)
   minio-init:
     image: minio/mc:latest
-    container_name: bifrost-test-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -136,7 +128,6 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
-    container_name: bifrost-test-init
     environment:
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
@@ -161,7 +152,6 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
-    container_name: bifrost-test-api
     environment:
       # Database via PgBouncer (matches production architecture)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
@@ -215,7 +205,6 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
-    container_name: bifrost-test-worker
     environment:
       # Database via PgBouncer (matches production architecture)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
@@ -262,7 +251,6 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
-    container_name: bifrost-test-scheduler
     environment:
       # Database via PgBouncer (matches production architecture)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
@@ -309,7 +297,6 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
-    container_name: bifrost-test-runner
     environment:
       # Database via PgBouncer (matches production architecture)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
@@ -391,7 +378,6 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile.dev
-    container_name: bifrost-test-client
     environment:
       # API_URL and WS_URL are used by Vite's proxy config (server-side)
       API_URL: http://api:8000
@@ -424,7 +410,6 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile.playwright
-    container_name: bifrost-test-playwright
     environment:
       TEST_BASE_URL: http://client:80
       TEST_API_URL: http://api:8000
