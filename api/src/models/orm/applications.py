@@ -29,7 +29,7 @@ class Application(Base):
     """Application entity for App Builder.
 
     Applications hold app metadata. Files are stored in S3 at
-    _repo/{repo_path}/ paths (defaults to apps/{slug}), indexed in file_index table.
+    _repo/{repo_path}/ paths, indexed in file_index table.
 
     - organization_id = NULL: Global application (platform-wide)
     - organization_id = UUID: Organization-scoped application
