@@ -181,7 +181,7 @@ def serialize_app(app: Application, roles: list[str] | None = None) -> ManifestA
     """Serialize an Application ORM object to ManifestApp."""
     return ManifestApp(
         id=str(app.id),
-        path=(app.repo_path or f"apps/{app.slug}").rstrip("/"),
+        path=app.repo_path.rstrip("/"),
         slug=app.slug,
         name=app.name,
         description=app.description,

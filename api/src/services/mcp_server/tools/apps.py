@@ -809,7 +809,7 @@ async def push_files(
             # Build prefix -> app mapping
             app_by_prefix: dict[str, Application] = {}
             for app_obj in all_apps:
-                prefix = (app_obj.repo_path or f"apps/{app_obj.slug}").rstrip("/") + "/"
+                prefix = app_obj.repo_path.rstrip("/") + "/"
                 app_by_prefix[prefix] = app_obj
 
             for repo_path, content in files.items():

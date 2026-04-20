@@ -603,7 +603,7 @@ async def get_workflow_usage_stats(
 
         apps: list[EntityUsage] = []
         for app_row in all_apps:
-            prefix = (app_row.repo_path or f"apps/{app_row.slug}").rstrip("/") + "/"
+            prefix = app_row.repo_path.rstrip("/") + "/"
             fi_result = await db.execute(
                 select(FileIndex.content).where(
                     FileIndex.path.startswith(prefix),
