@@ -1,8 +1,9 @@
 # Bifrost Docker Stack - Isolated Test Environment
 #
 # This compose file creates a completely isolated test environment with:
-# - Separate container names (bifrost-test-*)
-# - Separate volumes (bifrost_test_*)
+# - Container/volume names derive from $COMPOSE_PROJECT_NAME (set by test.sh
+#   per-worktree), so multiple worktrees can run test stacks in parallel
+#   without collisions.
 # - NO exposed ports (all communication via Docker network)
 # - Fresh database for each test run
 # - PgBouncer for connection pooling (matches production)
@@ -11,10 +12,7 @@
 # NOTE: Ports are NOT exposed to the host, allowing tests to run while
 # the development stack is running on the default ports.
 #
-# Usage:
-#   ./test.sh                          # Run unit/integration tests
-#   ./test.sh --e2e                    # Run E2E tests against isolated API
-#   ./test.sh tests/e2e/ --e2e -v      # Run specific E2E tests
+# Usage: see ./test.sh --help
 
 services:
   # PostgreSQL Database (Test) - with pgvector extension
