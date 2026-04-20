@@ -9,7 +9,15 @@ import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Check, ChevronsUpDown, X } from "lucide-react";
+import {
+	Loader2,
+	Check,
+	ChevronsUpDown,
+	X,
+	ChevronDown,
+	ChevronRight,
+	ArrowRightLeft,
+} from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -40,6 +48,12 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { AppReplacePathDialog } from "@/components/applications/AppReplacePathDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -120,6 +134,8 @@ export function AppInfoDialog({
 
 	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
 	const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+	const [advancedOpen, setAdvancedOpen] = useState(false);
+	const [replacePathOpen, setReplacePathOpen] = useState(false);
 
 	// Default organization_id for org users is their org, for platform admins it's null (global)
 	const defaultOrgId = isPlatformAdmin
@@ -183,6 +199,7 @@ export function AppInfoDialog({
 	const handleClose = () => {
 		form.reset();
 		setSlugManuallyEdited(false);
+		setAdvancedOpen(false);
 		onOpenChange(false);
 	};
 
@@ -515,6 +532,52 @@ export function AppInfoDialog({
 								/>
 							)}
 
+							{isEditing && existingApp && (
+								<Collapsible
+									open={advancedOpen}
+									onOpenChange={setAdvancedOpen}
+									className="border-t pt-4"
+								>
+									<CollapsibleTrigger asChild>
+										<button
+											type="button"
+											className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+										>
+											{advancedOpen ? (
+												<ChevronDown className="h-3 w-3" />
+											) : (
+												<ChevronRight className="h-3 w-3" />
+											)}
+											Advanced
+										</button>
+									</CollapsibleTrigger>
+									<CollapsibleContent className="pt-3 space-y-2">
+										<label className="text-sm font-medium">
+											Source path
+										</label>
+										<div className="flex items-center gap-2">
+											<code className="flex-1 bg-muted px-2 py-1.5 rounded text-xs font-mono truncate">
+												{existingApp.repo_path}
+											</code>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => setReplacePathOpen(true)}
+											>
+												<ArrowRightLeft className="h-3 w-3 mr-1" />
+												Replace…
+											</Button>
+										</div>
+										<p className="text-xs text-muted-foreground">
+											Repoint this app at a different source
+											directory. Only do this after moving or renaming
+											files.
+										</p>
+									</CollapsibleContent>
+								</Collapsible>
+							)}
+
 							<DialogFooter className="pt-4">
 								<Button
 									type="button"
@@ -538,6 +601,13 @@ export function AppInfoDialog({
 					</Form>
 				)}
 			</DialogContent>
+			{isEditing && existingApp && (
+				<AppReplacePathDialog
+					app={existingApp}
+					open={replacePathOpen}
+					onClose={() => setReplacePathOpen(false)}
+				/>
+			)}
 		</Dialog>
 	);
 }

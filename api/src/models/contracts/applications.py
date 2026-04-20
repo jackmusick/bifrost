@@ -141,6 +141,9 @@ class ApplicationPublic(ApplicationBase):
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
     role_ids: list[UUID] = Field(default_factory=list)
+    repo_path: str = Field(
+        description="Workspace-relative path to the app's source directory. Mutated via POST /api/applications/{id}/replace."
+    )
 
     @field_serializer("created_at", "updated_at", "published_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:

@@ -53,6 +53,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version Info */
+        get: operations["get_version_info_api_version_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -3386,22 +3403,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6659,6 +6676,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{app_id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Repoint application source directory
+         * @description Update ``repo_path`` after source files have been moved/renamed.
+         *
+         *     Validates that the new path is unique, non-nested with other apps, and has
+         *     source files under it. ``force: true`` bypasses all three checks.
+         */
+        post: operations["replace_application_endpoint_api_applications__app_id__replace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{app_id}/validate": {
         parameters: {
             query?: never;
@@ -8377,6 +8417,11 @@ export interface components {
             access_level: string;
             /** Role Ids */
             role_ids?: string[];
+            /**
+             * Repo Path
+             * @description Workspace-relative path to the app's source directory. Mutated via POST /api/applications/{id}/replace.
+             */
+            repo_path: string;
         };
         /**
          * ApplicationPublishRequest
@@ -8388,6 +8433,25 @@ export interface components {
              * @description Optional publish message for version history
              */
             message?: string | null;
+        };
+        /**
+         * ApplicationReplaceRequest
+         * @description Input for repointing an application's source directory.
+         *
+         *     Mutation-only surface. See ``POST /api/applications/{id}/replace``.
+         */
+        ApplicationReplaceRequest: {
+            /**
+             * Repo Path
+             * @description Workspace-relative path to the new source directory (e.g. apps/my-app-v2).
+             */
+            repo_path: string;
+            /**
+             * Force
+             * @description Bypass the uniqueness, nesting, and source-exists checks. Use when repointing before files are pushed.
+             * @default false
+             */
+            force: boolean;
         };
         /**
          * ApplicationRollbackRequest
@@ -10129,11 +10193,8 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
-            /**
-             * Version
-             * @default 2.0.0
-             */
-            version: string;
+            /** Version */
+            version?: string;
             /** Environment */
             environment: string;
             /** Components */
@@ -12591,11 +12652,8 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
-            /**
-             * Version
-             * @default 2.0.0
-             */
-            version: string;
+            /** Version */
+            version?: string;
             /** Environment */
             environment: string;
         };
@@ -13954,6 +14012,23 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Target Organization Id
+             * @description When set, every entity in the bundle has its organization_id rewritten to this value before upsert. Incompatible with a manifest that carries an organizations section.
+             */
+            target_organization_id?: string | null;
+            /**
+             * Role Resolution
+             * @description How to interpret role references in the bundle. 'uuid' (default) assumes role UUIDs match the target env. 'name' reads role_names and resolves to UUIDs in the target; missing names fail with 422.
+             * @default uuid
+             * @enum {string}
+             */
+            role_resolution: "uuid" | "name";
+            /**
+             * Entity Ids
+             * @description Optional subset of entity UUIDs to apply. When set, only entities whose id is in this set are written; all other diff entries are skipped. Use for interactive cherry-pick import where the user approves a subset of a dry-run diff.
+             */
+            entity_ids?: string[] | null;
         };
         /**
          * ManifestImportResponse
@@ -15972,6 +16047,12 @@ export interface components {
              * @description Name of function to use as replacement
              */
             function_name: string;
+            /**
+             * Allow Type Change
+             * @description Allow the decorator type to change (workflow/tool/data_provider). Default false to prevent silent form-binding breakage.
+             * @default false
+             */
+            allow_type_change: boolean;
         };
         /**
          * ReplaceWorkflowResponse
@@ -17537,12 +17618,19 @@ export interface components {
          * @description Input for updating a table.
          */
         TableUpdate: {
+            /**
+             * Name
+             * @description Table name (lowercase, underscores and hyphens allowed)
+             */
+            name?: string | null;
             /** Description */
             description?: string | null;
             /** Schema */
             schema?: {
                 [key: string]: unknown;
             } | null;
+            /** Application Id */
+            application_id?: string | null;
         };
         /**
          * Token
@@ -18121,6 +18209,13 @@ export interface components {
              * @enum {string}
              */
             severity: "error" | "warning";
+        };
+        /** VersionResponse */
+        VersionResponse: {
+            /** Version */
+            version: string;
+            /** Min Cli Version */
+            min_cli_version: string;
         };
         /**
          * WatchSessionRequest
@@ -19293,6 +19388,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DetailedHealthCheck"];
+                };
+            };
+        };
+    };
+    get_version_info_api_version_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionResponse"];
                 };
             };
         };
@@ -24493,7 +24608,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -24526,7 +24641,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -24559,7 +24674,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -24592,7 +24707,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -30629,6 +30744,41 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["ApplicationPublishRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_application_endpoint_api_applications__app_id__replace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationReplaceRequest"];
             };
         };
         responses: {

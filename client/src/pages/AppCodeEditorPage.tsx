@@ -291,6 +291,8 @@ export function AppCodeEditorPage() {
 						variant="ghost"
 						size="icon"
 						onClick={() => setIsSettingsOpen(true)}
+						title="Settings"
+						aria-label="Settings"
 					>
 						<Settings className="h-4 w-4" />
 					</Button>
