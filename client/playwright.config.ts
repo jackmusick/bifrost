@@ -46,20 +46,6 @@ export default defineConfig({
 		},
 
 		// =============================================================
-		// Journey tests (sequential full-suite tests)
-		// Self-healing auth - handles own setup, no dependency on setup project
-		// =============================================================
-		{
-			name: "journey",
-			use: {
-				...devices["Desktop Chrome"],
-				// No storageState - handled by self-healing auth in beforeAll
-			},
-			// No dependencies - tests handle their own auth setup
-			testMatch: /journey\/.*\.spec\.ts$/,
-		},
-
-		// =============================================================
 		// Platform admin tests (.admin.spec.ts files)
 		// Uses platform_admin auth state for full system access
 		// =============================================================

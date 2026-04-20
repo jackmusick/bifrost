@@ -18,9 +18,6 @@ test.describe("Organization Management", () => {
 			page.getByRole("heading", { name: /organizations/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Wait for content to load
-		await page.waitForTimeout(1000);
-
 		// Should see some organization content or empty state
 		const hasOrgs = (await page.locator("table tbody tr").count()) > 0;
 		const hasCards =

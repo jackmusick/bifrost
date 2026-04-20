@@ -346,8 +346,8 @@ if [ "$CLIENT_DEV" = true ]; then
             sleep 1
         done
 
-        # Start API, Worker, and Coding Agent
-        echo "Starting API, Worker, and Coding Agent..."
+        # Start API and Worker
+        echo "Starting API and Worker..."
         docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build
 
         # Wait for API
@@ -379,8 +379,11 @@ if [ "$CLIENT_DEV" = true ]; then
     # Reset database unless --no-reset was passed
     if [ "$NO_RESET" = false ]; then
         echo ""
-        echo "Stopping API and worker to release database connections..."
-        docker compose -f "$COMPOSE_FILE" stop api worker 2>/dev/null || true
+        echo "Stopping API, Worker, and PgBouncer to release database connections..."
+        # PgBouncer must go down too — its pool holds connections to the test DB
+        # that would otherwise block DROP DATABASE and survive into migrations,
+        # leaving init with dead connection references.
+        docker compose -f "$COMPOSE_FILE" stop api worker pgbouncer 2>/dev/null || true
         sleep 1
 
         echo "Resetting database..."
@@ -394,9 +397,18 @@ if [ "$CLIENT_DEV" = true ]; then
         docker compose -f "$COMPOSE_FILE" exec -T postgres \
             psql -U bifrost -d postgres -c "CREATE DATABASE bifrost_test;" > /dev/null
 
-        # Restart API, Worker, and Coding Agent to run migrations and start server
+        echo "Restarting PgBouncer..."
+        docker compose -f "$COMPOSE_FILE" start pgbouncer > /dev/null
+        for i in {1..30}; do
+            if docker compose -f "$COMPOSE_FILE" exec -T pgbouncer pg_isready -h localhost -p 5432 -U bifrost > /dev/null 2>&1; then
+                break
+            fi
+            sleep 1
+        done
+
+        # Restart API and Worker to run migrations and start server
         echo "Restarting API (runs migrations on startup)..."
-        docker compose -f "$COMPOSE_FILE" --profile e2e start api worker coding-agent
+        docker compose -f "$COMPOSE_FILE" --profile e2e start api worker
 
         # Wait for API to be ready
         echo "Waiting for API to be ready..."

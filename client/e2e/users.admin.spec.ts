@@ -26,9 +26,6 @@ test.describe("User Listing", () => {
 			page.getByRole("heading", { name: /users/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Wait for user list to load - should see users or empty state
-		await page.waitForTimeout(1000);
-
 		// Either we see users in the table or an empty state message
 		const hasUsers = (await page.locator("table tbody tr").count()) > 0;
 		const hasEmptyState = await page
@@ -61,18 +58,12 @@ test.describe("User Details", () => {
 			page.getByRole("heading", { name: /users/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Wait for page to load
-		await page.waitForTimeout(1000);
-
 		// Find a user row
 		const userRow = page.locator("table tbody tr").first();
 		const hasUserRow = await userRow.isVisible().catch(() => false);
 
 		if (hasUserRow) {
 			await userRow.click();
-
-			// Should show user details or navigate somewhere
-			await page.waitForTimeout(1000);
 			// Just verify the page responds to the click
 		}
 		// Test passes if either we clicked a user or there were no users
@@ -84,9 +75,6 @@ test.describe("User Details", () => {
 		await expect(
 			page.getByRole("heading", { name: /users/i }).first(),
 		).toBeVisible({ timeout: 10000 });
-
-		// Wait for content to load
-		await page.waitForTimeout(1000);
 
 		// Either we see organization info or an empty state
 		const hasOrgInfo = await page
@@ -133,45 +121,6 @@ test.describe("User Invitation", () => {
 			).toBeVisible({ timeout: 5000 });
 		} catch {
 			// Button not found - page may not have invite functionality visible
-		}
-	});
-
-	test.skip("should validate email format", async ({ page }) => {
-		// TODO: Skipped - requires invite dialog to work properly
-		await page.goto("/users");
-
-		await expect(
-			page.getByRole("heading", { name: /users/i }).first(),
-		).toBeVisible({ timeout: 10000 });
-
-		// Click invite button
-		const inviteButton = page
-			.getByRole("button", {
-				name: /invite|create|add/i,
-			})
-			.first();
-		await inviteButton.click();
-
-		// Enter invalid email
-		const emailInput = page
-			.getByLabel(/email/i)
-			.or(page.getByPlaceholder(/email/i))
-			.first();
-		await emailInput.fill("invalid-email");
-
-		// Try to submit
-		const submitButton = page
-			.getByRole("button", {
-				name: /invite|create|submit|save/i,
-			})
-			.first();
-		if (await submitButton.isVisible().catch(() => false)) {
-			await submitButton.click();
-
-			// Should show validation error
-			await expect(
-				page.getByText(/invalid|valid email|email format/i).first(),
-			).toBeVisible({ timeout: 3000 });
 		}
 	});
 });

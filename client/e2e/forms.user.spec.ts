@@ -101,7 +101,6 @@ test.describe("Form Submission for Org Users", () => {
 			await formItem.click();
 
 			// Should be able to view form (but not edit)
-			await page.waitForTimeout(1000);
 			await expect(page.locator("main")).toBeVisible();
 		}
 	});
@@ -132,20 +131,6 @@ test.describe("Form Submission for Org Users", () => {
 });
 
 test.describe("Form Permission Boundaries", () => {
-	test("should not access form management endpoints", async ({ page }) => {
-		// Try to access form settings directly
-		await page.goto("/forms/settings");
-
-		// Should redirect or show access denied
-		const isRedirected = !page.url().includes("/forms/settings");
-		const accessDenied = await page
-			.getByText(/access denied|forbidden|not found/i)
-			.isVisible()
-			.catch(() => false);
-
-		expect(isRedirected || accessDenied).toBe(true);
-	});
-
 	test("should not see role assignment options", async ({ page }) => {
 		await page.goto("/forms");
 

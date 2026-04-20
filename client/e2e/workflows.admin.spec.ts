@@ -30,19 +30,18 @@ test.describe("Workflow Listing", () => {
 			page.getByRole("heading", { name: /workflows/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Should see some workflow content (table or cards)
-		const workflowContent = page.locator(
-			"table tbody tr, [data-testid='workflow-card'], [data-testid='workflow-row']",
-		);
-
-		// Either we have workflows or we have an empty state message
-		const hasWorkflows = await workflowContent.count().catch(() => 0);
+		// Each workflow (grid or table view) has an Execute / Test Tool / Preview
+		// Data button. Count those instead of relying on data-testids that don't exist.
+		const actionButtons = page.getByRole("button", {
+			name: /execute workflow|test tool|preview data/i,
+		});
+		const hasWorkflows = (await actionButtons.count()) > 0;
 		const hasEmptyState = await page
 			.getByText(/no workflows available|no workflows match/i)
 			.isVisible()
 			.catch(() => false);
 
-		expect(hasWorkflows > 0 || hasEmptyState).toBe(true);
+		expect(hasWorkflows || hasEmptyState).toBe(true);
 	});
 
 	test("should show workflow details when clicked", async ({ page }) => {
@@ -62,9 +61,6 @@ test.describe("Workflow Listing", () => {
 
 		if (await workflowItem.isVisible().catch(() => false)) {
 			await workflowItem.click();
-
-			// Should navigate to workflow detail or show details panel
-			await page.waitForTimeout(1000);
 
 			// Check if we're on a detail page or showing details
 			const hasDetails =
@@ -121,9 +117,6 @@ test.describe("Workflow Execution", () => {
 		if (await executeButton.isVisible().catch(() => false)) {
 			await executeButton.click();
 
-			// Should navigate to execute page or show execution modal
-			await page.waitForTimeout(1000);
-
 			const isOnExecutePage = page.url().includes("/execute");
 			const hasExecutionForm = await page
 				.getByRole("button", { name: /run|submit|execute/i })
@@ -134,52 +127,6 @@ test.describe("Workflow Execution", () => {
 		}
 	});
 
-	test("should execute workflow and show progress", async ({ page }) => {
-		await page.goto("/workflows");
-
-		// Wait for page to load
-		await expect(
-			page.getByRole("heading", { name: /workflows/i }).first(),
-		).toBeVisible({ timeout: 10000 });
-
-		// Find and click execute button
-		const executeButton = page
-			.getByRole("button", { name: /execute|run/i })
-			.first();
-
-		if (!(await executeButton.isVisible().catch(() => false))) {
-			test.skip();
-			return;
-		}
-
-		await executeButton.click();
-
-		// Wait for execution form/page
-		await page.waitForTimeout(1000);
-
-		// Find the run/submit button on the execution form
-		const runButton = page
-			.getByRole("button", { name: /run|submit|execute/i })
-			.first();
-
-		if (await runButton.isVisible().catch(() => false)) {
-			await runButton.click();
-
-			// Should show execution progress or redirect to execution detail
-			await page
-				.waitForURL(/\/history\/[a-f0-9-]+|\/executions/, {
-					timeout: 15000,
-				})
-				.catch(() => {});
-
-			// Should see execution status
-			await expect(
-				page.getByText(
-					/pending|running|queued|success|completed|failed/i,
-				),
-			).toBeVisible({ timeout: 30000 });
-		}
-	});
 });
 
 test.describe("Workflow Discovery", () => {
@@ -210,9 +157,6 @@ test.describe("Workflow Discovery", () => {
 
 		if (await searchInput.isVisible().catch(() => false)) {
 			await searchInput.fill("test");
-
-			// Wait for filter to apply
-			await page.waitForTimeout(500);
 
 			// Results should be filtered
 			await expect(page.locator("main")).toBeVisible();

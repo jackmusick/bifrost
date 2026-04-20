@@ -187,7 +187,6 @@ test.describe("Execution Filtering", () => {
 
 		if (await searchInput.isVisible().catch(() => false)) {
 			await searchInput.fill("test");
-			await page.waitForTimeout(500);
 
 			// Results should update
 			await expect(page.locator("main")).toBeVisible();
@@ -205,15 +204,19 @@ test.describe("Execution Actions", () => {
 			page.getByRole("heading", { name: /history|executions/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Look for running executions
-		const runningStatus = page.getByText(/running|pending/i).first();
+		// Scope within the execution list so we don't accidentally match
+		// filter-chip buttons labeled "Running" / "Pending" at the top of the page.
+		const listRegion = page.locator("main table, main [role='list']").first();
+		const runningRow = listRegion
+			.locator("tr, li")
+			.filter({ hasText: /running|pending/i })
+			.first();
 
-		if (await runningStatus.isVisible().catch(() => false)) {
-			// Running executions should have cancel button
-			const cancelButton = page.getByRole("button", {
-				name: /cancel|stop/i,
-			});
-			await expect(cancelButton).toBeVisible();
+		if (await runningRow.isVisible().catch(() => false)) {
+			// A row in the running/pending state must expose a cancel action.
+			await expect(
+				runningRow.getByRole("button", { name: /cancel|stop/i }),
+			).toBeVisible();
 		}
 	});
 
