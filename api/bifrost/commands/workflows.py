@@ -291,4 +291,87 @@ async def revoke_role(
     )
 
 
+@workflows_group.command("list-orphaned")
+@click.pass_context
+@pass_resolver
+@run_async
+async def list_orphaned_workflows(
+    ctx: click.Context,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,  # noqa: ARG001
+) -> None:
+    """List all orphaned workflows (backing file deleted or function removed).
+
+    Orphaned workflows are workflows whose source file no longer exists or no
+    longer contains the decorated function. They can be repointed with
+    ``bifrost workflows replace``.
+    """
+    response = await client.get("/api/workflows/orphaned")
+    response.raise_for_status()
+    # Server returns {"workflows": [...]}; unwrap to a list for consistent CLI output.
+    payload = response.json()
+    output_result(payload.get("workflows", payload), ctx=ctx)
+
+
+@workflows_group.command("replace")
+@click.argument("ref")
+@click.option(
+    "--path",
+    "source_path",
+    required=True,
+    type=str,
+    help="Workspace-relative path to the .py file containing the decorated function.",
+)
+@click.option(
+    "--function-name",
+    "function_name",
+    required=True,
+    type=str,
+    help="Name of the decorated function to point this workflow at.",
+)
+@click.option(
+    "--allow-type-change",
+    "allow_type_change",
+    is_flag=True,
+    default=False,
+    help=(
+        "Allow the decorator type to change (e.g. @workflow → @data_provider). "
+        "Off by default to prevent silently breaking form bindings."
+    ),
+)
+@click.pass_context
+@pass_resolver
+@run_async
+async def replace_workflow(
+    ctx: click.Context,
+    ref: str,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+    source_path: str,
+    function_name: str,
+    allow_type_change: bool,
+) -> None:
+    """Repoint an orphaned workflow to a new file location.
+
+    ``REF`` is a UUID or workflow name (use ``bifrost workflows list-orphaned``
+    to find orphaned UUIDs). The target file must exist in the workspace and
+    contain a ``@workflow``, ``@tool``, or ``@data_provider`` decorated function
+    with the given name. The workflow UUID is preserved so form/agent references
+    remain intact.
+    """
+    workflow_uuid = await resolver.resolve("workflow", ref)
+    body: dict[str, Any] = {
+        "source_path": source_path,
+        "function_name": function_name,
+        "allow_type_change": allow_type_change,
+    }
+    response = await client.post(
+        f"/api/workflows/{workflow_uuid}/replace", json=body
+    )
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)
+
+
 __all__ = ["workflows_group"]

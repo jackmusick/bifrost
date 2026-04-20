@@ -276,7 +276,9 @@ export function OrphanedWorkflowDialog({
 					</DialogTitle>
 					<DialogDescription>
 						This workflow's file no longer exists or no longer
-						contains the workflow function. Choose how to resolve.
+						contains the workflow function. Replacing will update
+						every form, app, and agent that uses this workflow
+						automatically.
 					</DialogDescription>
 				</DialogHeader>
 

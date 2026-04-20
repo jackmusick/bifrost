@@ -574,6 +574,10 @@ class ReplaceWorkflowRequest(BaseModel):
 
     source_path: str = Field(..., min_length=1, description="Path to file containing replacement function")
     function_name: str = Field(..., min_length=1, description="Name of function to use as replacement")
+    allow_type_change: bool = Field(
+        default=False,
+        description="Allow the decorator type to change (workflow/tool/data_provider). Default false to prevent silent form-binding breakage.",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -339,3 +339,128 @@ class TestCliWorkflowsRegisterHelp:
         # ``standalone_mode=True`` so Click's missing-option error exits cleanly.
         result = runner.invoke(workflows_group, ["register"])
         assert result.exit_code != 0
+
+
+_RENAMED_WORKFLOW_SOURCE = '''"""Renamed workflow used by bifrost workflows replace E2E."""
+
+from src.sdk import workflow
+
+
+@workflow
+def {function_name}(name: str = "world") -> str:
+    """Simple greeter — renamed function used by replace E2E tests."""
+    return f"hello {{name}}"
+'''
+
+
+@pytest.mark.e2e
+class TestCliWorkflowsOrphanReplace:
+    """End-to-end tests for ``workflows list-orphaned`` and ``workflows replace``."""
+
+    def test_list_orphaned_help_works(self, _invoke) -> None:
+        """``workflows list-orphaned --help`` exits cleanly."""
+        result = _invoke(["list-orphaned", "--help"])
+        assert result.exit_code == 0, result.output
+
+    def test_replace_help_lists_required_flags(self, _invoke) -> None:
+        """``workflows replace --help`` advertises --path and --function-name."""
+        result = _invoke(["replace", "--help"])
+        assert result.exit_code == 0, result.output
+        assert "--path" in result.output
+        assert "--function-name" in result.output
+        assert "--allow-type-change" in result.output
+
+    def test_list_orphaned_returns_json_array(
+        self, cli_client, _invoke, e2e_client, platform_admin
+    ) -> None:
+        """``workflows list-orphaned --json`` returns a JSON array."""
+        result = _invoke(["--json", "list-orphaned"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert isinstance(payload, list)
+
+    def test_replace_repoints_orphan_preserving_uuid(
+        self, cli_client, _invoke, e2e_client, platform_admin
+    ) -> None:
+        """Orphaned workflow can be repointed to a renamed function; UUID preserved."""
+        orig_fn = f"cli_wf_orig_{uuid4().hex[:8]}"
+        new_fn = f"cli_wf_new_{uuid4().hex[:8]}"
+
+        orig_path = f"workflows/cli_wf_{orig_fn}.py"
+        new_path = f"workflows/cli_wf_{new_fn}.py"
+
+        # Write and register the original workflow.
+        write_resp = e2e_client.put(
+            "/api/files/editor/content",
+            headers=platform_admin.headers,
+            json={
+                "path": orig_path,
+                "content": _WORKFLOW_SOURCE.format(function_name=orig_fn),
+                "encoding": "utf-8",
+            },
+        )
+        assert write_resp.status_code in (200, 201), write_resp.text
+
+        reg_resp = e2e_client.post(
+            "/api/workflows/register",
+            headers=platform_admin.headers,
+            json={"path": orig_path, "function_name": orig_fn},
+        )
+        assert reg_resp.status_code in (200, 201), reg_resp.text
+        wf_id = reg_resp.json()["id"]
+
+        try:
+            # Write the new file (simulates the user having mv'd the function).
+            write_new = e2e_client.put(
+                "/api/files/editor/content",
+                headers=platform_admin.headers,
+                json={
+                    "path": new_path,
+                    "content": _RENAMED_WORKFLOW_SOURCE.format(function_name=new_fn),
+                    "encoding": "utf-8",
+                },
+            )
+            assert write_new.status_code in (200, 201), write_new.text
+
+            # Delete the original file — FileStorageService calls
+            # delete_workflows_for_file which marks the row is_orphaned=True.
+            del_resp = e2e_client.delete(
+                f"/api/files/editor?path={orig_path}",
+                headers=platform_admin.headers,
+            )
+            assert del_resp.status_code in (200, 204), (
+                f"Expected file delete to succeed, got {del_resp.status_code}: {del_resp.text}"
+            )
+
+            # Verify it appears in list-orphaned.
+            result = _invoke(["--json", "list-orphaned"])
+            assert result.exit_code == 0, result.output
+            orphans = json.loads(result.output)
+            orphan_ids = [o["id"] for o in orphans]
+            assert wf_id in orphan_ids, (
+                f"Expected {wf_id} in orphaned list, got: {orphan_ids}"
+            )
+
+            # Replace: repoint the UUID to the new path/function.
+            result = _invoke([
+                "--json", "replace", wf_id,
+                "--path", new_path,
+                "--function-name", new_fn,
+            ])
+            assert result.exit_code == 0, result.output
+            payload = json.loads(result.output)
+            assert payload["workflow_id"] == wf_id
+            assert payload["new_path"] == new_path
+            assert payload["success"] is True
+
+            # UUID is preserved — the workflow is no longer orphaned.
+            result = _invoke(["--json", "list-orphaned"])
+            assert result.exit_code == 0, result.output
+            orphans_after = json.loads(result.output)
+            orphan_ids_after = [o["id"] for o in orphans_after]
+            assert wf_id not in orphan_ids_after, (
+                f"Workflow {wf_id} should not be orphaned after replace"
+            )
+
+        finally:
+            _invoke(["--json", "delete", wf_id, "--force"])

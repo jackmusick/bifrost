@@ -1422,6 +1422,7 @@ async def replace_workflow(
             workflow_id=workflow_id,
             source_path=request.source_path,
             function_name=request.function_name,
+            allow_type_change=request.allow_type_change,
         )
 
         logger.info(

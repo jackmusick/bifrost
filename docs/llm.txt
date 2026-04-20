@@ -47,6 +47,25 @@ Non-obvious semantics:
 - `register` is how workflows come into existence — workflows are never "created" in the CLI sense because they're defined by a `@workflow`-decorated Python function. Write the `.py` file first, then `register` it (or sync it via `bifrost watch`).
 - `delete --force-deactivation` bypasses the 409-on-history guard.
 
+### Renaming or moving a workflow
+
+If you rename a `@workflow` function or move its file without editing `.bifrost/workflows.yaml`, the indexer marks the row `is_orphaned=True` and skips the "new" location. Explicit re-registration mints a **new UUID**, breaking every form / agent / app reference that pointed at the old one. Use `replace` instead to preserve the UUID:
+
+```bash
+# 1. Find orphaned UUIDs (active workflows are not shown here)
+bifrost workflows list-orphaned --json
+
+# 2. Repoint the orphaned UUID at the new file location
+#    The file must already exist and contain the named decorated function.
+bifrost workflows replace <uuid> --path workflows/new_path.py --function-name new_func
+
+# Type changes (@workflow → @data_provider etc.) are blocked by default.
+# Pass --allow-type-change only if you intentionally changed the decorator.
+bifrost workflows replace <uuid> --path workflows/new_path.py --function-name new_func --allow-type-change
+```
+
+`replace` validates that the target file contains a `@workflow` / `@tool` / `@data_provider` decorated function with the given name before committing — it will error if the file is missing or the function lacks a decorator.
+
 Run `bifrost workflows <verb> --help` for the complete flag list.
 
 ## Forms
