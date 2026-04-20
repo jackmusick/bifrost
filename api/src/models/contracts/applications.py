@@ -358,3 +358,23 @@ class EmbedSecretUpdate(BaseModel):
 
 # ==================== IMPORT MODELS ====================
 # Applications use file sync (like forms/agents), not a dedicated import endpoint
+
+
+class ApplicationReplaceRequest(BaseModel):
+    """Input for repointing an application's source directory.
+
+    Mutation-only surface. See ``POST /api/applications/{id}/replace``.
+    """
+
+    repo_path: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Workspace-relative path to the new source directory (e.g. apps/my-app-v2).",
+    )
+    force: bool = Field(
+        default=False,
+        description=(
+            "Bypass the uniqueness, nesting, and source-exists checks. "
+            "Use when repointing before files are pushed."
+        ),
+    )
