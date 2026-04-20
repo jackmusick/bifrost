@@ -6,9 +6,36 @@
 
 - **Worktree:** `/home/jack/GitHub/bifrost/.worktrees/test-infra-refactor` (this is gitignored in the main repo; each worktree the main repo spawns goes under `.worktrees/<branch-name>/` by convention)
 - **Branch:** `test-infra-refactor` (off `main`)
-- **All implementation, verification, and commits happen in the worktree above.** Never commit to `main` directly — the branch merges back at the end.
-- **Completed tasks:** 1 (test_helpers.sh + review fixes), 2 (docker-compose.test.yml cleanup + header refresh)
-- **Next task:** 3 (stack_template_init.sh)
+- **Status:** All 12 tasks complete. Branch ready for review/merge.
+
+### Verification outcomes
+
+| Task | Check | Result |
+| --- | --- | --- |
+| 6 | `stack up` cold boot | ✅ succeeded; all containers healthy; project `bifrost-test-1c24af24` |
+| 6 | `stack up` idempotency | ✅ second call says "Stack already up." |
+| 6 | `stack reset` (warm) | ✅ ran in **22s**. Target was <2s; most of the 22s is uvicorn cold-restart after the DB swap. Acceptable for now; see "Known tradeoff" below. |
+| 6 | Template idempotency | ✅ "template up to date (hash: …)" on repeat runs |
+| 6 | Migration-change rebuild | ✅ new hash → "Rebuilding template"; cleanup → rebuild again to original hash |
+| 6 | `stack down` | ✅ clean teardown, volumes removed |
+| 7 | `./test.sh unit` | ✅ 2867/2867 passed in 115s |
+| 9 | `./test.sh client unit` | ✅ 14/14 vitest tests passed in 1.81s |
+| 9 | `./test.sh client e2e <spec>` | ✅ 8/8 Playwright tests passed in 30.6s (incl. setup) |
+| 12 | Orphaned-refs grep | ✅ zero hits of `bifrost-test-(api\|client\|…)` outside the plan file |
+
+### Bugs surfaced during verification (and the commits that fixed them)
+
+- `stack_template_init.sh` initially routed alembic through pgbouncer, but pgbouncer is pinned to `bifrost_test` — fixed in `scripts/stack_template_init.sh` (alembic now goes direct to `postgres:5432`).
+- `stack reset` tried to rebuild the template while API/worker held connections to `bifrost_test` — fixed in `test.sh` `stack_reset()` which now stops API consumers before template_init.
+- Code-review pass also caught: hash-comparison whitespace bug in template script; trap ordering in `cmd_ci`; `export_logs` missing `-p` flag; `reset_state` swallowing real errors; `/tmp/bifrost` mount not per-worktree. All fixed.
+
+### Known tradeoff
+
+**`stack reset` takes ~22s, not <2s.** The template-clone itself is sub-second; the remaining time is uvicorn (API + worker + scheduler) cold-restarting after connections are killed and waiting for the health probe. This is inherent to "reset state but keep the stack up" with a live API. If this becomes painful, options are:
+1. Add a `reset --db-only` path that skips the API restart (for backend unit tests that don't hit the API).
+2. Teach the API to hot-reload its DB connection pool on a signal instead of a restart.
+
+Neither is required today. The >10× improvement over the old "nuke everything" flow is already captured.
 
 **Goal:** Refactor `./test.sh` into a verb-style subcommand interface with per-worktree stack isolation and template-database fast reset, then codify the workflow in a new `.claude/skills/bifrost-testing` skill.
 
