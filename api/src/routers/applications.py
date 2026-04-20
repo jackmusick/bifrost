@@ -152,42 +152,6 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def get_by_id(self, id: UUID) -> Application | None:
-        """
-        Get application by UUID with cascade scoping and role-based access check.
-
-        Prioritizes org-specific over global to avoid MultipleResultsFound
-        when the same ID exists in both scopes.
-
-        Args:
-            id: Application UUID
-
-        Returns:
-            Application if found and accessible, None otherwise
-        """
-        # Build query filtering by ID
-        query = select(self.model).where(self.model.id == id)
-
-        # Apply cascade scoping: prioritize org-specific, then global
-        if self.org_id is not None:
-            # Try org-specific first
-            org_query = query.where(self.model.organization_id == self.org_id)
-            result = await self.session.execute(org_query)
-            entity = result.scalar_one_or_none()
-            if entity:
-                if await self._can_access_entity(entity):
-                    return entity
-                return None
-
-        # Fall back to global
-        global_query = query.where(self.model.organization_id.is_(None))
-        result = await self.session.execute(global_query)
-        entity = result.scalar_one_or_none()
-
-        if entity and await self._can_access_entity(entity):
-            return entity
-        return None
-
     async def get_by_slug_global(self, slug: str) -> Application | None:
         """Check if any application exists with this slug (globally unique)."""
         query = select(self.model).where(self.model.slug == slug)
@@ -251,7 +215,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         is_platform_admin: bool = False,
     ) -> Application | None:
         """Update application metadata and access control by ID."""
-        application = await self.get_by_id(app_id)
+        application = await self.get(id=app_id)
         if not application:
             return None
 
@@ -324,7 +288,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         """
         from src.models.orm.file_index import FileIndex
 
-        app = await self.get_by_id(app_id)
+        app = await self.get(id=app_id)
         if app is None:
             return None
 
@@ -393,7 +357,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
     async def delete_application(self, app_id: UUID) -> bool:
         """Delete an application by ID (cascade deletes pages and components)."""
-        application = await self.get_by_id(app_id)
+        application = await self.get(id=app_id)
         if not application:
             return False
 
@@ -415,7 +379,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         Copies preview files to live in S3 via AppStorageService, then
         captures a published_snapshot for backwards compatibility.
         """
-        application = await self.get_by_id(app_id)
+        application = await self.get(id=app_id)
         if not application:
             return None
 
@@ -628,6 +592,7 @@ async def application_to_public(
         has_unpublished_changes=application.has_unpublished_changes,
         access_level=application.access_level,
         role_ids=role_ids,
+        repo_path=application.repo_path,
     )
 
 
