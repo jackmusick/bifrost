@@ -34,7 +34,8 @@ jobs:
       - name: Run unit tests
         run: |
           chmod +x test.sh
-          ./test.sh tests/unit/ --ci
+          ./test.sh stack up
+          ./test.sh unit
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -60,7 +61,8 @@ jobs:
       - name: Run E2E tests
         run: |
           chmod +x test.sh
-          ./test.sh tests/e2e/ --ci
+          ./test.sh stack up
+          ./test.sh e2e
 
   # =============================================================================
   # Dev Build - Every push to main, gated by unit tests only
