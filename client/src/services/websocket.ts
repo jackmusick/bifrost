@@ -12,6 +12,7 @@
 
 import type { components } from "@/lib/v1";
 import { refreshAccessToken } from "@/lib/api-client";
+import { getActiveToken } from "@/lib/auth-token";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type { Notification } from "@/stores/notificationStore";
 
@@ -627,9 +628,10 @@ class WebSocketService {
 			const params = new URLSearchParams();
 			channels.forEach((ch) => params.append("channels", ch));
 
-			// For embed tokens (stored in localStorage), pass as query param
-			// since browser WebSocket API can't set custom headers
-			const embedToken = localStorage.getItem("bifrost_access_token");
+			// For embed tokens, pass as query param since browser WebSocket
+			// API can't set custom headers. getActiveToken() prefers the
+			// per-tab embed token (sessionStorage) over the user token.
+			const embedToken = getActiveToken();
 			if (embedToken && isEmbedToken(embedToken)) {
 				params.set("token", embedToken);
 			}

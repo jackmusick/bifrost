@@ -12,19 +12,19 @@ import createClient from "openapi-fetch";
 import createQueryClient from "openapi-react-query";
 import type { paths } from "./v1";
 import { parseApiError, ApiError, RateLimitError } from "./api-error";
+import {
+	ACCESS_TOKEN_KEY,
+	clearAuthTokens,
+	consumeEmbedTokenFromHash,
+	getActiveToken,
+	isEmbedSession,
+} from "./auth-token";
 
-// Token storage key (shared with AuthContext)
-// Note: Refresh token is stored in HttpOnly cookie only (more secure)
-const ACCESS_TOKEN_KEY = "bifrost_access_token";
-
-// Extract embed token from URL fragment before any API calls run.
-// The /embed/apps/{slug} endpoint redirects to /apps/{slug}#embed_token=<jwt>
-// and we need this in localStorage before the first ensureValidToken() call.
-if (window.location.hash.startsWith("#embed_token=")) {
-	const token = window.location.hash.slice("#embed_token=".length);
-	localStorage.setItem(ACCESS_TOKEN_KEY, token);
-	window.history.replaceState(null, "", window.location.pathname + window.location.search);
-}
+// Pull an embed token off the URL fragment (if any) before any API call
+// runs. The token is stored in sessionStorage rather than localStorage so
+// it stays scoped to this tab/iframe and never overwrites a normal user
+// session that happens to be open in another tab on the same origin.
+consumeEmbedTokenFromHash();
 
 // Buffer time before expiration to trigger refresh (60 seconds)
 const TOKEN_REFRESH_BUFFER_SECONDS = 60;
@@ -139,7 +139,7 @@ async function retryRequestWithFreshAuth(request: Request): Promise<Response> {
  */
 function handleAuthFailure(): void {
 	sessionStorage.removeItem("userId");
-	localStorage.removeItem(ACCESS_TOKEN_KEY);
+	clearAuthTokens();
 
 	const currentPath = window.location.pathname;
 	if (
@@ -156,6 +156,12 @@ function handleAuthFailure(): void {
  * Proactively refreshes token before it expires
  */
 async function ensureValidToken(): Promise<boolean> {
+	// Embed sessions can't refresh — the embed token is minted by the
+	// HMAC handshake at /embed/apps/{slug} and there's no refresh cookie
+	// for it. Just trust whatever's in sessionStorage; expiry surfaces
+	// as a 401 and the caller can re-enter the embed flow.
+	if (isEmbedSession()) return true;
+
 	const token = localStorage.getItem(ACCESS_TOKEN_KEY);
 
 	// No access token in localStorage, but HttpOnly refresh cookie may be valid
@@ -233,10 +239,11 @@ baseClient.use({
 		}
 
 		// Authentication: prefer HttpOnly cookie (sent automatically by browser).
-		// Fall back to Bearer header from localStorage for embed sessions where
-		// no cookie is set (token arrives via URL fragment, not Set-Cookie).
+		// Fall back to Bearer header from the active token store for embed
+		// sessions (token arrives via URL fragment, not Set-Cookie) and for
+		// any path where the cookie isn't being honored.
 		if (!request.headers.has("Authorization")) {
-			const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+			const token = getActiveToken();
 			if (token) {
 				request.headers.set("Authorization", `Bearer ${token}`);
 			}
@@ -414,9 +421,10 @@ export async function authFetch(
 	const headers = new Headers(options.headers);
 	const method = options.method?.toUpperCase() || "GET";
 
-	// Auth: prefer cookie (automatic), fall back to Bearer from localStorage
+	// Auth: prefer cookie (automatic), fall back to Bearer from the active
+	// token store (sessionStorage embed token, or localStorage user token).
 	if (!headers.has("Authorization")) {
-		const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+		const token = getActiveToken();
 		if (token) {
 			headers.set("Authorization", `Bearer ${token}`);
 		}
