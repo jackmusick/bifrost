@@ -1,0 +1,38 @@
+name: Feature request
+description: A new capability or meaningful enhancement
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's painful today, or what opportunity exists? Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Rough sketch, not a spec. If there's a design doc, link it below instead.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How we know it's done. Bullet list.
+      placeholder: |
+        - [ ] Users can do X from the UI
+        - [ ] API endpoint Y returns Z
+        - [ ] Playwright spec covers the happy path
+    validations:
+      required: true
+  - type: input
+    id: design-doc
+    attributes:
+      label: Design doc link (optional)
+      description: Path to a spec in docs/superpowers/specs/ if one exists
+      placeholder: "docs/superpowers/specs/2026-04-21-issue-tracking-design.md"
+    validations:
+      required: false

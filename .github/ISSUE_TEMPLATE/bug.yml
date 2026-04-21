@@ -1,0 +1,51 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-line description of the bug
+      placeholder: "Client retries stale Authorization header after token refresh"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The shortest reliable path to trigger the bug
+      placeholder: |
+        1. Log in
+        2. Wait for token refresh
+        3. Trigger any API call
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Branch/commit, browser (if UI), container, anything else relevant
+      placeholder: "main @ abc123, Chrome 131, bifrost-dev-api"
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Attach or paste anything useful. For logs, use a code block.
+    validations:
+      required: false
