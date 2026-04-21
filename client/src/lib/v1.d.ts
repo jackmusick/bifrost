@@ -3403,22 +3403,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5918,7 +5918,6 @@ export interface paths {
          *
          *     This removes any custom configuration and reverts to:
          *     - enabled: True
-         *     - require_platform_admin: True
          *     - all tools allowed
          */
         delete: operations["delete_mcp_config_api_mcp_config_delete"];
@@ -13800,12 +13799,6 @@ export interface components {
              */
             enabled: boolean;
             /**
-             * Require Platform Admin
-             * @description Whether only platform admins can access MCP
-             * @default true
-             */
-            require_platform_admin: boolean;
-            /**
              * Allowed Tool Ids
              * @description List of allowed tool IDs (None = all tools allowed)
              */
@@ -13826,11 +13819,6 @@ export interface components {
              * @description Whether external MCP access is enabled
              */
             enabled: boolean;
-            /**
-             * Require Platform Admin
-             * @description Whether only platform admins can access MCP
-             */
-            require_platform_admin: boolean;
             /**
              * Allowed Tool Ids
              * @description List of allowed tool IDs (None = all tools allowed)
@@ -24608,7 +24596,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -24641,7 +24629,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -24674,7 +24662,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -24707,7 +24695,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {

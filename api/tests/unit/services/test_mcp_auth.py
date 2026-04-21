@@ -170,15 +170,19 @@ class TestProtectedResourceMetadata:
 
 
 class TestCheckMcpAccess:
-    """Tests for MCP access permission checking."""
+    """Tests for MCP access permission checking.
+
+    Access is gated only on the ``enabled`` master switch. Per-user/tool access
+    is handled downstream by ``MCPToolAccessService`` via agent role membership,
+    so a non-superuser with no matching roles will connect successfully and
+    simply see an empty tool set.
+    """
 
     @pytest.mark.asyncio
-    async def test_denies_non_admin_when_required(self, auth_provider):
-        """Should deny access to non-admins when platform admin is required."""
-        # Mock config that requires platform admin
+    async def test_allows_non_admin_when_enabled(self, auth_provider):
+        """Non-admins are allowed through — role-scoped tools are filtered later."""
         mock_config = MagicMock()
         mock_config.enabled = True
-        mock_config.require_platform_admin = True
 
         with patch("src.core.database.get_db_context") as mock_db, \
              patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
@@ -187,14 +191,13 @@ class TestCheckMcpAccess:
             mock_get_config.return_value = mock_config
 
             result = await auth_provider._check_mcp_access({"is_superuser": False})
-            assert result is False
+            assert result is True
 
     @pytest.mark.asyncio
-    async def test_allows_admin_when_required(self, auth_provider):
-        """Should allow access to admins when platform admin is required."""
+    async def test_allows_admin_when_enabled(self, auth_provider):
+        """Platform admins are allowed through."""
         mock_config = MagicMock()
         mock_config.enabled = True
-        mock_config.require_platform_admin = True
 
         with patch("src.core.database.get_db_context") as mock_db, \
              patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
@@ -207,10 +210,9 @@ class TestCheckMcpAccess:
 
     @pytest.mark.asyncio
     async def test_denies_when_disabled(self, auth_provider):
-        """Should deny access when MCP is disabled."""
+        """Should deny all access when MCP is disabled, including admins."""
         mock_config = MagicMock()
         mock_config.enabled = False
-        mock_config.require_platform_admin = False
 
         with patch("src.core.database.get_db_context") as mock_db, \
              patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
@@ -220,22 +222,6 @@ class TestCheckMcpAccess:
 
             result = await auth_provider._check_mcp_access({"is_superuser": True})
             assert result is False
-
-    @pytest.mark.asyncio
-    async def test_allows_non_admin_when_not_required(self, auth_provider):
-        """Should allow non-admins when platform admin is not required."""
-        mock_config = MagicMock()
-        mock_config.enabled = True
-        mock_config.require_platform_admin = False
-
-        with patch("src.core.database.get_db_context") as mock_db, \
-             patch("src.services.mcp_server.config_service.get_mcp_config_cached") as mock_get_config:
-            mock_db.return_value.__aenter__ = AsyncMock()
-            mock_db.return_value.__aexit__ = AsyncMock()
-            mock_get_config.return_value = mock_config
-
-            result = await auth_provider._check_mcp_access({"is_superuser": False})
-            assert result is True
 
 
 # ==================== Redis Key Functions Tests ====================

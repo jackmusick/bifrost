@@ -82,13 +82,8 @@ async def mcp_status(
             detail="External MCP access is disabled",
         )
 
-    if config.require_platform_admin and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="MCP access is currently restricted to platform administrators",
-        )
-
-    # Get accessible tools based on user's agent access
+    # Per-user tool access is role-scoped inside MCPToolAccessService — a user
+    # with no matching agent roles gets an empty list rather than a 403.
     tool_service = MCPToolAccessService(db)
     result = await tool_service.get_accessible_tools(
         user_roles=current_user.roles,
@@ -253,7 +248,6 @@ async def get_mcp_config(
 
     return MCPConfigResponse(
         enabled=config.enabled,
-        require_platform_admin=config.require_platform_admin,
         allowed_tool_ids=config.allowed_tool_ids,
         blocked_tool_ids=config.blocked_tool_ids or [],
         is_configured=config.is_configured,
@@ -286,7 +280,6 @@ async def update_mcp_config(
     service = MCPConfigService(db)
     config = await service.save_config(
         enabled=request.enabled,
-        require_platform_admin=request.require_platform_admin,
         allowed_tool_ids=request.allowed_tool_ids,
         blocked_tool_ids=request.blocked_tool_ids,
         updated_by=current_user.email,
@@ -297,7 +290,6 @@ async def update_mcp_config(
 
     return MCPConfigResponse(
         enabled=config.enabled,
-        require_platform_admin=config.require_platform_admin,
         allowed_tool_ids=config.allowed_tool_ids,
         blocked_tool_ids=config.blocked_tool_ids or [],
         is_configured=config.is_configured,
@@ -316,7 +308,6 @@ async def delete_mcp_config(
 
     This removes any custom configuration and reverts to:
     - enabled: True
-    - require_platform_admin: True
     - all tools allowed
     """
     # Only platform admins can delete MCP config
@@ -361,13 +352,7 @@ async def list_mcp_tools(
             detail="External MCP access is disabled",
         )
 
-    if config.require_platform_admin and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="MCP access is currently restricted to platform administrators",
-        )
-
-    # Get accessible tools based on user's agent access
+    # Per-user tool access is role-scoped inside MCPToolAccessService.
     tool_service = MCPToolAccessService(db)
     result = await tool_service.get_accessible_tools(
         user_roles=current_user.roles,

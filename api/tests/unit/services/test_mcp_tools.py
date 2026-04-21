@@ -798,7 +798,6 @@ class TestMCPConfigService:
         config = await service.get_config()
 
         assert config.enabled is True
-        assert config.require_platform_admin is True
         assert config.allowed_tool_ids is None
         assert config.blocked_tool_ids is None
         assert config.is_configured is False
@@ -812,7 +811,6 @@ class TestMCPConfigService:
         mock_config = MagicMock()
         mock_config.value_json = {
             "enabled": False,
-            "require_platform_admin": False,
             "allowed_tool_ids": ["execute_workflow", "list_workflows"],
             "blocked_tool_ids": ["search_knowledge"],
         }
@@ -827,7 +825,6 @@ class TestMCPConfigService:
         config = await service.get_config()
 
         assert config.enabled is False
-        assert config.require_platform_admin is False
         assert config.allowed_tool_ids == ["execute_workflow", "list_workflows"]
         assert config.blocked_tool_ids == ["search_knowledge"]
         assert config.is_configured is True
@@ -847,7 +844,6 @@ class TestMCPConfigService:
         service = MCPConfigService(mock_session)
         config = await service.save_config(
             enabled=False,
-            require_platform_admin=True,
             allowed_tool_ids=None,
             blocked_tool_ids=["search_knowledge"],
             updated_by="admin@test.com",
@@ -855,7 +851,6 @@ class TestMCPConfigService:
 
         mock_session.add.assert_called_once()
         assert config.enabled is False
-        assert config.require_platform_admin is True
         assert config.blocked_tool_ids == ["search_knowledge"]
 
     @pytest.mark.asyncio
@@ -865,7 +860,7 @@ class TestMCPConfigService:
 
         # Mock existing config
         mock_config = MagicMock()
-        mock_config.value_json = {"enabled": True, "require_platform_admin": True}
+        mock_config.value_json = {"enabled": True}
         mock_result = MagicMock()
         mock_result.scalars.return_value.first.return_value = mock_config
         mock_session.execute = AsyncMock(return_value=mock_result)
@@ -873,14 +868,12 @@ class TestMCPConfigService:
         service = MCPConfigService(mock_session)
         config = await service.save_config(
             enabled=False,
-            require_platform_admin=False,
             allowed_tool_ids=["execute_workflow"],
             blocked_tool_ids=[],
             updated_by="admin@test.com",
         )
 
         assert config.enabled is False
-        assert config.require_platform_admin is False
         assert mock_config.value_json["enabled"] is False
         assert mock_config.updated_by == "admin@test.com"
 

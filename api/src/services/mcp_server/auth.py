@@ -295,10 +295,10 @@ class BifrostAuthProvider:
                 status_code=401
             )
 
-        # Check MCP access permissions
+        # Check MCP access permissions (only gates on the master enabled switch)
         if not await self._check_mcp_access(payload):
             return JSONResponse(
-                {"error": "access_denied", "error_description": "User not authorized for MCP access"},
+                {"error": "access_denied", "error_description": "External MCP access is disabled"},
                 status_code=403
             )
 
@@ -546,6 +546,11 @@ class BifrostAuthProvider:
         """
         Check if user is authorized for MCP access based on config.
 
+        Only gates on the global ``enabled`` switch. Per-user tool access is
+        resolved downstream by ``MCPToolAccessService`` using the user's roles
+        and agent membership — non-admins without matching roles connect
+        successfully and see an empty tool set rather than a 403.
+
         Args:
             token_payload: Decoded JWT claims
 
@@ -559,27 +564,14 @@ class BifrostAuthProvider:
             async with get_db_context() as db:
                 config = await get_mcp_config_cached(db)
             logger.info(
-                f"MCP access check: config loaded - enabled={config.enabled if config else 'N/A'}, "
-                f"require_admin={config.require_platform_admin if config else 'N/A'}"
+                f"MCP access check: config loaded - enabled={config.enabled if config else 'N/A'}"
             )
         except Exception as e:
             logger.warning(f"MCP access check: Failed to get config: {e}")
-            # Fall back to strict defaults
             config = None
 
-        # Check if MCP is enabled
         if config is not None and not config.enabled:
             logger.info("MCP access check: External MCP access is disabled")
-            return False
-
-        # Check platform admin requirement
-        is_superuser = token_payload.get("is_superuser", False)
-        require_admin = config.require_platform_admin if config else True
-
-        logger.info(f"MCP access check: is_superuser={is_superuser}, require_admin={require_admin}")
-
-        if require_admin and not is_superuser:
-            logger.info(f"MCP access check: User {token_payload.get('sub')} is not a platform admin")
             return False
 
         return True

@@ -71,7 +71,6 @@ class TestMCPConfigEndpoint:
         data = response.json()
         # Check response has expected fields
         assert "enabled" in data
-        assert "require_platform_admin" in data
         assert "is_configured" in data
 
     @pytest.mark.e2e
@@ -112,7 +111,6 @@ class TestMCPConfigEndpoint:
             f"{TEST_API_URL}/api/mcp/config",
             json={
                 "enabled": True,
-                "require_platform_admin": True,
             },
             headers=headers,
         )
@@ -208,8 +206,8 @@ class TestMCPToolsEndpoint:
         assert response.status_code == 401
 
     @pytest.mark.e2e
-    def test_list_tools_requires_platform_admin(self):
-        """Should return 403 for non-admin user."""
+    def test_list_tools_allows_non_admin(self):
+        """Non-admin users should be allowed through — tool list is role-scoped."""
         token = create_test_jwt(
             email="user@org.local",
             is_superuser=False,
@@ -221,8 +219,10 @@ class TestMCPToolsEndpoint:
             headers=headers,
         )
 
-        assert response.status_code == 403
-        assert "platform admin" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert "tools" in data
+        assert isinstance(data["tools"], list)
 
     @pytest.mark.e2e
     def test_list_tools_success_for_platform_admin(self):
@@ -307,8 +307,8 @@ class TestMCPStatusEndpoint:
         assert response.status_code == 401
 
     @pytest.mark.e2e
-    def test_status_requires_platform_admin(self):
-        """Should return 403 for non-admin user."""
+    def test_status_allows_non_admin(self):
+        """Non-admin users should get a 200 status — tools list is role-scoped."""
         token = create_test_jwt(
             email="user@org.local",
             is_superuser=False,
@@ -320,8 +320,11 @@ class TestMCPStatusEndpoint:
             headers=headers,
         )
 
-        assert response.status_code == 403
-        assert "platform admin" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "available"
+        assert data["is_platform_admin"] is False
+        assert isinstance(data["tools"], list)
 
     @pytest.mark.e2e
     def test_status_success_for_platform_admin(self):
@@ -374,7 +377,6 @@ class TestMCPConfigToolFiltering:
             f"{TEST_API_URL}/api/mcp/config",
             json={
                 "enabled": True,
-                "require_platform_admin": True,
                 "allowed_tool_ids": ["execute_workflow", "list_workflows"],
             },
             headers=headers,
@@ -401,7 +403,6 @@ class TestMCPConfigToolFiltering:
             f"{TEST_API_URL}/api/mcp/config",
             json={
                 "enabled": True,
-                "require_platform_admin": True,
                 "blocked_tool_ids": ["search_knowledge"],
             },
             headers=headers,
@@ -428,7 +429,6 @@ class TestMCPConfigToolFiltering:
             f"{TEST_API_URL}/api/mcp/config",
             json={
                 "enabled": True,
-                "require_platform_admin": True,
                 "allowed_tool_ids": None,
             },
             headers=headers,
@@ -467,7 +467,6 @@ class TestMCPConfigToolFiltering:
             f"{TEST_API_URL}/api/mcp/config",
             json={
                 "enabled": False,
-                "require_platform_admin": False,
                 "allowed_tool_ids": ["execute_workflow"],
             },
             headers=headers,
@@ -485,5 +484,4 @@ class TestMCPConfigToolFiltering:
         assert response.status_code == 200
         data = response.json()
         assert data["enabled"] is True  # Default
-        assert data["require_platform_admin"] is True  # Default
         assert data["is_configured"] is False
