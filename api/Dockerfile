@@ -56,6 +56,10 @@ COPY api/src/services/app_compiler/compile.js /app/src/services/app_compiler/
 COPY api/src/services/app_compiler/tailwind.js /app/src/services/app_compiler/
 RUN cd /app/src/services/app_compiler && npm install --production
 
+# Install app bundler Node.js dependencies (esbuild)
+COPY api/src/services/app_bundler/package.json api/src/services/app_bundler/package-lock.json* /app/src/services/app_bundler/
+RUN cd /app/src/services/app_bundler && npm install --production
+
 # Create non-root user
 RUN useradd -m -u 1000 bifrost && \
     chown -R bifrost:bifrost /app
