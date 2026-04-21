@@ -171,9 +171,10 @@ class TestMCPProtocol:
         assert "execute_workflow" in tool_names
         assert "list_workflows" in tool_names
 
-    def test_mcp_non_admin_denied(self):
-        """Non-admin users should be denied MCP access by default."""
-        # Create non-superuser token
+    def test_mcp_non_admin_allowed(self):
+        """Non-admin users can initialize MCP — per-user tool access is
+        role-scoped downstream, so they connect successfully and simply see
+        the tools their roles grant them (possibly none)."""
         token = create_test_jwt(is_superuser=False)
         headers = mcp_headers(token)
 
@@ -192,8 +193,7 @@ class TestMCPProtocol:
             headers=headers,
         )
 
-        # Should be denied - either 401 (invalid token) or 403 (forbidden)
-        assert response.status_code in [401, 403]
+        assert response.status_code == 200
 
     def test_mcp_invalid_token_rejected(self):
         """Invalid token should be rejected."""
