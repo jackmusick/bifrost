@@ -55,6 +55,7 @@ async def create_form_embed_secret(
         form_id=form_id,
         name=body.name,
         secret_encrypted=encrypted,
+        hmac_scheme=body.hmac_scheme,
         created_by=current_user.user_id,
     )
     ctx.db.add(record)
@@ -65,6 +66,7 @@ async def create_form_embed_secret(
         id=str(record.id),
         name=record.name,
         is_active=record.is_active,
+        hmac_scheme=record.hmac_scheme,  # type: ignore[arg-type]
         created_at=record.created_at,
         raw_secret=raw_secret,
     )
@@ -94,6 +96,7 @@ async def list_form_embed_secrets(
             id=str(r.id),
             name=r.name,
             is_active=r.is_active,
+            hmac_scheme=r.hmac_scheme,  # type: ignore[arg-type]
             created_at=r.created_at,
         )
         for r in records
@@ -126,6 +129,8 @@ async def update_form_embed_secret(
         record.is_active = body.is_active
     if body.name is not None:
         record.name = body.name
+    if body.hmac_scheme is not None:
+        record.hmac_scheme = body.hmac_scheme
 
     await ctx.db.commit()
     await ctx.db.refresh(record)
@@ -134,6 +139,7 @@ async def update_form_embed_secret(
         id=str(record.id),
         name=record.name,
         is_active=record.is_active,
+        hmac_scheme=record.hmac_scheme,  # type: ignore[arg-type]
         created_at=record.created_at,
     )
 

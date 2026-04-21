@@ -53,6 +53,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version Info */
+        get: operations["get_version_info_api_version_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -3386,22 +3403,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -10129,11 +10146,8 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
-            /**
-             * Version
-             * @default 2.0.0
-             */
-            version: string;
+            /** Version */
+            version?: string;
             /** Environment */
             environment: string;
             /** Components */
@@ -10627,6 +10641,13 @@ export interface components {
              * @description Shared secret. If omitted, one is auto-generated.
              */
             secret?: string | null;
+            /**
+             * Hmac Scheme
+             * @description HMAC signing scheme. 'shopify' signs all query params; 'halopsa' signs only agent_id.
+             * @default shopify
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
         };
         /**
          * EmbedSecretCreatedResponse
@@ -10639,6 +10660,11 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
             /** Created At */
             created_at: string;
             /** Raw Secret */
@@ -10655,6 +10681,11 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
             /** Created At */
             created_at: string;
         };
@@ -10667,6 +10698,8 @@ export interface components {
             is_active?: boolean | null;
             /** Name */
             name?: string | null;
+            /** Hmac Scheme */
+            hmac_scheme?: ("shopify" | "halopsa") | null;
         };
         /**
          * EmbeddingConfigRequest
@@ -11969,7 +12002,7 @@ export interface components {
             /** Form Schema */
             form_schema: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema"];
+            } | components["schemas"]["FormSchema-Input"];
             /** @default role_based */
             access_level: components["schemas"]["FormAccessLevel"] | null;
             /**
@@ -12002,7 +12035,95 @@ export interface components {
          * FormField
          * @description Form field definition
          */
-        FormField: {
+        "FormField-Input": {
+            /**
+             * Name
+             * @description Parameter name for workflow
+             */
+            name: string;
+            /**
+             * Label
+             * @description Display label (optional for markdown/html types)
+             */
+            label?: string | null;
+            type: components["schemas"]["FormFieldType"];
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Validation */
+            validation?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Data Provider Id
+             * @description Data provider ID for dynamic options
+             */
+            data_provider_id?: string | null;
+            /**
+             * Data Provider Inputs
+             * @description Input configurations for data provider parameters
+             */
+            data_provider_inputs?: {
+                [key: string]: components["schemas"]["DataProviderInputConfig"];
+            } | null;
+            /** Default Value */
+            default_value?: unknown | null;
+            /** Placeholder */
+            placeholder?: string | null;
+            /** Help Text */
+            help_text?: string | null;
+            /**
+             * Visibility Expression
+             * @description JavaScript expression for conditional visibility (e.g., context.field.show === true)
+             */
+            visibility_expression?: string | null;
+            /**
+             * Options
+             * @description Options for radio/select fields
+             */
+            options?: {
+                [key: string]: string;
+            }[] | null;
+            /**
+             * Allowed Types
+             * @description Allowed MIME types for file uploads
+             */
+            allowed_types?: string[] | null;
+            /**
+             * Multiple
+             * @description Allow multiple file uploads
+             */
+            multiple?: boolean | null;
+            /**
+             * Max Size Mb
+             * @description Maximum file size in MB
+             */
+            max_size_mb?: number | null;
+            /**
+             * Content
+             * @description Static content for markdown/HTML components
+             */
+            content?: string | null;
+            /**
+             * Allow As Query Param
+             * @description Whether this field's value can be populated from URL query parameters
+             */
+            allow_as_query_param?: boolean | null;
+            /**
+             * Auto Fill
+             * @description Map of sibling field names to metadata paths. When this field's data provider returns results, auto-populate sibling fields from the first result's metadata. Example: {"employee_count": "recommended_employee_count"}
+             */
+            auto_fill?: {
+                [key: string]: string;
+            } | null;
+        };
+        /**
+         * FormField
+         * @description Form field definition
+         */
+        "FormField-Output": {
             /**
              * Name
              * @description Parameter name for workflow
@@ -12119,7 +12240,7 @@ export interface components {
             /** Form Schema */
             form_schema?: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema"] | null;
+            } | components["schemas"]["FormSchema-Output"] | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
             /** Organization Id */
             organization_id?: string | null;
@@ -12140,12 +12261,23 @@ export interface components {
          * FormSchema
          * @description Form schema with field definitions
          */
-        FormSchema: {
+        "FormSchema-Input": {
             /**
              * Fields
              * @description Max 50 fields per form
              */
-            fields: components["schemas"]["FormField"][];
+            fields: components["schemas"]["FormField-Input"][];
+        };
+        /**
+         * FormSchema
+         * @description Form schema with field definitions
+         */
+        "FormSchema-Output": {
+            /**
+             * Fields
+             * @description Max 50 fields per form
+             */
+            fields: components["schemas"]["FormField-Output"][];
         };
         /**
          * FormStartupResponse
@@ -12182,7 +12314,7 @@ export interface components {
             /** Form Schema */
             form_schema?: {
                 [key: string]: unknown;
-            } | components["schemas"]["FormSchema"] | null;
+            } | components["schemas"]["FormSchema-Input"] | null;
             /** Is Active */
             is_active?: boolean | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
@@ -12591,11 +12723,8 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
-            /**
-             * Version
-             * @default 2.0.0
-             */
-            version: string;
+            /** Version */
+            version?: string;
             /** Environment */
             environment: string;
         };
@@ -13954,6 +14083,18 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Target Organization Id
+             * @description When set, every entity in the bundle has its organization_id rewritten to this value before upsert. Incompatible with a manifest that carries an organizations section.
+             */
+            target_organization_id?: string | null;
+            /**
+             * Role Resolution
+             * @description How to interpret role references in the bundle. 'uuid' (default) assumes role UUIDs match the target env. 'name' reads role_names and resolves to UUIDs in the target; missing names fail with 422.
+             * @default uuid
+             * @enum {string}
+             */
+            role_resolution: "uuid" | "name";
         };
         /**
          * ManifestImportResponse
@@ -17537,12 +17678,19 @@ export interface components {
          * @description Input for updating a table.
          */
         TableUpdate: {
+            /**
+             * Name
+             * @description Table name (lowercase, underscores and hyphens allowed)
+             */
+            name?: string | null;
             /** Description */
             description?: string | null;
             /** Schema */
             schema?: {
                 [key: string]: unknown;
             } | null;
+            /** Application Id */
+            application_id?: string | null;
         };
         /**
          * Token
@@ -18121,6 +18269,13 @@ export interface components {
              * @enum {string}
              */
             severity: "error" | "warning";
+        };
+        /** VersionResponse */
+        VersionResponse: {
+            /** Version */
+            version: string;
+            /** Min Cli Version */
+            min_cli_version: string;
         };
         /**
          * WatchSessionRequest
@@ -19293,6 +19448,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DetailedHealthCheck"];
+                };
+            };
+        };
+    };
+    get_version_info_api_version_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionResponse"];
                 };
             };
         };
@@ -24493,7 +24668,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -24526,7 +24701,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -24559,7 +24734,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -24592,7 +24767,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
