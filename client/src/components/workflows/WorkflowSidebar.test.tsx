@@ -7,8 +7,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { renderWithProviders, screen } from "@/test-utils";
 import { WorkflowSidebar } from "./WorkflowSidebar";
 
 vi.mock("@/lib/api-client", () => ({
@@ -28,7 +27,7 @@ function renderSidebar(overrides: Record<string, unknown> = {}) {
 	const onEndpointFilterChange = vi.fn();
 	const onOrphanedFilterChange = vi.fn();
 
-	const utils = render(
+	const utils = renderWithProviders(
 		<WorkflowSidebar
 			categories={[]}
 			categoriesLoading={false}
@@ -48,17 +47,12 @@ function renderSidebar(overrides: Record<string, unknown> = {}) {
 		/>,
 	);
 
-	return {
-		...utils,
-		onOrphanedFilterChange,
-		onEndpointFilterChange,
-	};
+	return { ...utils, onOrphanedFilterChange, onEndpointFilterChange };
 }
 
 describe("WorkflowSidebar — Orphaned filter", () => {
 	it("calls onOrphanedFilterChange(true) when clicked while off", async () => {
-		const user = userEvent.setup();
-		const { onOrphanedFilterChange } = renderSidebar();
+		const { user, onOrphanedFilterChange } = renderSidebar();
 
 		await user.click(screen.getByRole("button", { name: /orphaned/i }));
 
@@ -66,8 +60,9 @@ describe("WorkflowSidebar — Orphaned filter", () => {
 	});
 
 	it("calls onOrphanedFilterChange(false) when clicked while on", async () => {
-		const user = userEvent.setup();
-		const { onOrphanedFilterChange } = renderSidebar({ orphanedFilter: true });
+		const { user, onOrphanedFilterChange } = renderSidebar({
+			orphanedFilter: true,
+		});
 
 		await user.click(screen.getByRole("button", { name: /orphaned/i }));
 
@@ -83,11 +78,8 @@ describe("WorkflowSidebar — Orphaned filter", () => {
 	});
 
 	it("Clear button resets the orphaned filter alongside others", async () => {
-		const user = userEvent.setup();
-		const { onOrphanedFilterChange, onEndpointFilterChange } = renderSidebar({
-			orphanedFilter: true,
-			endpointFilter: true,
-		});
+		const { user, onOrphanedFilterChange, onEndpointFilterChange } =
+			renderSidebar({ orphanedFilter: true, endpointFilter: true });
 
 		await user.click(screen.getByRole("button", { name: /clear/i }));
 

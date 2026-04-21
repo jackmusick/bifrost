@@ -8,9 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { renderWithProviders, screen, within } from "@/test-utils";
 import type { ApplicationPublic } from "@/hooks/useApplications";
 
 // -----------------------------------------------------------------------------
@@ -64,26 +62,21 @@ function makeApp(overrides: Partial<ApplicationPublic> = {}): ApplicationPublic 
 	};
 }
 
-function renderDialog(app: ApplicationPublic = makeApp()) {
+async function renderDialog(app: ApplicationPublic = makeApp()) {
 	// Dynamic import so the vi.mock() calls above land before the component
 	// resolves its dependencies.
-	return import("./AppReplacePathDialog").then(
-		({ AppReplacePathDialog }) => {
-			const onClose = vi.fn();
-			const onSuccess = vi.fn();
-			const utils = render(
-				<MemoryRouter>
-					<AppReplacePathDialog
-						app={app}
-						open={true}
-						onClose={onClose}
-						onSuccess={onSuccess}
-					/>
-				</MemoryRouter>,
-			);
-			return { ...utils, onClose, onSuccess };
-		},
+	const { AppReplacePathDialog } = await import("./AppReplacePathDialog");
+	const onClose = vi.fn();
+	const onSuccess = vi.fn();
+	const utils = renderWithProviders(
+		<AppReplacePathDialog
+			app={app}
+			open={true}
+			onClose={onClose}
+			onSuccess={onSuccess}
+		/>,
 	);
+	return { ...utils, onClose, onSuccess };
 }
 
 // -----------------------------------------------------------------------------
@@ -109,8 +102,7 @@ describe("AppReplacePathDialog — warnings", () => {
 				makeApp({ id: "app-2", name: "Other App", repo_path: "apps/other" }),
 			],
 		};
-		const user = userEvent.setup();
-		const { getByLabelText } = await renderDialog();
+		const { user, getByLabelText } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/other");
 
@@ -129,8 +121,7 @@ describe("AppReplacePathDialog — warnings", () => {
 				makeApp({ id: "app-2", name: "Other", repo_path: "apps/other" }),
 			],
 		};
-		const user = userEvent.setup();
-		const { getByLabelText } = await renderDialog();
+		const { user, getByLabelText } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/other/nested");
 
@@ -150,8 +141,7 @@ describe("AppReplacePathDialog — warnings", () => {
 				}),
 			],
 		};
-		const user = userEvent.setup();
-		const { getByLabelText } = await renderDialog();
+		const { user, getByLabelText } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/outer");
 
@@ -165,8 +155,7 @@ describe("AppReplacePathDialog — warnings", () => {
 		mockList.mockResolvedValue([
 			{ path: "apps/empty/sub", name: "sub", type: "folder" },
 		]);
-		const user = userEvent.setup();
-		const { getByLabelText } = await renderDialog();
+		const { user, getByLabelText } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/empty");
 
@@ -176,9 +165,8 @@ describe("AppReplacePathDialog — warnings", () => {
 	});
 
 	it("does not warn when the target matches the app's current path", async () => {
-		const user = userEvent.setup();
 		const app = makeApp({ repo_path: "apps/my-app" });
-		const { getByLabelText } = await renderDialog(app);
+		const { user, getByLabelText } = await renderDialog(app);
 
 		await user.type(getByLabelText(/new path/i), "apps/my-app");
 
@@ -196,8 +184,7 @@ describe("AppReplacePathDialog — force toggle", () => {
 				makeApp({ id: "app-2", name: "Other", repo_path: "apps/other" }),
 			],
 		};
-		const user = userEvent.setup();
-		const { getByLabelText } = await renderDialog();
+		const { user, getByLabelText } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/other");
 
@@ -219,8 +206,7 @@ describe("AppReplacePathDialog — phase transitions", () => {
 			errors: [],
 			warnings: [],
 		});
-		const user = userEvent.setup();
-		const { getByLabelText, onSuccess } = await renderDialog();
+		const { user, getByLabelText, onSuccess } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/bar");
 		await user.click(screen.getByRole("button", { name: /^replace$/i }));
@@ -260,8 +246,7 @@ describe("AppReplacePathDialog — phase transitions", () => {
 				},
 			],
 		});
-		const user = userEvent.setup();
-		const { getByLabelText } = await renderDialog();
+		const { user, getByLabelText } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/bar");
 		await user.click(screen.getByRole("button", { name: /^replace$/i }));
@@ -279,8 +264,7 @@ describe("AppReplacePathDialog — phase transitions", () => {
 
 	it("returns to pick phase if the replace call fails", async () => {
 		mockReplace.mockRejectedValue(new Error("boom"));
-		const user = userEvent.setup();
-		const { getByLabelText } = await renderDialog();
+		const { user, getByLabelText } = await renderDialog();
 
 		await user.type(getByLabelText(/new path/i), "apps/bar");
 		await user.click(screen.getByRole("button", { name: /^replace$/i }));
