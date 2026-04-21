@@ -74,9 +74,23 @@ export function Login() {
 
 	// MCP OAuth returns an absolute URL in return_to; react-router's navigate()
 	// treats those as relative paths and produces nonsense like
-	// /login/https:/example.com/mcp/callback. Use a full page load for those.
+	// /login/https:/example.com/mcp/callback. For same-origin absolute URLs
+	// we route via SPA navigation so components like MCPCallback actually
+	// mount (and can issue the Accept: application/json XHR that keeps us on
+	// the success screen instead of following the server's 302).
 	const redirectToFrom = useCallback(() => {
 		if (from.startsWith("http://") || from.startsWith("https://")) {
+			try {
+				const url = new URL(from);
+				if (url.origin === window.location.origin) {
+					navigate(url.pathname + url.search + url.hash, {
+						replace: true,
+					});
+					return;
+				}
+			} catch {
+				// Malformed URL — fall through to full navigation.
+			}
 			window.location.href = from;
 		} else {
 			navigate(from, { replace: true });
