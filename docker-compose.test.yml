@@ -316,7 +316,7 @@ services:
       # Coverage data stored on shared volume for cross-phase accumulation
       COVERAGE_FILE: /coverage/.coverage
       # GitHub E2E test configuration (optional - tests skip if not set)
-      # Pass from host: GITHUB_TEST_PAT=ghp_xxx ./test.sh --e2e
+      # Pass from host: GITHUB_TEST_PAT=ghp_xxx ./test.sh e2e
       # Or set in .env.test file
       GITHUB_TEST_PAT: ${GITHUB_TEST_PAT:-}
       GITHUB_TEST_REPO: ${GITHUB_TEST_REPO:-jackmusick/e2e-test-workspace}

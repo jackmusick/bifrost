@@ -110,7 +110,7 @@ The factory functions in `tests/helpers/factories.py` already exist but no tests
 
 ## Phase 4: Increase coverage (future)
 
-After the test suite is green and clean, write new tests targeting uncovered code paths. Use `./test.sh --coverage` to identify gaps. Prioritize:
+After the test suite is green and clean, write new tests targeting uncovered code paths. Use `./test.sh all --coverage` to identify gaps. Prioritize:
 - Business logic in `api/shared/`
 - Error handling in handlers
 - Edge cases in workflow execution engine
@@ -122,8 +122,8 @@ After the test suite is green and clean, write new tests targeting uncovered cod
 
 After each phase, run:
 ```bash
-./test.sh              # All tests pass
-./test.sh --coverage   # Coverage report
+./test.sh all              # All tests pass
+./test.sh all --coverage   # Coverage report
 ```
 
 ## Key files modified (non-test, Phase 1)
