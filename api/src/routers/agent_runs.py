@@ -45,6 +45,7 @@ from src.services.execution.agent_run_service import (
     wait_for_agent_run_result,
 )
 from src.services.execution.dry_run import evaluate_against_prompt
+from src.services.execution.run_summarizer import enqueue_summarize
 from src.services.execution.tuning_service import (
     append_user_message_and_reply,
     get_or_create_conversation,
@@ -663,6 +664,40 @@ async def send_flag_message(
         created_at=conv.created_at,
         last_updated_at=conv.last_updated_at,
     )
+
+
+@router.post("/{run_id}/regenerate-summary")
+async def regenerate_summary(
+    run_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> dict:
+    """Reset summary state and re-enqueue a summarization job. Admin-only."""
+    is_admin = user.is_superuser or any(
+        role in ["Platform Admin", "Platform Owner"] for role in user.roles
+    )
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform administrators can regenerate run summaries",
+        )
+
+    run = (
+        await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+    ).scalar_one_or_none()
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run {run_id} not found",
+        )
+
+    run.summary_status = "pending"
+    run.summary_error = None
+    await db.commit()
+
+    await enqueue_summarize(run_id)
+
+    return {"status": "enqueued", "run_id": str(run_id)}
 
 
 @router.post("/{run_id}/dry-run", response_model=DryRunResponse)

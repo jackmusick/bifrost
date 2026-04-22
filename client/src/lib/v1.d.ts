@@ -3403,22 +3403,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4837,6 +4837,26 @@ export interface paths {
          * @description Append a user turn and synchronously get the tuning-model reply.
          */
         post: operations["send_flag_message_api_agent_runs__run_id__flag_conversation_message_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{run_id}/regenerate-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Summary
+         * @description Reset summary state and re-enqueue a summarization job. Admin-only.
+         */
+        post: operations["regenerate_summary_api_agent_runs__run_id__regenerate_summary_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -25127,7 +25147,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25160,7 +25180,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25193,7 +25213,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25226,7 +25246,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -27589,6 +27609,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlagConversationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_summary_api_agent_runs__run_id__regenerate_summary_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
