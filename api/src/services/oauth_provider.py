@@ -115,6 +115,7 @@ class OAuthProviderClient:
         client_id: str,
         client_secret: str | None,
         redirect_uri: str,
+        scopes: str | None = None,
         audience: str | None = None,
     ) -> tuple[bool, dict]:
         """
@@ -149,6 +150,9 @@ class OAuthProviderClient:
         if audience:
             payload["audience"] = audience
 
+        if scopes:
+            payload["scope"] = scopes
+
         return await self._make_token_request(token_url, payload)
 
     async def refresh_access_token(
@@ -157,6 +161,7 @@ class OAuthProviderClient:
         refresh_token: str,
         client_id: str,
         client_secret: str | None,
+        scopes: str | None = None,
         audience: str | None = None,
     ) -> tuple[bool, dict]:
         """
@@ -186,6 +191,9 @@ class OAuthProviderClient:
 
         if audience:
             payload["audience"] = audience
+
+        if scopes:
+            payload["scope"] = scopes
 
         return await self._make_token_request(token_url, payload)
 

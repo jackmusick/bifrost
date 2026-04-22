@@ -797,6 +797,7 @@ async def refresh_token(
             refresh_token=refresh_token_value,
             client_id=provider.client_id,
             client_secret=client_secret,
+            scopes=" ".join(provider.scopes) if provider.scopes else None,
             audience=provider.audience,
         )
 
@@ -905,6 +906,7 @@ async def oauth_callback(
         client_id=provider.client_id,
         client_secret=client_secret,
         redirect_uri=redirect_uri,
+        scopes=" ".join(provider.scopes) if provider.scopes else None,
         audience=provider.audience,
     )
 
