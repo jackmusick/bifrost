@@ -6,12 +6,15 @@
  * (max_iterations, max_token_budget, llm_max_tokens) are server-gated to
  * platform admins (T19) and visually hidden here for non-admins.
  *
+ * Visual spec mirrors /tmp/agent-mockup/src/pages/AgentDetailPage.tsx's
+ * `.form-section` pattern: single column, uppercase section-title labels,
+ * thin dividers between sections, no card chrome. Activation is an inline
+ * row inside the Identity section — no right column.
+ *
  * Two modes:
  *   - mode="create": empty form, POSTs to /api/agents on save, then the
  *     parent page navigates to /agents/:newId
  *   - mode="edit": prepopulated from `agent`, PUTs to /api/agents/:id
- *
- * Pause toggle simply submits a partial update with `is_active: false`.
  */
 
 import { useEffect } from "react";
@@ -20,12 +23,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import {
 	Form,
 	FormControl,
@@ -45,12 +42,15 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+
+import { CARD_SURFACE, TYPE_LABEL_UPPERCASE } from "@/components/agents/design-tokens";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	useCreateAgent,
 	useUpdateAgent,
 	type AgentPublic,
 } from "@/hooks/useAgents";
+import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 type AgentChannel = components["schemas"]["AgentChannel"];
@@ -74,6 +74,30 @@ export interface AgentSettingsTabProps {
 	mode: "create" | "edit";
 	agent?: AgentPublic | null;
 	onCreated?: (newId: string) => void;
+}
+
+/**
+ * Thin divided form section — mockup's `.form-section` in Tailwind.
+ * Last-child drops the bottom divider via `last:border-b-0`.
+ */
+function FormSection({
+	title,
+	children,
+	testId,
+}: {
+	title: string;
+	children: React.ReactNode;
+	testId?: string;
+}) {
+	return (
+		<section
+			className="border-b px-5 py-5 last:border-b-0"
+			data-testid={testId}
+		>
+			<h3 className={cn("mb-3.5", TYPE_LABEL_UPPERCASE)}>{title}</h3>
+			<div className="flex flex-col gap-3.5">{children}</div>
+		</section>
+	);
 }
 
 export function AgentSettingsTab({
@@ -157,25 +181,142 @@ export function AgentSettingsTab({
 		<Form {...form}>
 			<form
 				onSubmit={form.handleSubmit(onSubmit)}
-				className="grid gap-4 lg:grid-cols-[1fr_320px]"
+				className={cn("overflow-hidden", CARD_SURFACE)}
 				data-testid="agent-settings-form"
 			>
-				<div className="flex flex-col gap-4">
-					<Card>
-						<CardHeader className="pb-3">
-							<CardTitle className="text-base">Identity</CardTitle>
-						</CardHeader>
-						<CardContent className="flex flex-col gap-4">
+				<FormSection title="Identity">
+					<FormField
+						control={form.control}
+						name="name"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>Name</FormLabel>
+								<FormControl>
+									<Input
+										placeholder="Sales Assistant"
+										{...field}
+									/>
+								</FormControl>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+					<FormField
+						control={form.control}
+						name="description"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>Description</FormLabel>
+								<FormControl>
+									<Input
+										placeholder="What this agent specializes in"
+										{...field}
+									/>
+								</FormControl>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+					<FormField
+						control={form.control}
+						name="is_active"
+						render={({ field }) => (
+							<FormItem className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2.5">
+								<div className="flex flex-col">
+									<FormLabel className="m-0">
+										{field.value
+											? "Agent is active"
+											: "Agent is paused"}
+									</FormLabel>
+									<FormDescription>
+										{field.value
+											? "Triggers will be accepted."
+											: "Triggers will be rejected."}
+									</FormDescription>
+								</div>
+								<FormControl>
+									<Switch
+										aria-label="Toggle agent active"
+										checked={field.value}
+										onCheckedChange={field.onChange}
+									/>
+								</FormControl>
+							</FormItem>
+						)}
+					/>
+				</FormSection>
+
+				<FormSection title="Behavior">
+					<FormField
+						control={form.control}
+						name="system_prompt"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>System prompt</FormLabel>
+								<FormControl>
+									<Textarea
+										className="min-h-[200px] font-mono text-sm"
+										placeholder="You are a helpful assistant…"
+										{...field}
+									/>
+								</FormControl>
+								<FormDescription>
+									Instructions the agent follows on every run.
+								</FormDescription>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+					<FormField
+						control={form.control}
+						name="access_level"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>Access level</FormLabel>
+								<Select
+									value={field.value}
+									onValueChange={field.onChange}
+								>
+									<FormControl>
+										<SelectTrigger aria-label="Access level">
+											<SelectValue />
+										</SelectTrigger>
+									</FormControl>
+									<SelectContent>
+										<SelectItem value="authenticated">
+											Authenticated
+										</SelectItem>
+										<SelectItem value="role_based">
+											Role-based
+										</SelectItem>
+									</SelectContent>
+								</Select>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+				</FormSection>
+
+				{isPlatformAdmin ? (
+					<FormSection title="Budgets" testId="budget-card">
+						<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 							<FormField
 								control={form.control}
-								name="name"
+								name="max_iterations"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Name</FormLabel>
+										<FormLabel>Max iterations</FormLabel>
 										<FormControl>
 											<Input
-												placeholder="Sales Assistant"
-												{...field}
+												type="number"
+												value={field.value ?? ""}
+												onChange={(e) =>
+													field.onChange(
+														e.target.value
+															? Number(e.target.value)
+															: null,
+													)
+												}
 											/>
 										</FormControl>
 										<FormMessage />
@@ -184,224 +325,62 @@ export function AgentSettingsTab({
 							/>
 							<FormField
 								control={form.control}
-								name="description"
+								name="max_token_budget"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Description</FormLabel>
+										<FormLabel>Max token budget</FormLabel>
 										<FormControl>
 											<Input
-												placeholder="What this agent specializes in"
-												{...field}
+												type="number"
+												value={field.value ?? ""}
+												onChange={(e) =>
+													field.onChange(
+														e.target.value
+															? Number(e.target.value)
+															: null,
+													)
+												}
 											/>
 										</FormControl>
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader className="pb-3">
-							<CardTitle className="text-base">Behavior</CardTitle>
-						</CardHeader>
-						<CardContent className="flex flex-col gap-4">
 							<FormField
 								control={form.control}
-								name="system_prompt"
+								name="llm_max_tokens"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>System prompt</FormLabel>
+										<FormLabel>Max tokens / response</FormLabel>
 										<FormControl>
-											<Textarea
-												className="min-h-[200px] font-mono text-sm"
-												placeholder="You are a helpful assistant…"
-												{...field}
+											<Input
+												type="number"
+												value={field.value ?? ""}
+												onChange={(e) =>
+													field.onChange(
+														e.target.value
+															? Number(e.target.value)
+															: null,
+													)
+												}
 											/>
 										</FormControl>
-										<FormDescription>
-											Instructions the agent follows on
-											every run.
-										</FormDescription>
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
-							<FormField
-								control={form.control}
-								name="access_level"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Access level</FormLabel>
-										<Select
-											value={field.value}
-											onValueChange={field.onChange}
-										>
-											<FormControl>
-												<SelectTrigger aria-label="Access level">
-													<SelectValue />
-												</SelectTrigger>
-											</FormControl>
-											<SelectContent>
-												<SelectItem value="authenticated">
-													Authenticated
-												</SelectItem>
-												<SelectItem value="role_based">
-													Role-based
-												</SelectItem>
-											</SelectContent>
-										</Select>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						</CardContent>
-					</Card>
+						</div>
+					</FormSection>
+				) : null}
 
-					{isPlatformAdmin ? (
-						<Card data-testid="budget-card">
-							<CardHeader className="pb-3">
-								<CardTitle className="text-base">
-									Budgets
-								</CardTitle>
-							</CardHeader>
-							<CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
-								<FormField
-									control={form.control}
-									name="max_iterations"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>Max iterations</FormLabel>
-											<FormControl>
-												<Input
-													type="number"
-													value={field.value ?? ""}
-													onChange={(e) =>
-														field.onChange(
-															e.target.value
-																? Number(
-																		e.target
-																			.value,
-																	)
-																: null,
-														)
-													}
-												/>
-											</FormControl>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-								<FormField
-									control={form.control}
-									name="max_token_budget"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>
-												Max token budget
-											</FormLabel>
-											<FormControl>
-												<Input
-													type="number"
-													value={field.value ?? ""}
-													onChange={(e) =>
-														field.onChange(
-															e.target.value
-																? Number(
-																		e.target
-																			.value,
-																	)
-																: null,
-														)
-													}
-												/>
-											</FormControl>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-								<FormField
-									control={form.control}
-									name="llm_max_tokens"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>
-												Max tokens / response
-											</FormLabel>
-											<FormControl>
-												<Input
-													type="number"
-													value={field.value ?? ""}
-													onChange={(e) =>
-														field.onChange(
-															e.target.value
-																? Number(
-																		e.target
-																			.value,
-																	)
-																: null,
-														)
-													}
-												/>
-											</FormControl>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</CardContent>
-						</Card>
-					) : null}
-
-					<div className="flex items-center justify-end gap-2">
-						<Button
-							type="submit"
-							disabled={pending}
-						>
-							{pending
-								? "Saving…"
-								: mode === "create"
-									? "Create agent"
-									: "Save changes"}
-						</Button>
-					</div>
-				</div>
-
-				{/* Side: pause/activate */}
-				<div className="flex flex-col gap-3">
-					<Card>
-						<CardHeader className="pb-3">
-							<CardTitle className="text-base">Activation</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<FormField
-								control={form.control}
-								name="is_active"
-								render={({ field }) => (
-									<FormItem className="flex items-center justify-between gap-3">
-										<div className="flex flex-col">
-											<FormLabel className="m-0">
-												{field.value
-													? "Agent is active"
-													: "Agent is paused"}
-											</FormLabel>
-											<FormDescription>
-												{field.value
-													? "Triggers will be accepted."
-													: "Triggers will be rejected."}
-											</FormDescription>
-										</div>
-										<FormControl>
-											<Switch
-												aria-label="Toggle agent active"
-												checked={field.value}
-												onCheckedChange={field.onChange}
-											/>
-										</FormControl>
-									</FormItem>
-								)}
-							/>
-						</CardContent>
-					</Card>
+				<div className="flex items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+					<Button type="submit" disabled={pending}>
+						{pending
+							? "Saving…"
+							: mode === "create"
+								? "Create agent"
+								: "Save changes"}
+					</Button>
 				</div>
 			</form>
 		</Form>
