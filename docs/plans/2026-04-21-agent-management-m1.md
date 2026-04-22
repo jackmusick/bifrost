@@ -3882,3 +3882,52 @@ Pages T64–T67 each:
 5. Committed with a focused message
 
 After T67, recapture all 5 ours-*.png and stage side-by-side with mockup-*.png for user sign-off before re-running the Playwright e2e specs (those assertions may need selector updates after the rebuild).
+
+---
+
+### Phase 7b — Design system + realistic fixtures (UPDATED 2026-04-22)
+
+User feedback after the first Phase 7 captures made it obvious that:
+
+- Empty-state screenshots can't be judged. Fleet names truncate, agent cards have no sparklines, activity cards say "No activity yet," tune page has nothing to propose against. Without realistic data the visuals can't carry their own weight.
+- The "Propose change" card in the tune page is misframed — it should be inline on the assistant's turn (a `ProposalTurn` block embedded in the chat bubble), not a floating card. The conversation contract already supports `ProposalTurn` in `api/src/models/contracts/agent_run_flag_conversations.py`.
+- shadcn is not the blocker. The mockup is already a custom component system (`.stat-card`, `.tabs`, `.activity-item`, `.kv`, etc.). Recreating it on top of shadcn means writing custom markup, which is what `StatCard`/`PillTabs`/`Sparkline` already are. We're not losing to the library — we're losing to a half-built design system.
+
+**Before any more page rebuilds**, land these:
+
+- [ ] **T68 — Lock in the agent-surfaces design system.** Document + enforce:
+  - Type scale: 20px page title, 14.5px card title, 13.5px body, 13px muted, 12.5px small, 11.5px uppercase label (with `tracking-wider`, `uppercase`)
+  - Stat value: 22px semibold tabular-nums, `tracking-tight`
+  - Gap scale: 16px between cards, 12px between card subsections, 6px between label and value, 4px between value and delta
+  - Card radius: 10px (matches mockup `.card`)
+  - Color tokens: use the project's semantic tokens (`bg-card`, `border-border`, `text-muted-foreground`, `text-emerald-500`, `text-rose-500`, `text-yellow-500`); DO NOT hand-roll hex colors
+  - Write these as classes in `client/src/components/agents/design-tokens.ts` exporting `cn`-composable class lists (`LABEL_UPPERCASE`, `STAT_VALUE`, `CARD_RADIUS`, etc.) so every new primitive and page composition uses the same values
+  - Sweep the existing `Sparkline` / `StatCard` / `PillTabs` / `FleetPage` / `AgentDetailPage` / `AgentOverviewTab` to pull from those tokens — fix any drift
+
+- [ ] **T69 — Missing primitives.** Build in `client/src/components/agents/`:
+  - `MetaLine.tsx` — small muted inline strip: `"1h ago · 3.4s · 2 iter · 1,852 tok · $0.04"`, items comma/dot separated, used on Run detail + flipbook + tune
+  - `KVList.tsx` — 2-column definition list (label / value rows) for Configuration / Budgets / Captured data sidebars; takes `items: { label, value, mono? }[]` and handles the `grid-cols-[auto_1fr]` Tailwind layout
+  - `Chip.tsx` — consistent tag pill for captured metadata (`ticket_id 4822`, `customer Globex`), supports mono font and color accents
+  - `ChatBubble.tsx` — message bubble component with `kind` prop: `user` | `assistant` | `system`. The assistant variant accepts optional `proposal` and `dryrun` slot children that render *inside* the bubble below the prose, styled as nested tool-result blocks with their own action buttons. Deletes the floating "Propose change" card.
+
+- [ ] **T70 — Realistic seed fixtures.** The capture script at `/tmp/ux-compare/grab-ours-v3.mjs` currently seeds 5 agents with zero runs. Extend it (or add a `seed-realistic.mjs`) to also insert:
+  - 10–15 `AgentRun` rows per agent, spread across last 7 days, mix of `completed` / `failed` / `queued` statuses
+  - Each completed run has `asked`, `did`, `confidence`, `run_metadata` populated
+  - 2–3 flagged runs per agent (`verdict=down`, with `verdict_note`) so `Needs attention` + `review` + `tune` all have data
+  - For one agent, a `AgentRunFlagConversation` with 4–6 messages: user note → assistant diagnosis → assistant proposal (`ProposalTurn` with add/keep/remove diff) → optional dry-run result
+  - One `AgentPromptHistory` row so the "prompt versioning" surface has history
+  - Inserts go through the DB directly via `psql`-inside-postgres OR (safer) via a small pytest-style seed script invoked from inside the test-stack worker container — NOT via the public DELETE/PUT endpoints since those soft-delete
+  - Script must be idempotent (clears its own seeded rows by stable name prefix first)
+
+- [ ] **T71 — Inline proposal / dry-run in tune chat.** Consequence of T69's `ChatBubble` redesign: the tune page now renders the proposal as an assistant-turn child, with inline actions:
+  - "Try this" → calls `useApplyTuning()`
+  - "Dry-run" → calls `useTuningDryRun()`, inline-renders the result as another child block under the same bubble
+  - Remove the standalone `Proposed change` card from `AgentTunePage.tsx`
+
+After T68–T71 land, *then* run T64/T65/T66/T67 (run detail, flipbook, tune, settings parity). The page rebuilds will be faster because the primitives / tokens / data are all in place.
+
+### Fixture note for fresh context
+
+The capture script is at `/tmp/ux-compare/grab-ours-v3.mjs`. If it's gone, the token generation, container networking, and seed logic are captured in this plan's earlier "Capture loop" section. The auth JWT uses the test secret `test-secret-key-for-e2e-testing-must-be-32-chars` and the `bifrost_access_token` localStorage key.
+
+Keep running captures into `/tmp/ux-out/` and copy to `~/Sync/Screenshots/agent-ux-compare/` after each pass so the user can review without swapping dev stacks.
