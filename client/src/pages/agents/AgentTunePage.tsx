@@ -2,21 +2,19 @@
  * AgentTunePage — consolidated tuning workflow for an agent.
  *
  * Routes:
- *   /agents/:id/tune  → this page
+ *   /agents/:id/tune
  *
- * Layout:
+ * Layout mirrors /tmp/agent-mockup/src/pages/TuneChatPage.tsx:
  *   - Left sidebar: list of flagged runs, current prompt preview.
- *   - Main: chat-style log of the tuning conversation. The user types into
- *     a ChatComposer; "Propose change" calls useTuningSession() to get a
- *     consolidated proposal, "Dry-run" calls useTuningDryRun(), "Apply"
- *     calls useApplyTuning() and navigates back to the agent detail page.
+ *   - Main: chat-style log of the tuning conversation. Proposals and dry-run
+ *     results render *inside* the assistant's bubble as nested slots (via
+ *     ChatBubbleSlot), not as floating sibling cards — that was the Phase-7b
+ *     T71 redesign. Actions ("Dry-run", "Apply") are inline on the proposal
+ *     slot.
  *
- * Ported from /tmp/agent-mockup/src/pages/TuneChatPage.tsx — shadcn
- * primitives, Tailwind, real hooks.
- *
- * NOTE: the diff display is a simple before/after side-by-side. We don't
- * pull in a real diff library here — the current ConsolidatedProposalResponse
- * only carries `proposed_prompt`, not a structured diff. // TODO: real diff library
+ * NOTE: the diff display is a simple before/after side-by-side. We don't pull
+ * in a real diff library here — ConsolidatedProposalResponse only carries
+ * `proposed_prompt`, not a structured diff. // TODO: real diff library
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -29,7 +27,6 @@ import {
 	PlayCircle,
 	Sparkles,
 	ThumbsDown,
-	User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -44,6 +41,13 @@ import {
 } from "@/components/ui/card";
 import { ChatComposer } from "@/components/ui/chat-composer";
 import { Skeleton } from "@/components/ui/skeleton";
+
+import { ChatBubble, ChatBubbleSlot } from "@/components/agents/ChatBubble";
+import {
+	TONE_MUTED,
+	TYPE_LABEL_UPPERCASE,
+	TYPE_MUTED,
+} from "@/components/agents/design-tokens";
 
 import { useAgent } from "@/hooks/useAgents";
 import { useAgentRuns } from "@/services/agentRuns";
@@ -109,8 +113,6 @@ export function AgentTunePage() {
 
 	function handleSend(text: string) {
 		pushMessage({ kind: "user", content: text });
-		// We don't have a free-form chat endpoint yet — every send produces a
-		// canned acknowledgement and (re-)triggers a proposal request.
 		pushMessage({
 			kind: "assistant",
 			content:
@@ -185,7 +187,7 @@ export function AgentTunePage() {
 
 	return (
 		<div
-			className="flex flex-col gap-4 max-w-7xl mx-auto"
+			className="mx-auto flex max-w-7xl flex-col gap-4"
 			data-testid="agent-tune-page"
 		>
 			<Link
@@ -202,11 +204,11 @@ export function AgentTunePage() {
 						<Sparkles className="h-5 w-5" />
 						Tune agent
 					</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
-						Refine {agent?.name ?? "this agent"}&apos;s prompt
-						against {flagged.length} flagged run
-						{flagged.length === 1 ? "" : "s"}. Changes are dry-run
-						before going live.
+					<p className={cn("mt-1", TYPE_MUTED)}>
+						Refine {agent?.name ?? "this agent"}&apos;s prompt against{" "}
+						{flagged.length} flagged run
+						{flagged.length === 1 ? "" : "s"}. Changes are dry-run before
+						going live.
 					</p>
 				</div>
 				<Button asChild variant="outline">
@@ -217,7 +219,7 @@ export function AgentTunePage() {
 				</Button>
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
 				{/* Main chat column */}
 				<Card className="flex min-h-[600px] flex-col overflow-hidden">
 					<div
@@ -226,7 +228,7 @@ export function AgentTunePage() {
 						data-testid="tune-messages"
 					>
 						{messages.map((m, i) => (
-							<MessageBubble
+							<TuneMessage
 								key={i}
 								msg={m}
 								onDryRun={runDryRun}
@@ -243,15 +245,14 @@ export function AgentTunePage() {
 						) : null}
 					</div>
 					<div className="border-t bg-muted/40 p-3">
-						<div className="mb-2 flex items-center gap-2">
-							{!proposal ? (
+						{!proposal ? (
+							<div className="mb-2 flex items-center gap-2">
 								<Button
 									type="button"
 									size="sm"
 									onClick={runProposal}
 									disabled={
-										tuningSession.isPending ||
-										flagged.length === 0
+										tuningSession.isPending || flagged.length === 0
 									}
 									data-testid="propose-button"
 								>
@@ -262,8 +263,8 @@ export function AgentTunePage() {
 									)}
 									Propose change
 								</Button>
-							) : null}
-						</div>
+							</div>
+						) : null}
 						<ChatComposer
 							placeholder="Ask for another change, or focus on a pattern…"
 							onSend={handleSend}
@@ -289,7 +290,12 @@ export function AgentTunePage() {
 									<Skeleton className="h-12 w-full" />
 								</div>
 							) : flagged.length === 0 ? (
-								<p className="px-3 py-6 text-center text-xs text-muted-foreground">
+								<p
+									className={cn(
+										"px-3 py-6 text-center text-xs",
+										TONE_MUTED,
+									)}
+								>
 									No flagged runs.
 								</p>
 							) : (
@@ -300,7 +306,7 @@ export function AgentTunePage() {
 												to={`/agents/${r.agent_id}/runs/${r.id}`}
 												className="flex items-start gap-2 px-3 py-2 text-xs hover:bg-accent/40"
 											>
-												<div className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400">
+												<div className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-rose-500/15 text-rose-500">
 													<ThumbsDown className="h-3 w-3" />
 												</div>
 												<div className="min-w-0">
@@ -311,8 +317,7 @@ export function AgentTunePage() {
 														<div
 															className="truncate text-[11px] italic text-muted-foreground"
 															title={
-																r.verdict_note ??
-																undefined
+																r.verdict_note ?? undefined
 															}
 														>
 															&quot;
@@ -331,9 +336,7 @@ export function AgentTunePage() {
 
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">
-								Current prompt
-							</CardTitle>
+							<CardTitle className="text-sm">Current prompt</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<pre className="max-h-44 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-muted-foreground">
@@ -347,7 +350,11 @@ export function AgentTunePage() {
 	);
 }
 
-function MessageBubble({
+// ──────────────────────────────────────────────────────────────────────────
+// Chat message dispatch
+// ──────────────────────────────────────────────────────────────────────────
+
+function TuneMessage({
 	msg,
 	onDryRun,
 	onApply,
@@ -361,37 +368,17 @@ function MessageBubble({
 	applying: boolean;
 }) {
 	if (msg.kind === "system") {
-		return (
-			<div className="self-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-700 dark:text-emerald-400">
-				{msg.content}
-			</div>
-		);
+		return <ChatBubble kind="system">{msg.content}</ChatBubble>;
 	}
 	if (msg.kind === "user") {
-		return (
-			<div className="flex items-start justify-end gap-2">
-				<div className="max-w-[600px] rounded-2xl bg-primary px-3.5 py-2 text-sm text-primary-foreground whitespace-pre-wrap">
-					{msg.content}
-				</div>
-				<div className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
-					<User className="h-3 w-3" />
-				</div>
-			</div>
-		);
+		return <ChatBubble kind="user">{msg.content}</ChatBubble>;
 	}
 	if (msg.kind === "assistant") {
-		return (
-			<div className="flex items-start gap-2">
-				<AssistantAvatar />
-				<div className="max-w-[640px] rounded-2xl bg-muted px-3.5 py-2 text-sm whitespace-pre-wrap">
-					{msg.content}
-				</div>
-			</div>
-		);
+		return <ChatBubble kind="assistant">{msg.content}</ChatBubble>;
 	}
 	if (msg.kind === "proposal") {
 		return (
-			<ProposalCard
+			<ProposalBubble
 				proposal={msg.proposal}
 				onDryRun={onDryRun}
 				onApply={onApply}
@@ -400,18 +387,15 @@ function MessageBubble({
 			/>
 		);
 	}
-	return <DryRunCard result={msg.result} />;
+	return <DryRunBubble result={msg.result} />;
 }
 
-function AssistantAvatar() {
-	return (
-		<div className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-purple-500 text-[#0b0d10]">
-			<Sparkles className="h-3 w-3" />
-		</div>
-	);
-}
+// ──────────────────────────────────────────────────────────────────────────
+// Proposal + Dry-run bubbles — both render as assistant ChatBubbles with a
+// nested ChatBubbleSlot carrying the diff / results inline.
+// ──────────────────────────────────────────────────────────────────────────
 
-function ProposalCard({
+function ProposalBubble({
 	proposal,
 	onDryRun,
 	onApply,
@@ -425,139 +409,147 @@ function ProposalCard({
 	applying: boolean;
 }) {
 	return (
-		<div
-			className="flex items-start gap-2"
-			data-testid="proposal-card"
-		>
-			<AssistantAvatar />
-			<Card className="max-w-[820px] flex-1">
-				<CardHeader className="pb-2">
-					<CardTitle className="text-sm">Proposed change</CardTitle>
-					<p className="text-xs text-muted-foreground">
-						{proposal.summary}
-					</p>
-				</CardHeader>
-				<CardContent className="grid gap-3">
-					<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+		<div data-testid="proposal-card">
+		<ChatBubble
+			kind="assistant"
+			slots={
+				<ChatBubbleSlot
+					title="Proposed change"
+					titleTone="primary"
+					actions={
+						<>
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={onDryRun}
+								disabled={dryRunning}
+								data-testid="dryrun-button"
+							>
+								{dryRunning ? (
+									<Loader2 className="h-3 w-3 animate-spin" />
+								) : (
+									<PlayCircle className="h-3 w-3" />
+								)}
+								Dry-run against all
+							</Button>
+							<Button
+								size="sm"
+								onClick={onApply}
+								disabled={applying}
+								data-testid="apply-button"
+							>
+								{applying ? (
+									<Loader2 className="h-3 w-3 animate-spin" />
+								) : (
+									<Check className="h-3 w-3" />
+								)}
+								Try this
+							</Button>
+							<span className={cn("ml-auto text-[11px]", TONE_MUTED)}>
+								Sandbox · nothing applied live
+							</span>
+						</>
+					}
+				>
+					<div className="grid gap-3 md:grid-cols-2">
 						<div>
-							<div className="mb-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
-								Before (current)
+							<div className={cn("mb-1", TYPE_LABEL_UPPERCASE)}>
+								Before
 							</div>
 							<pre
-								className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded border bg-muted/40 p-2 font-mono text-[11.5px]"
+								className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-2 font-mono text-[11.5px] leading-relaxed"
 								data-testid="proposal-before"
 							>
-								{/* TODO: real diff library — current API only carries proposed_prompt. */}
+								{/* TODO: real diff library — API only carries proposed_prompt. */}
 								(current prompt — see sidebar)
 							</pre>
 						</div>
 						<div>
-							<div className="mb-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
-								After (proposed)
+							<div className={cn("mb-1", TYPE_LABEL_UPPERCASE)}>
+								After
 							</div>
 							<pre
-								className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded border bg-emerald-500/5 p-2 font-mono text-[11.5px]"
+								className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 font-mono text-[11.5px] leading-relaxed"
 								data-testid="proposal-after"
 							>
 								{proposal.proposed_prompt}
 							</pre>
 						</div>
 					</div>
-					<div className="flex items-center gap-2 text-xs text-muted-foreground">
-						<span>
-							Will affect {proposal.affected_run_ids.length} flagged
-							run
-							{proposal.affected_run_ids.length === 1 ? "" : "s"}.
-						</span>
+					<div className={cn("mt-2 text-[11px]", TONE_MUTED)}>
+						{proposal.summary}
 					</div>
-					<div className="flex items-center justify-end gap-2">
-						<Button
-							size="sm"
-							variant="outline"
-							onClick={onDryRun}
-							disabled={dryRunning}
-							data-testid="dryrun-button"
-						>
-							{dryRunning ? (
-								<Loader2 className="h-3 w-3 animate-spin" />
-							) : (
-								<PlayCircle className="h-3 w-3" />
-							)}
-							Dry-run against all
-						</Button>
-						<Button
-							size="sm"
-							onClick={onApply}
-							disabled={applying}
-							data-testid="apply-button"
-						>
-							{applying ? (
-								<Loader2 className="h-3 w-3 animate-spin" />
-							) : (
-								<Check className="h-3 w-3" />
-							)}
-							Apply change
-						</Button>
+					<div className={cn("mt-0.5 text-[11px]", TONE_MUTED)}>
+						Will affect {proposal.affected_run_ids.length} flagged run
+						{proposal.affected_run_ids.length === 1 ? "" : "s"}.
 					</div>
-				</CardContent>
-			</Card>
+				</ChatBubbleSlot>
+			}
+			// Intentional: proposal replaces the assistant's prose with the slot
+			// so the card-embedded-in-bubble reads as a single turn.
+		>
+			{/* Empty prose — the slot carries all the content. */}
+			<span className="sr-only">Proposed change below.</span>
+		</ChatBubble>
 		</div>
 	);
 }
 
-function DryRunCard({ result }: { result: ConsolidatedDryRunResponse }) {
+function DryRunBubble({ result }: { result: ConsolidatedDryRunResponse }) {
 	const total = result.results.length;
 	const pass = result.results.filter(
 		(r) => !r.would_still_decide_same,
 	).length;
+	const allPass = pass === total && total > 0;
 	return (
-		<div className="flex items-start gap-2" data-testid="dryrun-card">
-			<div className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400">
-				<PlayCircle className="h-3 w-3" />
-			</div>
-			<Card className="max-w-[820px] flex-1">
-				<CardHeader className="pb-2">
-					<CardTitle className="text-sm">Dry-run results</CardTitle>
-					<p className="text-xs text-muted-foreground">
-						{pass} of {total} would change behavior with the new
-						prompt.
+		<ChatBubble
+			kind="assistant"
+			slots={
+				<ChatBubbleSlot
+					title={allPass ? "Dry-run passed" : "Dry-run results"}
+					titleTone={allPass ? "emerald" : "yellow"}
+				>
+					<p className={cn("mb-2 text-[11px]", TONE_MUTED)}>
+						{pass} of {total} would change behavior with the new prompt.
 					</p>
-				</CardHeader>
-				<CardContent className="grid gap-2">
-					{result.results.map((r) => (
-						<div
-							key={r.run_id}
-							className="rounded border bg-card p-2 text-xs"
-						>
-							<div className="flex items-center justify-between">
-								<span className="font-mono text-[11px] text-muted-foreground">
-									{r.run_id.slice(0, 8)}…
-								</span>
-								<Badge
-									variant="outline"
-									className={cn(
-										"text-[10.5px]",
-										r.would_still_decide_same
-											? "border-yellow-500/40 text-yellow-700 dark:text-yellow-400"
-											: "border-emerald-500/40 text-emerald-700 dark:text-emerald-400",
-									)}
-								>
-									{r.would_still_decide_same
-										? "Still wrong"
-										: "Would change"}
-								</Badge>
+					<div className="grid gap-1.5" data-testid="dryrun-card">
+						{result.results.map((r) => (
+							<div
+								key={r.run_id}
+								className="rounded-md border bg-card p-2 text-xs"
+							>
+								<div className="flex items-center justify-between gap-2">
+									<span className="font-mono text-[11px] text-muted-foreground">
+										{r.run_id.slice(0, 8)}…
+									</span>
+									<Badge
+										variant="outline"
+										className={cn(
+											"text-[10.5px]",
+											r.would_still_decide_same
+												? "border-yellow-500/40 text-yellow-500"
+												: "border-emerald-500/40 text-emerald-500",
+										)}
+									>
+										{r.would_still_decide_same
+											? "Still wrong"
+											: "Would change"}
+									</Badge>
+								</div>
+								<div className={cn("mt-1", TONE_MUTED)}>
+									{r.reasoning}
+								</div>
+								<div className="mt-0.5 text-[10.5px] text-muted-foreground">
+									confidence: {Math.round(r.confidence * 100)}%
+								</div>
 							</div>
-							<div className="mt-1 text-muted-foreground">
-								{r.reasoning}
-							</div>
-							<div className="mt-0.5 text-[10.5px] text-muted-foreground">
-								confidence: {Math.round(r.confidence * 100)}%
-							</div>
-						</div>
-					))}
-				</CardContent>
-			</Card>
-		</div>
+						))}
+					</div>
+				</ChatBubbleSlot>
+			}
+		>
+			<span className="sr-only">Dry-run result below.</span>
+		</ChatBubble>
 	);
 }
 
