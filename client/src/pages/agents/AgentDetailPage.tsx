@@ -55,11 +55,11 @@ export function AgentDetailPage() {
 			</Link>
 
 			{/* Header */}
-			<div className="flex items-start justify-between gap-3">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 				<div className="flex items-start gap-3 min-w-0">
 					<Bot className="h-5 w-5 mt-1 shrink-0 text-muted-foreground" />
 					<div className="min-w-0">
-						<div className="flex items-center gap-2">
+						<div className="flex flex-wrap items-center gap-2">
 							<h1 className="text-2xl font-extrabold tracking-tight truncate">
 								{isCreate
 									? "New agent"

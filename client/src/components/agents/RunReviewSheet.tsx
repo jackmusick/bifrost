@@ -63,6 +63,7 @@ export function RunReviewSheet({
 		<Sheet open={open} onOpenChange={onOpenChange}>
 			<SheetContent
 				side="right"
+				aria-label="Run review"
 				className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
 			>
 				<SheetHeader className="border-b px-6 py-4">

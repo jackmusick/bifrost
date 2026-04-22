@@ -87,7 +87,7 @@ export function FleetPage() {
 	return (
 		<div className="flex flex-col gap-5 max-w-7xl mx-auto">
 			{/* Header */}
-			<div className="flex items-start justify-between gap-3">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 				<div>
 					<h1 className="text-3xl font-extrabold tracking-tight">
 						Agents
@@ -96,7 +96,7 @@ export function FleetPage() {
 						{totalAgents} total · {activeCount} active · last 7 days
 					</p>
 				</div>
-				<Button asChild>
+				<Button asChild className="sm:w-auto">
 					<Link to="/agents/new">
 						<Plus className="h-4 w-4" /> New agent
 					</Link>
@@ -114,7 +114,7 @@ export function FleetPage() {
 
 			{/* Fleet stats */}
 			{fleetLoading || !fleetStats ? (
-				<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+				<div className="grid gap-3 grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
 					{[...Array(5)].map((_, i) => (
 						<Skeleton key={i} className="h-24 w-full" />
 					))}
