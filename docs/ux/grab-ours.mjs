@@ -98,6 +98,34 @@ const ctx = await browser.newContext({
 });
 const page = await ctx.newPage();
 
+// Mock the tuning endpoints since the test stack has no LLM wired up. Lets
+// us capture the inline proposal bubble without touching prod.
+await page.route("**/api/agents/*/tuning-session", (route) => {
+	route.fulfill({
+		status: 200,
+		contentType: "application/json",
+		body: JSON.stringify({
+			summary:
+				"Tighten the routing rules: promote infra keywords, demote hardware-adjacent ones when infra signals are present.",
+			proposed_prompt: [
+				"You are a helpful ticket-triage assistant.",
+				"",
+				"Routing rules:",
+				"- If the message mentions 'production', 'latency', 'outage',",
+				"  'database', or 'kubernetes' → route to SRE (bump severity +1).",
+				"- If it mentions 'invoice', 'billing', 'PO' → route to Billing.",
+				"- Only route to Workplace IT when no infra signals are present.",
+				"",
+				"Always include a one-line reason.",
+			].join("\n"),
+			affected_run_ids: [
+				"e438a391-f198-4744-ae5a-146eb66bc088",
+				"11111111-2222-3333-4444-555555555555",
+			],
+		}),
+	});
+});
+
 for (const [name, url] of ROUTES) {
 	try {
 		await page.goto(url, { waitUntil: "networkidle", timeout: 15000 });
@@ -123,6 +151,19 @@ for (const [name, url] of ROUTES) {
 			await page.waitForTimeout(800);
 		} catch (e) {
 			console.log("settings tab click fail: " + e.message);
+		}
+	}
+	if (name === "tune-chat") {
+		// Click "Propose change" so the capture shows the inline proposal bubble.
+		try {
+			await page
+				.getByTestId("propose-button")
+				.click({ timeout: 3000 });
+			// Wait for the proposal to render — inline slot inside assistant bubble.
+			await page.getByTestId("proposal-card").waitFor({ timeout: 8000 });
+			await page.waitForTimeout(500);
+		} catch (e) {
+			console.log("tune propose click fail: " + e.message);
 		}
 	}
 	await page.screenshot({
