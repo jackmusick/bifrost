@@ -462,20 +462,32 @@ async def run_preflight(
             warnings=[],
         )
 
-    # Detect unregistered decorated functions
+    # Detect unregistered decorated functions.
+    #
+    # Memory note: on a workspace with hundreds of .py files the naive shape
+    # (read all files, ast.parse each, hold every tree until the walk
+    # finishes) retained 300+ MB per call in an e2e memory trace. AST objects
+    # run ~10-50x the source byte size and they're cyclic, so Python's
+    # generational GC doesn't reclaim them promptly. Fix: process one file
+    # at a time and `del` the tree + strings before the next iteration so
+    # peak RSS is bounded to a single file's AST, not the whole workspace.
     py_files = [f for f in all_files if f.path.endswith(".py")]
+    decorator_names = {"workflow", "tool", "data_provider"}
     for py_file in py_files:
+        # Parse → collect candidate function names → release AST. All of
+        # this is synchronous so when the block exits the AST and content
+        # are released before we hit any `await`. Previous shape held the
+        # tree across the inner `await db.execute(...)` which kept it alive
+        # for the full DB round trip per decorator.
         try:
             content_result = await service.read_file(py_file.path)
-            if isinstance(content_result, tuple):
-                content = content_result[0]
-            else:
-                content = content_result
+            content = content_result[0] if isinstance(content_result, tuple) else content_result
             content_str = content.decode("utf-8", errors="replace")
             tree = ast.parse(content_str, filename=py_file.path)
         except Exception:
             continue
 
+        candidates: list[str] = []
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -487,29 +499,36 @@ async def run_preflight(
                     dec.func, ast.Name
                 ):
                     dec_name = dec.func.id
-                if dec_name in ("workflow", "tool", "data_provider"):
-                    # Check if registered
-                    result = await db.execute(
-                        select(Workflow).where(
-                            Workflow.path == py_file.path,
-                            Workflow.function_name == node.name,
-                            Workflow.is_active.is_(True),
-                        )
+                if dec_name in decorator_names:
+                    candidates.append(node.name)
+                    break
+
+        # Explicitly drop the big objects before the DB awaits. Without
+        # this, async suspension during db.execute would keep them alive.
+        del tree, content_str, content
+
+        for fn_name in candidates:
+            result = await db.execute(
+                select(Workflow).where(
+                    Workflow.path == py_file.path,
+                    Workflow.function_name == fn_name,
+                    Workflow.is_active.is_(True),
+                )
+            )
+            if not result.scalar_one_or_none():
+                warnings.append(
+                    PreflightIssueResponse(
+                        level="warning",
+                        category="unregistered_function",
+                        detail=(
+                            f"Decorated function '{fn_name}' in"
+                            f" {py_file.path} is not registered."
+                            " Use POST /api/workflows/register to"
+                            " register it."
+                        ),
+                        path=py_file.path,
                     )
-                    if not result.scalar_one_or_none():
-                        warnings.append(
-                            PreflightIssueResponse(
-                                level="warning",
-                                category="unregistered_function",
-                                detail=(
-                                    f"Decorated function '{node.name}' in"
-                                    f" {py_file.path} is not registered."
-                                    " Use POST /api/workflows/register to"
-                                    " register it."
-                                ),
-                                path=py_file.path,
-                            )
-                        )
+                )
 
     valid = len(issues) == 0
     return PreflightResponse(valid=valid, issues=issues, warnings=warnings)
