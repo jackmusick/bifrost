@@ -87,6 +87,16 @@ def _normalize_line_endings(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n")
 
 
+def _hash_for_cache(raw_bytes: bytes) -> str:
+    """md5 of post-normalization bytes — must match what the server stores.
+
+    Watch normalizes CRLF to LF before pushing, so S3 stores normalized bytes
+    and S3's ETag is md5 of those. Any hash we compare against a server ETag
+    must be computed on the same normalized bytes.
+    """
+    return hashlib.md5(_normalize_line_endings(raw_bytes)).hexdigest()
+
+
 def _is_bifrost_path(path: str) -> bool:
     """Check if a path refers to a .bifrost/ manifest directory."""
     return ".bifrost" in path.replace("\\", "/").split("/")
@@ -1117,7 +1127,12 @@ def _warn_if_git_workspace(target_path: str) -> None:
     # Walk up to find .git/
     for parent in [p, *p.parents]:
         if (parent / ".git").exists():
-            warn = "\033[33m⚠ Warning: Git is enabled in the platform.\033[0m" if sys.stderr.isatty() else "Warning: Git is enabled in the platform."
+            msg = (
+                "Warning: target path is inside a local git checkout. "
+                "`bifrost push`/`watch` pushes files directly to the platform; "
+                "your local commits are not synced."
+            )
+            warn = f"\033[33m⚠ {msg}\033[0m" if sys.stderr.isatty() else msg
             print(warn, file=sys.stderr)
             return
 
@@ -1611,6 +1626,13 @@ class _WatchState:
         # Incoming changes from other sessions (populated by WebSocket listener)
         self.incoming_files: list[tuple[list[str], str]] = []      # (paths, user_name)
         self.incoming_deletes: list[tuple[list[str], str]] = []     # (paths, user_name)
+        # repo_path -> md5 of bytes currently on the server (as best as this
+        # session knows). Populated by: successful pushes, incoming pull
+        # writes, and the /api/files/list seed at startup. Consulted by the
+        # push batcher to drop no-op pushes (the primary fix for pull/write
+        # echoes re-pushing pulled content) and by the pull processor to
+        # skip no-op writes.
+        self.known_server_hashes: dict[str, str] = {}
 
     def drain(self) -> tuple[set[str], set[str]]:
         """Atomically drain pending changes and deletes."""
@@ -1648,6 +1670,22 @@ class _WatchState:
             self.incoming_files.clear()
             self.incoming_deletes.clear()
         return files, deletes
+
+    def get_known_hash(self, repo_path: str) -> str | None:
+        with self.lock:
+            return self.known_server_hashes.get(repo_path)
+
+    def set_known_hash(self, repo_path: str, hash_hex: str) -> None:
+        with self.lock:
+            self.known_server_hashes[repo_path] = hash_hex
+
+    def forget_known_hash(self, repo_path: str) -> None:
+        with self.lock:
+            self.known_server_hashes.pop(repo_path, None)
+
+    def seed_known_hashes(self, pairs: dict[str, str]) -> None:
+        with self.lock:
+            self.known_server_hashes.update(pairs)
 
 
 class _WatchChangeHandler:
@@ -1725,14 +1763,14 @@ async def _process_watch_deletes(
     deletes: set[str],
     base_path: pathlib.Path,
     repo_prefix: str,
-    session_id: str | None = None,
+    state: _WatchState,
 ) -> tuple[int, list[str]]:
     """Process pending file deletions. Returns (count, relative_paths)."""
     deleted_count = 0
     deleted_rels: list[str] = []
     extra_headers: dict[str, str] = {}
-    if session_id:
-        extra_headers["X-Bifrost-Watch-Session"] = session_id
+    if state.session_id:
+        extra_headers["X-Bifrost-Watch-Session"] = state.session_id
 
     for abs_path_str in deletes:
         abs_p = pathlib.Path(abs_path_str)
@@ -1746,11 +1784,13 @@ async def _process_watch_deletes(
                 if resp.status_code == 204:
                     deleted_count += 1
                     deleted_rels.append(str(rel))
+                    state.forget_known_hash(repo_path)
             except Exception as del_err:
                 status_code = getattr(getattr(del_err, "response", None), "status_code", None)
                 if status_code == 404:
                     deleted_count += 1
                     deleted_rels.append(str(rel))
+                    state.forget_known_hash(repo_path)
                 else:
                     ts = datetime.now().strftime('%H:%M:%S')
                     print(f"  [{ts}] Delete error for {rel}: {del_err}", flush=True)
@@ -1769,20 +1809,29 @@ async def _process_watch_batch(
 ) -> None:
     """Process a batch of file changes and deletions."""
     deleted_count, deleted_rels = await _process_watch_deletes(
-        client, deletes, base_path, repo_prefix, session_id=state.session_id,
+        client, deletes, base_path, repo_prefix, state,
     )
 
-    # Build files dict from changed paths
+    # Build files dict from changed paths. Observer events fire for our own
+    # pull writes, too — gate each file on the known-server-hash cache so we
+    # don't round-trip content the server already has.
     push_files: dict[str, str] = {}
+    push_hashes: dict[str, str] = {}
     for abs_path_str in changes:
         abs_p = pathlib.Path(abs_path_str)
         if abs_p.exists():
             try:
-                raw = _normalize_line_endings(abs_p.read_bytes())
-                content = base64.b64encode(raw).decode("ascii")
+                raw_bytes = abs_p.read_bytes()
+                raw = _normalize_line_endings(raw_bytes)
                 rel = abs_p.relative_to(base_path)
                 repo_path = f"{repo_prefix}/{rel}" if repo_prefix else str(rel)
-                push_files[repo_path] = content
+                file_hash = hashlib.md5(raw).hexdigest()
+                if state.get_known_hash(repo_path) == file_hash:
+                    # No-op push: the server already has this content (common
+                    # case: observer fired on our own pull write).
+                    continue
+                push_files[repo_path] = base64.b64encode(raw).decode("ascii")
+                push_hashes[repo_path] = file_hash
             except OSError:
                 continue
 
@@ -1831,6 +1880,7 @@ async def _process_watch_batch(
                 })
                 if resp.status_code == 204:
                     watch_created += 1
+                    state.set_known_hash(rp, push_hashes[rp])
                     if rp in file_rows:
                         row, stask = file_rows[rp]
                         stask.cancel()
@@ -2033,12 +2083,16 @@ async def _process_incoming(
     deletes: list[tuple[list[str], str]],
     base_path: pathlib.Path,
     repo_prefix: str,
+    state: _WatchState,
     watch_app: "WatchApp | None" = None,
 ) -> None:
     """Process incoming file changes/deletes from other sessions.
 
-    Non-.bifrost writes may be re-emitted by the observer but the server
-    filters echoes by session id.
+    Writes here fire the watchdog observer, which would normally cause the
+    push batcher to POST the pulled content back. The known-hash cache on
+    `state` blocks that — we record each pulled file's hash before/after
+    writing so the subsequent observer event sees a matching cache entry
+    and drops the no-op push.
     """
     ts = datetime.now().strftime('%H:%M:%S')
 
@@ -2055,6 +2109,7 @@ async def _process_incoming(
                 if resp.status_code == 200:
                     data = resp.json()
                     content = base64.b64decode(data["content"])
+                    content_hash = _hash_for_cache(content)
                     # Convert repo_path to local path
                     if repo_prefix and repo_path.startswith(repo_prefix + "/"):
                         rel = repo_path[len(repo_prefix) + 1:]
@@ -2064,14 +2119,20 @@ async def _process_incoming(
                         rel = repo_path
                     local_file = base_path / rel
                     local_file.parent.mkdir(parents=True, exist_ok=True)
-                    # Skip if content is identical
+                    # Skip if we already know the server has this content and
+                    # the local file matches (cache hit). Falls back to a byte
+                    # compare when the cache has no entry.
+                    if state.get_known_hash(repo_path) == content_hash:
+                        continue
                     if local_file.exists():
                         try:
                             if local_file.read_bytes() == content:
+                                state.set_known_hash(repo_path, content_hash)
                                 continue
                         except OSError:
                             pass
                     local_file.write_bytes(content)
+                    state.set_known_hash(repo_path, content_hash)
                     if watch_app:
                         watch_app.log_pull(rel, user=user_name)
                     else:
@@ -2095,6 +2156,7 @@ async def _process_incoming(
             if local_file.exists():
                 try:
                     local_file.unlink()
+                    state.forget_known_hash(repo_path)
                     if watch_app:
                         watch_app.log_delete(rel, user=user_name)
                     else:
@@ -2104,6 +2166,9 @@ async def _process_incoming(
                         watch_app.log_error(f"Error deleting {rel}: {e}")
                     else:
                         print(f"  [{ts}] \u2190 Error deleting {rel}: {e}", flush=True)
+            else:
+                # File wasn't local, but still drop any stale cache entry.
+                state.forget_known_hash(repo_path)
 
 
 async def _watch_loop(
@@ -2170,13 +2235,14 @@ async def _watch_loop(
                             print(f"  [{ts}] \u26a0 {consecutive_errors} consecutive errors, backing off to 5s", flush=True)
                         await asyncio.sleep(5)
 
-            # Process incoming file changes from other sessions. The server
-            # filters echoes by session id so our own writes don't bounce back.
+            # Process incoming file changes from other sessions. Writes land
+            # on disk, the observer re-emits them to the push batcher, and
+            # the known-hash cache on `state` drops the would-be echo.
             inc_files, inc_deletes = state.drain_incoming()
             if inc_files or inc_deletes:
                 await _process_incoming(
                     client, inc_files, inc_deletes, path, repo_prefix,
-                    watch_app=watch_app,
+                    state, watch_app=watch_app,
                 )
 
             # Heartbeat
@@ -2233,6 +2299,27 @@ async def _watch_and_push(
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         print(f"Initial sync of {path}...", flush=True)
     await _sync_files(str(path), repo_prefix=repo_prefix, mirror=mirror, validate=validate, client=client)
+
+    # Seed the known-server-hash cache from the server's file listing before
+    # the observer starts. Without this, the very first observer event for
+    # any already-synced file (editors "touch" on open) would push a no-op.
+    # Best-effort — failure just means cold start pushes until the first
+    # pull/push per path populates the cache.
+    try:
+        seed_resp = await client.post("/api/files/list", json={
+            "include_metadata": True,
+            "mode": "cloud",
+            "location": "workspace",
+        })
+        if seed_resp.status_code == 200:
+            seed_data = seed_resp.json()
+            state.seed_known_hashes({
+                item["path"]: item["etag"]
+                for item in seed_data.get("files_metadata", [])
+                if item.get("path") and item.get("etag")
+            })
+    except Exception:
+        pass
 
     # Set up file watcher
     handler = _WatchChangeHandler(state)
