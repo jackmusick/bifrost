@@ -3403,22 +3403,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4561,6 +4561,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/stats/fleet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fleet Stats Endpoint
+         * @description Fleet-wide agent run stats over the last ``window_days``.
+         *
+         *     Superusers see cross-org totals; org users are scoped to their org.
+         *     Route is registered before ``/{agent_id}`` so the literal ``stats``
+         *     prefix is not parsed as a UUID.
+         */
+        get: operations["get_fleet_stats_endpoint_api_agents_stats_fleet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/{agent_id}": {
         parameters: {
             query?: never;
@@ -4606,6 +4630,26 @@ export interface paths {
          * @description Promote a private agent to organization scope.
          */
         post: operations["promote_agent_api_agents__agent_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Stats Endpoint
+         * @description Per-agent run stats. Reuses the same access check as ``GET /{agent_id}``.
+         */
+        get: operations["get_agent_stats_endpoint_api_agents__agent_id__stats_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8110,6 +8154,30 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** AgentStatsResponse */
+        AgentStatsResponse: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Runs 7D */
+            runs_7d: number;
+            /** Success Rate */
+            success_rate: number;
+            /** Avg Duration Ms */
+            avg_duration_ms: number;
+            /** Total Cost 7D */
+            total_cost_7d: string;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Runs By Day */
+            runs_by_day: number[];
+            /** Needs Review */
+            needs_review: number;
+            /** Unreviewed */
+            unreviewed: number;
         };
         /**
          * AgentSummary
@@ -12064,6 +12132,19 @@ export interface components {
              * @default false
              */
             binary: boolean;
+        };
+        /** FleetStatsResponse */
+        FleetStatsResponse: {
+            /** Total Runs */
+            total_runs: number;
+            /** Avg Success Rate */
+            avg_success_rate: number;
+            /** Total Cost 7D */
+            total_cost_7d: string;
+            /** Active Agents */
+            active_agents: number;
+            /** Needs Review */
+            needs_review: number;
         };
         /**
          * FormAccessLevel
@@ -24700,7 +24781,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24733,7 +24814,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24766,7 +24847,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24799,7 +24880,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26646,6 +26727,37 @@ export interface operations {
             };
         };
     };
+    get_fleet_stats_endpoint_api_agents_stats_fleet_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_agent_api_agents__agent_id__get: {
         parameters: {
             query?: never;
@@ -26763,6 +26875,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_stats_endpoint_api_agents__agent_id__stats_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentStatsResponse"];
                 };
             };
             /** @description Validation Error */
