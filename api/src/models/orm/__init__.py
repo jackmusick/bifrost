@@ -7,6 +7,7 @@ These models define the database schema and relationships.
 For API schemas (Create/Update/Public), see schemas.py
 """
 
+from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.orm.agent_runs import AgentRun, AgentRunStep
 from src.models.orm.agents import Agent, AgentDelegation, AgentRole, AgentTool, Conversation, Message
@@ -53,6 +54,7 @@ __all__ = [
     "UserRole",
     # Agent Runs
     "AgentRun",
+    "AgentRunFlagConversation",
     "AgentRunStep",
     "AgentRunVerdictHistory",
     # Agents
