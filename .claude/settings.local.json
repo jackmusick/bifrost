@@ -213,7 +213,13 @@
       "Bash(kubectl -n bifrost logs bifrost-api-688d4c4847-zwbkz --tail=2000 2>/dev/null | grep -B5 -A5 \"60c3afba-911d-415a-8adf-77f98b3f5014\" | tail -40)",
       "Bash(git push:*)",
       "Bash(chmod 644 /home/jack/GitHub/bifrost/api/shared/version.py)",
-      "Bash(sudo chown *)"
+      "Bash(sudo chown *)",
+      "Bash(mkdir -p /home/jack/GitHub/bifrost-workspace-community/.claude/skills)",
+      "Bash(cp -r /home/jack/GitHub/bifrost/.claude/skills/bifrost-build /home/jack/GitHub/bifrost-workspace-community/.claude/skills/)",
+      "Bash(mkdir -p /home/jack/GitHub/bifrost/.github/ISSUE_TEMPLATE)",
+      "Bash(mkdir -p /home/jack/GitHub/bifrost/.claude/skills/issue-tracking)",
+      "Bash(curl -s -o /dev/null -w \"root: %{http_code}\\\\n\" http://localhost:5555/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5555/)"
     ],
     "deny": [],
     "ask": [],
