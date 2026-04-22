@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.orm.base import Base
@@ -63,6 +63,19 @@ class AgentRun(Base):
         server_default=text("'pending'"),
     )
     summary_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Reviewer verdict (thumbs up/down) — see migration 20260421b_verdicts.
+    # ``verdict`` is constrained to ('up', 'down', NULL) at the DB layer.
+    verdict: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
+    verdict_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    verdict_set_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    verdict_set_by: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )
@@ -96,6 +109,7 @@ class AgentRun(Base):
         Index("ix_agent_runs_trigger_type", "trigger_type"),
         Index("ix_agent_runs_created_at", "created_at"),
         Index("ix_agent_runs_parent_run_id", "parent_run_id"),
+        Index("ix_agent_runs_agent_verdict_status", "agent_id", "verdict", "status"),
     )
 
 

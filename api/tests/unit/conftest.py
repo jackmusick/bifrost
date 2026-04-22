@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
+from src.models.orm.users import User
 
 
 @pytest_asyncio.fixture
@@ -45,6 +46,38 @@ async def seed_agent(db_session: AsyncSession) -> AsyncGenerator[Agent, None]:
     # defensive in case the session was committed mid-test.
     try:
         await db_session.execute(delete(Agent).where(Agent.id == agent.id))
+        await db_session.flush()
+    except Exception:
+        pass
+
+
+@pytest_asyncio.fixture
+async def seed_user(db_session: AsyncSession) -> AsyncGenerator[User, None]:
+    """Create a minimal User row for tests that need a user FK.
+
+    Mirrors ``seed_agent`` semantics: flush-only, rolled back by the
+    ``db_session`` fixture, with defensive cleanup.
+    """
+    # is_superuser=True so we satisfy the ck_users_org_requires_superuser
+    # check constraint without needing to seed an Organization row.
+    user = User(
+        id=uuid4(),
+        email=f"seed_user_{uuid4().hex[:8]}@example.com",
+        name="Seed User",
+        is_active=True,
+        is_superuser=True,
+        is_verified=True,
+        is_registered=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    await db_session.flush()
+
+    yield user
+
+    try:
+        await db_session.execute(delete(User).where(User.id == user.id))
         await db_session.flush()
     except Exception:
         pass
