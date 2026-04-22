@@ -443,10 +443,10 @@ function ProposalBubble({
 								) : (
 									<Check className="h-3 w-3" />
 								)}
-								Try this
+								Accept
 							</Button>
 							<span className={cn("ml-auto text-[11px]", TONE_MUTED)}>
-								Sandbox · nothing applied live
+								Accept saves the new prompt live · Dry-run only simulates
 							</span>
 						</>
 					}

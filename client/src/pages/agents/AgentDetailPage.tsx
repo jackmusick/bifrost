@@ -12,9 +12,11 @@
 
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import {
 	ArrowLeft,
 	Bot,
+	Loader2,
 	MessageSquare,
 	Pause,
 	PlayCircle,
@@ -40,9 +42,9 @@ import {
 	TYPE_PAGE_TITLE,
 } from "@/components/agents/design-tokens";
 import { cn } from "@/lib/utils";
-import { useAgent } from "@/hooks/useAgents";
+import { useAgent, useUpdateAgent } from "@/hooks/useAgents";
 import { useAgentRuns } from "@/services/agentRuns";
-import { useUpdateAgent } from "@/hooks/useAgents";
+import { useCreateConversation } from "@/hooks/useChat";
 
 type Tab = "overview" | "runs" | "settings";
 
@@ -62,6 +64,7 @@ export function AgentDetailPage() {
 	const [tab, setTab] = useState<Tab>(isCreate ? "settings" : "overview");
 
 	const updateAgent = useUpdateAgent();
+	const createConversation = useCreateConversation();
 
 	function handleCreated(newId: string) {
 		navigate(`/agents/${newId}`);
@@ -69,6 +72,22 @@ export function AgentDetailPage() {
 
 	const hasChat = (agent?.channels ?? []).includes("chat");
 	const isActive = agent?.is_active ?? true;
+
+	function handleStartChat() {
+		if (!agent?.id) return;
+		createConversation.mutate(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any -- body type lags OpenAPI regen
+			{ body: { channel: "chat", agent_id: agent.id } as any },
+			{
+				onSuccess: (conv) => {
+					navigate(`/chat/${conv.id}`);
+				},
+				onError: () => {
+					toast.error("Failed to start chat");
+				},
+			},
+		);
+	}
 
 	return (
 		<div className="mx-auto flex max-w-[1400px] flex-col gap-5 p-7">
@@ -131,9 +150,18 @@ export function AgentDetailPage() {
 											<Button
 												variant="outline"
 												size="sm"
-												disabled={!isActive}
+												disabled={
+													!isActive ||
+													createConversation.isPending
+												}
+												onClick={handleStartChat}
+												data-testid="start-chat-button"
 											>
-												<MessageSquare className="h-3.5 w-3.5" />
+												{createConversation.isPending ? (
+													<Loader2 className="h-3.5 w-3.5 animate-spin" />
+												) : (
+													<MessageSquare className="h-3.5 w-3.5" />
+												)}
 												Start chat
 											</Button>
 										</span>
@@ -146,10 +174,6 @@ export function AgentDetailPage() {
 								</Tooltip>
 							</TooltipProvider>
 						) : null}
-						<Button variant="outline" size="sm" disabled>
-							<PlayCircle className="h-3.5 w-3.5" />
-							Test run
-						</Button>
 						<Button
 							variant="outline"
 							size="sm"
