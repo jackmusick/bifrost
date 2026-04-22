@@ -33,6 +33,13 @@ import { AgentOverviewTab } from "@/components/agents/AgentOverviewTab";
 import { AgentRunsTab } from "@/components/agents/AgentRunsTab";
 import { AgentSettingsTab } from "@/components/agents/AgentSettingsTab";
 import { PillTabs } from "@/components/agents/PillTabs";
+import {
+	PILL_ACTIVE,
+	TONE_MUTED,
+	TYPE_BODY,
+	TYPE_PAGE_TITLE,
+} from "@/components/agents/design-tokens";
+import { cn } from "@/lib/utils";
 import { useAgent } from "@/hooks/useAgents";
 import { useAgentRuns } from "@/services/agentRuns";
 import { useUpdateAgent } from "@/hooks/useAgents";
@@ -66,7 +73,12 @@ export function AgentDetailPage() {
 	return (
 		<div className="mx-auto flex max-w-[1400px] flex-col gap-5 p-7">
 			{/* Breadcrumb */}
-			<div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+			<div
+				className={cn(
+					"flex items-center gap-1.5 text-[13px]",
+					TONE_MUTED,
+				)}
+			>
 				<Link
 					to="/agents"
 					className="inline-flex items-center gap-1 hover:text-foreground"
@@ -84,7 +96,7 @@ export function AgentDetailPage() {
 			{/* Header */}
 			<div className="flex flex-wrap items-start justify-between gap-4">
 				<div className="min-w-0 flex-1">
-					<h1 className="flex items-center gap-2.5 text-[20px] font-semibold leading-tight tracking-tight">
+					<h1 className={cn("flex items-center gap-2.5", TYPE_PAGE_TITLE)}>
 						<Bot className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
 						<span className="truncate">
 							{isCreate
@@ -95,9 +107,7 @@ export function AgentDetailPage() {
 						</span>
 						{!isCreate && agent ? (
 							isActive ? (
-								<span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11.5px] font-medium text-emerald-500">
-									Active
-								</span>
+								<span className={PILL_ACTIVE}>Active</span>
 							) : (
 								<Badge variant="secondary" className="text-[11px]">
 									Paused
@@ -106,7 +116,7 @@ export function AgentDetailPage() {
 						) : null}
 					</h1>
 					{!isCreate && agent?.description ? (
-						<p className="mt-1 line-clamp-2 text-[13.5px] text-muted-foreground">
+						<p className={cn("mt-1 line-clamp-2", TYPE_BODY, TONE_MUTED)}>
 							{agent.description}
 						</p>
 					) : null}

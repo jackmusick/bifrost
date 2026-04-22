@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { RADIUS_BUTTON, RADIUS_INNER } from "./design-tokens";
 
 export interface PillTabItem {
 	value: string;
@@ -32,7 +33,8 @@ export function PillTabs({
 		<div
 			role="tablist"
 			className={cn(
-				"inline-flex items-center gap-0.5 rounded-lg border bg-muted/60 p-[3px]",
+				"inline-flex items-center gap-0.5 border bg-muted/60 p-[3px]",
+				RADIUS_INNER,
 				className,
 			)}
 		>
@@ -47,7 +49,8 @@ export function PillTabs({
 						disabled={item.disabled}
 						onClick={() => !item.disabled && onValueChange(item.value)}
 						className={cn(
-							"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] transition-colors",
+							"inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] transition-colors",
+							RADIUS_BUTTON,
 							active
 								? "border border-border bg-card text-foreground shadow-sm"
 								: "border border-transparent text-muted-foreground hover:text-foreground",

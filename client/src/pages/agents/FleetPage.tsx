@@ -39,6 +39,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueueBanner } from "@/components/agents/QueueBanner";
 import { Sparkline } from "@/components/agents/Sparkline";
 import { StatCard } from "@/components/agents/StatCard";
+import {
+	CARD_HOVER,
+	CARD_SURFACE,
+	CHIP_OUTLINE,
+	GAP_CARD,
+	PILL_ACTIVE,
+	RADIUS_CARD,
+	TONE_MUTED,
+	TYPE_BODY,
+	TYPE_CARD_TITLE,
+	TYPE_MINI_STAT_VALUE,
+	TYPE_MUTED,
+	TYPE_PAGE_TITLE,
+	successRateTone,
+} from "@/components/agents/design-tokens";
 
 import { useAgents, type AgentSummary } from "@/hooks/useAgents";
 import { useAgentStats, useFleetStats } from "@/services/agents";
@@ -83,10 +98,8 @@ export function FleetPage() {
 			{/* Header */}
 			<div className="flex items-start justify-between gap-4">
 				<div>
-					<h1 className="text-[20px] font-semibold leading-tight tracking-tight">
-						Agents
-					</h1>
-					<p className="mt-1 text-[13.5px] text-muted-foreground">
+					<h1 className={TYPE_PAGE_TITLE}>Agents</h1>
+					<p className={cn("mt-1", TYPE_BODY, TONE_MUTED)}>
 						{totalAgents} total · {activeCount} active · last 7 days
 					</p>
 				</div>
@@ -108,13 +121,23 @@ export function FleetPage() {
 
 			{/* Fleet stats — 4 stats + red "Needs review" */}
 			{fleetLoading || !fleetStats ? (
-				<div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5">
+				<div
+					className={cn(
+						"grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5",
+						GAP_CARD,
+					)}
+				>
 					{[...Array(5)].map((_, i) => (
 						<Skeleton key={i} className="h-24 w-full" />
 					))}
 				</div>
 			) : (
-				<div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5">
+				<div
+					className={cn(
+						"grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5",
+						GAP_CARD,
+					)}
+				>
 					<StatCard
 						label="Runs (7d)"
 						value={formatNumber(fleetStats.total_runs)}
@@ -211,7 +234,7 @@ export function FleetPage() {
 			{/* Content */}
 			{agentsLoading ? (
 				view === "grid" ? (
-					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+					<div className={cn("grid md:grid-cols-2 xl:grid-cols-3", GAP_CARD)}>
 						{[...Array(6)].map((_, i) => (
 							<Skeleton key={i} className="h-52 w-full" />
 						))}
@@ -226,7 +249,7 @@ export function FleetPage() {
 			) : filtered.length === 0 ? (
 				<EmptyState hasQuery={query.trim().length > 0} />
 			) : view === "grid" ? (
-				<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+				<div className={cn("grid md:grid-cols-2 xl:grid-cols-3", GAP_CARD)}>
 					{filtered.map((agent) => (
 						<AgentGridCard key={agent.id} agent={agent} />
 					))}
@@ -240,12 +263,12 @@ export function FleetPage() {
 
 function EmptyState({ hasQuery }: { hasQuery: boolean }) {
 	return (
-		<div className="rounded-[10px] border bg-card py-12 text-center">
+		<div className={cn(CARD_SURFACE, "py-12 text-center")}>
 			<Bot className="mx-auto h-10 w-10 text-muted-foreground" />
 			<h3 className="mt-3 text-[15px] font-semibold">
 				{hasQuery ? "No agents match your search" : "No agents yet"}
 			</h3>
-			<p className="mt-1 text-[13px] text-muted-foreground">
+			<p className={cn("mt-1", TYPE_MUTED)}>
 				{hasQuery
 					? "Try adjusting your search."
 					: "Get started by creating your first AI agent."}
@@ -269,16 +292,10 @@ function ChannelBadge({ channel }: { channel: string }) {
 				? Hash
 				: MessageSquare;
 	return (
-		<span className="inline-flex items-center gap-1 rounded-full border border-border bg-transparent px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground">
+		<span className={CHIP_OUTLINE}>
 			<Icon className="h-3 w-3" /> {channel}
 		</span>
 	);
-}
-
-function successColor(rate: number): string {
-	if (rate >= 0.9) return "text-emerald-500";
-	if (rate >= 0.75) return "text-yellow-500";
-	return "text-rose-500";
 }
 
 function AgentGridCard({ agent }: { agent: AgentSummary }) {
@@ -286,19 +303,23 @@ function AgentGridCard({ agent }: { agent: AgentSummary }) {
 	// list endpoint that returns fleet member stats in one round-trip.
 	const { data: stats, isLoading } = useAgentStats(agent.id ?? undefined);
 	const successRate = stats?.success_rate ?? 0;
-	const colorClass = successColor(successRate);
+	const colorClass = successRateTone(successRate);
 	const hasRuns = (stats?.runs_7d ?? 0) > 0;
 
 	return (
 		<Link
 			to={`/agents/${agent.id}`}
-			className="group block overflow-hidden rounded-[10px] border bg-card transition-all hover:-translate-y-px hover:border-border/80"
+			className={cn(
+				"group block overflow-hidden",
+				CARD_SURFACE,
+				CARD_HOVER,
+			)}
 		>
 			<div className="border-b px-4 pb-3 pt-3.5">
 				<div className="flex items-start justify-between gap-3">
 					<div className="flex min-w-0 items-center gap-2">
 						<Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-						<span className="truncate text-[14.5px] font-semibold">
+						<span className={cn("truncate", TYPE_CARD_TITLE)}>
 							{agent.name}
 						</span>
 						{!agent.is_active ? (
@@ -314,7 +335,7 @@ function AgentGridCard({ agent }: { agent: AgentSummary }) {
 					</div>
 				</div>
 				{agent.description ? (
-					<p className="mt-1 line-clamp-2 text-[13px] text-muted-foreground">
+					<p className={cn("mt-1 line-clamp-2", TYPE_MUTED)}>
 						{agent.description}
 					</p>
 				) : null}
@@ -347,7 +368,12 @@ function AgentGridCard({ agent }: { agent: AgentSummary }) {
 								/>
 							</div>
 						) : null}
-						<div className="flex items-center justify-between text-[12px] text-muted-foreground">
+						<div
+							className={cn(
+								"flex items-center justify-between text-[12px]",
+								TONE_MUTED,
+							)}
+						>
 							<span className="inline-flex items-center gap-1">
 								<Clock className="h-3 w-3" />
 								{stats!.last_run_at
@@ -358,7 +384,7 @@ function AgentGridCard({ agent }: { agent: AgentSummary }) {
 						</div>
 					</>
 				) : (
-					<p className="py-1 text-[13px] text-muted-foreground">
+					<p className={cn("py-1", TYPE_MUTED)}>
 						No runs yet ·{" "}
 						{agent.is_active ? "waiting for traffic" : "paused"}
 					</p>
@@ -382,12 +408,7 @@ function MiniStat({
 			<div className="mb-0.5 text-[11px] text-muted-foreground">
 				{label}
 			</div>
-			<div
-				className={cn(
-					"text-[15px] font-semibold tabular-nums leading-tight",
-					valueClass,
-				)}
-			>
+			<div className={cn(TYPE_MINI_STAT_VALUE, valueClass)}>
 				{value}
 			</div>
 		</div>
@@ -396,7 +417,7 @@ function MiniStat({
 
 function AgentTable({ agents }: { agents: AgentSummary[] }) {
 	return (
-		<div className="overflow-hidden rounded-[10px] border">
+		<div className={cn("overflow-hidden border", RADIUS_CARD)}>
 			<DataTable>
 				<DataTableHeader>
 					<DataTableRow>
@@ -480,7 +501,7 @@ function AgentTableRow({ agent }: { agent: AgentSummary }) {
 			</DataTableCell>
 			<DataTableCell className="w-0 whitespace-nowrap">
 				{agent.is_active ? (
-					<span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11.5px] font-medium text-emerald-500">
+					<span className={PILL_ACTIVE}>
 						<Power className="h-3 w-3" /> Active
 					</span>
 				) : (

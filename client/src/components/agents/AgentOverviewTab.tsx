@@ -19,6 +19,18 @@ import {
 } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	CARD_BODY,
+	CARD_HEADER,
+	CARD_SURFACE,
+	GAP_CARD,
+	TONE_MUTED,
+	TYPE_CARD_TITLE,
+	TYPE_MONO,
+	TYPE_MUTED,
+	TYPE_SMALL,
+	successRateTone,
+} from "@/components/agents/design-tokens";
 import { Sparkline } from "@/components/agents/Sparkline";
 import { StatCard } from "@/components/agents/StatCard";
 import { useAgent } from "@/hooks/useAgents";
@@ -56,26 +68,21 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 	).length;
 
 	const successRate = stats?.success_rate ?? 0;
-	const sparkColor =
-		successRate >= 0.9
-			? "text-emerald-500"
-			: successRate >= 0.75
-				? "text-yellow-500"
-				: "text-rose-500";
+	const sparkColor = successRateTone(successRate);
 
 	return (
-		<div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+		<div className={cn("grid lg:grid-cols-[1fr_320px]", GAP_CARD)}>
 			{/* Main column */}
-			<div className="flex flex-col gap-4">
+			<div className={cn("flex flex-col", GAP_CARD)}>
 				{/* Stat row — 4 stats */}
 				{statsLoading ? (
-					<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+					<div className={cn("grid grid-cols-2 md:grid-cols-4", GAP_CARD)}>
 						{[...Array(4)].map((_, i) => (
 							<Skeleton key={i} className="h-[92px] w-full" />
 						))}
 					</div>
 				) : stats ? (
-					<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+					<div className={cn("grid grid-cols-2 md:grid-cols-4", GAP_CARD)}>
 						<StatCard
 							label="Runs (7d)"
 							value={formatNumber(stats.runs_7d)}
@@ -99,17 +106,20 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 				) : null}
 
 				{/* Activity — last 7 days */}
-				<div className="overflow-hidden rounded-[10px] border bg-card">
-					<div className="flex items-center justify-between border-b px-4 py-3">
-						<div className="flex items-center gap-2 text-[14.5px] font-semibold">
+				<div className={cn(CARD_SURFACE, "overflow-hidden")}>
+					<div
+						className={cn(
+							"flex items-center justify-between",
+							CARD_HEADER,
+						)}
+					>
+						<div className={cn("flex items-center gap-2", TYPE_CARD_TITLE)}>
 							<Activity className="h-3.5 w-3.5" /> Activity — last 7
 							days
 						</div>
-						<span className="text-xs text-muted-foreground">
-							Daily buckets
-						</span>
+						<span className={TYPE_MUTED}>Daily buckets</span>
 					</div>
-					<div className="h-[140px] p-4">
+					<div className={cn("h-[140px]", CARD_BODY)}>
 						{stats &&
 						stats.runs_by_day.length > 1 &&
 						stats.runs_by_day.some((v) => v > 0) ? (
@@ -126,11 +136,14 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 				</div>
 
 				{/* Recent activity */}
-				<div className="overflow-hidden rounded-[10px] border bg-card">
-					<div className="flex items-center justify-between border-b px-4 py-3">
-						<div className="text-[14.5px] font-semibold">
-							Recent activity
-						</div>
+				<div className={cn(CARD_SURFACE, "overflow-hidden")}>
+					<div
+						className={cn(
+							"flex items-center justify-between",
+							CARD_HEADER,
+						)}
+					>
+						<div className={TYPE_CARD_TITLE}>Recent activity</div>
 						<button
 							type="button"
 							onClick={() => {
@@ -138,7 +151,11 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 									'[role="tab"][value="runs"]',
 								)?.click();
 							}}
-							className="text-[12.5px] text-muted-foreground hover:text-foreground"
+							className={cn(
+								TYPE_SMALL,
+								TONE_MUTED,
+								"hover:text-foreground",
+							)}
 						>
 							View all runs →
 						</button>
@@ -168,19 +185,27 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 			</div>
 
 			{/* Side column */}
-			<div className="flex flex-col gap-4">
+			<div className={cn("flex flex-col", GAP_CARD)}>
 				{needsReview > 0 ? (
 					<Link
 						to={`/agents/${agentId}/review`}
-						className="block overflow-hidden rounded-[10px] border border-rose-500/40 bg-card transition-colors hover:border-rose-500/70"
+						className={cn(
+							"block overflow-hidden bg-card border-rose-500/40 transition-colors hover:border-rose-500/70",
+							CARD_SURFACE,
+						)}
 					>
 						<div className="border-b border-rose-500/20 px-4 py-3">
-							<div className="flex items-center gap-2 text-[14.5px] font-semibold text-rose-500">
+							<div
+								className={cn(
+									"flex items-center gap-2 text-rose-500",
+									TYPE_CARD_TITLE,
+								)}
+							>
 								<AlertTriangle className="h-3.5 w-3.5" />
 								Needs attention
 							</div>
 						</div>
-						<div className="space-y-2 p-4 text-[13px]">
+						<div className={cn("space-y-2 text-[13px]", CARD_BODY)}>
 							<div>
 								<strong>{needsReview}</strong> run
 								{needsReview === 1 ? "" : "s"} marked 👎
@@ -199,15 +224,18 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 				) : unreviewed > 0 ? (
 					<Link
 						to={`/agents/${agentId}/review`}
-						className="block overflow-hidden rounded-[10px] border bg-card transition-colors hover:border-border/80"
+						className={cn(
+							"block overflow-hidden transition-colors hover:border-border/80",
+							CARD_SURFACE,
+						)}
 					>
-						<div className="border-b px-4 py-3">
-							<div className="flex items-center gap-2 text-[14.5px] font-semibold">
+						<div className={CARD_HEADER}>
+							<div className={cn("flex items-center gap-2", TYPE_CARD_TITLE)}>
 								<Info className="h-3.5 w-3.5" />
 								{unreviewed} to review
 							</div>
 						</div>
-						<div className="space-y-2 p-4 text-[13px]">
+						<div className={cn("space-y-2 text-[13px]", CARD_BODY)}>
 							<div className="text-muted-foreground">
 								Completed runs awaiting a verdict
 							</div>
@@ -219,45 +247,49 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 				) : null}
 
 				{/* Configuration */}
-				<div className="overflow-hidden rounded-[10px] border bg-card">
-					<div className="border-b px-4 py-3">
-						<div className="text-[14.5px] font-semibold">
-							Configuration
-						</div>
+				<div className={cn(CARD_SURFACE, "overflow-hidden")}>
+					<div className={CARD_HEADER}>
+						<div className={TYPE_CARD_TITLE}>Configuration</div>
 					</div>
-					<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 p-4 text-[13px]">
-						<dt className="text-muted-foreground">Model</dt>
-						<dd className="font-mono text-[12.5px]">
-							{agent?.llm_model ?? "default"}
-						</dd>
-						<dt className="text-muted-foreground">Channels</dt>
-						<dd>
-							{(agent?.channels ?? []).join(", ") || "—"}
-						</dd>
-						<dt className="text-muted-foreground">Access</dt>
+					<dl
+						className={cn(
+							"grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[13px]",
+							CARD_BODY,
+						)}
+					>
+						<dt className={TONE_MUTED}>Model</dt>
+						<dd className={TYPE_MONO}>{agent?.llm_model ?? "default"}</dd>
+						<dt className={TONE_MUTED}>Channels</dt>
+						<dd>{(agent?.channels ?? []).join(", ") || "—"}</dd>
+						<dt className={TONE_MUTED}>Access</dt>
 						<dd>
 							{agent?.access_level === "authenticated"
 								? "Any user"
 								: "Role-based"}
 						</dd>
-						<dt className="text-muted-foreground">Owner</dt>
-						<dd className="truncate font-mono text-[12.5px]">
+						<dt className={TONE_MUTED}>Owner</dt>
+						<dd className={cn("truncate", TYPE_MONO)}>
 							{agent?.created_by ?? "system"}
 						</dd>
 					</dl>
 				</div>
 
 				{/* Budgets */}
-				<div className="overflow-hidden rounded-[10px] border bg-card">
-					<div className="border-b px-4 py-3">
-						<div className="text-[14.5px] font-semibold">Budgets</div>
+				<div className={cn(CARD_SURFACE, "overflow-hidden")}>
+					<div className={CARD_HEADER}>
+						<div className={TYPE_CARD_TITLE}>Budgets</div>
 					</div>
-					<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 p-4 text-[13px]">
-						<dt className="text-muted-foreground">Max iterations</dt>
+					<dl
+						className={cn(
+							"grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[13px]",
+							CARD_BODY,
+						)}
+					>
+						<dt className={TONE_MUTED}>Max iterations</dt>
 						<dd className="tabular-nums">
 							{agent?.max_iterations ?? "—"}
 						</dd>
-						<dt className="text-muted-foreground">Max tokens</dt>
+						<dt className={TONE_MUTED}>Max tokens</dt>
 						<dd className="tabular-nums">
 							{agent?.max_token_budget?.toLocaleString() ?? "—"}
 						</dd>

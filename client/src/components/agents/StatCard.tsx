@@ -1,4 +1,14 @@
 import { cn } from "@/lib/utils";
+import {
+	CARD_SURFACE,
+	GAP_LABEL_VALUE,
+	TONE_DOWN,
+	TONE_MUTED,
+	TONE_UP,
+	TYPE_LABEL_UPPERCASE,
+	TYPE_STAT_DELTA,
+	TYPE_STAT_VALUE,
+} from "./design-tokens";
 import { Sparkline } from "./Sparkline";
 
 export interface StatCardProps {
@@ -24,7 +34,7 @@ export interface StatCardProps {
  *  - 22px semibold value
  *  - optional delta line under value
  *  - optional embedded sparkline
- *  - optional alert treatment (red label + value + left border accent)
+ *  - optional alert treatment (red label + value + border accent)
  */
 export function StatCard({
 	label,
@@ -51,7 +61,8 @@ export function StatCard({
 				}
 			}}
 			className={cn(
-				"rounded-[10px] border bg-card px-4 py-3.5 transition-colors",
+				CARD_SURFACE,
+				"px-4 py-3.5 transition-colors",
 				alert && "border-rose-500/40",
 				interactive && "cursor-pointer hover:border-border/80",
 				className,
@@ -60,10 +71,10 @@ export function StatCard({
 		>
 			<div
 				className={cn(
-					"flex items-center gap-1.5 text-[11.5px] uppercase tracking-wider font-medium",
-					alert
-						? "text-rose-600 dark:text-rose-400"
-						: "text-muted-foreground",
+					"flex items-center",
+					GAP_LABEL_VALUE,
+					TYPE_LABEL_UPPERCASE,
+					alert && "text-rose-500",
 				)}
 			>
 				{icon}
@@ -71,8 +82,9 @@ export function StatCard({
 			</div>
 			<div
 				className={cn(
-					"mt-1.5 text-[22px] leading-tight font-semibold tracking-tight tabular-nums",
-					alert && "text-rose-600 dark:text-rose-400",
+					"mt-1.5",
+					TYPE_STAT_VALUE,
+					alert && "text-rose-500",
 				)}
 			>
 				{value}
@@ -80,10 +92,13 @@ export function StatCard({
 			{delta ? (
 				<div
 					className={cn(
-						"mt-1 text-xs",
-						deltaTone === "up" && "text-emerald-600 dark:text-emerald-400",
-						deltaTone === "down" && "text-rose-600 dark:text-rose-400",
-						!deltaTone && "text-muted-foreground",
+						"mt-1",
+						TYPE_STAT_DELTA,
+						deltaTone === "up"
+							? TONE_UP
+							: deltaTone === "down"
+								? TONE_DOWN
+								: TONE_MUTED,
 					)}
 				>
 					{delta}
