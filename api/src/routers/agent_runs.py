@@ -11,7 +11,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select, func, desc
+from sqlalchemy import desc, func, literal_column, select
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser
@@ -94,6 +94,18 @@ async def list_agent_runs(
     org_id: UUID | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    q: str | None = Query(
+        None,
+        description="Full-text search across asked/did/error/caller/metadata",
+    ),
+    verdict: str | None = Query(
+        None,
+        description="Filter by verdict: 'up', 'down', or 'unreviewed'",
+    ),
+    metadata_filter: str | None = Query(
+        None,
+        description='JSON object of key-value pairs, e.g. {"customer":"Acme"}',
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> AgentRunListResponse:
@@ -119,6 +131,47 @@ async def list_agent_runs(
         query = query.where(AgentRun.created_at >= start_date)
     if end_date is not None:
         query = query.where(AgentRun.created_at <= end_date)
+
+    # Full-text search via the materialized ``search_tsv`` generated column
+    # (see migration 20260421e_run_tsvector_search). The column is added via
+    # raw DDL and isn't on the ORM model, hence ``literal_column``.
+    if q:
+        query = query.where(
+            literal_column("search_tsv").op("@@")(
+                func.plainto_tsquery("english", q)
+            )
+        )
+
+    if verdict is not None:
+        if verdict == "unreviewed":
+            query = query.where(AgentRun.verdict.is_(None)).where(
+                AgentRun.status == "completed"
+            )
+        elif verdict in ("up", "down"):
+            query = query.where(AgentRun.verdict == verdict)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid verdict filter: {verdict}",
+            )
+
+    if metadata_filter:
+        try:
+            md = json.loads(metadata_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="metadata_filter must be valid JSON",
+            )
+        if not isinstance(md, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="metadata_filter must be a JSON object",
+            )
+        for k, v in md.items():
+            # AgentRun.run_metadata is the Python attribute; the DB column is
+            # ``metadata``. JSONB key access returns text via .astext.
+            query = query.where(AgentRun.run_metadata[k].astext == str(v))
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
