@@ -29,8 +29,13 @@ from src.models.contracts.agent_runs import (
     AgentRunRerunResponse,
     AgentRunResponse,
     AgentRunStepResponse,
+    BackfillEligibleResponse,
+    BackfillSummariesRequest,
+    BackfillSummariesResponse,
     DryRunRequest,
     DryRunResponse,
+    SummaryBackfillJobListResponse,
+    SummaryBackfillJobResponse,
     VerdictRequest,
     VerdictResponse,
 )
@@ -39,6 +44,7 @@ from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.agents import Agent
+from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.core.redis_client import get_redis_client
 from src.services.execution.agent_run_service import (
     enqueue_agent_run,
@@ -85,6 +91,8 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         metadata=run.run_metadata or {},
         confidence=run.confidence,
         confidence_reason=run.confidence_reason,
+        summary_status=run.summary_status,
+        summary_error=run.summary_error,
         verdict=run.verdict,
         verdict_note=run.verdict_note,
         verdict_set_at=run.verdict_set_at,
@@ -198,6 +206,79 @@ async def list_agent_runs(
     return AgentRunListResponse(
         items=[_run_to_response(run) for run in runs],
         total=total,
+    )
+
+
+@router.get(
+    "/backfill-jobs",
+    response_model=SummaryBackfillJobListResponse,
+)
+async def list_backfill_jobs(
+    db: DbSession,
+    user: CurrentActiveUser,
+    active: bool = Query(
+        default=False,
+        description="If true, only return running jobs.",
+    ),
+) -> SummaryBackfillJobListResponse:
+    """Admin-only: list summary backfill jobs (optionally filtered to active).
+
+    Registered before ``/{run_id}`` so the literal path isn't swallowed by
+    the run-detail handler.
+    """
+    if not _is_platform_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform administrators can view backfill jobs",
+        )
+    q = select(SummaryBackfillJob).order_by(desc(SummaryBackfillJob.created_at))
+    if active:
+        q = q.where(SummaryBackfillJob.status == "running")
+    jobs = (await db.execute(q)).scalars().all()
+    return SummaryBackfillJobListResponse(
+        items=[SummaryBackfillJobResponse.model_validate(j) for j in jobs]
+    )
+
+
+@router.get(
+    "/backfill-eligible",
+    response_model=BackfillEligibleResponse,
+)
+async def get_backfill_eligible(
+    db: DbSession,
+    user: CurrentActiveUser,
+    agent_id: UUID | None = None,
+) -> BackfillEligibleResponse:
+    """Lightweight preview the UI uses to decide whether to show the Backfill
+    button at all. Returns 0/0.00 if nothing is eligible — caller can hide
+    the affordance instead of surfacing a dead-end "Nothing to backfill"
+    modal.
+    """
+    if not _is_platform_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform administrators can preview backfills",
+        )
+    conditions = [
+        AgentRun.status == "completed",
+        AgentRun.summary_status.in_(["pending", "failed"]),
+    ]
+    if agent_id is not None:
+        conditions.append(AgentRun.agent_id == agent_id)
+
+    count = (
+        await db.execute(
+            select(func.count()).select_from(AgentRun).where(*conditions)
+        )
+    ).scalar() or 0
+
+    per_run_cost, basis = await _estimate_per_run_cost(db)
+    estimated_total = (per_run_cost * Decimal(count)).quantize(Decimal("0.0001"))
+
+    return BackfillEligibleResponse(
+        eligible=count,
+        estimated_cost_usd=estimated_total,
+        cost_basis=basis,  # type: ignore[arg-type]
     )
 
 
@@ -355,6 +436,8 @@ async def get_agent_run(
         metadata=run.run_metadata or {},
         confidence=run.confidence,
         confidence_reason=run.confidence_reason,
+        summary_status=run.summary_status,
+        summary_error=run.summary_error,
         verdict=run.verdict,
         verdict_note=run.verdict_note,
         verdict_set_at=run.verdict_set_at,
@@ -801,3 +884,228 @@ async def execute_agent_run(
         )
 
     return result_data
+
+
+# -----------------------------------------------------------------------------
+# Bulk summary backfill (admin-only)
+# -----------------------------------------------------------------------------
+
+_BACKFILL_FALLBACK_PER_RUN_COST = Decimal("0.002")
+
+
+def _is_platform_admin(user) -> bool:  # type: ignore[no-untyped-def]
+    return bool(user.is_superuser) or any(
+        role in ["Platform Admin", "Platform Owner"] for role in user.roles
+    )
+
+
+async def _estimate_per_run_cost(db) -> tuple[Decimal, str]:  # type: ignore[no-untyped-def]
+    """Average cost-per-summarizer-call over the last 100 completed summaries.
+
+    Returns ``(per_run_cost, basis)`` where basis is 'history' or 'fallback'.
+    """
+    recent_runs_subq = (
+        select(AgentRun.id)
+        .where(AgentRun.summary_status == "completed")
+        .order_by(desc(AgentRun.summary_generated_at))
+        .limit(100)
+        .subquery()
+    )
+    result = await db.execute(
+        select(func.coalesce(func.sum(AIUsage.cost), Decimal("0"))).where(
+            AIUsage.agent_run_id.in_(select(recent_runs_subq.c.id))
+        )
+    )
+    total_cost = result.scalar() or Decimal("0")
+    # Count how many of those runs actually had a usage row we'd be dividing by.
+    count_result = await db.execute(
+        select(func.count(func.distinct(AIUsage.agent_run_id))).where(
+            AIUsage.agent_run_id.in_(select(recent_runs_subq.c.id))
+        )
+    )
+    usage_count = count_result.scalar() or 0
+    if usage_count > 0 and total_cost > 0:
+        return Decimal(total_cost) / Decimal(usage_count), "history"
+    return _BACKFILL_FALLBACK_PER_RUN_COST, "fallback"
+
+
+@router.post("/backfill-summaries", response_model=BackfillSummariesResponse)
+async def backfill_summaries(
+    request: BackfillSummariesRequest,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> BackfillSummariesResponse:
+    """Enqueue summarization for pending/failed runs. Admin-only.
+
+    If ``dry_run=true``, returns the eligible count and estimated cost
+    without enqueuing anything. Otherwise creates a ``SummaryBackfillJob``
+    orchestration row and publishes one ``agent-summarization`` message
+    per run tagged with the job_id; progress is broadcast on the
+    ``summary-backfill:{job_id}`` channel.
+    """
+    if not _is_platform_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform administrators can trigger summary backfills",
+        )
+
+    # Build the base query: completed runs that still need (re-)summarization.
+    conditions = [
+        AgentRun.status == "completed",
+        AgentRun.summary_status.in_(request.statuses),
+    ]
+    if request.agent_id is not None:
+        conditions.append(AgentRun.agent_id == request.agent_id)
+
+    id_query = (
+        select(AgentRun.id)
+        .where(*conditions)
+        .order_by(desc(AgentRun.created_at))
+        .limit(request.limit)
+    )
+    run_ids = list((await db.execute(id_query)).scalars().all())
+    eligible = len(run_ids)
+
+    per_run_cost, basis = await _estimate_per_run_cost(db)
+    estimated_total = (per_run_cost * Decimal(eligible)).quantize(Decimal("0.0001"))
+
+    if request.dry_run or eligible == 0:
+        return BackfillSummariesResponse(
+            job_id=None,
+            queued=0,
+            eligible=eligible,
+            estimated_cost_usd=estimated_total,
+            cost_basis=basis,  # type: ignore[arg-type]
+        )
+
+    # Persist the orchestration row first so the worker can increment counters.
+    job = SummaryBackfillJob(
+        agent_id=request.agent_id,
+        requested_by=user.user_id,
+        status="running",
+        total=eligible,
+        estimated_cost_usd=estimated_total,
+    )
+    db.add(job)
+
+    # Flip all targeted runs back to pending so the UI reflects the queued state
+    # immediately (the summarizer's idempotent short-circuit on 'completed' will
+    # skip them otherwise, but admins asked for a retry — respect that).
+    from sqlalchemy import update as sql_update
+    await db.execute(
+        sql_update(AgentRun)
+        .where(AgentRun.id.in_(run_ids))
+        .values(summary_status="pending", summary_error=None)
+    )
+    await db.commit()
+
+    # Now enqueue one message per run, tagged with the job id.
+    from src.jobs.rabbitmq import publish_message
+    from src.services.execution.run_summarizer import SUMMARIZE_QUEUE
+
+    for rid in run_ids:
+        await publish_message(
+            SUMMARIZE_QUEUE,
+            {"run_id": str(rid), "backfill_job_id": str(job.id)},
+        )
+
+    return BackfillSummariesResponse(
+        job_id=job.id,
+        queued=eligible,
+        eligible=eligible,
+        estimated_cost_usd=estimated_total,
+        cost_basis=basis,  # type: ignore[arg-type]
+    )
+
+
+@router.get(
+    "/backfill-jobs/{job_id}",
+    response_model=SummaryBackfillJobResponse,
+)
+async def get_backfill_job(
+    job_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> SummaryBackfillJobResponse:
+    """Admin-only: current progress for a summary backfill job."""
+    if not _is_platform_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform administrators can view backfill jobs",
+        )
+    job = (
+        await db.execute(
+            select(SummaryBackfillJob).where(SummaryBackfillJob.id == job_id)
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Summary backfill job {job_id} not found",
+        )
+    return SummaryBackfillJobResponse.model_validate(job)
+
+
+@router.post(
+    "/backfill-jobs/{job_id}/cancel",
+    response_model=SummaryBackfillJobResponse,
+)
+async def cancel_backfill_job(
+    job_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> SummaryBackfillJobResponse:
+    """Mark a backfill job as cancelled so the UI unblocks.
+
+    This does NOT drain messages already on the ``agent-summarization``
+    queue — RabbitMQ will keep delivering them and the worker will keep
+    summarising individual runs. What it does do:
+
+    - flips ``status`` from ``running`` to ``cancelled``
+    - sets ``completed_at`` so the row stops appearing in "active" queries
+    - broadcasts final state so the progress card dismisses itself
+
+    Use this when progress has stalled (e.g. the worker was restarted
+    mid-job and prefetched messages went back on the queue but the counter
+    never advanced) — admins need a way out.
+    """
+    if not _is_platform_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only platform administrators can cancel backfill jobs",
+        )
+    job = (
+        await db.execute(
+            select(SummaryBackfillJob).where(SummaryBackfillJob.id == job_id)
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Summary backfill job {job_id} not found",
+        )
+    if job.status != "running":
+        # Already terminal — return current state without re-broadcasting.
+        return SummaryBackfillJobResponse.model_validate(job)
+
+    job.status = "cancelled"
+    job.completed_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    # Broadcast so any attached progress card dismisses itself.
+    from src.core.pubsub import publish_summary_backfill_update
+    await publish_summary_backfill_update(
+        job_id,
+        {
+            "total": job.total,
+            "succeeded": job.succeeded,
+            "failed": job.failed,
+            "status": job.status,
+            "actual_cost_usd": str(job.actual_cost_usd),
+            "estimated_cost_usd": str(job.estimated_cost_usd),
+        },
+    )
+
+    return SummaryBackfillJobResponse.model_validate(job)
+
+

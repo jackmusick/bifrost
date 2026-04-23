@@ -1,5 +1,6 @@
 """Agent run contract models."""
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -50,6 +51,8 @@ class AgentRunResponse(BaseModel):
     metadata: dict[str, str] = Field(default_factory=dict)
     confidence: float | None = None
     confidence_reason: str | None = None
+    summary_status: str = "pending"
+    summary_error: str | None = None
     verdict: str | None = None
     verdict_note: str | None = None
     verdict_set_at: datetime | None = None
@@ -123,3 +126,79 @@ class PausedResponse(BaseModel):
     accepted: Literal[False] = False
     message: str
     agent_id: UUID
+
+
+class BackfillSummariesRequest(BaseModel):
+    """Admin-triggered bulk backfill of run summaries."""
+
+    agent_id: UUID | None = Field(
+        default=None,
+        description="Scope to a single agent. None means platform-wide.",
+    )
+    statuses: list[Literal["pending", "failed"]] = Field(
+        default_factory=lambda: ["pending", "failed"],
+        description="Which summary_status values to re-run. Completed runs are skipped.",
+    )
+    limit: int = Field(
+        default=500,
+        ge=1,
+        le=5000,
+        description="Max runs to enqueue in one backfill.",
+    )
+    dry_run: bool = Field(
+        default=False,
+        description="If true, return eligible count + cost estimate without enqueuing.",
+    )
+
+
+class BackfillSummariesResponse(BaseModel):
+    """Result of a backfill request."""
+
+    job_id: UUID | None = Field(
+        default=None,
+        description="Orchestration row ID. None when dry_run=true.",
+    )
+    queued: int = Field(description="Number of runs enqueued (0 if dry_run).")
+    eligible: int = Field(description="Total matched by the filter.")
+    estimated_cost_usd: Decimal = Field(
+        description="Best-effort cost prediction based on recent summarizer history."
+    )
+    cost_basis: Literal["history", "fallback"] = Field(
+        description="Whether the estimate is derived from past runs or a flat fallback.",
+    )
+
+
+class SummaryBackfillJobResponse(BaseModel):
+    """Snapshot of a SummaryBackfillJob orchestration row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    agent_id: UUID | None = None
+    requested_by: UUID
+    status: str
+    total: int
+    succeeded: int
+    failed: int
+    estimated_cost_usd: Decimal
+    actual_cost_usd: Decimal
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class SummaryBackfillJobListResponse(BaseModel):
+    items: list[SummaryBackfillJobResponse]
+
+
+class BackfillEligibleResponse(BaseModel):
+    """Lightweight count + estimate used by the UI to decide whether to
+    surface the Backfill button at all. Mirrors the shape of the dry-run
+    POST but cacheable and cheaper (no queue touch)."""
+
+    eligible: int = Field(description="Number of runs that would be backfilled.")
+    estimated_cost_usd: Decimal = Field(
+        description="Best-effort cost estimate for this scope."
+    )
+    cost_basis: Literal["history", "fallback"] = Field(
+        description="Whether the estimate is derived from past runs or a flat fallback.",
+    )

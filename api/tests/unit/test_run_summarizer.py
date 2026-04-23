@@ -16,6 +16,7 @@ from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
 from src.services.execution.run_summarizer import (
     _clamp_confidence,
+    _extract_json_object,
     summarize_run,
 )
 
@@ -148,6 +149,66 @@ async def test_summarize_run_invalid_json_marks_failed(
 
 
 @pytest.mark.asyncio
+async def test_summarize_run_empty_content_marks_failed_with_actionable_error(
+    async_session_factory, seed_completed_run
+):
+    """OpenAI-family models sometimes return empty content when output is
+    filtered or reasoning tokens consume the budget. Error message should be
+    actionable — 'check model output filtering' not 'Expecting value line 1'.
+    """
+    from src.services.execution import run_summarizer as mod
+
+    mock_client = _build_mock_client(_build_mock_llm_response(""))
+
+    with patch.object(
+        mod,
+        "get_summarization_client",
+        new=AsyncMock(return_value=(mock_client, "gpt-4o-mini")),
+    ):
+        await summarize_run(seed_completed_run.id, async_session_factory)
+
+    async with async_session_factory() as db:
+        run = (
+            await db.execute(
+                select(AgentRun).where(AgentRun.id == seed_completed_run.id)
+            )
+        ).scalar_one()
+        assert run.summary_status == "failed"
+        assert run.summary_error is not None
+        assert "empty content" in run.summary_error.lower()
+
+
+@pytest.mark.asyncio
+async def test_summarize_run_truncated_json_marks_failed_with_budget_hint(
+    async_session_factory, seed_completed_run
+):
+    """If the model runs out of max_tokens mid-object, the error should tell
+    the admin that's what happened, not 'Expecting value line 1'."""
+    from src.services.execution import run_summarizer as mod
+
+    mock_client = _build_mock_client(
+        _build_mock_llm_response('{"asked": "reset my password", "did": "rout')
+    )
+
+    with patch.object(
+        mod,
+        "get_summarization_client",
+        new=AsyncMock(return_value=(mock_client, "gpt-4o-mini")),
+    ):
+        await summarize_run(seed_completed_run.id, async_session_factory)
+
+    async with async_session_factory() as db:
+        run = (
+            await db.execute(
+                select(AgentRun).where(AgentRun.id == seed_completed_run.id)
+            )
+        ).scalar_one()
+        assert run.summary_status == "failed"
+        assert run.summary_error is not None
+        assert "truncated" in run.summary_error.lower()
+
+
+@pytest.mark.asyncio
 async def test_summarize_run_idempotent_when_completed(
     async_session_factory, seed_completed_run
 ):
@@ -217,3 +278,67 @@ def test_clamp_confidence():
     assert _clamp_confidence(None) is None
     assert _clamp_confidence("not a number") is None
     assert _clamp_confidence("0.7") == 0.7  # numeric string parsed
+
+
+class TestExtractJsonObject:
+    """Guards against the docker-log regression: every backfilled run's
+    summarizer call returned content that json.loads rejected because the LLM
+    either wrapped the object in markdown fences or added prose around it.
+    _extract_json_object must tolerate both."""
+
+    def test_plain_json_roundtrips(self):
+        raw = '{"asked": "foo", "did": "bar"}'
+        assert _extract_json_object(raw) == raw
+
+    def test_strips_markdown_code_fence_with_lang(self):
+        raw = '```json\n{"asked": "foo"}\n```'
+        import json
+        assert json.loads(_extract_json_object(raw)) == {"asked": "foo"}
+
+    def test_strips_markdown_code_fence_without_lang(self):
+        raw = '```\n{"asked": "foo"}\n```'
+        import json
+        assert json.loads(_extract_json_object(raw)) == {"asked": "foo"}
+
+    def test_strips_prose_preamble(self):
+        raw = 'Here is the summary:\n{"asked": "foo", "did": "bar"}'
+        import json
+        assert json.loads(_extract_json_object(raw)) == {
+            "asked": "foo",
+            "did": "bar",
+        }
+
+    def test_strips_trailing_prose(self):
+        raw = '{"asked": "foo"}\n\nLet me know if you need anything else.'
+        import json
+        assert json.loads(_extract_json_object(raw)) == {"asked": "foo"}
+
+    def test_tolerates_braces_in_quoted_strings(self):
+        raw = '{"url": "https://x.com/{id}", "did": "routed"}'
+        import json
+        assert json.loads(_extract_json_object(raw)) == {
+            "url": "https://x.com/{id}",
+            "did": "routed",
+        }
+
+    def test_handles_escaped_quotes_inside_strings(self):
+        raw = '{"did": "said \\"hello\\"", "asked": "x"}'
+        import json
+        parsed = json.loads(_extract_json_object(raw))
+        assert parsed["did"] == 'said "hello"'
+
+    def test_nested_object_closes_at_outer_brace(self):
+        raw = '{"metadata": {"ticket_id": "4821"}, "asked": "x"}'
+        import json
+        parsed = json.loads(_extract_json_object(raw))
+        assert parsed["metadata"] == {"ticket_id": "4821"}
+        assert parsed["asked"] == "x"
+
+    def test_empty_input_returns_empty(self):
+        assert _extract_json_object("") == ""
+        assert _extract_json_object("   ") == ""
+
+    def test_no_object_returns_stripped_input(self):
+        # Caller will still get a JSONDecodeError — we don't try to synthesise.
+        result = _extract_json_object("totally not json")
+        assert "{" not in result

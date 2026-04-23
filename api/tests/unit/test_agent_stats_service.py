@@ -143,3 +143,65 @@ async def test_fleet_stats(db_session, seed_agents_with_runs):
     assert s.active_agents >= 2
     assert 0.0 <= s.avg_success_rate <= 1.0
     assert s.needs_review >= 0
+
+
+@pytest.mark.asyncio
+async def test_summarizer_cost_is_included_in_total_cost_7d(
+    db_session, seed_agent
+):
+    """Regression: summarizer-generated AIUsage rows must roll up into
+    AgentStats.total_cost_7d so a backfill's $$ impact is visible in the
+    UI's Spend (7d) card without separate bookkeeping.
+    """
+    now = datetime.now(timezone.utc)
+    run = AgentRun(
+        id=uuid4(),
+        agent_id=seed_agent.id,
+        trigger_type="test",
+        status="completed",
+        iterations_used=1,
+        tokens_used=100,
+        duration_ms=1000,
+        created_at=now,
+    )
+    db_session.add(run)
+    await db_session.flush()
+
+    # Primary agent-work AIUsage row (what the autonomous executor writes).
+    db_session.add(AIUsage(
+        agent_run_id=run.id,
+        organization_id=None,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        input_tokens=100,
+        output_tokens=50,
+        cost=Decimal("0.01"),
+        timestamp=now,
+    ))
+    # Summarizer-generated AIUsage row (what run_summarizer writes).
+    # The service sums AIUsage.cost for all usage rows linked to the run,
+    # regardless of which model/provider wrote them — this asserts that.
+    db_session.add(AIUsage(
+        agent_run_id=run.id,
+        organization_id=None,
+        provider="anthropic",
+        model="claude-haiku-4-5",
+        input_tokens=80,
+        output_tokens=40,
+        cost=Decimal("0.005"),
+        timestamp=now,
+    ))
+    await db_session.commit()
+
+    stats = await get_agent_stats(seed_agent.id, db_session, window_days=7)
+    assert stats.total_cost_7d == Decimal("0.015"), (
+        f"Expected 0.015 (0.01 agent-work + 0.005 summarizer), got {stats.total_cost_7d}. "
+        "If this fails, the summarizer's cost is being silently dropped from "
+        "the Spend (7d) metric — admins running a backfill will see no $$ "
+        "movement and be confused."
+    )
+
+    # Cleanup
+    await db_session.execute(delete(AIUsage).where(AIUsage.agent_run_id == run.id))
+    await db_session.execute(delete(AgentRun).where(AgentRun.id == run.id))
+    await db_session.commit()

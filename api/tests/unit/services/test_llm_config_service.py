@@ -385,8 +385,84 @@ class TestLLMConfigServiceTestConnection:
                     result = await service.test_connection()
 
         assert result.success is True
-        assert "Model listing not available" in result.message
+        assert "listing not available" in result.message.lower()
         assert result.models is None
+
+    @pytest.mark.asyncio
+    async def test_openai_completion_failure_fails_the_test(
+        self, mock_session, mock_settings
+    ):
+        """Regression: keys that pass models.list but fail chat.completions
+        must be flagged by the Test button. This is the exact case of OpenAI
+        project-scoped keys without model permissions — they return "User
+        not found" on completions while listing models fine."""
+        mock_llm_config = MagicMock()
+        mock_llm_config.provider = "openai"
+        mock_llm_config.api_key = "sk-project-key"
+        mock_llm_config.model = "gpt-4o"
+        mock_llm_config.endpoint = None
+
+        mock_models_response = MagicMock()
+        mock_models_response.data = [MagicMock(id="gpt-4o")]
+
+        with patch("src.services.llm_config_service.get_settings", return_value=mock_settings):
+            with patch(
+                "src.services.llm.factory.get_llm_config",
+                return_value=mock_llm_config,
+            ):
+                with patch("openai.AsyncOpenAI") as mock_openai:
+                    mock_client = AsyncMock()
+                    mock_client.models.list.return_value = mock_models_response
+                    mock_client.chat.completions.create.side_effect = Exception(
+                        "Error code: 401 - User not found."
+                    )
+                    mock_openai.return_value = mock_client
+
+                    service = LLMConfigService(mock_session)
+                    result = await service.test_connection()
+
+        assert result.success is False
+        assert "rejected a test completion" in result.message
+        assert "User not found" in result.message
+        # The error message should still show the admin which models we
+        # found, so they can confirm the provider knows the key exists.
+        assert result.models is not None
+
+    @pytest.mark.asyncio
+    async def test_anthropic_completion_failure_fails_the_test(
+        self, mock_session, mock_settings
+    ):
+        """Symmetric regression for Anthropic."""
+        mock_llm_config = MagicMock()
+        mock_llm_config.provider = "anthropic"
+        mock_llm_config.api_key = "sk-ant-test-key"
+        mock_llm_config.model = "claude-sonnet-4-20250514"
+        mock_llm_config.endpoint = None
+
+        mock_models_response = MagicMock()
+        mock_models_response.data = [
+            MagicMock(id="claude-sonnet-4-20250514", display_name="Claude Sonnet 4")
+        ]
+
+        with patch("src.services.llm_config_service.get_settings", return_value=mock_settings):
+            with patch(
+                "src.services.llm.factory.get_llm_config",
+                return_value=mock_llm_config,
+            ):
+                with patch("anthropic.AsyncAnthropic") as mock_anthropic:
+                    mock_client = AsyncMock()
+                    mock_client.models.list.return_value = mock_models_response
+                    mock_client.messages.create.side_effect = Exception(
+                        "Error code: 403 - insufficient_quota"
+                    )
+                    mock_anthropic.return_value = mock_client
+
+                    service = LLMConfigService(mock_session)
+                    result = await service.test_connection()
+
+        assert result.success is False
+        assert "rejected a test completion" in result.message
+        assert "insufficient_quota" in result.message
 
 
 class TestLLMConfigServiceListModels:
@@ -535,5 +611,5 @@ class TestLLMConfigServiceLegacyCustomProvider:
 
         # Should still succeed, just without model list
         assert result.success is True
-        assert "Model listing not available" in result.message
+        assert "listing not available" in result.message.lower()
         assert result.models is None

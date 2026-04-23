@@ -11,6 +11,7 @@ from src.models.orm.agent_prompt_history import AgentPromptHistory
 from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.orm.agent_runs import AgentRun, AgentRunStep
+from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.models.orm.agents import Agent, AgentDelegation, AgentRole, AgentTool, Conversation, Message
 from src.models.orm.ai_usage import AIModelPricing, AIUsage
 from src.models.orm.app_embed_secrets import AppEmbedSecret
@@ -58,6 +59,7 @@ __all__ = [
     "AgentRunFlagConversation",
     "AgentRunStep",
     "AgentRunVerdictHistory",
+    "SummaryBackfillJob",
     # Agents
     "Agent",
     "AgentPromptHistory",
