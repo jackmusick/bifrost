@@ -18,6 +18,7 @@ import { TuneHeader } from "@/components/agents/TuneHeader";
 import {
 	TONE_MUTED,
 	TYPE_MUTED,
+	TYPE_PANE_LABEL,
 } from "@/components/agents/design-tokens";
 
 import { useAgent } from "@/hooks/useAgents";
@@ -39,7 +40,7 @@ export function AgentTuneWorkbench() {
 	});
 
 	const flagged: AgentRun[] = (flaggedResp?.items ?? []) as AgentRun[];
-	const canGenerate = flagged.length > 0;
+	const hasFlaggedRuns = flagged.length > 0;
 
 	function handleGenerate() {
 		// Wired up in Task 6.
@@ -64,7 +65,7 @@ export function AgentTuneWorkbench() {
 					className="flex flex-col gap-3"
 					data-testid="tune-pane-flagged"
 				>
-					<div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+					<div className={TYPE_PANE_LABEL}>
 						Flagged runs ({flagged.length})
 					</div>
 					{flaggedLoading ? (
@@ -90,7 +91,7 @@ export function AgentTuneWorkbench() {
 					<Button
 						type="button"
 						data-testid="generate-proposal-button"
-						disabled={!canGenerate}
+						disabled={!hasFlaggedRuns}
 						onClick={handleGenerate}
 					>
 						<Sparkles className="h-3.5 w-3.5" />
@@ -104,7 +105,7 @@ export function AgentTuneWorkbench() {
 					className="flex flex-col gap-3"
 					data-testid="tune-pane-editor"
 				>
-					<div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+					<div className={TYPE_PANE_LABEL}>
 						Prompt editor
 					</div>
 					<div className="rounded-md border bg-muted/20 p-6 text-center">
@@ -115,7 +116,7 @@ export function AgentTuneWorkbench() {
 						<Button
 							type="button"
 							data-testid="editor-empty-generate-button"
-							disabled={!canGenerate}
+							disabled={!hasFlaggedRuns}
 							onClick={handleGenerate}
 						>
 							<Sparkles className="h-3.5 w-3.5" />
@@ -129,7 +130,7 @@ export function AgentTuneWorkbench() {
 					className="flex flex-col gap-3"
 					data-testid="tune-pane-impact"
 				>
-					<div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+					<div className={TYPE_PANE_LABEL}>
 						Impact
 					</div>
 					<div className="rounded-md border bg-muted/20 p-4">

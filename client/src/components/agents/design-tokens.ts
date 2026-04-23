@@ -41,6 +41,10 @@ export const TYPE_SMALL = "text-[12.5px]";
 export const TYPE_LABEL_UPPERCASE =
 	"text-[11.5px] font-medium uppercase tracking-wider text-muted-foreground";
 
+/** Pane label within a workbench column (slightly larger than `TYPE_LABEL_UPPERCASE`). */
+export const TYPE_PANE_LABEL =
+	"text-xs font-semibold uppercase tracking-wider text-muted-foreground";
+
 /** 22px stat value — `.stat-value` */
 export const TYPE_STAT_VALUE =
 	"text-[22px] font-semibold leading-tight tracking-tight tabular-nums";
