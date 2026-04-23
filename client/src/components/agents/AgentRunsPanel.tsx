@@ -10,18 +10,21 @@
  */
 
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
 	AlertCircle,
 	Bot,
 	CheckCircle,
 	Clock,
 	Loader2,
+	RefreshCw,
 	ThumbsDown,
 	ThumbsUp,
 	XCircle,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	DataTable,
 	DataTableBody,
@@ -32,7 +35,11 @@ import {
 } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { useAgentRuns } from "@/services/agentRuns";
+import {
+	useAgentRunListStream,
+	useAgentRuns,
+	useRerunAgentRun,
+} from "@/services/agentRuns";
 import { formatDate, formatDuration } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
@@ -82,8 +89,36 @@ function VerdictGlyph({ verdict }: { verdict: AgentRun["verdict"] }) {
 export function AgentRunsPanel() {
 	const navigate = useNavigate();
 	const { data, isLoading } = useAgentRuns({ limit: 100 });
+	const rerun = useRerunAgentRun();
+
+	// Subscribe to real-time updates; the hook patches the shared
+	// ["agent-runs", ...] cache in place so new runs prepend and in-progress
+	// status changes (queued → running → completed) reflect live.
+	useAgentRunListStream({ enabled: true });
 
 	const runs: AgentRun[] = (data?.items ?? []) as AgentRun[];
+
+	function handleRerun(runId: string) {
+		rerun.mutate(
+			{ params: { path: { run_id: runId } } },
+			{
+				onSuccess: (data) => {
+					toast.success("Rerun queued");
+					if (data.run_id) {
+						// We don't know the agent_id from the response — find it
+						// from the source run we clicked.
+						const source = runs.find((r) => r.id === runId);
+						if (source) {
+							navigate(
+								`/agents/${source.agent_id}/runs/${data.run_id}`,
+							);
+						}
+					}
+				},
+				onError: () => toast.error("Failed to queue rerun"),
+			},
+		);
+	}
 
 	if (isLoading) {
 		return (
@@ -123,6 +158,7 @@ export function AgentRunsPanel() {
 						</DataTableHead>
 						<DataTableHead className="w-0 whitespace-nowrap">Verdict</DataTableHead>
 						<DataTableHead className="w-0 whitespace-nowrap">Started</DataTableHead>
+						<DataTableHead className="w-0 whitespace-nowrap"></DataTableHead>
 					</DataTableRow>
 				</DataTableHeader>
 				<DataTableBody>
@@ -165,6 +201,22 @@ export function AgentRunsPanel() {
 										? formatDate(run.started_at)
 										: "—"}
 								</span>
+							</DataTableCell>
+							<DataTableCell
+								className="w-0 whitespace-nowrap"
+								onClick={(e) => e.stopPropagation()}
+							>
+								<Button
+									type="button"
+									size="sm"
+									variant="ghost"
+									data-testid={`rerun-${run.id}`}
+									disabled={rerun.isPending}
+									onClick={() => handleRerun(run.id)}
+									title="Rerun with the same input"
+								>
+									<RefreshCw className="h-3.5 w-3.5" />
+								</Button>
 							</DataTableCell>
 						</DataTableRow>
 					))}

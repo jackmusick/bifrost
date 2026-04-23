@@ -365,6 +365,14 @@ export function useClearVerdict() {
 }
 
 /**
+ * Re-run an agent run with its original input (server enqueues a new run,
+ * returns the new `run_id`).
+ */
+export function useRerunAgentRun() {
+	return $api.useMutation("post", "/api/agent-runs/{run_id}/rerun");
+}
+
+/**
  * Fetch the tuning conversation attached to a flagged run.
  *
  * Server creates an empty conversation row if none exists yet, so the UI
@@ -400,5 +408,55 @@ export function useRegenerateSummary() {
 	return $api.useMutation(
 		"post",
 		"/api/agent-runs/{run_id}/regenerate-summary",
+	);
+}
+
+/** Kick off a bulk summary backfill (dry_run supported). Admin-only. */
+export function useBackfillSummaries() {
+	return $api.useMutation("post", "/api/agent-runs/backfill-summaries");
+}
+
+/** Fetch the current state of a single backfill job. Admin-only. */
+export function useSummaryBackfillJob(jobId: string | undefined) {
+	return $api.useQuery(
+		"get",
+		"/api/agent-runs/backfill-jobs/{job_id}",
+		{ params: { path: { job_id: jobId ?? "" } } },
+		{ enabled: !!jobId },
+	);
+}
+
+/**
+ * List summary backfill jobs. When `activeOnly` is true, returns only
+ * running jobs — used on page mount to re-attach progress UI to an
+ * already-running job.
+ */
+export function useSummaryBackfillJobs(activeOnly: boolean = false) {
+	return $api.useQuery(
+		"get",
+		"/api/agent-runs/backfill-jobs",
+		{ params: { query: { active: activeOnly } } },
+	);
+}
+
+/** Cancel a stuck or unwanted backfill job. Admin-only. */
+export function useCancelBackfillJob() {
+	return $api.useMutation(
+		"post",
+		"/api/agent-runs/backfill-jobs/{job_id}/cancel",
+	);
+}
+
+/**
+ * Cheap preview — returns eligible count + cost estimate for the given
+ * scope. Used to decide whether to render the Backfill button at all
+ * (hide when eligible=0 to avoid dead-end "Nothing to backfill" modals).
+ * Admin-only.
+ */
+export function useBackfillEligible(agentId?: string) {
+	return $api.useQuery(
+		"get",
+		"/api/agent-runs/backfill-eligible",
+		{ params: { query: { agent_id: agentId } } },
 	);
 }
