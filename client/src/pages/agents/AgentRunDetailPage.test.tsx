@@ -19,6 +19,7 @@ const mockSendFlagMessage = vi.fn();
 const mockSetVerdict = vi.fn();
 const mockClearVerdict = vi.fn();
 const mockRegenSummary = vi.fn();
+const mockRerun = vi.fn();
 
 vi.mock("@/services/agentRuns", () => ({
 	useAgentRun: (id: string | undefined) => mockUseAgentRun(id),
@@ -34,11 +35,19 @@ vi.mock("@/services/agentRuns", () => ({
 		mutate: mockRegenSummary,
 		isPending: false,
 	}),
+	useRerunAgentRun: () => ({
+		mutate: mockRerun,
+		isPending: false,
+	}),
 }));
 
 const mockUseAgent = vi.fn();
 vi.mock("@/hooks/useAgents", () => ({
 	useAgent: (id: string | undefined) => mockUseAgent(id),
+}));
+
+vi.mock("@/hooks/useAgentRunUpdates", () => ({
+	useAgentRunUpdates: () => {},
 }));
 
 const mockAuth = vi.fn();
@@ -280,6 +289,26 @@ describe("AgentRunDetailPage — regenerate summary", () => {
 		await user.click(screen.getByTestId("regen-summary-button"));
 		await waitFor(() => {
 			expect(mockRegenSummary).toHaveBeenCalledWith(
+				expect.objectContaining({
+					params: { path: { run_id: "run-1" } },
+				}),
+				expect.any(Object),
+			);
+		});
+	});
+});
+
+describe("AgentRunDetailPage — rerun", () => {
+	it("renders the rerun button in the header", async () => {
+		await renderPage();
+		expect(screen.getByTestId("rerun-button")).toBeInTheDocument();
+	});
+
+	it("calls useRerunAgentRun with the current run id on click", async () => {
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("rerun-button"));
+		await waitFor(() => {
+			expect(mockRerun).toHaveBeenCalledWith(
 				expect.objectContaining({
 					params: { path: { run_id: "run-1" } },
 				}),

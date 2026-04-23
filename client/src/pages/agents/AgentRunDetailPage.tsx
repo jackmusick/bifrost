@@ -19,7 +19,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
 	AlertCircle,
 	ArrowLeft,
@@ -53,6 +53,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAgent } from "@/hooks/useAgents";
+import { useAgentRunUpdates } from "@/hooks/useAgentRunUpdates";
 import {
 	formatCost,
 	formatDuration,
@@ -63,6 +64,7 @@ import {
 	useClearVerdict,
 	useFlagConversation,
 	useRegenerateSummary,
+	useRerunAgentRun,
 	useSendFlagMessage,
 	useSetVerdict,
 } from "@/services/agentRuns";
@@ -92,6 +94,11 @@ export function AgentRunDetailPage() {
 	const run = rawRun as unknown as AgentRunDetailResponse | undefined;
 	const { data: agent } = useAgent(agentId);
 
+	// Refetch this run whenever the backend broadcasts an update for it —
+	// covers summarizer transitions (pending → generating → completed) and
+	// step-writes so the page reflects live state without a manual refresh.
+	useAgentRunUpdates({ agentId });
+
 	const verdict = ((run?.verdict as Verdict | undefined) ?? null) as Verdict;
 	const [note, setNote] = useState<string>(run?.verdict_note ?? "");
 	const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -99,6 +106,8 @@ export function AgentRunDetailPage() {
 	const setVerdict = useSetVerdict();
 	const clearVerdict = useClearVerdict();
 	const regenSummary = useRegenerateSummary();
+	const rerun = useRerunAgentRun();
+	const navigate = useNavigate();
 
 	const isFlagged = verdict === "down";
 	const { data: conversation } = useFlagConversation(
@@ -149,6 +158,22 @@ export function AgentRunDetailPage() {
 				onError: () => {
 					toast.error("Failed to regenerate summary");
 				},
+			},
+		);
+	}
+
+	function handleRerun() {
+		if (!runId || !run?.agent_id) return;
+		rerun.mutate(
+			{ params: { path: { run_id: runId } } },
+			{
+				onSuccess: (data) => {
+					toast.success("Rerun queued");
+					if (data.run_id) {
+						navigate(`/agents/${run.agent_id}/runs/${data.run_id}`);
+					}
+				},
+				onError: () => toast.error("Failed to queue rerun"),
 			},
 		);
 	}
@@ -239,6 +264,21 @@ export function AgentRunDetailPage() {
 						</div>
 					</div>
 				</div>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					data-testid="rerun-button"
+					disabled={rerun.isPending}
+					onClick={handleRerun}
+				>
+					{rerun.isPending ? (
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+					) : (
+						<RefreshCw className="h-3.5 w-3.5" />
+					)}
+					Rerun
+				</Button>
 			</div>
 
 			{/* Two-column layout */}
