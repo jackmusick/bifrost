@@ -4,15 +4,6 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
 
-import fastmcp.tools as fastmcp_tools
-from fastmcp.tools.tool import ToolResult
-
-
-def _ensure_fastmcp_toolresult_export() -> None:
-    """Bridge fastmcp import shape drift during router package import."""
-    if not hasattr(fastmcp_tools, "ToolResult"):
-        fastmcp_tools.ToolResult = ToolResult
-
 
 class TestOAuthRefreshClientCredentials:
     """Test that /refresh endpoint handles client_credentials flow correctly."""
@@ -100,7 +91,6 @@ class TestOAuthRefreshClientCredentials:
     @pytest.mark.asyncio
     async def test_refresh_endpoint_passes_joined_provider_scopes(self):
         """Authorization-code refresh should forward provider scopes into shared refresh context."""
-        _ensure_fastmcp_toolresult_export()
         from src.routers.oauth_connections import refresh_token
 
         provider = MagicMock()
@@ -177,7 +167,6 @@ class TestOAuthRefreshClientCredentials:
     @pytest.mark.asyncio
     async def test_callback_passes_joined_provider_scopes(self):
         """OAuth callback should forward joined provider scopes into code exchange."""
-        _ensure_fastmcp_toolresult_export()
         from src.models.contracts.oauth import OAuthCallbackRequest
         from src.routers.oauth_connections import oauth_callback
 
