@@ -108,6 +108,8 @@ export function LLMConfig() {
 	const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINTS.openai);
 	const [maxTokens, setMaxTokens] = useState(4096);
 	const [defaultSystemPrompt, setDefaultSystemPrompt] = useState("");
+	const [summarizationModel, setSummarizationModel] = useState("");
+	const [tuningModel, setTuningModel] = useState("");
 
 	// Models state (loaded dynamically after test)
 	const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
@@ -150,6 +152,8 @@ export function LLMConfig() {
 			setMaxTokens(config.max_tokens);
 			setDefaultSystemPrompt(config.default_system_prompt ?? "");
 			setEndpoint(config.endpoint || DEFAULT_ENDPOINTS[p] || DEFAULT_ENDPOINTS.openai);
+			setSummarizationModel(config.summarization_model ?? "");
+			setTuningModel(config.tuning_model ?? "");
 		}
 	}, [config]);
 
@@ -281,6 +285,8 @@ export function LLMConfig() {
 					endpoint: isDefaultEndpoint ? undefined : endpoint || undefined,
 					max_tokens: maxTokens,
 					default_system_prompt: defaultSystemPrompt || null,
+					summarization_model: summarizationModel || null,
+					tuning_model: tuningModel || null,
 				},
 			});
 
@@ -320,6 +326,8 @@ export function LLMConfig() {
 			setEndpoint(DEFAULT_ENDPOINTS.openai);
 			setMaxTokens(16384);
 			setDefaultSystemPrompt("");
+			setSummarizationModel("");
+			setTuningModel("");
 			setTestResult(null);
 			setAvailableModels([]);
 			setModelsLoaded(false);
@@ -628,6 +636,44 @@ export function LLMConfig() {
 								System prompt used when chatting without a
 								specific agent. Leave empty to use the built-in
 								default.
+							</p>
+						</div>
+
+						{/* Summarization Model Override */}
+						<div className="space-y-2">
+							<Label htmlFor="summarization-model">
+								Summarization model (optional)
+							</Label>
+							<Input
+								id="summarization-model"
+								placeholder="Leave blank to use primary model"
+								value={summarizationModel}
+								onChange={(e) =>
+									setSummarizationModel(e.target.value)
+								}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Override the model used for post-run summarization.
+								Uses the primary provider and API key.
+							</p>
+						</div>
+
+						{/* Tuning Model Override */}
+						<div className="space-y-2">
+							<Label htmlFor="tuning-model">
+								Tuning model (optional)
+							</Label>
+							<Input
+								id="tuning-model"
+								placeholder="Leave blank to use primary model"
+								value={tuningModel}
+								onChange={(e) =>
+									setTuningModel(e.target.value)
+								}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Override the model used for agent tuning chat and
+								dry-runs. Uses the primary provider and API key.
 							</p>
 						</div>
 					</div>

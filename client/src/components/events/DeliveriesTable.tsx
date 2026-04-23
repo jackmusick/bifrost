@@ -198,8 +198,8 @@ export function DeliveriesTable({ deliveries, eventId }: DeliveriesTableProps) {
 								const resourceName = isAgent
 									? (d.agent_name || d.agent_id || "Unknown Agent")
 									: (delivery.workflow_name || delivery.workflow_id);
-								const linkUrl = isAgent && d.agent_run_id
-									? `/agent-runs/${d.agent_run_id}`
+								const linkUrl = isAgent && d.agent_run_id && d.agent_id
+									? `/agents/${d.agent_id}/runs/${d.agent_run_id}`
 									: delivery.execution_id
 										? `/history/${delivery.execution_id}`
 										: null;

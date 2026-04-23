@@ -1,0 +1,153 @@
+/**
+ * Tests for AgentOverviewTab.
+ *
+ * Mocks the per-agent stats and runs hooks at module scope so we can
+ * exercise loading / data / empty branches deterministically.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderWithProviders, screen } from "@/test-utils";
+
+const mockUseAgentStats = vi.fn();
+vi.mock("@/services/agents", () => ({
+	useAgentStats: (id: string | undefined) => mockUseAgentStats(id),
+}));
+
+const mockUseAgentRuns = vi.fn();
+vi.mock("@/services/agentRuns", () => ({
+	useAgentRuns: (params: unknown) => mockUseAgentRuns(params),
+}));
+
+const mockUseAgent = vi.fn();
+vi.mock("@/hooks/useAgents", () => ({
+	useAgent: (id: string | undefined) => mockUseAgent(id),
+}));
+
+const baseStats = {
+	agent_id: "agent-1",
+	runs_7d: 42,
+	success_rate: 0.95,
+	avg_duration_ms: 1500,
+	total_cost_7d: "1.23",
+	last_run_at: "2026-04-21T10:00:00Z",
+	runs_by_day: [1, 2, 3, 4, 5, 6, 7],
+	needs_review: 2,
+	unreviewed: 0,
+};
+
+function makeRun(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "run-1",
+		agent_id: "agent-1",
+		agent_name: "Triage",
+		trigger_type: "test",
+		status: "completed",
+		iterations_used: 1,
+		tokens_used: 1000,
+		asked: "Help me",
+		did: "Routed",
+		input: {},
+		output: {},
+		verdict: null,
+		verdict_note: null,
+		duration_ms: 800,
+		created_at: "2026-04-20T00:00:00Z",
+		started_at: "2026-04-20T00:00:00Z",
+		metadata: {},
+		...overrides,
+	};
+}
+
+beforeEach(() => {
+	mockUseAgentStats.mockReturnValue({ data: baseStats, isLoading: false });
+	mockUseAgentRuns.mockReturnValue({
+		data: { items: [makeRun()], total: 1, next_cursor: null },
+		isLoading: false,
+	});
+	mockUseAgent.mockReturnValue({
+		data: {
+			id: "agent-1",
+			name: "Triage",
+			description: "Test",
+			channels: ["chat"],
+			access_level: "authenticated",
+			created_by: "admin",
+			llm_model: null,
+			max_iterations: 15,
+			max_token_budget: 50000,
+			is_active: true,
+		},
+		isLoading: false,
+	});
+});
+
+async function renderTab(agentId = "agent-1") {
+	const { AgentOverviewTab } = await import("./AgentOverviewTab");
+	return renderWithProviders(<AgentOverviewTab agentId={agentId} />);
+}
+
+describe("AgentOverviewTab", () => {
+	it("renders the per-agent stats", async () => {
+		await renderTab();
+		expect(screen.getByText("42")).toBeInTheDocument(); // runs
+		expect(screen.getByText("95%")).toBeInTheDocument(); // success rate
+	});
+
+	it("renders the recent runs list", async () => {
+		await renderTab();
+		expect(screen.getByText(/help me/i)).toBeInTheDocument();
+	});
+
+	it("hides the 'Needs attention' card when no flagged runs", async () => {
+		mockUseAgentRuns.mockReturnValue({
+			data: { items: [makeRun()], total: 1, next_cursor: null },
+			isLoading: false,
+		});
+		await renderTab();
+		// No red "Needs attention" card should render when everything is green
+		expect(screen.queryByText(/needs attention/i)).not.toBeInTheDocument();
+	});
+
+	it("renders 'Needs attention' card with count when runs have verdict='down'", async () => {
+		mockUseAgentRuns.mockReturnValue({
+			data: {
+				items: [
+					makeRun({
+						id: "flagged-1",
+						verdict: "down",
+						verdict_note: "Wrong answer",
+					}),
+					makeRun({
+						id: "flagged-2",
+						verdict: "down",
+					}),
+				],
+				total: 2,
+				next_cursor: null,
+			},
+			isLoading: false,
+		});
+		await renderTab();
+		expect(screen.getByText(/needs attention/i)).toBeInTheDocument();
+		expect(screen.getByText(/open review flipbook/i)).toBeInTheDocument();
+	});
+
+	it("shows skeletons while loading stats", async () => {
+		mockUseAgentStats.mockReturnValue({ data: undefined, isLoading: true });
+		const { container } = await renderTab();
+		expect(
+			container.querySelectorAll(".animate-pulse").length,
+		).toBeGreaterThan(0);
+	});
+
+	it("shows the no-runs message when the recent runs list is empty", async () => {
+		mockUseAgentRuns.mockReturnValue({
+			data: { items: [], total: 0, next_cursor: null },
+			isLoading: false,
+		});
+		await renderTab();
+		expect(
+			screen.getByText(/no runs yet for this agent/i),
+		).toBeInTheDocument();
+	});
+});

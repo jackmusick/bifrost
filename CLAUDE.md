@@ -164,6 +164,10 @@ client/
 
 Never leave dead code, commented-out code, unused helpers, or "just in case" fallback branches behind. Never add a fallback, compatibility shim, or alternate code path that the user did not explicitly ask for — these get forgotten and become latent bugs (see the `multiprocessing.spawn` fallback in `process_pool.py` that silently leaked ~800 MB per pod in production). If you think a fallback might be warranted, **ask first**. When removing a code path, also remove everything that was only reachable from it in the same change.
 
+### Agent summary cost lives in `total_cost_7d`
+
+Summarizer-generated `AIUsage` rows roll up into `AgentStats.total_cost_7d` (the Spend (7d) card). A backfill of N runs will move the card by roughly `N × (avg summarizer cost per run)`. The backfill endpoint (`POST /api/agent-runs/backfill-summaries`) shows a cost estimate up front — runbook at `docs/runbooks/agent-summary-backfill.md`.
+
 ### Backend (Python/FastAPI)
 
 -   **Models**: All Pydantic models MUST be defined in `api/shared/models.py`

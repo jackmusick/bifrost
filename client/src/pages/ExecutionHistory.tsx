@@ -14,8 +14,6 @@ import {
 	Info,
 	Eye,
 	Terminal,
-	Workflow,
-	Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +39,9 @@ import {
 } from "@/components/ui/tooltip";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { AgentRunsPanel } from "@/components/agents/AgentRunsPanel";
+import { Bot as BotIcon, Workflow as WorkflowIcon } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -72,11 +73,6 @@ import {
 	PaginationPrevious,
 } from "@/components/ui/pagination";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import {
-	ToggleGroup,
-	ToggleGroupItem,
-} from "@/components/ui/toggle-group";
-import { AgentRunsTable } from "@/components/agents/AgentRunsTable";
 import type { DateRange } from "react-day-picker";
 import type { components } from "@/lib/v1";
 
@@ -107,7 +103,6 @@ export function ExecutionHistory() {
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const { isPlatformAdmin, user } = useAuth();
-	const historyType = (searchParams.get("type") || "workflows") as "workflows" | "agents";
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
 	);
@@ -127,6 +122,9 @@ export function ExecutionHistory() {
 	const [cleaningUp, setCleaningUp] = useState(false);
 	const [showLocal, setShowLocal] = useState(false);
 	const [viewMode, setViewMode] = useState<"executions" | "logs">("executions");
+	const historyType = (searchParams.get("type") === "agents"
+		? "agents"
+		: "workflows") as "workflows" | "agents";
 	const [logLevelFilter, setLogLevelFilter] = useState<string>("all");
 	const [drawerExecutionId, setDrawerExecutionId] = useState<string | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
@@ -380,67 +378,53 @@ export function ExecutionHistory() {
 		setCurrentToken(undefined);
 	}, [statusFilter, dateRange, showLocal, filterOrgId, workflowIdFilter]);
 
-	const historyToggle = isPlatformAdmin ? (
-		<ToggleGroup
-			type="single"
-			value={historyType}
-			onValueChange={(value) => {
-				if (!value) return;
-				setSearchParams((prev) => {
-					const next = new URLSearchParams(prev);
-					if (value === "workflows") {
-						next.delete("type");
-					} else {
-						next.set("type", value);
-					}
-					return next;
-				}, { replace: true });
-			}}
-			className="border rounded-lg p-1"
-		>
-			<ToggleGroupItem value="workflows" aria-label="Workflows" className="gap-1.5 w-[120px] justify-center">
-				<Workflow className="h-4 w-4" />
-				Workflows
-			</ToggleGroupItem>
-			<ToggleGroupItem value="agents" aria-label="Agents" className="gap-1.5 w-[120px] justify-center">
-				<Bot className="h-4 w-4" />
-				Agents
-			</ToggleGroupItem>
-		</ToggleGroup>
-	) : null;
-
-	if (historyType === "agents") {
-		return (
-			<div className="h-full flex flex-col space-y-6">
-				{/* Header */}
-				<div className="flex items-center justify-between">
-					<div>
-						{historyToggle || (
-							<h1 className="text-4xl font-extrabold tracking-tight">
-								History
-							</h1>
-						)}
-					</div>
-				</div>
-				<p className="-mt-4 text-muted-foreground">
-					Autonomous agent execution history
-				</p>
-
-				<AgentRunsTable isPlatformAdmin={isPlatformAdmin} />
-			</div>
-		);
-	}
-
 	return (
 		<div className="h-full flex flex-col space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
-				<div>
-					{historyToggle || (
-						<h1 className="text-4xl font-extrabold tracking-tight">
-							History
-						</h1>
-					)}
+				<div className="flex items-center gap-4">
+					<h1 className="text-4xl font-extrabold tracking-tight">
+						History
+					</h1>
+					{isPlatformAdmin ? (
+						<ToggleGroup
+							type="single"
+							value={historyType}
+							onValueChange={(value: string) => {
+								if (!value) return;
+								setSearchParams(
+									(prev) => {
+										const next = new URLSearchParams(prev);
+										if (value === "workflows") {
+											next.delete("type");
+										} else {
+											next.set("type", value);
+										}
+										return next;
+									},
+									{ replace: true },
+								);
+							}}
+							data-testid="history-type-toggle"
+						>
+							<ToggleGroupItem
+								value="workflows"
+								aria-label="Workflows"
+								className="gap-1.5"
+							>
+								<WorkflowIcon className="h-3.5 w-3.5" />
+								Workflows
+							</ToggleGroupItem>
+							<ToggleGroupItem
+								value="agents"
+								aria-label="Agents"
+								className="gap-1.5"
+							>
+								<BotIcon className="h-3.5 w-3.5" />
+								Agents
+							</ToggleGroupItem>
+						</ToggleGroup>
+					) : null}
 				</div>
 				<div className="flex items-center gap-2">
 					<Dialog
@@ -574,8 +558,10 @@ export function ExecutionHistory() {
 				</div>
 			</div>
 			<p className="-mt-4 text-muted-foreground">
-				View and track workflow execution history
-				{executions.length > 0 && (
+				{historyType === "agents"
+					? "View agent run history across the fleet"
+					: "View and track workflow execution history"}
+				{historyType === "workflows" && executions.length > 0 && (
 					<span className="ml-2">
 						· Showing {executions.length} execution
 						{executions.length !== 1 ? "s" : ""}
@@ -584,6 +570,10 @@ export function ExecutionHistory() {
 				)}
 			</p>
 
+			{historyType === "agents" ? <AgentRunsPanel /> : null}
+
+			{historyType === "workflows" ? (
+			<>
 			{/* Search and Filters */}
 			<div className="flex items-center gap-4">
 				{isPlatformAdmin && (
@@ -995,6 +985,8 @@ export function ExecutionHistory() {
 				</TabsContent>
 				</Tabs>
 			)}
+			</>
+			) : null}
 			<ExecutionDrawer
 				executionId={drawerExecutionId}
 				open={drawerOpen}

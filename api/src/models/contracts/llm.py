@@ -17,6 +17,8 @@ class LLMConfigResponse(BaseModel):
     endpoint: str | None = None
     max_tokens: int = 16384
     default_system_prompt: str | None = None
+    summarization_model: str | None = None
+    tuning_model: str | None = None
     is_configured: bool = True
     api_key_set: bool = False
 
@@ -50,6 +52,14 @@ class LLMConfigRequest(BaseModel):
     default_system_prompt: str | None = Field(
         None,
         description="Default system prompt for agentless chat",
+    )
+    summarization_model: str | None = Field(
+        default=None,
+        description="Model override for post-run summarization. Falls back to primary model if unset.",
+    )
+    tuning_model: str | None = Field(
+        default=None,
+        description="Model override for tuning chat + dry-run. Falls back to primary model if unset.",
     )
 
 

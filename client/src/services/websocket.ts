@@ -209,6 +209,23 @@ export interface AgentRunUpdate {
 	org_id: string | null;
 	started_at: string | null;
 	completed_at: string | null;
+	summary_status: string | null;
+	summary_error: string | null;
+	asked: string | null;
+	did: string | null;
+	confidence: number | null;
+	timestamp: string;
+}
+
+export interface SummaryBackfillUpdate {
+	type: "summary_backfill_update";
+	job_id: string;
+	total: number;
+	succeeded: number;
+	failed: number;
+	status: string;
+	estimated_cost_usd: string;
+	actual_cost_usd: string;
 	timestamp: string;
 }
 
@@ -451,7 +468,8 @@ type WebSocketMessage =
 	| PoolMessage
 	| FileActivityEvent
 	| AgentRunUpdate
-	| AgentRunStepUpdate;
+	| AgentRunStepUpdate
+	| SummaryBackfillUpdate;
 
 // Notification payload from backend (snake_case)
 interface NotificationPayload {
@@ -504,6 +522,7 @@ type AppPublishedUpdateCallback = (update: AppPublishedUpdate) => void;
 type PoolMessageCallback = (message: PoolMessage) => void;
 type FileActivityCallback = (event: FileActivityEvent) => void;
 type AgentRunUpdateCallback = (update: AgentRunUpdate) => void;
+type SummaryBackfillUpdateCallback = (update: SummaryBackfillUpdate) => void;
 type AgentRunStepCallback = (update: AgentRunStepUpdate) => void;
 
 /**
@@ -572,6 +591,10 @@ class WebSocketService {
 	private poolMessageCallbacks = new Set<PoolMessageCallback>();
 	private fileActivityCallbacks = new Set<FileActivityCallback>();
 	private agentRunUpdateCallbacks: Set<AgentRunUpdateCallback> = new Set();
+	private summaryBackfillCallbacks: Map<
+		string,
+		Set<SummaryBackfillUpdateCallback>
+	> = new Map();
 	private agentRunStepCallbacks: Map<string, Set<AgentRunStepCallback>> = new Map();
 	private connectionStatusCallbacks = new Set<(connected: boolean) => void>();
 
@@ -940,6 +963,16 @@ class WebSocketService {
 				const runCallbacks = this.agentRunStepCallbacks.get(agentRunStepUpdate.run_id);
 				if (runCallbacks) {
 					runCallbacks.forEach((cb) => cb(agentRunStepUpdate));
+				}
+				break;
+			}
+			case "summary_backfill_update": {
+				const bfUpdate = message as unknown as SummaryBackfillUpdate;
+				const jobCallbacks = this.summaryBackfillCallbacks.get(
+					bfUpdate.job_id,
+				);
+				if (jobCallbacks) {
+					jobCallbacks.forEach((cb) => cb(bfUpdate));
 				}
 				break;
 			}
@@ -1674,6 +1707,25 @@ class WebSocketService {
 			this.agentRunStepCallbacks.get(runId)?.delete(callback);
 			if (this.agentRunStepCallbacks.get(runId)?.size === 0) {
 				this.agentRunStepCallbacks.delete(runId);
+			}
+		};
+	}
+
+	/**
+	 * Subscribe to progress updates for a summary backfill job.
+	 */
+	onSummaryBackfillUpdate(
+		jobId: string,
+		callback: SummaryBackfillUpdateCallback,
+	): () => void {
+		if (!this.summaryBackfillCallbacks.has(jobId)) {
+			this.summaryBackfillCallbacks.set(jobId, new Set());
+		}
+		this.summaryBackfillCallbacks.get(jobId)!.add(callback);
+		return () => {
+			this.summaryBackfillCallbacks.get(jobId)?.delete(callback);
+			if (this.summaryBackfillCallbacks.get(jobId)?.size === 0) {
+				this.summaryBackfillCallbacks.delete(jobId);
 			}
 		};
 	}
