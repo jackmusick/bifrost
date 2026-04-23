@@ -58,8 +58,7 @@ export function AgentTuneWorkbench() {
 	const [edits, setEdits] = useState<string>("");
 	const [currentOpen, setCurrentOpen] = useState(false);
 
-	const currentPrompt =
-		(agent as unknown as { system_prompt?: string })?.system_prompt ?? "";
+	const currentPrompt = agent?.system_prompt ?? "";
 
 	function handleGenerate() {
 		if (!agentId) return;
@@ -67,9 +66,8 @@ export function AgentTuneWorkbench() {
 			{ params: { path: { agent_id: agentId } } },
 			{
 				onSuccess: (data) => {
-					const p = data as ConsolidatedProposal;
-					setProposal(p);
-					setEdits(p.proposed_prompt);
+					setProposal(data);
+					setEdits(data.proposed_prompt);
 				},
 				onError: () => toast.error("Failed to generate proposal"),
 			},
