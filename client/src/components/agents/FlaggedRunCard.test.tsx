@@ -9,10 +9,13 @@ vi.mock("@/services/agentRuns", () => ({
 	useAgentRun: (id: string | undefined) => mockUseAgentRun(id),
 }));
 
+const runReviewPanelProps = vi.fn();
+
 vi.mock("./RunReviewPanel", () => ({
-	RunReviewPanel: () => (
-		<div data-testid="run-review-panel">panel</div>
-	),
+	RunReviewPanel: (props: unknown) => {
+		runReviewPanelProps(props);
+		return <div data-testid="run-review-panel">panel</div>;
+	},
 }));
 
 const baseRun = {
@@ -33,6 +36,7 @@ const baseRun = {
 
 beforeEach(() => {
 	mockUseAgentRun.mockReturnValue({ data: baseRun, isLoading: false });
+	runReviewPanelProps.mockClear();
 });
 
 describe("FlaggedRunCard", () => {
@@ -51,6 +55,12 @@ describe("FlaggedRunCard", () => {
 		);
 		await user.click(screen.getByTestId("flagged-run-toggle"));
 		expect(screen.getByTestId("run-review-panel")).toBeInTheDocument();
+		expect(runReviewPanelProps).toHaveBeenCalledWith(
+			expect.objectContaining({
+				variant: "drawer",
+				hideVerdictBar: true,
+			}),
+		);
 	});
 
 	it("collapses again on a second click", async () => {

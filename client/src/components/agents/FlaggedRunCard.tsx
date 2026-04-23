@@ -19,7 +19,7 @@ export interface FlaggedRunCardProps {
 export function FlaggedRunCard({ run }: FlaggedRunCardProps) {
 	const [open, setOpen] = useState(false);
 	const { data: detail, isLoading } = useAgentRun(
-		open ? (run.id ?? undefined) : undefined,
+		open ? run.id : undefined,
 	);
 
 	const title = run.asked || run.did || "Run";
