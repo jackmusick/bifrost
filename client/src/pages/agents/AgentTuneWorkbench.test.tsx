@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Routes, Route } from "react-router-dom";
 
-import { renderWithProviders, screen } from "@/test-utils";
+import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockUseAgent = vi.fn();
 const mockUseAgentRuns = vi.fn();
@@ -151,5 +151,83 @@ describe("AgentTuneWorkbench — shell", () => {
 		const pane = screen.getByTestId("tune-pane-impact");
 		expect(pane).toHaveTextContent(/simulate the proposed prompt/i);
 		expect(screen.getByTestId("dryrun-button")).toBeDisabled();
+	});
+});
+
+const sampleProposal = {
+	summary: "Tighten routing rules for password resets.",
+	proposed_prompt:
+		"You are a helpful triage agent. Always route password resets to Support.",
+	affected_run_ids: ["a", "b"],
+};
+
+describe("AgentTuneWorkbench — generate proposal", () => {
+	beforeEach(() => {
+		mockTuningSession.mockImplementation((_args, opts) => {
+			opts?.onSuccess?.(sampleProposal);
+		});
+	});
+
+	it("calls useTuningSession when the left-pane button is clicked", async () => {
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("generate-proposal-button"));
+		await waitFor(() => {
+			expect(mockTuningSession).toHaveBeenCalledWith(
+				expect.objectContaining({
+					params: { path: { agent_id: "agent-1" } },
+				}),
+				expect.any(Object),
+			);
+		});
+	});
+
+	it("calls useTuningSession when the empty-state editor button is clicked", async () => {
+		const { user } = await renderPage();
+		await user.click(
+			screen.getByTestId("editor-empty-generate-button"),
+		);
+		await waitFor(() => {
+			expect(mockTuningSession).toHaveBeenCalled();
+		});
+	});
+
+	it("renders the editable textarea with the proposal after generate", async () => {
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("generate-proposal-button"));
+		const textarea = await screen.findByTestId(
+			"proposal-textarea",
+		);
+		expect(textarea).toHaveValue(sampleProposal.proposed_prompt);
+	});
+
+	it("renders the diff viewer after a proposal is generated", async () => {
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("generate-proposal-button"));
+		expect(
+			await screen.findByTestId("prompt-diff-viewer"),
+		).toBeInTheDocument();
+	});
+
+	it("edits to the textarea update the diff viewer content", async () => {
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("generate-proposal-button"));
+		const textarea = (await screen.findByTestId(
+			"proposal-textarea",
+		)) as HTMLTextAreaElement;
+		await user.clear(textarea);
+		await user.type(textarea, "Brand new prompt.");
+		expect(textarea).toHaveValue("Brand new prompt.");
+		expect(screen.getByText(/brand new prompt\./i)).toBeInTheDocument();
+	});
+
+	it("Discard returns to the empty state", async () => {
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("generate-proposal-button"));
+		await screen.findByTestId("proposal-textarea");
+		await user.click(screen.getByTestId("discard-button"));
+		expect(screen.queryByTestId("proposal-textarea")).toBeNull();
+		expect(
+			screen.getByTestId("editor-empty-generate-button"),
+		).toBeInTheDocument();
 	});
 });

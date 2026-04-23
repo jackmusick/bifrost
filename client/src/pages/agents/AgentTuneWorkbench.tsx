@@ -2,18 +2,23 @@
  * AgentTuneWorkbench — three-pane tuning workbench.
  *
  * Left: flagged runs (expandable transcripts) + Generate proposal CTA.
- * Center: prompt editor (current read-only, proposed editable with diff).
+ * Center: prompt editor (current collapsible, proposed editable with diff).
  * Right: dry-run impact panel.
  *
- * State lives in this component; mutations wire up in follow-up tasks.
+ * State lives in this component; Apply live wires up in Task 7.
  */
 
+import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { Check, ChevronDown, Loader2, Sparkles, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
 import { FlaggedRunCard } from "@/components/agents/FlaggedRunCard";
+import { PromptDiffViewer } from "@/components/agents/PromptDiffViewer";
 import { TuneHeader } from "@/components/agents/TuneHeader";
 import {
 	TONE_MUTED,
@@ -24,6 +29,10 @@ import {
 import { useAgent } from "@/hooks/useAgents";
 import { useAgentRuns } from "@/services/agentRuns";
 import { useAgentStats } from "@/services/agents";
+import {
+	useTuningSession,
+	type ConsolidatedProposal,
+} from "@/services/agentTuning";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
@@ -39,11 +48,37 @@ export function AgentTuneWorkbench() {
 		verdict: "down",
 	});
 
+	const tuningSession = useTuningSession();
+
 	const flagged: AgentRun[] = (flaggedResp?.items ?? []) as AgentRun[];
 	const hasFlaggedRuns = flagged.length > 0;
+	const canGenerate = hasFlaggedRuns && !tuningSession.isPending;
+
+	const [proposal, setProposal] = useState<ConsolidatedProposal | null>(null);
+	const [edits, setEdits] = useState<string>("");
+	const [currentOpen, setCurrentOpen] = useState(false);
+
+	const currentPrompt =
+		(agent as unknown as { system_prompt?: string })?.system_prompt ?? "";
 
 	function handleGenerate() {
-		// Wired up in Task 6.
+		if (!agentId) return;
+		tuningSession.mutate(
+			{ params: { path: { agent_id: agentId } } },
+			{
+				onSuccess: (data) => {
+					const p = data as ConsolidatedProposal;
+					setProposal(p);
+					setEdits(p.proposed_prompt);
+				},
+				onError: () => toast.error("Failed to generate proposal"),
+			},
+		);
+	}
+
+	function handleDiscard() {
+		setProposal(null);
+		setEdits("");
 	}
 
 	return (
@@ -61,16 +96,11 @@ export function AgentTuneWorkbench() {
 
 			<div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr_360px]">
 				{/* Left: flagged runs */}
-				<div
-					className="flex flex-col gap-3"
-					data-testid="tune-pane-flagged"
-				>
-					<div className={TYPE_PANE_LABEL}>
-						Flagged runs ({flagged.length})
-					</div>
+				<div className="flex flex-col gap-3" data-testid="tune-pane-flagged">
+					<div className={TYPE_PANE_LABEL}>Flagged runs ({flagged.length})</div>
 					{flaggedLoading ? (
-						<div className={cn(TYPE_MUTED)}>Loading runs…</div>
-					) : flagged.length === 0 ? (
+						<Skeleton className="h-24 w-full" />
+					) : !hasFlaggedRuns ? (
 						<div
 							className={cn(
 								"rounded-md border bg-muted/20 p-4 text-center",
@@ -78,8 +108,8 @@ export function AgentTuneWorkbench() {
 								TONE_MUTED,
 							)}
 						>
-							No flagged runs. Mark a run thumbs-down from the runs
-							tab to tune against it.
+							No flagged runs. Mark a run thumbs-down from the runs tab to tune
+							against it.
 						</div>
 					) : (
 						<div className="flex flex-col gap-2">
@@ -91,53 +121,124 @@ export function AgentTuneWorkbench() {
 					<Button
 						type="button"
 						data-testid="generate-proposal-button"
-						disabled={!hasFlaggedRuns}
+						disabled={!canGenerate}
 						onClick={handleGenerate}
 					>
-						<Sparkles className="h-3.5 w-3.5" />
-						Generate proposal from {flagged.length} run
-						{flagged.length === 1 ? "" : "s"}
+						{tuningSession.isPending ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<Sparkles className="h-3.5 w-3.5" />
+						)}
+						{proposal
+							? "Re-generate"
+							: `Generate proposal from ${flagged.length} run${flagged.length === 1 ? "" : "s"}`}
 					</Button>
 				</div>
 
 				{/* Center: prompt editor */}
-				<div
-					className="flex flex-col gap-3"
-					data-testid="tune-pane-editor"
-				>
-					<div className={TYPE_PANE_LABEL}>
-						Prompt editor
-					</div>
-					<div className="rounded-md border bg-muted/20 p-6 text-center">
-						<p className={cn("mb-3", TYPE_MUTED, TONE_MUTED)}>
-							I&apos;ll read the flagged runs and suggest one
-							consolidated prompt change.
-						</p>
-						<Button
+				<div className="flex flex-col gap-3" data-testid="tune-pane-editor">
+					<div className={TYPE_PANE_LABEL}>Prompt editor</div>
+
+					{/* Current prompt (collapsible) */}
+					<div className="rounded-md border bg-card">
+						<button
 							type="button"
-							data-testid="editor-empty-generate-button"
-							disabled={!hasFlaggedRuns}
-							onClick={handleGenerate}
+							data-testid="current-prompt-toggle"
+							onClick={() => setCurrentOpen((o) => !o)}
+							className="flex w-full items-center justify-between px-3 py-2 text-left text-xs"
+							aria-expanded={currentOpen}
 						>
-							<Sparkles className="h-3.5 w-3.5" />
-							Generate proposal
-						</Button>
+							<span className="font-medium">Current prompt</span>
+							<ChevronDown
+								className={cn(
+									"h-3 w-3 transition-transform",
+									currentOpen ? "rotate-0" : "-rotate-90",
+								)}
+							/>
+						</button>
+						{currentOpen ? (
+							<pre className="max-h-60 overflow-y-auto whitespace-pre-wrap border-t px-3 py-2 font-mono text-[11.5px] text-muted-foreground">
+								{currentPrompt || "(no system prompt set)"}
+							</pre>
+						) : null}
 					</div>
+
+					{/* Proposed prompt */}
+					{tuningSession.isPending ? (
+						<div className="rounded-md border bg-card p-4">
+							<div className={cn("mb-2 text-xs", TONE_MUTED)}>
+								Building proposal…
+							</div>
+							<Skeleton className="h-32 w-full" />
+						</div>
+					) : !proposal ? (
+						<div className="rounded-md border bg-muted/20 p-6 text-center">
+							<p className={cn("mb-3", TYPE_MUTED, TONE_MUTED)}>
+								I&apos;ll read the flagged runs and suggest one consolidated
+								prompt change.
+							</p>
+							<Button
+								type="button"
+								data-testid="editor-empty-generate-button"
+								disabled={!canGenerate}
+								onClick={handleGenerate}
+							>
+								<Sparkles className="h-3.5 w-3.5" />
+								Generate proposal
+							</Button>
+						</div>
+					) : (
+						<div className="flex flex-col gap-3">
+							<div className="rounded-md border bg-card">
+								<div className="border-b px-3 py-2 text-xs font-medium">
+									Proposed prompt (editable)
+								</div>
+								<Textarea
+									data-testid="proposal-textarea"
+									value={edits}
+									onChange={(e) => setEdits(e.target.value)}
+									rows={12}
+									className="resize-y border-0 font-mono text-[12px] focus-visible:ring-0"
+								/>
+							</div>
+							{proposal.summary ? (
+								<p className={cn("italic", TYPE_MUTED, TONE_MUTED)}>
+									{proposal.summary}
+								</p>
+							) : null}
+							<PromptDiffViewer before={currentPrompt} after={edits} />
+							<div className="flex items-center justify-end gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									data-testid="discard-button"
+									onClick={handleDiscard}
+								>
+									<X className="h-3.5 w-3.5" />
+									Discard
+								</Button>
+								<Button
+									type="button"
+									size="sm"
+									data-testid="apply-button"
+									disabled
+								>
+									<Check className="h-3.5 w-3.5" />
+									Apply live
+								</Button>
+							</div>
+						</div>
+					)}
 				</div>
 
 				{/* Right: impact */}
-				<div
-					className="flex flex-col gap-3"
-					data-testid="tune-pane-impact"
-				>
-					<div className={TYPE_PANE_LABEL}>
-						Impact
-					</div>
+				<div className="flex flex-col gap-3" data-testid="tune-pane-impact">
+					<div className={TYPE_PANE_LABEL}>Impact</div>
 					<div className="rounded-md border bg-muted/20 p-4">
 						<p className={cn("mb-3", TYPE_MUTED, TONE_MUTED)}>
-							Simulate the proposed prompt against the flagged
-							runs to see if it changes behavior before going
-							live.
+							Simulate the proposed prompt against the flagged runs to see if it
+							changes behavior before going live.
 						</p>
 						<Button
 							type="button"
