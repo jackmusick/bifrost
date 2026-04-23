@@ -140,11 +140,9 @@ describe("AgentTuneWorkbench — shell", () => {
 		expect(screen.getByTestId("generate-proposal-button")).toBeEnabled();
 	});
 
-	it("renders the empty-state CTA in the editor pane when no proposal exists", async () => {
+	it("renders the empty-state placeholder in the editor pane when no proposal exists", async () => {
 		await renderPage();
-		expect(
-			screen.getByTestId("editor-empty-generate-button"),
-		).toBeInTheDocument();
+		expect(screen.getByTestId("editor-empty-state")).toBeInTheDocument();
 	});
 
 	it("renders a before-dry-run card in the impact pane with the button disabled", async () => {
@@ -179,16 +177,6 @@ describe("AgentTuneWorkbench — generate proposal", () => {
 				}),
 				expect.any(Object),
 			);
-		});
-	});
-
-	it("calls useTuningSession when the empty-state editor button is clicked", async () => {
-		const { user } = await renderPage();
-		await user.click(
-			screen.getByTestId("editor-empty-generate-button"),
-		);
-		await waitFor(() => {
-			expect(mockTuningSession).toHaveBeenCalled();
 		});
 	});
 
@@ -227,9 +215,7 @@ describe("AgentTuneWorkbench — generate proposal", () => {
 		await screen.findByTestId("proposal-textarea");
 		await user.click(screen.getByTestId("discard-button"));
 		expect(screen.queryByTestId("proposal-textarea")).toBeNull();
-		expect(
-			screen.getByTestId("editor-empty-generate-button"),
-		).toBeInTheDocument();
+		expect(screen.getByTestId("editor-empty-state")).toBeInTheDocument();
 	});
 });
 

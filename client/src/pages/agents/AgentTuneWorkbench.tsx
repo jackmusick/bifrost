@@ -140,7 +140,7 @@ export function AgentTuneWorkbench() {
 				statsLoading={statsLoading}
 			/>
 
-			<div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr_360px]">
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
 				{/* Left: flagged runs */}
 				<div className="flex flex-col gap-3" data-testid="tune-pane-flagged">
 					<div className={TYPE_PANE_LABEL}>Flagged runs ({flagged.length})</div>
@@ -218,20 +218,17 @@ export function AgentTuneWorkbench() {
 							<Skeleton className="h-32 w-full" />
 						</div>
 					) : !proposal ? (
-						<div className="rounded-md border bg-muted/20 p-6 text-center">
-							<p className={cn("mb-3", TYPE_MUTED, TONE_MUTED)}>
-								I&apos;ll read the flagged runs and suggest one consolidated
-								prompt change.
-							</p>
-							<Button
-								type="button"
-								data-testid="editor-empty-generate-button"
-								disabled={!canGenerate}
-								onClick={handleGenerate}
-							>
-								<Sparkles className="h-3.5 w-3.5" />
-								Generate proposal
-							</Button>
+						<div
+							data-testid="editor-empty-state"
+							className={cn(
+								"rounded-md border border-dashed bg-muted/10 p-6 text-center",
+								TYPE_MUTED,
+								TONE_MUTED,
+							)}
+						>
+							Click <span className="font-medium">Generate proposal</span> in
+							the left pane to have the tuner read the flagged runs and
+							suggest one consolidated prompt change.
 						</div>
 					) : (
 						<div className="flex flex-col gap-3">
@@ -283,11 +280,13 @@ export function AgentTuneWorkbench() {
 					)}
 				</div>
 
-				{/* Right: impact */}
-				<div
-					className="flex flex-col gap-3"
-					data-testid="tune-pane-impact"
-				>
+			</div>
+
+			{/* Impact (full-width below the grid) */}
+			<div
+				className="flex flex-col gap-3"
+				data-testid="tune-pane-impact"
+			>
 					<div className={TYPE_PANE_LABEL}>Impact</div>
 					<div className="rounded-md border bg-muted/20 p-4">
 						<p className={cn("mb-3", TYPE_MUTED, TONE_MUTED)}>
@@ -359,7 +358,6 @@ export function AgentTuneWorkbench() {
 							))}
 						</div>
 					) : null}
-				</div>
 			</div>
 		</div>
 	);

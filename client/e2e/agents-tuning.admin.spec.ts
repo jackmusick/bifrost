@@ -31,10 +31,12 @@ test.describe("Agent Tuning (admin)", () => {
 		await expect(page.getByTestId("tune-pane-editor")).toBeVisible();
 		await expect(page.getByTestId("tune-pane-impact")).toBeVisible();
 
-		// 3. Generate button (editor empty-state CTA) is visible but disabled
-		//    because no flagged runs have been seeded.
-		await expect(page.getByTestId("editor-empty-generate-button")).toBeVisible();
-		await expect(page.getByTestId("editor-empty-generate-button")).toBeDisabled();
+		// 3. Generate-proposal button lives in the left pane and is disabled
+		//    because no flagged runs have been seeded. The editor shows a
+		//    passive placeholder pointing at the left-pane button.
+		await expect(page.getByTestId("generate-proposal-button")).toBeVisible();
+		await expect(page.getByTestId("generate-proposal-button")).toBeDisabled();
+		await expect(page.getByTestId("editor-empty-state")).toBeVisible();
 
 		// 4. Dry-run button is visible but disabled for the same reason.
 		await expect(page.getByTestId("dryrun-button")).toBeVisible();
