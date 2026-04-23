@@ -9,6 +9,7 @@ from enum import Enum
 
 class ExecutionStatus(str, Enum):
     """Workflow execution status"""
+    SCHEDULED = "Scheduled"
     PENDING = "Pending"
     RUNNING = "Running"
     SUCCESS = "Success"
