@@ -1,31 +1,46 @@
 /**
- * Agent Tuning Page (Admin)
+ * Agent Tuning Workbench (Admin)
  *
- * Seeds an agent and navigates to its tune page. Without real flagged runs
- * the tuning UI shows its empty state — that's still a meaningful render.
- * Backend test `api/tests/e2e/api/test_agent_management_m1.py` covers the
- * full verdict → proposal → apply lifecycle at the API level.
+ * Seeds an agent (no flagged runs) and navigates to its tune page. Asserts
+ * the workbench structure: the "Tune agent" heading, all three panes
+ * (flagged-runs, editor, impact), and both primary CTAs rendered in their
+ * disabled empty-state (no flagged runs → generate and dry-run are gated).
+ *
+ * The full generate → edit → dry-run → apply lifecycle is covered by the
+ * backend E2E at `api/tests/e2e/api/test_agent_management_m1.py`.
  */
 
 import { test, expect } from "@playwright/test";
 import { seedAgentViaPage } from "./setup/seed-agent";
 
 test.describe("Agent Tuning (admin)", () => {
-	test("tuning page renders for an agent", async ({ page }) => {
+	test("tuning workbench renders with correct structure and disabled CTAs", async ({ page }) => {
 		const agent = await seedAgentViaPage(page, {
 			namePrefix: "Tune Spec",
 		});
 
 		await page.goto(`/agents/${agent.id}/tune`);
+
+		// 1. Heading is always present regardless of flagged-run count.
 		await expect(
-			page
-				.getByRole("heading", { name: /tune agent/i })
-				.or(page.getByText(/no flagged runs/i))
-				.first(),
+			page.getByRole("heading", { name: /tune agent/i }),
 		).toBeVisible({ timeout: 10000 });
 
-		// "Propose change" button renders when flagged runs exist; with zero
-		// flagged runs it should be either absent or disabled. Either is fine.
+		// 2. All three panes are present.
+		await expect(page.getByTestId("tune-pane-flagged")).toBeVisible();
+		await expect(page.getByTestId("tune-pane-editor")).toBeVisible();
+		await expect(page.getByTestId("tune-pane-impact")).toBeVisible();
+
+		// 3. Generate button (editor empty-state CTA) is visible but disabled
+		//    because no flagged runs have been seeded.
+		await expect(page.getByTestId("editor-empty-generate-button")).toBeVisible();
+		await expect(page.getByTestId("editor-empty-generate-button")).toBeDisabled();
+
+		// 4. Dry-run button is visible but disabled for the same reason.
+		await expect(page.getByTestId("dryrun-button")).toBeVisible();
+		await expect(page.getByTestId("dryrun-button")).toBeDisabled();
+
+		// 5. Screenshot for visual reference.
 		await page.screenshot({
 			path: "test-results/screenshots/agent-tune.png",
 			fullPage: true,
