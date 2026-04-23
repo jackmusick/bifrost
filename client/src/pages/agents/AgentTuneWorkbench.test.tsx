@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Routes, Route } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
@@ -229,5 +230,80 @@ describe("AgentTuneWorkbench — generate proposal", () => {
 		expect(
 			screen.getByTestId("editor-empty-generate-button"),
 		).toBeInTheDocument();
+	});
+});
+
+function LocationProbe() {
+	const loc = useLocation();
+	return <div data-testid="location">{loc.pathname}</div>;
+}
+
+async function renderPageWithProbe() {
+	const { AgentTuneWorkbench } = await import("./AgentTuneWorkbench");
+	return renderWithProviders(
+		<Routes>
+			<Route
+				path="/agents/:id/tune"
+				element={
+					<>
+						<AgentTuneWorkbench />
+						<LocationProbe />
+					</>
+				}
+			/>
+			<Route
+				path="/agents/:id"
+				element={<LocationProbe />}
+			/>
+		</Routes>,
+		{ initialEntries: ["/agents/agent-1/tune"] },
+	);
+}
+
+describe("AgentTuneWorkbench — apply", () => {
+	beforeEach(() => {
+		mockTuningSession.mockImplementation((_args, opts) => {
+			opts?.onSuccess?.(sampleProposal);
+		});
+		mockApplyTuning.mockImplementation((_args, opts) => {
+			opts?.onSuccess?.({
+				agent_id: "agent-1",
+				history_id: "h-1",
+				affected_run_ids: ["a", "b"],
+			});
+		});
+	});
+
+	it("apply sends the current textarea contents, not the original proposal", async () => {
+		const { user } = await renderPageWithProbe();
+		await user.click(screen.getByTestId("generate-proposal-button"));
+		const textarea = (await screen.findByTestId(
+			"proposal-textarea",
+		)) as HTMLTextAreaElement;
+		await user.clear(textarea);
+		await user.type(textarea, "Hand-edited final prompt.");
+		await user.click(screen.getByTestId("apply-button"));
+
+		await waitFor(() => {
+			expect(mockApplyTuning).toHaveBeenCalledWith(
+				expect.objectContaining({
+					params: { path: { agent_id: "agent-1" } },
+					body: { new_prompt: "Hand-edited final prompt." },
+				}),
+				expect.any(Object),
+			);
+		});
+	});
+
+	it("apply navigates to /agents/:id on success", async () => {
+		const { user } = await renderPageWithProbe();
+		await user.click(screen.getByTestId("generate-proposal-button"));
+		await screen.findByTestId("proposal-textarea");
+		await user.click(screen.getByTestId("apply-button"));
+		await waitFor(() => {
+			expect(screen.getByTestId("location")).toHaveTextContent(
+				"/agents/agent-1",
+			);
+		});
 	});
 });

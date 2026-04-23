@@ -9,7 +9,8 @@
  */
 
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,6 +31,7 @@ import { useAgent } from "@/hooks/useAgents";
 import { useAgentRuns } from "@/services/agentRuns";
 import { useAgentStats } from "@/services/agents";
 import {
+	useApplyTuning,
 	useTuningSession,
 	type ConsolidatedProposal,
 } from "@/services/agentTuning";
@@ -49,6 +51,9 @@ export function AgentTuneWorkbench() {
 	});
 
 	const tuningSession = useTuningSession();
+	const applyTuning = useApplyTuning();
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 
 	const flagged: AgentRun[] = (flaggedResp?.items ?? []) as AgentRun[];
 	const hasFlaggedRuns = flagged.length > 0;
@@ -77,6 +82,27 @@ export function AgentTuneWorkbench() {
 	function handleDiscard() {
 		setProposal(null);
 		setEdits("");
+	}
+
+	function handleApply() {
+		if (!agentId) return;
+		applyTuning.mutate(
+			{
+				params: { path: { agent_id: agentId } },
+				body: { new_prompt: edits },
+			},
+			{
+				onSuccess: () => {
+					toast.success("Prompt updated");
+					queryClient.invalidateQueries({
+						queryKey: ["get", "/api/agents"],
+					});
+					queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+					navigate(`/agents/${agentId}`);
+				},
+				onError: () => toast.error("Failed to apply tuning"),
+			},
+		);
 	}
 
 	return (
@@ -220,9 +246,14 @@ export function AgentTuneWorkbench() {
 									type="button"
 									size="sm"
 									data-testid="apply-button"
-									disabled
+									disabled={applyTuning.isPending || !edits.trim()}
+									onClick={handleApply}
 								>
-									<Check className="h-3.5 w-3.5" />
+									{applyTuning.isPending ? (
+										<Loader2 className="h-3.5 w-3.5 animate-spin" />
+									) : (
+										<Check className="h-3.5 w-3.5" />
+									)}
 									Apply live
 								</Button>
 							</div>
