@@ -32,6 +32,7 @@ class FormFieldType(str, Enum):
     EMAIL = "email"
     NUMBER = "number"
     SELECT = "select"
+    MULTI_SELECT = "multi_select"
     CHECKBOX = "checkbox"
     TEXTAREA = "textarea"
     RADIO = "radio"

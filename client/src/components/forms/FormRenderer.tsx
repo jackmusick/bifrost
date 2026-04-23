@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { MultiCombobox } from "@/components/forms/MultiCombobox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Code2 } from "lucide-react";
@@ -384,6 +385,9 @@ function FormRendererInner({
 				case "checkbox":
 					fieldSchema = z.boolean();
 					break;
+				case "multi_select":
+					fieldSchema = z.array(z.string());
+					break;
 				case "file":
 					// File fields store S3 paths as strings (or array of strings for multiple)
 					if (field.multiple) {
@@ -402,6 +406,10 @@ function FormRendererInner({
 					fieldSchema = z.boolean().refine((val) => val === true, {
 						message: "This field is required",
 					});
+				} else if (field.type === "multi_select") {
+					fieldSchema = z
+						.array(z.string())
+						.min(1, "Select at least one option");
 				} else if (field.type === "file") {
 					// File fields: check for non-null and non-empty
 					if (field.multiple) {
@@ -489,7 +497,19 @@ function FormRendererInner({
 		mode: "onChange", // Validate on change to keep isValid up-to-date
 		defaultValues: fields.reduce(
 			(acc: Record<string, unknown>, field: FormField) => {
-				if (
+				if (field.type === "multi_select") {
+					// default_value is a comma-separated list of option values
+					if (typeof field.default_value === "string" && field.default_value.length > 0) {
+						acc[field.name] = field.default_value
+							.split(",")
+							.map((v) => v.trim())
+							.filter((v) => v.length > 0);
+					} else if (Array.isArray(field.default_value)) {
+						acc[field.name] = field.default_value;
+					} else {
+						acc[field.name] = [];
+					}
+				} else if (
 					field.default_value !== undefined &&
 					field.default_value !== null
 				) {
@@ -780,8 +800,10 @@ function FormRendererInner({
 	const renderField = (field: FormField) => {
 		const error = errors[field.name];
 
-		// If field has a data provider, render it as a dropdown regardless of type
-		if (field.data_provider_id) {
+		// If field has a data provider, render it as a single-select dropdown regardless
+		// of type — EXCEPT for multi_select, which has its own render case below that
+		// uses the same provider-loaded options but with a multi-select UI.
+		if (field.data_provider_id && field.type !== "multi_select") {
 			const providerId =
 				typeof field.data_provider_id === "string"
 					? field.data_provider_id
@@ -933,6 +955,79 @@ function FormRendererInner({
 							placeholder={
 								field.placeholder || "Select an option..."
 							}
+							emptyText="No options available"
+							isLoading={!!isLoadingOptions}
+							disabled={
+								!!isLoadingOptions ||
+								(!!providerId && !hasSuccessfullyLoaded)
+							}
+						/>
+						{providerError && (
+							<p className="text-sm text-destructive">
+								{providerError}
+							</p>
+						)}
+						{!providerError && field.help_text && (
+							<p className="text-sm text-muted-foreground">
+								{field.help_text}
+							</p>
+						)}
+						{error && (
+							<p className="text-sm text-destructive">
+								{error.message as string}
+							</p>
+						)}
+					</div>
+				);
+			}
+
+			case "multi_select": {
+				const providerId =
+					typeof field.data_provider_id === "string"
+						? field.data_provider_id
+						: undefined;
+				const cacheKey = providerId
+					? `${providerId}_${field.name}`
+					: undefined;
+				const staticOptions = (field.options || []) as Array<{
+					label: string;
+					value: string;
+				}>;
+				const dynamicOptions = cacheKey
+					? toComboboxOptions(dataProviderState.options[cacheKey])
+					: [];
+				const options = providerId ? dynamicOptions : staticOptions;
+				const isLoadingOptions = cacheKey
+					? dataProviderState.loading[cacheKey]
+					: false;
+				const providerError = cacheKey
+					? dataProviderState.errors[cacheKey]
+					: undefined;
+				const hasSuccessfullyLoaded = cacheKey
+					? dataProviderState.successfullyLoaded.has(cacheKey)
+					: true;
+				const currentValue = Array.isArray(formValues[field.name])
+					? (formValues[field.name] as string[])
+					: [];
+
+				return (
+					<div className="space-y-2">
+						<Label htmlFor={field.name}>
+							{field.label}
+							{field.required && (
+								<span className="text-destructive ml-1">*</span>
+							)}
+						</Label>
+						<MultiCombobox
+							id={field.name}
+							options={options && options.length > 0 ? options : []}
+							value={currentValue}
+							onValueChange={(next) =>
+								setValue(field.name, next, {
+									shouldValidate: true,
+								})
+							}
+							placeholder={field.placeholder || "Select options..."}
 							emptyText="No options available"
 							isLoading={!!isLoadingOptions}
 							disabled={

@@ -600,3 +600,115 @@ async def e2e_all_fields_workflow(
         # Verify user context is captured
         assert workflow_result["user"] == platform_admin.email
         assert workflow_result["scope"]  # Should have a scope (org or GLOBAL)
+
+
+@pytest.mark.e2e
+class TestMultiSelectField:
+    """Multi-select field type preserves list[str] value end-to-end."""
+
+    @pytest.fixture(scope="class")
+    def multi_select_workflow(self, e2e_client, platform_admin):
+        workflow_content = '''"""E2E Multi-Select Field Test Workflow"""
+from bifrost import workflow
+
+@workflow(
+    name="e2e_multi_select_workflow",
+    description="Echoes a multi-select field back with its runtime type",
+    execution_mode="sync"
+)
+async def e2e_multi_select_workflow(tags: list[str]):
+    return {
+        "received": tags,
+        "type": type(tags).__name__,
+        "element_type": type(tags[0]).__name__ if tags else "NoneType",
+        "length": len(tags),
+    }
+'''
+        result = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            "e2e_multi_select_workflow.py",
+            workflow_content,
+            "e2e_multi_select_workflow",
+        )
+        workflow_id = result["id"]
+        yield {"id": workflow_id, "name": "e2e_multi_select_workflow"}
+
+        e2e_client.delete(
+            "/api/files/editor?path=e2e_multi_select_workflow.py",
+            headers=platform_admin.headers,
+        )
+
+    @pytest.fixture(scope="class")
+    def multi_select_form(self, e2e_client, platform_admin, multi_select_workflow):
+        response = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "E2E Multi-Select Form",
+                "description": "Verifies multi_select list[str] round-trip",
+                "workflow_id": multi_select_workflow["id"],
+                "form_schema": {
+                    "fields": [
+                        {
+                            "name": "tags",
+                            "type": "multi_select",
+                            "label": "Tags",
+                            "options": [
+                                {"value": "urgent", "label": "Urgent"},
+                                {"value": "billing", "label": "Billing"},
+                                {"value": "onboarding", "label": "Onboarding"},
+                            ],
+                            "required": True,
+                        },
+                    ]
+                },
+                "access_level": "authenticated",
+            },
+        )
+        assert response.status_code == 201, f"Failed to create form: {response.text}"
+        form = response.json()
+        yield form
+
+        e2e_client.delete(
+            f"/api/forms/{form['id']}",
+            headers=platform_admin.headers,
+        )
+
+    def test_multi_select_field_persisted(self, multi_select_form):
+        fields = multi_select_form["form_schema"]["fields"]
+        assert len(fields) == 1
+        assert fields[0]["type"] == "multi_select"
+        assert len(fields[0]["options"]) == 3
+
+    def test_multi_select_submits_as_list_of_strings(
+        self, e2e_client, platform_admin, multi_select_form
+    ):
+        """Submitting multi-select values flows through as list[str]."""
+        data = execute_form_sync(
+            e2e_client,
+            platform_admin.headers,
+            multi_select_form["id"],
+            {"tags": ["urgent", "billing"]},
+        )
+        result = data.get("result", {})
+        assert result["received"] == ["urgent", "billing"]
+        assert result["type"] == "list"
+        assert result["element_type"] == "str"
+        assert result["length"] == 2
+
+    def test_multi_select_single_element_list(
+        self, e2e_client, platform_admin, multi_select_form
+    ):
+        """A single selected option still arrives as a list with one element."""
+        data = execute_form_sync(
+            e2e_client,
+            platform_admin.headers,
+            multi_select_form["id"],
+            {"tags": ["onboarding"]},
+        )
+        result = data.get("result", {})
+        assert result["received"] == ["onboarding"]
+        assert result["type"] == "list"
+        assert result["length"] == 1
+

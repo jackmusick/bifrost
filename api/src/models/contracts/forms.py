@@ -114,6 +114,14 @@ class FormField(BaseModel):
         if self.type in display_only_types and not self.content:
             raise ValueError(f"content is required for {self.type.value} fields")
 
+        # multi_select default_value is a comma-separated list of option values;
+        # trim whitespace around each entry and drop empty entries so that
+        # "a, b , ,c" normalizes to "a,b,c"
+        if self.type == FormFieldType.MULTI_SELECT and isinstance(self.default_value, str):
+            parts = [p.strip() for p in self.default_value.split(",")]
+            parts = [p for p in parts if p]
+            object.__setattr__(self, 'default_value', ",".join(parts) if parts else None)
+
         return self
 
 

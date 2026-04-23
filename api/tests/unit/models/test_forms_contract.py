@@ -4,6 +4,7 @@ Tests Pydantic validation rules for request/response models
 """
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +14,12 @@ from src.models import (
     FormFieldType,
     FormSchema,
 )
-from src.models.contracts.forms import Form, FormField
+from src.models.contracts.base import DataProviderInputMode
+from src.models.contracts.forms import (
+    DataProviderInputConfig,
+    Form,
+    FormField,
+)
 
 
 # Note: Models use snake_case (e.g., workflow_id, form_schema, is_global)
@@ -121,6 +127,58 @@ class TestFormField:
 
         errors = exc_info.value.errors()
         assert any("type" in str(e) for e in errors)
+
+    def test_multi_select_with_static_options_is_valid(self):
+        """Multi-select validates the same way select does (static options)."""
+        field = FormField(
+            name="tags",
+            label="Tags",
+            type=FormFieldType.MULTI_SELECT,
+            options=[
+                {"label": "Urgent", "value": "urgent"},
+                {"label": "Billing", "value": "billing"},
+            ],
+        )
+        assert field.type == FormFieldType.MULTI_SELECT
+        assert field.options is not None
+        assert len(field.options) == 2
+
+    def test_multi_select_with_data_provider_is_valid(self):
+        """Multi-select with a data provider validates (parity with select)."""
+        field = FormField(
+            name="mailboxes",
+            label="Mailboxes",
+            type=FormFieldType.MULTI_SELECT,
+            data_provider_id=UUID("00000000-0000-0000-0000-000000000123"),
+            data_provider_inputs={
+                "org_id": DataProviderInputConfig(
+                    mode=DataProviderInputMode.EXPRESSION,
+                    expression="context.field.org_id",
+                ),
+            },
+        )
+        assert field.data_provider_id is not None
+        assert field.data_provider_inputs is not None
+
+    def test_multi_select_default_value_comma_list_is_trimmed(self):
+        """Multi-select default_value is trimmed and empty entries dropped."""
+        field = FormField(
+            name="tags",
+            label="Tags",
+            type=FormFieldType.MULTI_SELECT,
+            default_value="a, b ,  ,c",
+        )
+        assert field.default_value == "a,b,c"
+
+    def test_multi_select_default_value_all_empty_becomes_none(self):
+        """Multi-select default_value of only empty/whitespace entries becomes None."""
+        field = FormField(
+            name="tags",
+            label="Tags",
+            type=FormFieldType.MULTI_SELECT,
+            default_value=" , , ",
+        )
+        assert field.default_value is None
 
 
 class TestFormResponse:
