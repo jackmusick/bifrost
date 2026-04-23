@@ -18,12 +18,21 @@ import {
 	ThumbsUp,
 	ThumbsDown,
 	AlertCircle,
+	ChevronRight,
+	Loader2,
+	RefreshCw,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRegenerateSummary } from "@/services/agentRuns";
 import type { components } from "@/lib/v1";
+
+import { SummaryPlaceholder } from "./SummaryPlaceholder";
 
 export type Verdict = "up" | "down" | null;
 
@@ -95,6 +104,30 @@ export function RunReviewPanel({
 	const inputText = renderPayload(run.input);
 	const outputText = renderPayload(run.output);
 
+	const { isPlatformAdmin } = useAuth();
+	const queryClient = useQueryClient();
+	const regenSummary = useRegenerateSummary();
+	const summaryStatus = run.summary_status;
+	const needsRegen = summaryStatus && summaryStatus !== "completed";
+
+	function handleRegenerate() {
+		regenSummary.mutate(
+			{ params: { path: { run_id: run.id } } },
+			{
+				onSuccess: () => {
+					toast.success("Summary regeneration queued");
+					queryClient.invalidateQueries({
+						queryKey: ["get", "/api/agent-runs/{run_id}"],
+					});
+					queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+				},
+				onError: () => {
+					toast.error("Failed to regenerate summary");
+				},
+			},
+		);
+	}
+
 	return (
 		<div data-slot="run-review-panel">
 			<div
@@ -103,6 +136,51 @@ export function RunReviewPanel({
 					compact ? "gap-3.5 px-4 py-3.5" : "gap-4 px-5 py-4",
 				)}
 			>
+				{needsRegen ? (
+					<div
+						className={cn(
+							"flex items-center justify-between gap-3 rounded-md border px-3 py-2",
+							summaryStatus === "failed"
+								? "border-rose-500/30 bg-rose-500/10"
+								: "bg-muted/40",
+							compact ? "text-xs" : "text-[13px]",
+						)}
+					>
+						<div className="flex items-center gap-2">
+							{regenSummary.isPending ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							) : (
+								<RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+							)}
+							<span>
+								{summaryStatus === "failed"
+									? "Summary failed"
+									: summaryStatus === "generating"
+										? "Summary in progress…"
+										: "Summary pending"}
+							</span>
+						</div>
+						<button
+							type="button"
+							disabled={!isPlatformAdmin || regenSummary.isPending}
+							title={
+								isPlatformAdmin
+									? "Re-run summarization"
+									: "Only platform admins can regenerate summaries"
+							}
+							onClick={handleRegenerate}
+							className={cn(
+								"inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs font-medium transition-colors",
+								isPlatformAdmin && !regenSummary.isPending
+									? "hover:bg-accent"
+									: "cursor-not-allowed opacity-60",
+							)}
+							data-testid="regen-summary-panel-button"
+						>
+							Regenerate
+						</button>
+					</div>
+				) : null}
 				<Section
 					icon={<User size={13} />}
 					iconClassName="bg-muted text-muted-foreground"
@@ -115,8 +193,8 @@ export function RunReviewPanel({
 							compact ? "text-xs" : "text-sm",
 						)}
 					>
-						{run.asked || inputText || (
-							<span className="text-muted-foreground">(no input)</span>
+						{run.asked || (
+							<SummaryPlaceholder status={run.summary_status} runStatus={run.status} />
 						)}
 					</div>
 				</Section>
@@ -175,8 +253,8 @@ export function RunReviewPanel({
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
-							{run.did || outputText || (
-								<span className="text-muted-foreground">(no output)</span>
+							{run.did || (
+								<SummaryPlaceholder status={run.summary_status} runStatus={run.status} />
 							)}
 						</div>
 					</Section>
@@ -205,6 +283,32 @@ export function RunReviewPanel({
 				{run.metadata && Object.keys(run.metadata).length > 0 ? (
 					<Section label="Captured data" compact={compact} plain>
 						<MetadataChips metadata={run.metadata} />
+					</Section>
+				) : null}
+
+				{run.summary_status === "failed" && run.summary_error ? (
+					<Section label="Summary error" compact={compact} plain>
+						<div
+							className={cn(
+								"rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-700 dark:text-rose-300 whitespace-pre-wrap break-words",
+								compact ? "text-xs" : "text-sm",
+							)}
+						>
+							{run.summary_error}
+						</div>
+					</Section>
+				) : null}
+
+				{inputText || outputText ? (
+					<Section label="Raw payloads" compact={compact} plain>
+						<div className="grid gap-2">
+							{inputText ? (
+								<RawDisclosure label="Raw input" text={inputText} compact={compact} />
+							) : null}
+							{outputText ? (
+								<RawDisclosure label="Raw output" text={outputText} compact={compact} />
+							) : null}
+						</div>
 					</Section>
 				) : null}
 			</div>
@@ -324,6 +428,50 @@ function Section({
 			</div>
 			{children}
 		</section>
+	);
+}
+
+interface RawDisclosureProps {
+	label: string;
+	text: string;
+	compact?: boolean;
+}
+
+/** Collapsible raw input/output block. Opaque unless admin explicitly opens it. */
+function RawDisclosure({ label, text, compact }: RawDisclosureProps) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div className="rounded-md border bg-card">
+			<button
+				type="button"
+				onClick={() => setOpen((v) => !v)}
+				className={cn(
+					"flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-muted-foreground hover:text-foreground",
+					compact ? "text-xs" : "text-[13px]",
+				)}
+			>
+				<ChevronRight
+					className={cn(
+						"h-3 w-3 transition-transform",
+						open && "rotate-90",
+					)}
+				/>
+				<span>{label}</span>
+				<span className="ml-auto text-[11px]">
+					{text.length.toLocaleString()} chars
+				</span>
+			</button>
+			{open ? (
+				<pre
+					className={cn(
+						"max-h-[240px] overflow-auto border-t bg-muted/30 px-3 py-2 font-mono whitespace-pre-wrap break-words",
+						compact ? "text-[11px]" : "text-xs",
+					)}
+				>
+					{text}
+				</pre>
+			) : null}
+		</div>
 	);
 }
 

@@ -9,6 +9,7 @@
  */
 
 import { Sparkles, X } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { cn } from "@/lib/utils";
 
@@ -17,7 +18,8 @@ export interface QueueBannerProps {
 	count: number;
 	/** Optional override for the description copy. */
 	description?: string;
-	/** Optional href for the action button (uses an <a>; pages can swap for Link). */
+	/** Optional href for the action button. Rendered as a React Router Link so
+	 *  navigation stays in-SPA. */
 	actionHref?: string;
 	/** Action button label. Defaults to "Open tuning". */
 	actionLabel?: string;
@@ -73,12 +75,12 @@ export function QueueBanner({
 			</div>
 			<div className="flex shrink-0 items-center gap-2">
 				{actionHref ? (
-					<a
-						href={actionHref}
+					<Link
+						to={actionHref}
 						className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
 					>
 						{actionContent}
-					</a>
+					</Link>
 				) : onAction ? (
 					<button
 						type="button"

@@ -25,6 +25,14 @@ vi.mock("@/hooks/useAgents", async () => {
 	};
 });
 
+vi.mock("@/contexts/AuthContext", () => ({
+	useAuth: () => ({ isPlatformAdmin: false }),
+}));
+
+vi.mock("@/components/agents/SummaryBackfillButton", () => ({
+	SummaryBackfillButton: () => null,
+}));
+
 // Stub the three tab components to thin probes — we test them in their own
 // files. Here we just need to know which tab rendered.
 vi.mock("@/components/agents/AgentOverviewTab", () => ({

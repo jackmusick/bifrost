@@ -11,6 +11,7 @@ const baseRun: AgentRun = {
 	agent_id: "00000000-0000-0000-0000-000000000002",
 	agent_name: "Tier-1 Triage",
 	trigger_type: "test",
+	summary_status: "completed",
 	status: "completed",
 	iterations_used: 1,
 	tokens_used: 1234,
@@ -108,5 +109,76 @@ describe("RunCard", () => {
 			screen.queryByRole("button", { name: /mark as good/i }),
 		).not.toBeInTheDocument();
 		expect(screen.getByText(/n\/a/i)).toBeInTheDocument();
+	});
+
+	describe("inline note input", () => {
+		it("is hidden when onNote is not provided even with verdict=down", () => {
+			renderWithProviders(<RunCard run={baseRun} verdict="down" />);
+			expect(
+				screen.queryByTestId("run-card-note-input"),
+			).not.toBeInTheDocument();
+		});
+
+		it("is hidden when verdict is not 'down'", () => {
+			renderWithProviders(
+				<RunCard run={baseRun} verdict="up" onNote={() => {}} />,
+			);
+			expect(
+				screen.queryByTestId("run-card-note-input"),
+			).not.toBeInTheDocument();
+		});
+
+		it("is shown when verdict='down' and onNote provided, seeded with verdict_note", () => {
+			const run = { ...baseRun, verdict_note: "should have escalated" };
+			renderWithProviders(
+				<RunCard run={run} verdict="down" onNote={() => {}} />,
+			);
+			const input = screen.getByTestId(
+				"run-card-note-input",
+			) as HTMLInputElement;
+			expect(input).toBeInTheDocument();
+			expect(input.value).toBe("should have escalated");
+		});
+
+		it("calls onNote with trimmed value on blur when value changes", async () => {
+			const onNote = vi.fn();
+			const { user } = renderWithProviders(
+				<RunCard run={baseRun} verdict="down" onNote={onNote} />,
+			);
+			const input = screen.getByTestId("run-card-note-input");
+			await user.click(input);
+			await user.keyboard("  escalate to tier 2  ");
+			// Blur by tabbing away — userEvent handles this
+			input.blur();
+			expect(onNote).toHaveBeenCalledWith(baseRun.id, "escalate to tier 2");
+		});
+
+		it("does not call onNote on blur when value is unchanged", async () => {
+			const onNote = vi.fn();
+			const run = { ...baseRun, verdict_note: "unchanged" };
+			renderWithProviders(
+				<RunCard run={run} verdict="down" onNote={onNote} />,
+			);
+			const input = screen.getByTestId("run-card-note-input");
+			input.focus();
+			input.blur();
+			expect(onNote).not.toHaveBeenCalled();
+		});
+
+		it("typing in the note input does not trigger onOpen", async () => {
+			const onOpen = vi.fn();
+			const { user } = renderWithProviders(
+				<RunCard
+					run={baseRun}
+					verdict="down"
+					onOpen={onOpen}
+					onNote={() => {}}
+				/>,
+			);
+			const input = screen.getByTestId("run-card-note-input");
+			await user.click(input);
+			await user.keyboard("hello");
+			expect(onOpen).not.toHaveBeenCalled();
+		});
 	});
 });

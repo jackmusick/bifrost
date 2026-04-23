@@ -11,6 +11,7 @@ const baseRun: AgentRun = {
 	agent_id: "00000000-0000-0000-0000-000000000002",
 	agent_name: "Tier-1 Triage",
 	trigger_type: "test",
+	summary_status: "completed",
 	status: "completed",
 	iterations_used: 1,
 	tokens_used: 100,

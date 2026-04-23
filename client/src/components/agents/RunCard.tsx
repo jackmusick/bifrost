@@ -23,6 +23,7 @@ import { formatDuration, formatNumber, formatRelativeTime } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 import type { Verdict } from "./RunReviewPanel";
+import { SummaryPlaceholder } from "./SummaryPlaceholder";
 
 type AgentRun = components["schemas"]["AgentRunResponse"];
 
@@ -32,6 +33,9 @@ export interface RunCardProps {
 	highlight?: string;
 	onOpen?: () => void;
 	onVerdict?: (v: Verdict) => void;
+	/** Called when the inline "what should it have done" note is saved.
+	 *  Only surfaces while verdict === "down" and this callback is provided. */
+	onNote?: (runId: string, note: string) => void;
 	conversationCount?: number;
 }
 
@@ -72,6 +76,7 @@ export function RunCard({
 	highlight,
 	onOpen,
 	onVerdict,
+	onNote,
 	conversationCount = 0,
 }: RunCardProps) {
 	const q = highlight?.trim().toLowerCase() ?? "";
@@ -102,7 +107,15 @@ export function RunCard({
 		onVerdict(verdict === target ? null : target);
 	}
 
+	const showNoteInput = verdict === "down" && onNote;
 	return (
+		<div
+			className={cn(
+				"rounded-lg border bg-card transition-colors",
+				onOpen && "hover:bg-accent/50",
+			)}
+			data-slot="run-card"
+		>
 		<div
 			role={onOpen ? "button" : undefined}
 			tabIndex={onOpen ? 0 : undefined}
@@ -114,10 +127,9 @@ export function RunCard({
 				}
 			}}
 			className={cn(
-				"flex items-start gap-3 rounded-lg border bg-card p-3 transition-colors",
-				onOpen && "cursor-pointer hover:bg-accent/50",
+				"flex items-start gap-3 p-3",
+				onOpen && "cursor-pointer",
 			)}
-			data-slot="run-card"
 		>
 			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
 				<div className="flex flex-wrap items-center gap-2">
@@ -127,7 +139,7 @@ export function RunCard({
 						title={run.asked ?? undefined}
 					>
 						{run.asked || (
-							<span className="text-muted-foreground">—</span>
+							<SummaryPlaceholder status={run.summary_status} runStatus={run.status} />
 						)}
 					</div>
 					{verdict === "up" ? (
@@ -144,11 +156,15 @@ export function RunCard({
 					) : null}
 				</div>
 				<div
-					className="truncate text-sm text-muted-foreground"
+					className="min-w-0 truncate text-sm text-muted-foreground"
 					title={run.did ?? undefined}
 				>
 					{run.did ||
-						(run.error ? `error: ${run.error}` : "—")}
+						(run.error ? (
+							`error: ${run.error}`
+						) : (
+							<SummaryPlaceholder status={run.summary_status} runStatus={run.status} muted />
+						))}
 				</div>
 				<div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
 					<span className="inline-flex items-center gap-1">
@@ -241,6 +257,31 @@ export function RunCard({
 					<span className="text-[11px] text-muted-foreground">n/a</span>
 				)}
 			</div>
+		</div>
+		{showNoteInput ? (
+			<div className="border-t px-3 py-2">
+				<input
+					type="text"
+					aria-label="What should it have done?"
+					placeholder="What should it have done?"
+					defaultValue={run.verdict_note ?? ""}
+					onClick={(e) => e.stopPropagation()}
+					onKeyDown={(e) => {
+						e.stopPropagation();
+						if (e.key === "Enter") {
+							(e.currentTarget as HTMLInputElement).blur();
+						}
+					}}
+					onBlur={(e) => {
+						const next = e.currentTarget.value.trim();
+						const prev = run.verdict_note ?? "";
+						if (next !== prev) onNote?.(run.id, next);
+					}}
+					className="w-full rounded-md border bg-background px-2.5 py-1 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+					data-testid="run-card-note-input"
+				/>
+			</div>
+		) : null}
 		</div>
 	);
 }

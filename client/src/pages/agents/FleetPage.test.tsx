@@ -25,6 +25,14 @@ vi.mock("@/services/agents", () => ({
 	useFleetStats: () => mockUseFleetStats(),
 }));
 
+vi.mock("@/contexts/AuthContext", () => ({
+	useAuth: () => ({ isPlatformAdmin: false }),
+}));
+
+vi.mock("@/components/agents/SummaryBackfillButton", () => ({
+	SummaryBackfillButton: () => null,
+}));
+
 // -----------------------------------------------------------------------------
 // Fixtures
 // -----------------------------------------------------------------------------

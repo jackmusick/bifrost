@@ -2,6 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import type { components } from "@/lib/v1";
 
+vi.mock("@/contexts/AuthContext", () => ({
+	useAuth: () => ({ isPlatformAdmin: true }),
+}));
+
+vi.mock("@/services/agentRuns", () => ({
+	useRegenerateSummary: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 import { RunReviewSheet } from "./RunReviewSheet";
 
 type AgentRunDetail = components["schemas"]["AgentRunDetailResponse"];
@@ -12,6 +20,7 @@ const baseRun: AgentRunDetail = {
 	agent_id: "00000000-0000-0000-0000-000000000002",
 	agent_name: "Tier-1 Triage",
 	trigger_type: "test",
+	summary_status: "completed",
 	status: "completed",
 	iterations_used: 1,
 	tokens_used: 100,

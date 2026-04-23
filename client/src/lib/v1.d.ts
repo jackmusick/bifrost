@@ -3403,22 +3403,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4716,6 +4716,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-runs/backfill-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Backfill Jobs
+         * @description Admin-only: list summary backfill jobs (optionally filtered to active).
+         *
+         *     Registered before ``/{run_id}`` so the literal path isn't swallowed by
+         *     the run-detail handler.
+         */
+        get: operations["list_backfill_jobs_api_agent_runs_backfill_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-eligible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Backfill Eligible
+         * @description Lightweight preview the UI uses to decide whether to show the Backfill
+         *     button at all. Returns 0/0.00 if nothing is eligible — caller can hide
+         *     the affordance instead of surfacing a dead-end "Nothing to backfill"
+         *     modal.
+         */
+        get: operations["get_backfill_eligible_api_agent_runs_backfill_eligible_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-runs/{run_id}": {
         parameters: {
             query?: never;
@@ -4902,6 +4948,84 @@ export interface paths {
          * @description Execute an agent synchronously via the SDK.
          */
         post: operations["execute_agent_run_api_agent_runs_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill Summaries
+         * @description Enqueue summarization for pending/failed runs. Admin-only.
+         *
+         *     If ``dry_run=true``, returns the eligible count and estimated cost
+         *     without enqueuing anything. Otherwise creates a ``SummaryBackfillJob``
+         *     orchestration row and publishes one ``agent-summarization`` message
+         *     per run tagged with the job_id; progress is broadcast on the
+         *     ``summary-backfill:{job_id}`` channel.
+         */
+        post: operations["backfill_summaries_api_agent_runs_backfill_summaries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Backfill Job
+         * @description Admin-only: current progress for a summary backfill job.
+         */
+        get: operations["get_backfill_job_api_agent_runs_backfill_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Backfill Job
+         * @description Mark a backfill job as cancelled so the UI unblocks.
+         *
+         *     This does NOT drain messages already on the ``agent-summarization``
+         *     queue — RabbitMQ will keep delivering them and the worker will keep
+         *     summarising individual runs. What it does do:
+         *
+         *     - flips ``status`` from ``running`` to ``cancelled``
+         *     - sets ``completed_at`` so the row stops appearing in "active" queries
+         *     - broadcasts final state so the progress card dismisses itself
+         *
+         *     Use this when progress has stalled (e.g. the worker was restarted
+         *     mid-job and prefetched messages went back on the queue but the counter
+         *     never advanced) — admins need a way out.
+         */
+        post: operations["cancel_backfill_job_api_agent_runs_backfill_jobs__job_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8145,6 +8269,13 @@ export interface components {
             confidence?: number | null;
             /** Confidence Reason */
             confidence_reason?: string | null;
+            /**
+             * Summary Status
+             * @default pending
+             */
+            summary_status: string;
+            /** Summary Error */
+            summary_error?: string | null;
             /** Verdict */
             verdict?: string | null;
             /** Verdict Note */
@@ -8255,6 +8386,13 @@ export interface components {
             confidence?: number | null;
             /** Confidence Reason */
             confidence_reason?: string | null;
+            /**
+             * Summary Status
+             * @default pending
+             */
+            summary_status: string;
+            /** Summary Error */
+            summary_error?: string | null;
             /** Verdict */
             verdict?: string | null;
             /** Verdict Note */
@@ -9031,6 +9169,90 @@ export interface components {
              * @description Similarity score to the deactivated workflow (0.0-1.0)
              */
             similarity_score: number;
+        };
+        /**
+         * BackfillEligibleResponse
+         * @description Lightweight count + estimate used by the UI to decide whether to
+         *     surface the Backfill button at all. Mirrors the shape of the dry-run
+         *     POST but cacheable and cheaper (no queue touch).
+         */
+        BackfillEligibleResponse: {
+            /**
+             * Eligible
+             * @description Number of runs that would be backfilled.
+             */
+            eligible: number;
+            /**
+             * Estimated Cost Usd
+             * @description Best-effort cost estimate for this scope.
+             */
+            estimated_cost_usd: string;
+            /**
+             * Cost Basis
+             * @description Whether the estimate is derived from past runs or a flat fallback.
+             * @enum {string}
+             */
+            cost_basis: "history" | "fallback";
+        };
+        /**
+         * BackfillSummariesRequest
+         * @description Admin-triggered bulk backfill of run summaries.
+         */
+        BackfillSummariesRequest: {
+            /**
+             * Agent Id
+             * @description Scope to a single agent. None means platform-wide.
+             */
+            agent_id?: string | null;
+            /**
+             * Statuses
+             * @description Which summary_status values to re-run. Completed runs are skipped.
+             */
+            statuses?: ("pending" | "failed")[];
+            /**
+             * Limit
+             * @description Max runs to enqueue in one backfill.
+             * @default 500
+             */
+            limit: number;
+            /**
+             * Dry Run
+             * @description If true, return eligible count + cost estimate without enqueuing.
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /**
+         * BackfillSummariesResponse
+         * @description Result of a backfill request.
+         */
+        BackfillSummariesResponse: {
+            /**
+             * Job Id
+             * @description Orchestration row ID. None when dry_run=true.
+             */
+            job_id?: string | null;
+            /**
+             * Queued
+             * @description Number of runs enqueued (0 if dry_run).
+             */
+            queued: number;
+            /**
+             * Eligible
+             * @description Total matched by the filter.
+             */
+            eligible: number;
+            /**
+             * Estimated Cost Usd
+             * @description Best-effort cost prediction based on recent summarizer history.
+             */
+            estimated_cost_usd: string;
+            /**
+             * Cost Basis
+             * @description Whether the estimate is derived from past runs or a flat fallback.
+             * @enum {string}
+             */
+            cost_basis: "history" | "fallback";
         };
         /** Body_import_all_api_export_import_import_all_post */
         Body_import_all_api_export_import_import_all_post: {
@@ -18017,6 +18239,48 @@ export interface components {
              */
             last_stuck_at: string;
         };
+        /** SummaryBackfillJobListResponse */
+        SummaryBackfillJobListResponse: {
+            /** Items */
+            items: components["schemas"]["SummaryBackfillJobResponse"][];
+        };
+        /**
+         * SummaryBackfillJobResponse
+         * @description Snapshot of a SummaryBackfillJob orchestration row.
+         */
+        SummaryBackfillJobResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Agent Id */
+            agent_id?: string | null;
+            /**
+             * Requested By
+             * Format: uuid
+             */
+            requested_by: string;
+            /** Status */
+            status: string;
+            /** Total */
+            total: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Failed */
+            failed: number;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: string;
+            /** Actual Cost Usd */
+            actual_cost_usd: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Completed At */
+            completed_at?: string | null;
+        };
         /**
          * SyncRequest
          * @description Request to sync (pull + push + entity import).
@@ -25157,7 +25421,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -25190,7 +25454,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -25223,7 +25487,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -25256,7 +25520,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -27405,6 +27669,69 @@ export interface operations {
             };
         };
     };
+    list_backfill_jobs_api_agent_runs_backfill_jobs_get: {
+        parameters: {
+            query?: {
+                /** @description If true, only return running jobs. */
+                active?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryBackfillJobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_backfill_eligible_api_agent_runs_backfill_eligible_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackfillEligibleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_agent_run_api_agent_runs__run_id__get: {
         parameters: {
             query?: never;
@@ -27722,6 +28049,101 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_summaries_api_agent_runs_backfill_summaries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackfillSummariesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackfillSummariesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_backfill_job_api_agent_runs_backfill_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryBackfillJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_backfill_job_api_agent_runs_backfill_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryBackfillJobResponse"];
                 };
             };
             /** @description Validation Error */

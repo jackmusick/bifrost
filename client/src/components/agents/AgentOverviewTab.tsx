@@ -33,7 +33,9 @@ import {
 } from "@/components/agents/design-tokens";
 import { Sparkline } from "@/components/agents/Sparkline";
 import { StatCard } from "@/components/agents/StatCard";
+import { SummaryPlaceholder } from "@/components/agents/SummaryPlaceholder";
 import { useAgent } from "@/hooks/useAgents";
+import { useAgentRunUpdates } from "@/hooks/useAgentRunUpdates";
 import { useAgentRuns } from "@/services/agentRuns";
 import { useAgentStats } from "@/services/agents";
 import {
@@ -59,6 +61,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 		limit: 10,
 	});
 
+	useAgentRunUpdates({ agentId });
 	const recentRuns = (runsList?.items ?? []) as unknown as AgentRun[];
 	const needsReview = recentRuns.filter(
 		(r) => r.verdict === "down" && r.status === "completed",
@@ -71,7 +74,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 	const sparkColor = successRateTone(successRate);
 
 	return (
-		<div className={cn("grid lg:grid-cols-[1fr_320px]", GAP_CARD)}>
+		<div className={cn("grid lg:grid-cols-[minmax(0,1fr)_320px]", GAP_CARD)}>
 			{/* Main column */}
 			<div className={cn("flex flex-col", GAP_CARD)}>
 				{/* Stat row — 4 stats */}
@@ -336,10 +339,10 @@ function ActivityRow({
 			</div>
 			<div className="min-w-0 flex-1">
 				<div className="truncate">
-					{run.did ?? asText(run.output) ?? "—"}
+					{run.did || <SummaryPlaceholder status={run.summary_status} runStatus={run.status} />}
 				</div>
-				<div className="mt-0.5 text-[12px] text-muted-foreground">
-					{run.asked ? `"${truncate(run.asked, 60)}"` : "—"} ·{" "}
+				<div className="mt-0.5 truncate text-[12px] text-muted-foreground">
+					{run.asked ? `"${truncate(run.asked, 60)}"` : <SummaryPlaceholder status={run.summary_status} runStatus={run.status} muted />} ·{" "}
 					{formatRelativeTime(run.started_at ?? run.created_at ?? "")} ·{" "}
 					{formatDuration(run.duration_ms ?? 0)}
 				</div>
@@ -355,14 +358,4 @@ function ActivityRow({
 
 function truncate(s: string, n: number): string {
 	return s.length <= n ? s : s.slice(0, n - 1) + "…";
-}
-
-function asText(v: unknown): string | null {
-	if (v == null) return null;
-	if (typeof v === "string") return v;
-	try {
-		return JSON.stringify(v);
-	} catch {
-		return null;
-	}
 }

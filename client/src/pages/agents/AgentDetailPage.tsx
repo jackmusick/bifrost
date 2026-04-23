@@ -10,8 +10,7 @@
  * run-count badge, plus per-tab body (Overview/Runs/Settings).
  */
 
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
 	ArrowLeft,
@@ -35,6 +34,7 @@ import { AgentOverviewTab } from "@/components/agents/AgentOverviewTab";
 import { AgentRunsTab } from "@/components/agents/AgentRunsTab";
 import { AgentSettingsTab } from "@/components/agents/AgentSettingsTab";
 import { PillTabs } from "@/components/agents/PillTabs";
+import { SummaryBackfillButton } from "@/components/agents/SummaryBackfillButton";
 import {
 	PILL_ACTIVE,
 	TONE_MUTED,
@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import { useAgent, useUpdateAgent } from "@/hooks/useAgents";
 import { useAgentRuns } from "@/services/agentRuns";
 import { useCreateConversation } from "@/hooks/useChat";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Tab = "overview" | "runs" | "settings";
 
@@ -61,10 +62,32 @@ export function AgentDetailPage() {
 	});
 	const runCount = (runsList as { total?: number } | undefined)?.total ?? 0;
 
-	const [tab, setTab] = useState<Tab>(isCreate ? "settings" : "overview");
+	// Tab state lives in the URL (`?tab=`) so deep links — e.g. "Review failed
+	// runs" on the backfill card — switch the tab after mount without a full
+	// reload. Falling back to "settings" during create or "overview" otherwise.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const tabParam = searchParams.get("tab");
+	const tab: Tab =
+		tabParam === "runs" || tabParam === "settings"
+			? tabParam
+			: isCreate
+				? "settings"
+				: "overview";
+
+	function handleTabChange(next: Tab) {
+		const params = new URLSearchParams(searchParams);
+		if (next === "overview") {
+			params.delete("tab");
+		} else {
+			params.set("tab", next);
+		}
+		if (next !== "runs") params.delete("summary");
+		setSearchParams(params, { replace: true });
+	}
 
 	const updateAgent = useUpdateAgent();
 	const createConversation = useCreateConversation();
+	const { isPlatformAdmin } = useAuth();
 
 	function handleCreated(newId: string) {
 		navigate(`/agents/${newId}`);
@@ -194,6 +217,9 @@ export function AgentDetailPage() {
 								</>
 							)}
 						</Button>
+						{isPlatformAdmin ? (
+							<SummaryBackfillButton agentId={agent.id ?? undefined} />
+						) : null}
 					</div>
 				) : null}
 			</div>
@@ -215,7 +241,7 @@ export function AgentDetailPage() {
 					{ value: "settings", label: "Settings" },
 				]}
 				value={tab}
-				onValueChange={(v) => setTab(v as Tab)}
+				onValueChange={(v) => handleTabChange(v as Tab)}
 			/>
 
 			{/* Tab body */}

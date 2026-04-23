@@ -2,6 +2,20 @@ import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import type { components } from "@/lib/v1";
 
+const mockRegenSummary = vi.fn();
+const mockAuth = vi.fn(() => ({ isPlatformAdmin: true }));
+
+vi.mock("@/contexts/AuthContext", () => ({
+	useAuth: () => mockAuth(),
+}));
+
+vi.mock("@/services/agentRuns", () => ({
+	useRegenerateSummary: () => ({
+		mutate: mockRegenSummary,
+		isPending: false,
+	}),
+}));
+
 import { RunReviewPanel } from "./RunReviewPanel";
 
 type AgentRunDetail = components["schemas"]["AgentRunDetailResponse"];
@@ -11,6 +25,7 @@ const baseRun: AgentRunDetail = {
 	agent_id: "00000000-0000-0000-0000-000000000002",
 	agent_name: "Tier-1 Triage",
 	trigger_type: "test",
+	summary_status: "completed",
 	status: "completed",
 	iterations_used: 1,
 	tokens_used: 100,
@@ -188,5 +203,50 @@ describe("RunReviewPanel", () => {
 		expect(
 			screen.getByPlaceholderText(/what should it have done/i),
 		).toBeInTheDocument();
+	});
+
+	it("hides the in-panel regenerate bar when summary is completed", () => {
+		renderWithProviders(
+			<RunReviewPanel
+				run={baseRun}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		expect(
+			screen.queryByTestId("regen-summary-panel-button"),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows the in-panel regenerate bar when summary is pending", () => {
+		renderWithProviders(
+			<RunReviewPanel
+				run={{ ...baseRun, summary_status: "pending", asked: "", did: "" }}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByTestId("regen-summary-panel-button"),
+		).toBeInTheDocument();
+	});
+
+	it("disables regen for non-admins but still shows it (tooltip)", () => {
+		mockAuth.mockReturnValueOnce({ isPlatformAdmin: false });
+		renderWithProviders(
+			<RunReviewPanel
+				run={{ ...baseRun, summary_status: "failed", asked: "", did: "" }}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		const btn = screen.getByTestId("regen-summary-panel-button");
+		expect(btn).toBeDisabled();
 	});
 });

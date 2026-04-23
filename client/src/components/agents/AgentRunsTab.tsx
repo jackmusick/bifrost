@@ -11,8 +11,10 @@
  */
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Search, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueueBanner } from "@/components/agents/QueueBanner";
 import { RunCard } from "@/components/agents/RunCard";
 import { RunReviewSheet } from "@/components/agents/RunReviewSheet";
+import { useAgentRunUpdates } from "@/hooks/useAgentRunUpdates";
 import {
 	useAgentRun,
 	useAgentRuns,
@@ -46,6 +49,8 @@ export interface AgentRunsTabProps {
 }
 
 export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
+	const [searchParams, setSearchParams] = useSearchParams();
+	const summaryFilter = searchParams.get("summary");
 	const [query, setQuery] = useState("");
 	const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
 	const [openRunId, setOpenRunId] = useState<string | null>(null);
@@ -60,11 +65,15 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 
 	const setVerdict = useSetVerdict();
 	const clearVerdict = useClearVerdict();
+	useAgentRunUpdates({ agentId });
 
-	const runs = useMemo(
-		() => (runsList?.items ?? []) as unknown as AgentRun[],
-		[runsList],
-	);
+	const runs = useMemo(() => {
+		const all = (runsList?.items ?? []) as unknown as AgentRun[];
+		if (summaryFilter === "failed") {
+			return all.filter((r) => r.summary_status === "failed");
+		}
+		return all;
+	}, [runsList, summaryFilter]);
 	const flaggedCount = useMemo(
 		() => runs.filter((r) => r.verdict === "down").length,
 		[runs],
@@ -88,6 +97,28 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 				{ onSuccess },
 			);
 		}
+	}
+
+	function applyNote(runId: string, note: string) {
+		// Re-submits the "down" verdict with the new note populated. The backend
+		// accepts verdict + note together; clearing the note is just an empty
+		// string. Assumes verdict is already "down" — the caller (RunCard) only
+		// exposes the note input in that state.
+		setVerdict.mutate(
+			{
+				params: { path: { run_id: runId } },
+				body: { verdict: "down", note: note || null },
+			},
+			{
+				onSuccess: () => {
+					queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+					toast.success(note ? "Note saved" : "Note cleared");
+				},
+				onError: () => {
+					toast.error("Failed to save note");
+				},
+			},
+		);
 	}
 
 	return (
@@ -133,6 +164,23 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 					</SelectContent>
 				</Select>
 
+				{summaryFilter === "failed" ? (
+					<Badge variant="warning" className="gap-1">
+						Summary failed
+						<button
+							type="button"
+							aria-label="Clear summary filter"
+							onClick={() => {
+								const next = new URLSearchParams(searchParams);
+								next.delete("summary");
+								setSearchParams(next, { replace: true });
+							}}
+							className="ml-0.5 inline-flex items-center"
+						>
+							<X className="h-3 w-3" />
+						</button>
+					</Badge>
+				) : null}
 				{flaggedCount > 0 ? (
 					<Badge variant="destructive" className="ml-auto">
 						{flaggedCount} flagged
@@ -169,6 +217,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 							highlight={query}
 							onOpen={() => setOpenRunId(r.id)}
 							onVerdict={(v) => applyVerdict(r.id, v)}
+							onNote={applyNote}
 						/>
 					))
 				)}
