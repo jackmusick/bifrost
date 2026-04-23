@@ -51,9 +51,9 @@ const AgentReviewPage = lazyWithReload(() =>
 		default: m.AgentReviewPage,
 	})),
 );
-const AgentTunePage = lazyWithReload(() =>
-	import("@/pages/agents/AgentTunePage").then((m) => ({
-		default: m.AgentTunePage,
+const AgentTuneWorkbench = lazyWithReload(() =>
+	import("@/pages/agents/AgentTuneWorkbench").then((m) => ({
+		default: m.AgentTuneWorkbench,
 	})),
 );
 const AgentRunDetailPage = lazyWithReload(() =>
@@ -461,7 +461,7 @@ function AppRoutes() {
 							path="agents/:id/tune"
 							element={
 								<ProtectedRoute>
-									<AgentTunePage />
+									<AgentTuneWorkbench />
 								</ProtectedRoute>
 							}
 						/>
