@@ -14,6 +14,7 @@ import {
 	Bot,
 	Clock,
 	Hash,
+	History,
 	LayoutGrid,
 	List,
 	MessageSquare,
@@ -39,6 +40,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueueBanner } from "@/components/agents/QueueBanner";
 import { Sparkline } from "@/components/agents/Sparkline";
 import { StatCard } from "@/components/agents/StatCard";
+import { SummaryBackfillButton } from "@/components/agents/SummaryBackfillButton";
+import { useAuth } from "@/contexts/AuthContext";
 import {
 	CARD_HOVER,
 	CARD_SURFACE,
@@ -76,6 +79,7 @@ export function FleetPage() {
 		includeInactive: true,
 	});
 	const { data: fleetStats, isLoading: fleetLoading } = useFleetStats();
+	const { isPlatformAdmin } = useAuth();
 
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
@@ -103,11 +107,19 @@ export function FleetPage() {
 						{totalAgents} total · {activeCount} active · last 7 days
 					</p>
 				</div>
-				<Button asChild size="sm">
-					<Link to="/agents/new">
-						<Plus className="h-3.5 w-3.5" /> New agent
-					</Link>
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button asChild variant="outline" size="sm">
+						<Link to="/history?type=agents">
+							<History className="h-3.5 w-3.5" /> All runs
+						</Link>
+					</Button>
+					{isPlatformAdmin ? <SummaryBackfillButton /> : null}
+					<Button asChild size="sm">
+						<Link to="/agents/new">
+							<Plus className="h-3.5 w-3.5" /> New agent
+						</Link>
+					</Button>
+				</div>
 			</div>
 
 			{/* Tuning queue banner */}
