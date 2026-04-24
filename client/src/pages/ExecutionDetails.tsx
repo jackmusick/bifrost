@@ -801,6 +801,7 @@ export function ExecutionDetails({
 						workflowName={execution.workflow_name}
 						executedByName={execution.executed_by_name}
 						orgName={execution.org_name}
+						scheduledAt={execution.scheduled_at}
 						startedAt={execution.started_at}
 						completedAt={execution.completed_at}
 						inputData={execution.input_data}

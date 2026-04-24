@@ -49,6 +49,8 @@ interface ExecutionSidebarProps {
 	executedByName?: string | null;
 	/** Organization name (effective scope) */
 	orgName?: string | null;
+	/** Scheduled run timestamp (deferred executions only) */
+	scheduledAt?: string | null;
 	/** Start timestamp */
 	startedAt?: string | null;
 	/** Completion timestamp */
@@ -99,6 +101,7 @@ export function ExecutionSidebar({
 	workflowName,
 	executedByName,
 	orgName,
+	scheduledAt,
 	startedAt,
 	completedAt,
 	inputData,
@@ -226,6 +229,16 @@ export function ExecutionSidebar({
 									{orgName || "Global"}
 								</p>
 							</div>
+							{scheduledAt && (
+								<div>
+									<p className="text-sm font-medium text-muted-foreground">
+										Scheduled For
+									</p>
+									<p className="text-sm mt-1">
+										{formatDate(scheduledAt)}
+									</p>
+								</div>
+							)}
 							<div>
 								<p className="text-sm font-medium text-muted-foreground">
 									Started At
