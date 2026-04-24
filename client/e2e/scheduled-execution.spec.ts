@@ -207,4 +207,33 @@ test.describe("Scheduled executions", () => {
 			)
 			.toBe(true);
 	});
+
+	test("schedule a run from the workflow execute page", async ({ page }) => {
+		// Navigate to the execute page. handleExecute in Workflows.tsx constructs
+		// the URL as `/workflows/${workflowName}/execute` — WORKFLOW_FUNCTION is
+		// underscore-only so no encoding needed.
+		await page.goto(`/workflows/${WORKFLOW_FUNCTION}/execute`);
+
+		// The workflow has no required params, so we go straight to scheduling.
+		// ScheduleControls renders a checkbox with aria-label="Schedule for later".
+		await page.getByLabel("Schedule for later").check();
+
+		// Click the "In 15 min" quick-pick button.
+		await page.getByRole("button", { name: "In 15 min" }).click();
+
+		// Submit the outer form via the "Execute Workflow" button.
+		await page.getByRole("button", { name: "Execute Workflow" }).click();
+
+		// ExecuteWorkflow navigates to /history and toasts "Scheduled for ...".
+		await expect(page).toHaveURL(/\/history/, { timeout: 10_000 });
+		await expect(page.getByText(/scheduled for/i).first()).toBeVisible({
+			timeout: 5_000,
+		});
+
+		// Filter to Scheduled so our row is near the top.
+		await page.getByRole("tab", { name: "Scheduled" }).click();
+		const row = rowForWorkflow(page, WORKFLOW_FUNCTION);
+		await expect(row).toBeVisible({ timeout: 10_000 });
+		await expect(row.getByText("Scheduled", { exact: true })).toBeVisible();
+	});
 });
