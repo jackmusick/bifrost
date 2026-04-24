@@ -3423,22 +3423,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -12771,6 +12771,16 @@ export interface components {
             startup_data?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Scheduled At
+             * @description Run at this tz-aware timestamp (ISO-8601). Must be strictly in the future and within 1 year of now. Mutually exclusive with delay_seconds.
+             */
+            scheduled_at?: string | null;
+            /**
+             * Delay Seconds
+             * @description Run this many seconds from now (≤ 1 year). Mutually exclusive with scheduled_at.
+             */
+            delay_seconds?: number | null;
         };
         /**
          * FormField
@@ -25491,7 +25501,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -25524,7 +25534,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -25557,7 +25567,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -25590,7 +25600,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {

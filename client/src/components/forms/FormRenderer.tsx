@@ -35,6 +35,11 @@ import { FormContextProvider, useFormContext } from "@/contexts/FormContext";
 import { useLaunchWorkflow } from "@/hooks/useLaunchWorkflow";
 import { FormContextPanel } from "@/components/forms/FormContextPanel";
 import { FileUploadField } from "@/components/forms/FileUploadField";
+import {
+	ScheduleControls,
+	type Schedule,
+} from "@/components/execution/ScheduleControls";
+import { toast } from "sonner";
 
 interface FormRendererProps {
 	form: Form;
@@ -125,6 +130,9 @@ function FormRendererInner({
 	const [uploadingFields, setUploadingFields] = useState<Set<string>>(
 		new Set(),
 	);
+
+	// Deferred execution: null = run now, non-null = scheduled.
+	const [schedule, setSchedule] = useState<Schedule | null>(null);
 
 	// Ref for setValue so loadDataProviders can call it for auto_fill
 	// (loadDataProviders is defined before useForm, so we use a ref bridge)
@@ -615,12 +623,29 @@ function FormRendererInner({
 				body: {
 					form_data: data,
 					startup_data: context.workflow,
+					...(schedule ?? {}),
 				},
 			});
 
 			// Call callback if provided (for embedded forms)
 			if (onExecutionStart) {
 				onExecutionStart(result.execution_id);
+			}
+
+			// Scheduled run: the workflow hasn't started yet. Send the user to
+			// /history (where the new row will show with the Scheduled badge)
+			// with a toast showing the scheduled time. Embedded forms opt out
+			// of this navigation via preventNavigation and surface the state
+			// through onExecutionStart instead.
+			if (result.status === "Scheduled") {
+				if (!preventNavigation) {
+					const when = result.scheduled_at
+						? new Date(result.scheduled_at).toLocaleString()
+						: "later";
+					toast.success(`Scheduled for ${when}`);
+					navigate("/history");
+				}
+				return;
 			}
 
 			// Only navigate if not prevented (embedded forms handle their own display)
@@ -1474,6 +1499,17 @@ function FormRendererInner({
 									</motion.div>
 								))}
 							</AnimatePresence>
+							<div className="pt-4">
+								<ScheduleControls
+									value={schedule}
+									onChange={setSchedule}
+									disabled={
+										submitForm.isPending ||
+										isNavigating ||
+										uploadingFields.size > 0
+									}
+								/>
+							</div>
 							<div className="pt-4">
 								<Button
 									type="submit"

@@ -9,6 +9,8 @@
  * - useSubmitForm — the submit mutation
  * - useLaunchWorkflow — launch workflow side-effect (noop)
  * - JsxTemplateRenderer, FileUploadField, framer-motion — keep DOM simple
+ * - react-router-dom useNavigate — to assert navigation targets
+ * - sonner toast — to assert the scheduled-success toast
  *
  * Tests cover:
  * - required validation keeps the Submit button disabled
@@ -17,6 +19,8 @@
  * - email validation surfaces an error for invalid input
  * - visibility_expression hides a field when the condition is false
  * - markdown field renders its content
+ * - run-now submit sends no scheduled_at/delay_seconds
+ * - scheduled submit sends delay_seconds and navigates to /history with toast
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -30,6 +34,29 @@ vi.mock("@/hooks/useForms", () => ({
 		mutateAsync: mockMutateAsync,
 		isPending: false,
 	}),
+}));
+
+// Navigation mock — FormRenderer navigates to /history/{id} on run-now
+// and /history on scheduled submits.
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => {
+	const actual = await vi.importActual<typeof import("react-router-dom")>(
+		"react-router-dom",
+	);
+	return {
+		...actual,
+		useNavigate: () => mockNavigate,
+	};
+});
+
+// sonner toast — we assert on the scheduled-success toast.
+const mockToastSuccess = vi.fn();
+const mockToastError = vi.fn();
+vi.mock("sonner", () => ({
+	toast: {
+		success: (...args: unknown[]) => mockToastSuccess(...args),
+		error: (...args: unknown[]) => mockToastError(...args),
+	},
 }));
 
 // Launch workflow side-effect: do nothing.
@@ -105,7 +132,13 @@ function makeForm(fields: FormField[]): Form {
 
 beforeEach(() => {
 	mockMutateAsync.mockReset();
-	mockMutateAsync.mockResolvedValue({ execution_id: "exec-1" });
+	mockNavigate.mockReset();
+	mockToastSuccess.mockReset();
+	mockToastError.mockReset();
+	mockMutateAsync.mockResolvedValue({
+		execution_id: "exec-1",
+		status: "Pending",
+	});
 });
 
 describe("FormRenderer — required validation", () => {
@@ -218,4 +251,112 @@ describe("FormRenderer — field types", () => {
 		const textarea = screen.getByPlaceholderText("Tell us");
 		expect(textarea.tagName).toBe("TEXTAREA");
 	});
+});
+
+describe("FormRenderer — scheduling", () => {
+	it("submits a body without scheduled_at or delay_seconds when the schedule checkbox is untouched", async () => {
+		const form = makeForm([
+			{ name: "comment", label: "Comment", type: "text", required: false },
+		]);
+		const { user } = renderWithProviders(<FormRenderer form={form} />);
+
+		fireEvent.change(screen.getByLabelText(/comment/i), {
+			target: { value: "hi" },
+		});
+
+		const submit = screen.getByRole("button", { name: /submit/i });
+		await waitFor(() => expect(submit).toBeEnabled(), { timeout: 3000 });
+
+		await user.click(submit);
+
+		await waitFor(() => {
+			expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+		});
+
+		const body = mockMutateAsync.mock.calls[0]![0].body as Record<
+			string,
+			unknown
+		>;
+		expect(body).not.toHaveProperty("scheduled_at");
+		expect(body).not.toHaveProperty("delay_seconds");
+		expect(body).toMatchObject({
+			form_data: { comment: "hi" },
+		});
+
+		// Run-now: navigates to /history/{execution_id}.
+		await waitFor(() => {
+			expect(mockNavigate).toHaveBeenCalledWith(
+				"/history/exec-1",
+				expect.any(Object),
+			);
+		});
+	}, 15000);
+
+	it("sends delay_seconds: 900 when the user picks 'In 15 min' and submits", async () => {
+		const form = makeForm([
+			{ name: "comment", label: "Comment", type: "text", required: false },
+		]);
+		const { user } = renderWithProviders(<FormRenderer form={form} />);
+
+		fireEvent.change(screen.getByLabelText(/comment/i), {
+			target: { value: "hi" },
+		});
+
+		const submit = screen.getByRole("button", { name: /submit/i });
+		await waitFor(() => expect(submit).toBeEnabled(), { timeout: 3000 });
+
+		// Flip "Schedule for later" and pick "In 15 min".
+		await user.click(
+			screen.getByRole("checkbox", { name: /schedule for later/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /in 15 min/i }));
+
+		await user.click(submit);
+
+		await waitFor(() => {
+			expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+		});
+
+		const body = mockMutateAsync.mock.calls[0]![0].body as Record<
+			string,
+			unknown
+		>;
+		expect(body.delay_seconds).toBe(900);
+		expect(body).not.toHaveProperty("scheduled_at");
+	}, 15000);
+
+	it("navigates to /history and toasts the scheduled time on a Scheduled response", async () => {
+		mockMutateAsync.mockResolvedValueOnce({
+			execution_id: "exec-sched",
+			status: "Scheduled",
+			scheduled_at: "2026-05-01T12:00:00Z",
+		});
+
+		const form = makeForm([
+			{ name: "comment", label: "Comment", type: "text", required: false },
+		]);
+		const { user } = renderWithProviders(<FormRenderer form={form} />);
+
+		fireEvent.change(screen.getByLabelText(/comment/i), {
+			target: { value: "hi" },
+		});
+
+		const submit = screen.getByRole("button", { name: /submit/i });
+		await waitFor(() => expect(submit).toBeEnabled(), { timeout: 3000 });
+
+		await user.click(
+			screen.getByRole("checkbox", { name: /schedule for later/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /in 15 min/i }));
+
+		await user.click(submit);
+
+		await waitFor(() => {
+			expect(mockNavigate).toHaveBeenCalledWith("/history");
+		});
+
+		expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+		const toastMsg = mockToastSuccess.mock.calls[0]![0] as string;
+		expect(toastMsg).toMatch(/scheduled for/i);
+	}, 15000);
 });
