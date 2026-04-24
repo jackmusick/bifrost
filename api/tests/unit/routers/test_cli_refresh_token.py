@@ -230,6 +230,82 @@ class TestRefreshTokenAuthorizationCode:
         mock_instance.refresh_access_token.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_clears_waiting_callback_status_on_success(self):
+        """A stuck waiting_callback provider should flip to completed after a successful SDK refresh.
+
+        Regression guard: the SDK refresh endpoint previously updated token
+        data (expires_at, access_token) without touching provider.status,
+        leaving providers stuck at waiting_callback whenever a user abandoned
+        an authorize flow while workflow code kept calling .refresh().
+        """
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="NinjaOne")
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        mock_provider = MagicMock()
+        mock_provider.id = uuid4()
+        mock_provider.provider_name = "NinjaOne"
+        mock_provider.client_id = "ninja-client-id"
+        mock_provider.encrypted_client_secret = b"encrypted-secret"
+        mock_provider.token_url = "https://app.ninjarmm.com/ws/oauth/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "authorization_code"
+        mock_provider.scopes = ["monitoring"]
+        mock_provider.integration_id = None
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+        # Simulate the stuck state: user clicked Reconnect then abandoned the browser flow.
+        mock_provider.status = "waiting_callback"
+        mock_provider.status_message = "Waiting for user to complete authorization"
+        mock_provider.last_token_refresh = None
+
+        mock_stored_token = MagicMock()
+        mock_stored_token.id = uuid4()
+        mock_stored_token.encrypted_refresh_token = b"encrypted-refresh-token"
+
+        provider_result = MagicMock()
+        provider_result.scalars.return_value.first.return_value = mock_provider
+        token_result = MagicMock()
+        token_result.scalars.return_value.first.return_value = mock_stored_token
+
+        mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
+        mock_db.commit = AsyncMock()
+        mock_db.add = MagicMock()
+
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        mock_token_response = {
+            "access_token": "refreshed-ninja-token",
+            "refresh_token": "new-refresh-token",
+            "expires_at": expires_at,
+        }
+
+        with (
+            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-value"),
+            patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-value"),
+        ):
+            mock_instance = MagicMock()
+            mock_instance.refresh_access_token = AsyncMock(
+                return_value=(True, mock_token_response)
+            )
+            mock_client_class.return_value = mock_instance
+
+            await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert mock_provider.status == "completed"
+        assert mock_provider.status_message is None
+        assert mock_provider.last_token_refresh is not None
+        assert isinstance(mock_provider.last_token_refresh, datetime)
+        assert mock_provider.last_token_refresh.tzinfo is not None
+
+    @pytest.mark.asyncio
     async def test_fails_when_no_refresh_token_stored(self):
         """Should fail when no refresh_token is available for authorization_code flow."""
         from fastapi import HTTPException
