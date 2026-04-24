@@ -9,7 +9,7 @@ import inspect
 import logging
 from typing import Any
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
 

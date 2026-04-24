@@ -8,7 +8,7 @@ workflow validation, execution tracking, and knowledge search.
 from uuid import uuid4
 
 import pytest
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from src.services.mcp_server.server import MCPContext
 
