@@ -183,6 +183,60 @@ jobs:
           cache-to: type=gha,mode=max
 
   # =============================================================================
+  # Deploy Dry Run - Manual trigger only (workflow_dispatch from any branch).
+  # Validates the DO auth chain (token, cluster name, RBAC, label selector)
+  # WITHOUT touching any deployment. Used once before merging this PR to
+  # confirm the deploy job will succeed when it fires for real.
+  # =============================================================================
+  deploy-dry-run:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: Deploy Dry Run
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Save kubeconfig
+        run: doctl kubernetes cluster kubeconfig save "${{ secrets.DO_CLUSTER_NAME }}"
+
+      - name: Probe cluster reach + RBAC + label selector
+        run: |
+          set -e
+          echo "::group::cluster info"
+          kubectl cluster-info
+          echo "::endgroup::"
+
+          echo "::group::RBAC — can I patch deployments in the bifrost namespace?"
+          kubectl auth can-i patch deployment -n bifrost
+          echo "::endgroup::"
+
+          echo "::group::Deployments the real job would restart"
+          kubectl -n bifrost get deployment \
+            -l app.kubernetes.io/part-of=bifrost \
+            -o wide
+          echo "::endgroup::"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Bifrost deploy dry run"
+            echo ""
+            echo "If the step above passed, the real \`deploy-dev\` job will work when this PR merges."
+            echo ""
+            echo "### Deployments that would be restarted"
+            echo ""
+            echo '```'
+            kubectl -n bifrost get deployment \
+              -l app.kubernetes.io/part-of=bifrost \
+              -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas \
+              || echo "kubectl unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # =============================================================================
   # Deploy Dev - Push-to-main only. Rolls the DigitalOcean deployment once
   # the :dev images are published. Targets anything labeled
   # `app.kubernetes.io/part-of=bifrost` in the `bifrost` namespace so new
