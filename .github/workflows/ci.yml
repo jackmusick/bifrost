@@ -183,6 +183,70 @@ jobs:
           cache-to: type=gha,mode=max
 
   # =============================================================================
+  # Deploy Dev - Push-to-main only. Rolls the DigitalOcean deployment once
+  # the :dev images are published. Targets anything labeled
+  # `app.kubernetes.io/part-of=bifrost` in the `bifrost` namespace so new
+  # services are picked up automatically. Failures page the maintainer via
+  # GitHub's built-in workflow-failure email (no extra wiring).
+  # =============================================================================
+  deploy-dev:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [build-dev]
+    runs-on: ubuntu-latest
+    name: Deploy Dev to DigitalOcean
+    # Allow only one deploy at a time; if a newer commit lands mid-rollout we
+    # cancel the older deploy so the cluster always converges on HEAD of main.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: true
+
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Save kubeconfig
+        run: doctl kubernetes cluster kubeconfig save "${{ secrets.DO_CLUSTER_NAME }}"
+
+      - name: Roll deployments
+        run: |
+          kubectl -n bifrost rollout restart deployment \
+            -l app.kubernetes.io/part-of=bifrost
+
+      - name: Wait for rollouts
+        run: |
+          set -e
+          # Query the same label selector we restarted, so new services are
+          # picked up without editing this workflow.
+          DEPLOYMENTS=$(kubectl -n bifrost get deployment \
+            -l app.kubernetes.io/part-of=bifrost \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+          for d in $DEPLOYMENTS; do
+            echo "::group::rollout status $d"
+            kubectl -n bifrost rollout status "deployment/$d" --timeout=5m
+            echo "::endgroup::"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Bifrost deploy"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+            echo "- Cluster: \`${{ secrets.DO_CLUSTER_NAME }}\`"
+            echo "- Namespace: \`bifrost\`"
+            echo ""
+            echo "### Deployment status"
+            echo ""
+            kubectl -n bifrost get deployment \
+              -l app.kubernetes.io/part-of=bifrost \
+              -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas,UPDATED:.status.updatedReplicas \
+              || echo "kubectl unavailable"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # =============================================================================
   # Build API Image - Only on version tags, after tests pass
   # =============================================================================
   build-api:
