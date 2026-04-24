@@ -12,7 +12,9 @@ import { Link } from "react-router-dom";
 import {
 	AlertTriangle,
 	Bot,
+	Building2,
 	Clock,
+	Globe,
 	Hash,
 	History,
 	LayoutGrid,
@@ -41,7 +43,10 @@ import { QueueBanner } from "@/components/agents/QueueBanner";
 import { Sparkline } from "@/components/agents/Sparkline";
 import { StatCard } from "@/components/agents/StatCard";
 import { SummaryBackfillButton } from "@/components/agents/SummaryBackfillButton";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOrganizations } from "@/hooks/useOrganizations";
+import type { components } from "@/lib/v1";
 import {
 	CARD_HOVER,
 	CARD_SURFACE,
@@ -69,17 +74,32 @@ import {
 } from "@/lib/utils";
 
 type ViewMode = "grid" | "table";
+type Organization = components["schemas"]["OrganizationPublic"];
 
 export function FleetPage() {
 	const [view, setView] = useState<ViewMode>("grid");
 	const [query, setQuery] = useState("");
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
+	const { isPlatformAdmin } = useAuth();
 
 	// Fleet view shows paused agents too (they need to be visible to un-pause).
-	const { data: agents, isLoading: agentsLoading } = useAgents(undefined, {
-		includeInactive: true,
-	});
+	const { data: agents, isLoading: agentsLoading } = useAgents(
+		isPlatformAdmin ? filterOrgId : undefined,
+		{ includeInactive: true },
+	);
 	const { data: fleetStats, isLoading: fleetLoading } = useFleetStats();
-	const { isPlatformAdmin } = useAuth();
+
+	// Resolve organization names for badges (platform admins only).
+	const { data: organizations } = useOrganizations({
+		enabled: isPlatformAdmin,
+	});
+	const getOrgName = (orgId: string | null | undefined): string => {
+		if (!orgId) return "Global";
+		const org = organizations?.find((o: Organization) => o.id === orgId);
+		return org?.name || orgId;
+	};
 
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
@@ -201,15 +221,28 @@ export function FleetPage() {
 
 			{/* Search + view toggle */}
 			<div className="flex items-center justify-between gap-3">
-				<div className="relative max-w-md flex-1">
-					<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-					<Input
-						aria-label="Search agents"
-						placeholder="Search agents…"
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						className="h-8 pl-8 text-[13px]"
-					/>
+				<div className="flex flex-1 items-center gap-3">
+					<div className="relative max-w-md flex-1">
+						<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+						<Input
+							aria-label="Search agents"
+							placeholder="Search agents…"
+							value={query}
+							onChange={(e) => setQuery(e.target.value)}
+							className="h-8 pl-8 text-[13px]"
+						/>
+					</div>
+					{isPlatformAdmin && (
+						<div className="w-64">
+							<OrganizationSelect
+								value={filterOrgId}
+								onChange={setFilterOrgId}
+								showAll
+								showGlobal
+								placeholder="All organizations"
+							/>
+						</div>
+					)}
 				</div>
 				<div className="inline-flex items-center overflow-hidden rounded-md border">
 					<button
@@ -263,11 +296,20 @@ export function FleetPage() {
 			) : view === "grid" ? (
 				<div className={cn("grid md:grid-cols-2 xl:grid-cols-3", GAP_CARD)}>
 					{filtered.map((agent) => (
-						<AgentGridCard key={agent.id} agent={agent} />
+						<AgentGridCard
+							key={agent.id}
+							agent={agent}
+							showOrg={isPlatformAdmin}
+							orgName={getOrgName(agent.organization_id)}
+						/>
 					))}
 				</div>
 			) : (
-				<AgentTable agents={filtered} />
+				<AgentTable
+					agents={filtered}
+					showOrg={isPlatformAdmin}
+					getOrgName={getOrgName}
+				/>
 			)}
 		</div>
 	);
@@ -310,7 +352,15 @@ function ChannelBadge({ channel }: { channel: string }) {
 	);
 }
 
-function AgentGridCard({ agent }: { agent: AgentSummary }) {
+function AgentGridCard({
+	agent,
+	showOrg,
+	orgName,
+}: {
+	agent: AgentSummary;
+	showOrg: boolean;
+	orgName: string;
+}) {
 	// TODO(plan-2): replace per-card useAgentStats N+1 with a denormalized
 	// list endpoint that returns fleet member stats in one round-trip.
 	const { data: stats, isLoading } = useAgentStats(agent.id ?? undefined);
@@ -322,7 +372,7 @@ function AgentGridCard({ agent }: { agent: AgentSummary }) {
 		<Link
 			to={`/agents/${agent.id}`}
 			className={cn(
-				"group block overflow-hidden",
+				"group flex flex-col overflow-hidden",
 				CARD_SURFACE,
 				CARD_HOVER,
 			)}
@@ -352,7 +402,7 @@ function AgentGridCard({ agent }: { agent: AgentSummary }) {
 					</p>
 				) : null}
 			</div>
-			<div className="space-y-3 p-4">
+			<div className="flex-1 space-y-3 p-4">
 				{isLoading ? (
 					<Skeleton className="h-24 w-full" />
 				) : hasRuns ? (
@@ -402,7 +452,35 @@ function AgentGridCard({ agent }: { agent: AgentSummary }) {
 					</p>
 				)}
 			</div>
+			{showOrg ? (
+				<div className="border-t px-4 py-2.5">
+					<OrgBadge orgId={agent.organization_id} name={orgName} />
+				</div>
+			) : null}
 		</Link>
+	);
+}
+
+function OrgBadge({
+	orgId,
+	name,
+}: {
+	orgId: string | null | undefined;
+	name: string;
+}) {
+	if (orgId) {
+		return (
+			<Badge variant="outline" className="text-xs">
+				<Building2 className="mr-1 h-3 w-3" />
+				{name}
+			</Badge>
+		);
+	}
+	return (
+		<Badge variant="default" className="text-xs">
+			<Globe className="mr-1 h-3 w-3" />
+			Global
+		</Badge>
 	);
 }
 
@@ -427,12 +505,25 @@ function MiniStat({
 	);
 }
 
-function AgentTable({ agents }: { agents: AgentSummary[] }) {
+function AgentTable({
+	agents,
+	showOrg,
+	getOrgName,
+}: {
+	agents: AgentSummary[];
+	showOrg: boolean;
+	getOrgName: (orgId: string | null | undefined) => string;
+}) {
 	return (
 		<div className={cn("overflow-hidden border", RADIUS_CARD)}>
 			<DataTable>
 				<DataTableHeader>
 					<DataTableRow>
+						{showOrg && (
+							<DataTableHead className="w-0 whitespace-nowrap">
+								Organization
+							</DataTableHead>
+						)}
 						<DataTableHead>Name</DataTableHead>
 						<DataTableHead>Channels</DataTableHead>
 						<DataTableHead className="w-0 whitespace-nowrap text-right">
@@ -440,9 +531,6 @@ function AgentTable({ agents }: { agents: AgentSummary[] }) {
 						</DataTableHead>
 						<DataTableHead className="w-0 whitespace-nowrap text-right">
 							Success
-						</DataTableHead>
-						<DataTableHead className="w-0 whitespace-nowrap text-right">
-							Avg duration
 						</DataTableHead>
 						<DataTableHead className="w-0 whitespace-nowrap text-right">
 							Spend (7d)
@@ -457,7 +545,12 @@ function AgentTable({ agents }: { agents: AgentSummary[] }) {
 				</DataTableHeader>
 				<DataTableBody>
 					{agents.map((agent) => (
-						<AgentTableRow key={agent.id} agent={agent} />
+						<AgentTableRow
+							key={agent.id}
+							agent={agent}
+							showOrg={showOrg}
+							orgName={getOrgName(agent.organization_id)}
+						/>
 					))}
 				</DataTableBody>
 			</DataTable>
@@ -465,7 +558,15 @@ function AgentTable({ agents }: { agents: AgentSummary[] }) {
 	);
 }
 
-function AgentTableRow({ agent }: { agent: AgentSummary }) {
+function AgentTableRow({
+	agent,
+	showOrg,
+	orgName,
+}: {
+	agent: AgentSummary;
+	showOrg: boolean;
+	orgName: string;
+}) {
 	const { data: stats } = useAgentStats(agent.id ?? undefined);
 	const hasRuns = (stats?.runs_7d ?? 0) > 0;
 
@@ -476,6 +577,11 @@ function AgentTableRow({ agent }: { agent: AgentSummary }) {
 				window.location.href = `/agents/${agent.id}`;
 			}}
 		>
+			{showOrg && (
+				<DataTableCell className="w-0 whitespace-nowrap">
+					<OrgBadge orgId={agent.organization_id} name={orgName} />
+				</DataTableCell>
+			)}
 			<DataTableCell>
 				<div className="flex items-center gap-2">
 					<Bot className="h-3.5 w-3.5 text-muted-foreground" />
@@ -499,9 +605,6 @@ function AgentTableRow({ agent }: { agent: AgentSummary }) {
 			</DataTableCell>
 			<DataTableCell className="w-0 whitespace-nowrap text-right tabular-nums">
 				{hasRuns ? `${Math.round(stats!.success_rate * 100)}%` : "—"}
-			</DataTableCell>
-			<DataTableCell className="w-0 whitespace-nowrap text-right tabular-nums">
-				{hasRuns ? formatDuration(stats!.avg_duration_ms) : "—"}
 			</DataTableCell>
 			<DataTableCell className="w-0 whitespace-nowrap text-right tabular-nums">
 				{hasRuns ? formatCost(stats!.total_cost_7d) : "—"}
