@@ -24,7 +24,11 @@ from src.jobs.rabbitmq import rabbitmq
 from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
 from src.jobs.consumers.package_install import PackageInstallConsumer
 from src.jobs.consumers.agent_run import AgentRunConsumer
-from src.jobs.summarize_worker import SummarizeConsumer, TuneChatConsumer
+from src.jobs.summarize_worker import (
+    SummarizeBackfillConsumer,
+    SummarizeConsumer,
+    TuneChatConsumer,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -130,6 +134,7 @@ class Worker:
             PackageInstallConsumer(),
             AgentRunConsumer(),
             SummarizeConsumer(),
+            SummarizeBackfillConsumer(),
             TuneChatConsumer(),
         ]
 

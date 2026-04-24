@@ -26,6 +26,7 @@ from src.core.database import get_session_factory
 from src.jobs.rabbitmq import BaseConsumer
 from src.models.orm.agent_runs import AgentRun
 from src.services.execution.run_summarizer import (
+    SUMMARIZE_BACKFILL_QUEUE,
     SUMMARIZE_QUEUE,
     summarize_run,
 )
@@ -39,10 +40,12 @@ logger = logging.getLogger(__name__)
 # Re-export for the worker bootstrap; keeps queue-name knowledge local
 # to the message-handling module.
 __all__ = [
+    "SUMMARIZE_BACKFILL_QUEUE",
     "SUMMARIZE_QUEUE",
     "TUNE_CHAT_QUEUE",
     "handle_summarize_message",
     "handle_tune_chat_message",
+    "SummarizeBackfillConsumer",
     "SummarizeConsumer",
     "TuneChatConsumer",
 ]
@@ -134,13 +137,39 @@ async def handle_tune_chat_message(
 
 
 class SummarizeConsumer(BaseConsumer):
-    """BaseConsumer wrapper that routes ``agent-summarization`` to the handler."""
+    """Consumer for live ``agent-summarization`` traffic.
+
+    ``prefetch_count=1`` so each pod processes one message at a time.
+    Fleet-wide concurrency equals the number of worker pods — the admin
+    controls burst load against the LLM provider by scaling pods, not by
+    tuning a hidden per-pod concurrency knob. A 6-pod fleet hits the LLM
+    at most 6 requests-in-flight concurrently, which for a post-run
+    summarizer is well inside any reasonable provider RPM headroom.
+    """
 
     def __init__(self) -> None:
-        settings = get_settings()
         super().__init__(
             queue_name=SUMMARIZE_QUEUE,
-            prefetch_count=settings.max_concurrency,
+            prefetch_count=1,
+        )
+
+    async def process_message(self, body: dict[str, Any]) -> None:
+        await handle_summarize_message(body)
+
+
+class SummarizeBackfillConsumer(BaseConsumer):
+    """Consumer for the dedicated backfill queue.
+
+    Backfills use a separate queue so a 2000-run bulk operation can't
+    starve live traffic on ``agent-summarization``. Same prefetch=1 rule
+    applies: pod count caps parallelism. Both consumers call the same
+    handler — only the queue routing differs.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            queue_name=SUMMARIZE_BACKFILL_QUEUE,
+            prefetch_count=1,
         )
 
     async def process_message(self, body: dict[str, Any]) -> None:

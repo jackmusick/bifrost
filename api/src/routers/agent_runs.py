@@ -999,13 +999,15 @@ async def backfill_summaries(
     )
     await db.commit()
 
-    # Now enqueue one message per run, tagged with the job id.
+    # Now enqueue one message per run, tagged with the job id. Backfills go
+    # to a dedicated queue so a 2000-run bulk operation doesn't starve the
+    # live ``agent-summarization`` path that serves just-finished runs.
     from src.jobs.rabbitmq import publish_message
-    from src.services.execution.run_summarizer import SUMMARIZE_QUEUE
+    from src.services.execution.run_summarizer import SUMMARIZE_BACKFILL_QUEUE
 
     for rid in run_ids:
         await publish_message(
-            SUMMARIZE_QUEUE,
+            SUMMARIZE_BACKFILL_QUEUE,
             {"run_id": str(rid), "backfill_job_id": str(job.id)},
         )
 

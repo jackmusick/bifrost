@@ -138,6 +138,10 @@ class TestBackfillSummaries:
         mixed_runs,
         db_session: AsyncSession,
     ):
+        # Queue-routing assertion lives in the unit test
+        # ``test_backfill_publishes_to_backfill_queue`` — the e2e client runs
+        # the API in a separate process, so a host-side patch on
+        # ``publish_message`` never fires. Here we verify the DB side-effects.
         res = e2e_client.post(
             "/api/agent-runs/backfill-summaries",
             json={

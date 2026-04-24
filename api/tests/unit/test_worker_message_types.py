@@ -108,7 +108,7 @@ async def test_summarize_failure_marks_run_failed(
 
 @pytest.mark.asyncio
 async def test_enqueue_summarize_publishes_correct_queue():
-    """enqueue_summarize publishes to 'agent-summarization'."""
+    """Live path: enqueue_summarize publishes to 'agent-summarization'."""
     from src.services.execution.run_summarizer import enqueue_summarize
 
     run_id = uuid4()
@@ -121,6 +121,105 @@ async def test_enqueue_summarize_publishes_correct_queue():
         args = mock.await_args.args
         assert args[0] == "agent-summarization"
         assert args[1]["run_id"] == str(run_id)
+
+
+def test_summarize_consumer_uses_prefetch_one():
+    """Live consumer must run with prefetch=1 so fleet-wide concurrency
+    equals the worker pod count, not pods × max_concurrency.
+
+    Regression guard: bumping this value back up silently melts OpenRouter
+    and re-introduces the burst-429 problem that cost ~525 runs in prod
+    on 2026-04-24."""
+    from src.jobs.summarize_worker import SummarizeBackfillConsumer, SummarizeConsumer
+
+    live = SummarizeConsumer()
+    backfill = SummarizeBackfillConsumer()
+    assert live.prefetch_count == 1
+    assert backfill.prefetch_count == 1
+    assert live.queue_name == "agent-summarization"
+    assert backfill.queue_name == "agent-summarization-backfill"
+
+
+@pytest.mark.asyncio
+async def test_backfill_publishes_to_backfill_queue(async_session_factory):
+    """Regression guard: backfill must route to the dedicated backfill queue,
+    not the live ``agent-summarization`` queue that serves just-finished runs.
+    Publishing to the live queue causes a 2000-run bulk op to block live
+    traffic for the full drain duration."""
+    from unittest.mock import patch
+    from uuid import uuid4
+
+    from src.core.auth import UserPrincipal
+    from src.models.contracts.agent_runs import BackfillSummariesRequest
+    from src.models.orm.agent_runs import AgentRun
+    from src.models.orm.agents import Agent
+    from src.routers.agent_runs import backfill_summaries
+
+    agent_id = uuid4()
+    run_id = uuid4()
+
+    # Seed an agent + a pending run so the endpoint has something to enqueue.
+    async with async_session_factory() as db:
+        db.add(
+            Agent(
+                id=agent_id,
+                name=f"Backfill router unit {uuid4().hex[:8]}",
+                description="backfill router unit test",
+                system_prompt="test",
+                access_level="authenticated",
+                created_by="test",
+            )
+        )
+        db.add(
+            AgentRun(
+                id=run_id,
+                agent_id=agent_id,
+                trigger_type="test",
+                status="completed",
+                iterations_used=1,
+                tokens_used=10,
+                summary_status="pending",
+            )
+        )
+        await db.commit()
+
+    admin = UserPrincipal(
+        user_id=uuid4(),
+        email="admin@test.local",
+        organization_id=None,
+        name="Test Admin",
+        is_superuser=True,
+    )
+
+    try:
+        async with async_session_factory() as db:
+            with patch(
+                "src.jobs.rabbitmq.publish_message",
+                new=AsyncMock(),
+            ) as pub:
+                result = await backfill_summaries(
+                    request=BackfillSummariesRequest(
+                        agent_id=agent_id,
+                        statuses=["pending"],
+                        limit=100,
+                        dry_run=False,
+                    ),
+                    db=db,
+                    user=admin,
+                )
+
+            assert result.queued == 1
+            assert pub.await_count == 1
+            call = pub.await_args_list[0]
+            assert call.args[0] == "agent-summarization-backfill"
+            assert call.args[1]["run_id"] == str(run_id)
+    finally:
+        async with async_session_factory() as db:
+            await db.execute(
+                AgentRun.__table__.delete().where(AgentRun.id == run_id)
+            )
+            await db.execute(Agent.__table__.delete().where(Agent.id == agent_id))
+            await db.commit()
 
 
 @pytest.mark.asyncio

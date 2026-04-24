@@ -35,9 +35,10 @@ import {
 } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 
+import { InfiniteScrollSentinel } from "@/components/ui/infinite-scroll-sentinel";
 import {
 	useAgentRunListStream,
-	useAgentRuns,
+	useInfiniteAgentRuns,
 	useRerunAgentRun,
 } from "@/services/agentRuns";
 import { formatDate, formatDuration } from "@/lib/utils";
@@ -88,7 +89,13 @@ function VerdictGlyph({ verdict }: { verdict: AgentRun["verdict"] }) {
 
 export function AgentRunsPanel() {
 	const navigate = useNavigate();
-	const { data, isLoading } = useAgentRuns({ limit: 100 });
+	const {
+		data,
+		isLoading,
+		hasNextPage,
+		isFetchingNextPage,
+		fetchNextPage,
+	} = useInfiniteAgentRuns({ pageSize: 50 });
 	const rerun = useRerunAgentRun();
 
 	// Subscribe to real-time updates; the hook patches the shared
@@ -96,7 +103,8 @@ export function AgentRunsPanel() {
 	// status changes (queued → running → completed) reflect live.
 	useAgentRunListStream({ enabled: true });
 
-	const runs: AgentRun[] = (data?.items ?? []) as AgentRun[];
+	const runs: AgentRun[] = (data?.pages.flatMap((p) => p.items) ??
+		[]) as AgentRun[];
 
 	function handleRerun(runId: string) {
 		rerun.mutate(
@@ -222,6 +230,11 @@ export function AgentRunsPanel() {
 					))}
 				</DataTableBody>
 			</DataTable>
+			<InfiniteScrollSentinel
+				hasNext={!!hasNextPage}
+				isLoading={isFetchingNextPage}
+				onLoadMore={() => fetchNextPage()}
+			/>
 		</div>
 	);
 }

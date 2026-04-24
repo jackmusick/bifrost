@@ -13,7 +13,7 @@ import { renderWithProviders, screen, waitFor } from "@/test-utils";
 // Mocks
 // -----------------------------------------------------------------------------
 
-const mockUseAgentRuns = vi.fn();
+const mockUseInfiniteAgentRuns = vi.fn();
 const mockUseAgentRun = vi.fn();
 const mockUseFlagConversation = vi.fn();
 const mockSendFlagMessage = vi.fn();
@@ -21,7 +21,7 @@ const mockSetVerdict = vi.fn();
 const mockClearVerdict = vi.fn();
 
 vi.mock("@/services/agentRuns", () => ({
-	useAgentRuns: (params: unknown) => mockUseAgentRuns(params),
+	useInfiniteAgentRuns: (params: unknown) => mockUseInfiniteAgentRuns(params),
 	useAgentRun: (id: string | undefined) => mockUseAgentRun(id),
 	useFlagConversation: (id: string | undefined) =>
 		mockUseFlagConversation(id),
@@ -76,11 +76,21 @@ function makeRun(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-beforeEach(() => {
-	mockUseAgentRuns.mockReturnValue({
-		data: { items: [makeRun()], total: 1, next_cursor: null },
+function makeInfinitePages(items: ReturnType<typeof makeRun>[], total?: number) {
+	return {
+		data: {
+			pages: [{ items, total: total ?? items.length, next_cursor: null }],
+			pageParams: [0],
+		},
 		isLoading: false,
-	});
+		hasNextPage: false,
+		isFetchingNextPage: false,
+		fetchNextPage: vi.fn(),
+	};
+}
+
+beforeEach(() => {
+	mockUseInfiniteAgentRuns.mockReturnValue(makeInfinitePages([makeRun()]));
 	mockUseAgentRun.mockReturnValue({ data: undefined });
 	mockUseFlagConversation.mockReturnValue({ data: undefined });
 	mockSendFlagMessage.mockReset();
@@ -106,10 +116,7 @@ describe("AgentRunsTab — list", () => {
 	});
 
 	it("shows an empty message when the list is empty", async () => {
-		mockUseAgentRuns.mockReturnValue({
-			data: { items: [], total: 0, next_cursor: null },
-			isLoading: false,
-		});
+		mockUseInfiniteAgentRuns.mockReturnValue(makeInfinitePages([], 0));
 		await renderTab();
 		expect(
 			screen.getByText(/no runs match this filter/i),
@@ -117,7 +124,13 @@ describe("AgentRunsTab — list", () => {
 	});
 
 	it("renders skeletons while loading", async () => {
-		mockUseAgentRuns.mockReturnValue({ data: undefined, isLoading: true });
+		mockUseInfiniteAgentRuns.mockReturnValue({
+			data: undefined,
+			isLoading: true,
+			hasNextPage: false,
+			isFetchingNextPage: false,
+			fetchNextPage: vi.fn(),
+		});
 		const { container } = await renderTab();
 		expect(
 			container.querySelectorAll(".animate-pulse").length,
@@ -130,7 +143,7 @@ describe("AgentRunsTab — search", () => {
 		const { user } = await renderTab();
 		await user.type(screen.getByLabelText(/search runs/i), "acme");
 		await waitFor(() => {
-			expect(mockUseAgentRuns).toHaveBeenCalledWith(
+			expect(mockUseInfiniteAgentRuns).toHaveBeenCalledWith(
 				expect.objectContaining({ q: "acme" }),
 			);
 		});
@@ -155,14 +168,9 @@ describe("AgentRunsTab — verdict actions", () => {
 	});
 
 	it("calls useClearVerdict mutate when toggling off the current verdict", async () => {
-		mockUseAgentRuns.mockReturnValue({
-			data: {
-				items: [makeRun({ verdict: "up" })],
-				total: 1,
-				next_cursor: null,
-			},
-			isLoading: false,
-		});
+		mockUseInfiniteAgentRuns.mockReturnValue(
+			makeInfinitePages([makeRun({ verdict: "up" })]),
+		);
 		const { user } = await renderTab();
 		await user.click(
 			screen.getByRole("button", { name: /mark as good/i }),
@@ -173,18 +181,41 @@ describe("AgentRunsTab — verdict actions", () => {
 	});
 
 	it("renders the queue banner when there are flagged runs", async () => {
-		mockUseAgentRuns.mockReturnValue({
-			data: {
-				items: [makeRun({ verdict: "down" })],
-				total: 1,
-				next_cursor: null,
-			},
-			isLoading: false,
-		});
+		mockUseInfiniteAgentRuns.mockReturnValue(
+			makeInfinitePages([makeRun({ verdict: "down" })]),
+		);
 		await renderTab();
 		expect(
 			screen.getByText(/1 flagged run in tuning queue/i),
 		).toBeInTheDocument();
+	});
+});
+
+describe("AgentRunsTab — infinite scroll", () => {
+	it("renders the sentinel when more pages are available", async () => {
+		const fetchNextPage = vi.fn();
+		mockUseInfiniteAgentRuns.mockReturnValue({
+			data: {
+				pages: [{ items: [makeRun()], total: 200, next_cursor: null }],
+				pageParams: [0],
+			},
+			isLoading: false,
+			hasNextPage: true,
+			isFetchingNextPage: false,
+			fetchNextPage,
+		});
+		await renderTab();
+		expect(
+			await screen.findByTestId("infinite-scroll-sentinel"),
+		).toBeInTheDocument();
+	});
+
+	it("does not render the sentinel when there are no more pages", async () => {
+		mockUseInfiniteAgentRuns.mockReturnValue(makeInfinitePages([makeRun()]));
+		await renderTab();
+		expect(
+			screen.queryByTestId("infinite-scroll-sentinel"),
+		).not.toBeInTheDocument();
 	});
 });
 

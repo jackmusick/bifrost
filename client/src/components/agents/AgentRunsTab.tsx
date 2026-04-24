@@ -29,12 +29,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueueBanner } from "@/components/agents/QueueBanner";
 import { RunCard } from "@/components/agents/RunCard";
 import { RunReviewSheet } from "@/components/agents/RunReviewSheet";
+import { InfiniteScrollSentinel } from "@/components/ui/infinite-scroll-sentinel";
 import { useAgentRunUpdates } from "@/hooks/useAgentRunUpdates";
 import {
 	useAgentRun,
-	useAgentRuns,
 	useClearVerdict,
 	useFlagConversation,
+	useInfiniteAgentRuns,
 	useSendFlagMessage,
 	useSetVerdict,
 } from "@/services/agentRuns";
@@ -57,7 +58,13 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 
 	const queryClient = useQueryClient();
 
-	const { data: runsList, isLoading } = useAgentRuns({
+	const {
+		data: runsPages,
+		isLoading,
+		hasNextPage,
+		isFetchingNextPage,
+		fetchNextPage,
+	} = useInfiniteAgentRuns({
 		agentId,
 		q: query || undefined,
 		verdict: verdictFilter !== "all" ? verdictFilter : undefined,
@@ -68,12 +75,13 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 	useAgentRunUpdates({ agentId });
 
 	const runs = useMemo(() => {
-		const all = (runsList?.items ?? []) as unknown as AgentRun[];
+		const all = (runsPages?.pages.flatMap((p) => p.items) ??
+			[]) as unknown as AgentRun[];
 		if (summaryFilter === "failed") {
 			return all.filter((r) => r.summary_status === "failed");
 		}
 		return all;
-	}, [runsList, summaryFilter]);
+	}, [runsPages, summaryFilter]);
 	const flaggedCount = useMemo(
 		() => runs.filter((r) => r.verdict === "down").length,
 		[runs],
@@ -82,6 +90,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 	function applyVerdict(runId: string, next: Verdict) {
 		const onSuccess = () => {
 			queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+			queryClient.invalidateQueries({ queryKey: ["agent-runs-infinite"] });
 		};
 		if (next === null) {
 			clearVerdict.mutate(
@@ -112,6 +121,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 			{
 				onSuccess: () => {
 					queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+			queryClient.invalidateQueries({ queryKey: ["agent-runs-infinite"] });
 					toast.success(note ? "Note saved" : "Note cleared");
 				},
 				onError: () => {
@@ -209,17 +219,27 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 						No runs match this filter.
 					</p>
 				) : (
-					runs.map((r) => (
-						<RunCard
-							key={r.id}
-							run={r}
-							verdict={(r.verdict as Verdict) ?? null}
-							highlight={query}
-							onOpen={() => setOpenRunId(r.id)}
-							onVerdict={(v) => applyVerdict(r.id, v)}
-							onNote={applyNote}
+					<>
+						{runs.map((r) => (
+							<RunCard
+								key={r.id}
+								run={r}
+								verdict={(r.verdict as Verdict) ?? null}
+								highlight={query}
+								onOpen={() => setOpenRunId(r.id)}
+								onVerdict={(v) => applyVerdict(r.id, v)}
+								onNote={applyNote}
+							/>
+						))}
+						{isFetchingNextPage ? (
+							<Skeleton className="h-20 w-full" />
+						) : null}
+						<InfiniteScrollSentinel
+							hasNext={!!hasNextPage}
+							isLoading={isFetchingNextPage}
+							onLoadMore={() => fetchNextPage()}
 						/>
-					))
+					</>
 				)}
 			</div>
 

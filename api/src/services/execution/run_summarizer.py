@@ -14,12 +14,15 @@ swallowed. The handler in :mod:`src.jobs.summarize_worker` does the same
 belt-and-suspenders so the message is never re-queued. The UI exposes a
 regenerate button for recovery.
 """
+import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+import openai
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -29,11 +32,30 @@ from src.models.orm.agent_runs import AgentRun
 from src.models.orm.agents import Agent
 from src.models.orm.ai_usage import AIUsage
 from src.services.execution.model_selection import get_summarization_client
-from src.services.llm import LLMMessage
+from src.services.llm import BaseLLMClient, LLMMessage, LLMResponse
 
 logger = logging.getLogger(__name__)
 
 SUMMARIZE_QUEUE = "agent-summarization"
+SUMMARIZE_BACKFILL_QUEUE = "agent-summarization-backfill"
+
+# Transient LLM provider errors worth retrying in-handler. The consumer runs
+# with prefetch_count=1, so retrying here naturally backpressures the whole
+# pod — another pod's handler is free to service other messages meanwhile.
+_TRANSIENT_LLM_ERRORS: tuple[type[BaseException], ...] = (
+    openai.RateLimitError,
+    openai.APITimeoutError,
+    openai.APIConnectionError,
+    openai.InternalServerError,
+)
+
+# Max wall time we'll spend retrying a single summarization. OpenRouter's RPM
+# windows reset every 60s, so ~2 minutes covers the common 429 case plus one
+# provider burp. Beyond this, the run is marked failed and the admin can
+# regenerate from the UI.
+_MAX_RETRIES = 5
+_INITIAL_BACKOFF_S = 2.0
+_MAX_BACKOFF_S = 30.0
 
 SUMMARIZE_SYSTEM_PROMPT = """You summarize the behavior of an AI agent on a single run.
 Given the agent's input and output, produce a JSON object with:
@@ -139,6 +161,67 @@ def _truncate(value: Any, max_len: int) -> str | None:
     return s or None
 
 
+def _retry_delay_from_exception(exc: BaseException, attempt: int) -> float:
+    """Compute backoff for a transient LLM error.
+
+    Prefers the provider-supplied ``Retry-After`` header on 429s (OpenRouter
+    sets this, and honoring it is the polite thing to do). Falls back to
+    exponential backoff with jitter so that many workers retrying in parallel
+    don't rendezvous on the same moment.
+    """
+    retry_after = None
+    response = getattr(exc, "response", None)
+    if response is not None:
+        headers = getattr(response, "headers", None)
+        if headers is not None:
+            raw = headers.get("Retry-After") or headers.get("retry-after")
+            if raw:
+                try:
+                    retry_after = float(raw)
+                except (TypeError, ValueError):
+                    retry_after = None
+
+    if retry_after is not None and retry_after > 0:
+        return min(retry_after, _MAX_BACKOFF_S)
+
+    base = min(_INITIAL_BACKOFF_S * (2 ** attempt), _MAX_BACKOFF_S)
+    return base * (0.5 + random.random() * 0.5)
+
+
+async def _complete_with_retry(
+    llm_client: BaseLLMClient,
+    messages: list[LLMMessage],
+    model: str,
+    run_id: UUID,
+) -> LLMResponse:
+    """Call the LLM with bounded retry on transient errors.
+
+    Retries ``RateLimitError``, timeouts, connection errors, and 5xx up to
+    ``_MAX_RETRIES`` times, then re-raises the last exception to the caller
+    (which will persist ``summary_status='failed'`` with the error message).
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return await llm_client.complete(messages=messages, model=model)
+        except _TRANSIENT_LLM_ERRORS as exc:
+            last_exc = exc
+            if attempt >= _MAX_RETRIES:
+                break
+            delay = _retry_delay_from_exception(exc, attempt)
+            logger.warning(
+                "Transient LLM error for run %s (attempt %d/%d, sleeping %.1fs): %s",
+                run_id,
+                attempt + 1,
+                _MAX_RETRIES,
+                delay,
+                type(exc).__name__,
+            )
+            await asyncio.sleep(delay)
+    assert last_exc is not None  # loop exits only via break after an exception
+    raise last_exc
+
+
 async def summarize_run(
     run_id: UUID, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
@@ -188,9 +271,11 @@ async def summarize_run(
     # they picked.
     response = None
     try:
-        response = await llm_client.complete(
+        response = await _complete_with_retry(
+            llm_client=llm_client,
             messages=messages,
             model=resolved_model,
+            run_id=run_id,
         )
         raw_content = response.content or ""
         # Empty content is its own class of failure — OpenAI / reasoning models
@@ -249,6 +334,24 @@ async def summarize_run(
                 run.summary_error = (
                     f"Invalid JSON from summarization model: {str(exc)[:200]}"
                 )
+            await db.commit()
+            await _broadcast_run(run, db)
+        return
+    except _TRANSIENT_LLM_ERRORS as exc:
+        logger.warning(
+            "Summarizer exhausted retries on transient error for run %s: %s",
+            run_id,
+            type(exc).__name__,
+        )
+        async with session_factory() as db:
+            run = (
+                await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+            ).scalar_one()
+            run.summary_status = "failed"
+            run.summary_error = (
+                f"LLM provider unavailable after retries "
+                f"({type(exc).__name__}): {str(exc)[:160]}"
+            )
             await db.commit()
             await _broadcast_run(run, db)
         return
