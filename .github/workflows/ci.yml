@@ -214,7 +214,7 @@ jobs:
 
           echo "::group::Deployments the real job would restart"
           kubectl -n bifrost get deployment \
-            -l app.kubernetes.io/part-of=bifrost \
+            -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
             -o wide
           echo "::endgroup::"
 
@@ -230,7 +230,7 @@ jobs:
             echo ""
             echo '```'
             kubectl -n bifrost get deployment \
-              -l app.kubernetes.io/part-of=bifrost \
+              -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
               -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas \
               || echo "kubectl unavailable"
             echo '```'
@@ -266,7 +266,7 @@ jobs:
       - name: Roll deployments
         run: |
           kubectl -n bifrost rollout restart deployment \
-            -l app.kubernetes.io/part-of=bifrost
+            -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker
 
       - name: Wait for rollouts
         run: |
@@ -274,7 +274,7 @@ jobs:
           # Query the same label selector we restarted, so new services are
           # picked up without editing this workflow.
           DEPLOYMENTS=$(kubectl -n bifrost get deployment \
-            -l app.kubernetes.io/part-of=bifrost \
+            -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
             -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
           for d in $DEPLOYMENTS; do
             echo "::group::rollout status $d"
@@ -295,7 +295,7 @@ jobs:
             echo "### Deployment status"
             echo ""
             kubectl -n bifrost get deployment \
-              -l app.kubernetes.io/part-of=bifrost \
+              -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
               -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas,UPDATED:.status.updatedReplicas \
               || echo "kubectl unavailable"
           } >> "$GITHUB_STEP_SUMMARY"
