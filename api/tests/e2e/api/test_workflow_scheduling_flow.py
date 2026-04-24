@@ -99,11 +99,14 @@ async def test_schedule_promote_run_terminal(
 ):
     """Schedule → wait for maturity → promoter → worker → Success."""
     from src.core.database import reset_db_state
+    import src.core.redis_client as redis_module
 
-    # The app-side DB engine is cached in a module-global and pins its
-    # connections to whichever asyncio loop first touched them. Resetting
-    # here forces a fresh engine on the current test loop.
+    # The app-side DB engine and Redis singleton are cached in module
+    # globals and pin their connections to whichever asyncio loop first
+    # touched them. Resetting both forces fresh clients on this loop —
+    # the promoter below uses both when publishing the matured row.
     reset_db_state()
+    redis_module._redis_client = None
 
     resp = _schedule(
         e2e_client, platform_admin, runnable_workflow["id"], delay_seconds=2
