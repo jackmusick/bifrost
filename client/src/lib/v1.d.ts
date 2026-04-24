@@ -19277,6 +19277,8 @@ export interface components {
             started_at?: string | null;
             /** Completed At */
             completed_at?: string | null;
+            /** Scheduled At */
+            scheduled_at?: string | null;
             /** Logs */
             logs?: {
                 [key: string]: unknown;

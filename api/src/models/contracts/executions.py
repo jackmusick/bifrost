@@ -86,6 +86,7 @@ class WorkflowExecution(BaseModel):
     duration_ms: int | None = None
     started_at: datetime | None = None  # May be None if not started yet
     completed_at: datetime | None = None
+    scheduled_at: datetime | None = None  # For Scheduled rows, when the row is due to promote
     logs: list[dict[str, Any]] | None = None  # Structured logger output (replaces old ExecutionLog format)
     variables: dict[str, Any] | None = None  # Runtime variables captured from execution scope
     # CLI session tracking
