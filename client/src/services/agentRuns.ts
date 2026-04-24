@@ -3,7 +3,7 @@
  */
 
 import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { $api, apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 import { webSocketService, type AgentRunUpdate, type AgentRunStepUpdate } from "@/services/websocket";
@@ -152,6 +152,58 @@ export function useSearchAgentRuns(params?: Parameters<typeof useAgentRuns>[0]) 
 	return useAgentRuns(params);
 }
 
+/**
+ * Paginated agent-runs query for list views that need to scroll past the
+ * first page. Backend default limit is 50; `pageSize` overrides it. Use
+ * `hasNextPage` + `fetchNextPage` from the return value with an
+ * `IntersectionObserver` sentinel for infinite scroll.
+ *
+ * The header count (`total`) comes from the first page and is stable across
+ * pages — safe to display while users scroll.
+ */
+export function useInfiniteAgentRuns(params?: {
+	agentId?: string;
+	status?: string;
+	triggerType?: string;
+	orgId?: string;
+	startDate?: string;
+	endDate?: string;
+	q?: string;
+	verdict?: string;
+	metadataFilter?: string;
+	pageSize?: number;
+}) {
+	const pageSize = params?.pageSize ?? 50;
+	return useInfiniteQuery({
+		queryKey: ["agent-runs-infinite", { ...params, pageSize }],
+		initialPageParam: 0,
+		queryFn: async ({ pageParam }) => {
+			const searchParams = new URLSearchParams();
+			if (params?.agentId) searchParams.set("agent_id", params.agentId);
+			if (params?.status) searchParams.set("status", params.status);
+			if (params?.triggerType) searchParams.set("trigger_type", params.triggerType);
+			if (params?.orgId) searchParams.set("org_id", params.orgId);
+			if (params?.startDate) searchParams.set("start_date", params.startDate);
+			if (params?.endDate) searchParams.set("end_date", params.endDate);
+			if (params?.q) searchParams.set("q", params.q);
+			if (params?.verdict) searchParams.set("verdict", params.verdict);
+			if (params?.metadataFilter)
+				searchParams.set("metadata_filter", params.metadataFilter);
+			searchParams.set("limit", String(pageSize));
+			searchParams.set("offset", String(pageParam));
+			const url = `/api/agent-runs?${searchParams.toString()}`;
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const { data, error } = await apiClient.GET(url as any, {});
+			if (error) throw error;
+			return data as unknown as AgentRunListResponse;
+		},
+		getNextPageParam: (lastPage, allPages) => {
+			const loaded = allPages.reduce((sum, p) => sum + p.items.length, 0);
+			return loaded < lastPage.total ? loaded : undefined;
+		},
+	});
+}
+
 export function useAgentRun(runId: string | undefined, options?: { refetchInterval?: number | false | ((query: { state: { data: AgentRunDetail | undefined } }) => number | false) }) {
 	return useQuery({
 		queryKey: ["agent-runs", runId],
@@ -185,63 +237,99 @@ export function useAgentRunListStream(options: { enabled?: boolean } = {}) {
 				await webSocketService.connect(["agent-runs"]);
 				unsubscribe = webSocketService.onAgentRunUpdate(
 					(update: AgentRunUpdate) => {
-						// Update ALL agent-runs query caches in-place
-						const caches = queryClient.getQueriesData<AgentRunListResponse>({
-							queryKey: ["agent-runs"],
+						const buildNewRun = (): AgentRun => ({
+							id: update.run_id,
+							agent_id: update.agent_id,
+							agent_name: update.agent_name,
+							trigger_type: update.trigger_type,
+							status: update.status,
+							iterations_used: update.iterations_used,
+							tokens_used: update.tokens_used,
+							duration_ms: update.duration_ms ?? null,
+							error: update.error ?? null,
+							org_id: update.org_id ?? null,
+							trigger_source: null,
+							conversation_id: null,
+							event_delivery_id: null,
+							input: null,
+							output: null,
+							caller_user_id: null,
+							caller_email: null,
+							caller_name: null,
+							budget_max_iterations: null,
+							budget_max_tokens: null,
+							llm_model: null,
+							created_at: update.timestamp,
+							started_at: update.started_at ?? update.timestamp,
+							completed_at: update.completed_at ?? null,
+							parent_run_id: null,
 						});
 
-						caches.forEach(([queryKey, oldData]) => {
-							if (!oldData?.items) return;
-
-							const existingIndex = oldData.items.findIndex(
+						const patchItems = (items: AgentRun[]): { items: AgentRun[]; appended: boolean } => {
+							const existingIndex = items.findIndex(
 								(run) => run.id === update.run_id,
 							);
-
 							if (existingIndex >= 0) {
-								// Update existing run in-place
-								const newItems = [...oldData.items];
-								newItems[existingIndex] = {
-									...newItems[existingIndex],
+								const next = [...items];
+								next[existingIndex] = {
+									...next[existingIndex],
 									status: update.status,
 									iterations_used: update.iterations_used,
 									tokens_used: update.tokens_used,
-									duration_ms: update.duration_ms ?? newItems[existingIndex].duration_ms,
-									error: update.error ?? newItems[existingIndex].error,
+									duration_ms: update.duration_ms ?? next[existingIndex].duration_ms,
+									error: update.error ?? next[existingIndex].error,
 								};
-								queryClient.setQueryData(queryKey, { ...oldData, items: newItems });
+								return { items: next, appended: false };
+							}
+							return { items: [buildNewRun(), ...items], appended: true };
+						};
+
+						// Flat list caches (legacy `useAgentRuns`).
+						const flatCaches = queryClient.getQueriesData<AgentRunListResponse>({
+							queryKey: ["agent-runs"],
+						});
+						flatCaches.forEach(([queryKey, oldData]) => {
+							if (!oldData?.items) return;
+							const { items, appended } = patchItems(oldData.items);
+							queryClient.setQueryData(queryKey, {
+								...oldData,
+								items,
+								total: appended ? oldData.total + 1 : oldData.total,
+							});
+						});
+
+						// Infinite list caches (`useInfiniteAgentRuns`). Only patch the
+						// first page — new runs prepend there; in-place updates target
+						// whichever page the run currently lives on.
+						type InfiniteData = { pages: AgentRunListResponse[]; pageParams: unknown[] };
+						const infiniteCaches = queryClient.getQueriesData<InfiniteData>({
+							queryKey: ["agent-runs-infinite"],
+						});
+						infiniteCaches.forEach(([queryKey, oldData]) => {
+							if (!oldData?.pages?.length) return;
+							const pageIdx = oldData.pages.findIndex((p) =>
+								p.items.some((r) => r.id === update.run_id),
+							);
+							if (pageIdx >= 0) {
+								const nextPages = [...oldData.pages];
+								const { items } = patchItems(nextPages[pageIdx].items);
+								nextPages[pageIdx] = { ...nextPages[pageIdx], items };
+								queryClient.setQueryData(queryKey, {
+									...oldData,
+									pages: nextPages,
+								});
 							} else {
-								// New run — prepend to list
-								const newRun: AgentRun = {
-									id: update.run_id,
-									agent_id: update.agent_id,
-									agent_name: update.agent_name,
-									trigger_type: update.trigger_type,
-									status: update.status,
-									iterations_used: update.iterations_used,
-									tokens_used: update.tokens_used,
-									duration_ms: update.duration_ms ?? null,
-									error: update.error ?? null,
-									org_id: update.org_id ?? null,
-									trigger_source: null,
-									conversation_id: null,
-									event_delivery_id: null,
-									input: null,
-									output: null,
-									caller_user_id: null,
-									caller_email: null,
-									caller_name: null,
-									budget_max_iterations: null,
-									budget_max_tokens: null,
-									llm_model: null,
-									created_at: update.timestamp,
-									started_at: update.started_at ?? update.timestamp,
-									completed_at: update.completed_at ?? null,
-									parent_run_id: null,
+								// New run — prepend to first page; bump totals.
+								const nextPages = [...oldData.pages];
+								const first = nextPages[0];
+								nextPages[0] = {
+									...first,
+									items: [buildNewRun(), ...first.items],
+									total: first.total + 1,
 								};
 								queryClient.setQueryData(queryKey, {
 									...oldData,
-									items: [newRun, ...oldData.items],
-									total: oldData.total + 1,
+									pages: nextPages,
 								});
 							}
 						});
