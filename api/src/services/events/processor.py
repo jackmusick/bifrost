@@ -20,6 +20,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.models.enums import EventDeliveryStatus, EventStatus
 from src.models.orm.events import (
     Event,
@@ -197,7 +198,7 @@ class EventProcessor:
             from uuid import UUID as PyUUID
             source_uuid = PyUUID(source_id)
         except (ValueError, TypeError):
-            logger.warning(f"Invalid source_id: {source_id}")
+            logger.warning(f"Invalid source_id: {log_safe(source_id)}")
             return Rejected(
                 message="Invalid webhook URL",
                 status_code=404,
@@ -207,7 +208,7 @@ class EventProcessor:
         webhook_source = await self._webhook_repo.get_by_event_source_id(source_uuid)
 
         if not webhook_source:
-            logger.warning(f"Webhook not found for source_id: {source_id}")
+            logger.warning(f"Webhook not found for source_id: {log_safe(source_id)}")
             return Rejected(
                 message="Webhook not found",
                 status_code=404,
@@ -215,7 +216,7 @@ class EventProcessor:
 
         event_source = webhook_source.event_source
         if not event_source or not event_source.is_active:
-            logger.warning(f"Event source inactive for webhook: {source_id}")
+            logger.warning(f"Event source inactive for webhook: {log_safe(source_id)}")
             return Rejected(
                 message="Webhook is inactive",
                 status_code=404,
@@ -224,7 +225,7 @@ class EventProcessor:
         # Get the adapter for this webhook
         adapter = get_adapter(webhook_source.adapter_name)
         if not adapter:
-            logger.error(f"Adapter not found: {webhook_source.adapter_name}")
+            logger.error(f"Adapter not found: {log_safe(webhook_source.adapter_name)}")
             return Rejected(
                 message="Webhook adapter not configured",
                 status_code=500,
@@ -246,12 +247,12 @@ class EventProcessor:
         # Handle adapter result
         if isinstance(result, ValidationResponse):
             # Validation/handshake response - return directly without logging event
-            logger.debug(f"Webhook validation response: {source_id}")
+            logger.debug(f"Webhook validation response: {log_safe(source_id)}")
             return result
 
         if isinstance(result, Rejected):
             # Request rejected by adapter (invalid signature, etc.)
-            logger.warning(f"Webhook rejected: {source_id} - {result.message}")
+            logger.warning(f"Webhook rejected: {log_safe(source_id)} - {log_safe(result.message)}")
             return result
 
         if isinstance(result, Deliver):

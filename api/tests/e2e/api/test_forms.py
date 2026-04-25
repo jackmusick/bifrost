@@ -4,10 +4,13 @@ E2E tests for form management.
 Tests form CRUD operations, access levels, and role-based access.
 """
 
+import logging
 import pytest
 
 from tests.e2e.conftest import write_and_register
 
+
+logger = logging.getLogger(__name__)
 
 @pytest.mark.e2e
 class TestFormCRUD:
@@ -306,8 +309,9 @@ class TestFormScopeFiltering:
                     f"/api/forms/{form['id']}",
                     headers=platform_admin.headers,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                # Best-effort fixture cleanup; teardown shouldn't fail the test
+                logger.debug(f"fixture cleanup error: {e}")
 
     def test_platform_admin_no_scope_sees_all(
         self, e2e_client, platform_admin, scoped_forms
