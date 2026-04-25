@@ -732,21 +732,19 @@ export function ROIReports() {
 										border: "1px solid hsl(var(--border))",
 										borderRadius: "6px",
 									}}
-									formatter={(
-										value: number,
-										name: string,
-									) => {
+									formatter={(value, name) => {
+										const num = Number(value ?? 0);
 										if (name === "time_saved_hours")
 											return [
-												`${value.toFixed(2)} hrs`,
+												`${num.toFixed(2)} hrs`,
 												"Time Saved",
 											];
 										if (name === "value")
 											return [
-												`${value.toFixed(2)}`,
+												`${num.toFixed(2)}`,
 												"Value",
 											];
-										return [value, name];
+										return [value as string | number, name as string];
 									}}
 									labelFormatter={(label) =>
 										format(new Date(label), "PPP")

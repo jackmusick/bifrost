@@ -119,12 +119,8 @@ export function ExecutionsByOrgChart({
 								border: "1px solid hsl(var(--border))",
 								borderRadius: "6px",
 							}}
-							formatter={(
-								value: number,
-								_name: string,
-								props,
-							) => [
-								`${value.toLocaleString()} executions`,
+							formatter={(value, _name, props) => [
+								`${Number(value ?? 0).toLocaleString()} executions`,
 								props.payload.fullName,
 							]}
 							labelFormatter={() => ""}
