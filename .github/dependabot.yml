@@ -40,6 +40,21 @@ updates:
     labels:
       - dependencies
       - javascript
+    ignore:
+      # eslint 10 enables react-hooks plugin 7.x's expanded recommended set,
+      # surfacing 60+ real lint errors in the codebase that need a code-fix
+      # sweep before the dep can land. Re-enable after that sweep ships.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-plugin-react-hooks"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 6: blocked on openapi-typescript widening its peer to TS 6
+      # (tracked upstream at openapi-ts/openapi-typescript#2774). Re-enable
+      # once openapi-typescript ships TS 6 support.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Docker base images — api/
   - package-ecosystem: docker
