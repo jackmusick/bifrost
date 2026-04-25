@@ -14,69 +14,79 @@ export default defineConfig({
 	build: {
 		rollupOptions: {
 			output: {
-				manualChunks: {
-					// React core - always needed
-					"react-vendor": ["react", "react-dom", "react-router-dom"],
-
-					// Monaco Editor - large dependency, split separately
-					monaco: ["monaco-editor", "@monaco-editor/react"],
-
-					// Babel standalone - only for JSX template rendering (used in FormRenderer)
-					babel: ["@babel/standalone"],
-
-					// UI framework - Radix UI primitives
-					"ui-primitives": [
-						"@radix-ui/react-dialog",
-						"@radix-ui/react-dropdown-menu",
-						"@radix-ui/react-label",
-						"@radix-ui/react-slot",
-						"@radix-ui/react-tooltip",
-						"@radix-ui/react-select",
-						"@radix-ui/react-separator",
-						"@radix-ui/react-tabs",
-						"@radix-ui/react-alert-dialog",
-						"@radix-ui/react-popover",
-						"@radix-ui/react-checkbox",
-						"@radix-ui/react-context-menu",
-						"@radix-ui/react-radio-group",
-						"@radix-ui/react-switch",
-						"@radix-ui/react-toggle",
-						"@radix-ui/react-toggle-group",
-					],
-
-					// Animation libraries
-					animations: [
-						"framer-motion",
-						"@atlaskit/pragmatic-drag-and-drop",
-						"@atlaskit/pragmatic-drag-and-drop-auto-scroll",
-						"@atlaskit/pragmatic-drag-and-drop-hitbox",
-					],
-
-					// Data fetching and state
-					data: ["@tanstack/react-query", "zustand"],
-
-					// Syntax highlighting
-					"syntax-highlighter": ["react-syntax-highlighter"],
-
-					// Forms
-					forms: ["react-hook-form", "@hookform/resolvers", "zod"],
-
-					// UI Utils
-					"ui-utils": [
-						"lucide-react",
-						"sonner",
-						"clsx",
-						"tailwind-merge",
-						"class-variance-authority",
-					],
-
-					// Content rendering
-					"content-rendering": [
-						"dompurify",
-						"react-markdown",
-						"date-fns",
-						"react-day-picker",
-					],
+				// Vite 8 removed object-form manualChunks; use the function form.
+				// Keys here mirror the previous object grouping. We match against
+				// the resolved module id so we hit the package whether it's pulled
+				// from node_modules directly or via a dependency.
+				manualChunks: (id: string) => {
+					const chunkGroups: Record<string, string[]> = {
+						// React core - always needed
+						"react-vendor": ["react", "react-dom", "react-router-dom"],
+						// Monaco Editor - large dependency, split separately
+						monaco: ["monaco-editor", "@monaco-editor/react"],
+						// Babel standalone - only for JSX template rendering (used in FormRenderer)
+						babel: ["@babel/standalone"],
+						// UI framework - Radix UI primitives
+						"ui-primitives": [
+							"@radix-ui/react-dialog",
+							"@radix-ui/react-dropdown-menu",
+							"@radix-ui/react-label",
+							"@radix-ui/react-slot",
+							"@radix-ui/react-tooltip",
+							"@radix-ui/react-select",
+							"@radix-ui/react-separator",
+							"@radix-ui/react-tabs",
+							"@radix-ui/react-alert-dialog",
+							"@radix-ui/react-popover",
+							"@radix-ui/react-checkbox",
+							"@radix-ui/react-context-menu",
+							"@radix-ui/react-radio-group",
+							"@radix-ui/react-switch",
+							"@radix-ui/react-toggle",
+							"@radix-ui/react-toggle-group",
+						],
+						// Animation libraries
+						animations: [
+							"framer-motion",
+							"@atlaskit/pragmatic-drag-and-drop",
+							"@atlaskit/pragmatic-drag-and-drop-auto-scroll",
+							"@atlaskit/pragmatic-drag-and-drop-hitbox",
+						],
+						// Data fetching and state
+						data: ["@tanstack/react-query", "zustand"],
+						// Syntax highlighting
+						"syntax-highlighter": ["react-syntax-highlighter"],
+						// Forms
+						forms: ["react-hook-form", "@hookform/resolvers", "zod"],
+						// UI Utils
+						"ui-utils": [
+							"lucide-react",
+							"sonner",
+							"clsx",
+							"tailwind-merge",
+							"class-variance-authority",
+						],
+						// Content rendering
+						"content-rendering": [
+							"dompurify",
+							"react-markdown",
+							"date-fns",
+							"react-day-picker",
+						],
+					};
+					for (const [chunkName, packages] of Object.entries(chunkGroups)) {
+						for (const pkg of packages) {
+							// Match `node_modules/<pkg>/...` on either path separator;
+							// pkg may contain a scope (`@radix-ui/react-dialog`).
+							if (
+								id.includes(`/node_modules/${pkg}/`) ||
+								id.includes(`\\node_modules\\${pkg.replace(/\//g, "\\")}\\`)
+							) {
+								return chunkName;
+							}
+						}
+					}
+					return undefined;
 				},
 			},
 		},
