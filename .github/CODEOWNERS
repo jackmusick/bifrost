@@ -1,0 +1,7 @@
+# CODEOWNERS — automatic reviewer assignment
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Right now this is a solo project. As contributors grow, this expands
+# to per-path ownership (e.g. api/ → backend folks, client/ → frontend).
+
+* @jackmusick
