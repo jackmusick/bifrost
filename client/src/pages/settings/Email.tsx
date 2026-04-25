@@ -5,7 +5,7 @@
  * Flow: Select Workflow → Validate Signature → Save
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
 	Card,
 	CardContent,
@@ -71,12 +71,15 @@ export function Email() {
 		"/api/admin/email/validate/{workflow_id}",
 	);
 
-	// Update form when config loads
-	useEffect(() => {
-		if (config) {
-			setSelectedWorkflowId(config.workflow_id);
-		}
-	}, [config]);
+	// Update form when config loads. Adjust during render with a previous-
+	// value sentinel rather than a setState-in-effect.
+	const [prevConfigWorkflowId, setPrevConfigWorkflowId] = useState<
+		string | undefined
+	>(undefined);
+	if (config && prevConfigWorkflowId !== config.workflow_id) {
+		setPrevConfigWorkflowId(config.workflow_id);
+		setSelectedWorkflowId(config.workflow_id);
+	}
 
 	// Reset validation when workflow changes
 	const handleWorkflowChange = (workflowId: string | undefined) => {

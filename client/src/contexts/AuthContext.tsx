@@ -144,6 +144,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	const navigate = useNavigate();
 	const location = useLocation();
 
+	// Internal refresh function (no hooks)
+	// Uses HttpOnly cookie for refresh token (browser sends it automatically)
+	const refreshTokenInternal = useCallback(async (): Promise<boolean> => {
+		try {
+			// POST to refresh endpoint - browser sends refresh_token cookie automatically
+			const res = await fetch("/api/auth/refresh", {
+				method: "POST",
+				credentials: "same-origin",
+			});
+
+			if (!res.ok) return false;
+
+			const data = await res.json();
+			if (data.access_token) {
+				// Store access token in localStorage for expiry checking
+				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+
+				const payload = parseJwt(data.access_token);
+				if (payload) {
+					const extractedUser = extractUser(payload);
+					setUser(extractedUser);
+					localStorage.setItem(
+						USER_KEY,
+						JSON.stringify(extractedUser),
+					);
+					sessionStorage.setItem("userId", extractedUser.id);
+				}
+				return true;
+			}
+			return false;
+		} catch {
+			return false;
+		}
+	}, []);
+
 	// Check auth status on mount
 	const checkAuthStatus = useCallback(async () => {
 		try {
@@ -206,42 +241,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 		} finally {
 			setIsLoading(false);
 		}
-	}, []);
-
-	// Internal refresh function (no hooks)
-	// Uses HttpOnly cookie for refresh token (browser sends it automatically)
-	const refreshTokenInternal = async (): Promise<boolean> => {
-		try {
-			// POST to refresh endpoint - browser sends refresh_token cookie automatically
-			const res = await fetch("/api/auth/refresh", {
-				method: "POST",
-				credentials: "same-origin",
-			});
-
-			if (!res.ok) return false;
-
-			const data = await res.json();
-			if (data.access_token) {
-				// Store access token in localStorage for expiry checking
-				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
-
-				const payload = parseJwt(data.access_token);
-				if (payload) {
-					const extractedUser = extractUser(payload);
-					setUser(extractedUser);
-					localStorage.setItem(
-						USER_KEY,
-						JSON.stringify(extractedUser),
-					);
-					sessionStorage.setItem("userId", extractedUser.id);
-				}
-				return true;
-			}
-			return false;
-		} catch {
-			return false;
-		}
-	};
+	}, [refreshTokenInternal]);
 
 	// Login with email/password
 	const login = useCallback(
@@ -434,11 +434,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	// Refresh token
 	const refreshToken = useCallback(async (): Promise<boolean> => {
 		return refreshTokenInternal();
-	}, []);
+	}, [refreshTokenInternal]);
 
-	// Check auth on mount
+	// Check auth on mount. setState only fires after the awaited fetch
+	// resolves — wrapping in a void IIFE keeps the synchronous body free of
+	// setState calls.
 	useEffect(() => {
-		checkAuthStatus();
+		void (async () => {
+			await checkAuthStatus();
+		})();
 	}, [checkAuthStatus]);
 
 	// Redirect unauthenticated users to login
