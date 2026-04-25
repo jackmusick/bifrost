@@ -814,8 +814,9 @@ async def promote_agent(
                 role = result.scalar_one_or_none()
                 if role:
                     db.add(AgentRole(agent_id=agent_id, role_id=role.id, assigned_by=user.email))
-            except ValueError:
-                pass
+            except ValueError as e:
+                # Non-UUID role_id (e.g. role name) — skip, only UUIDs supported here
+                logger.debug(f"role_id {role_id!r} is not a UUID, skipping: {e}")
 
     await db.flush()
 

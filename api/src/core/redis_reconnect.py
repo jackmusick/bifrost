@@ -86,6 +86,7 @@ class ResilientPubSubListener:
             try:
                 await self._listener_task
             except asyncio.CancelledError:
+                # Expected — we just cancelled the task
                 pass
             self._listener_task = None
 
@@ -96,15 +97,17 @@ class ResilientPubSubListener:
         if self._pubsub:
             try:
                 await self._pubsub.close()
-            except Exception:
-                pass
+            except Exception as e:
+                # Already-closed pubsub or transient Redis failure — best-effort cleanup
+                logger.debug(f"pubsub close failed during cleanup: {e}")
             self._pubsub = None
 
         if self._redis:
             try:
                 await self._redis.close()
-            except Exception:
-                pass
+            except Exception as e:
+                # Already-closed connection or transient Redis failure — best-effort cleanup
+                logger.debug(f"redis close failed during cleanup: {e}")
             self._redis = None
 
     async def _connect(self) -> bool:

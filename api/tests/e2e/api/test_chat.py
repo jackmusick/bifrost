@@ -419,8 +419,9 @@ def test_chat_agent(e2e_client, platform_admin):
             f"/api/agents/{agent['id']}",
             headers=platform_admin.headers,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")
 
 
 @pytest.fixture
@@ -446,5 +447,6 @@ def test_conversation(e2e_client, platform_admin, test_chat_agent):
             f"/api/chat/conversations/{conversation['id']}",
             headers=platform_admin.headers,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")
