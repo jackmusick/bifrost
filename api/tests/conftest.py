@@ -8,6 +8,7 @@ This module provides:
 4. Authentication/authorization fixtures
 """
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -18,6 +19,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
+
+logger = logging.getLogger(__name__)
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -167,10 +170,12 @@ async def isolate_s3(request) -> AsyncGenerator[None, None]:
         for path in paths:
             try:
                 await repo.delete(path)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                # Best-effort per-path cleanup — failure logged at debug, sweep continues
+                logger.debug(f"isolate_s3_manifest could not delete {path}: {e}")
+    except Exception as e:
+        # S3 not configured / unreachable — fixture is best-effort, skip cleanup
+        logger.debug(f"isolate_s3_manifest sweep skipped: {e}")
 
     yield
 
@@ -198,8 +203,9 @@ async def isolate_redis_module_cache(request) -> AsyncGenerator[None, None]:
                 await redis.delete(*keys)
             if cursor == 0:
                 break
-    except Exception:
-        pass
+    except Exception as e:
+        # Redis not reachable — fixture is best-effort
+        logger.debug(f"isolate_redis_module_cache sweep skipped: {e}")
 
     yield
 

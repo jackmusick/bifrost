@@ -101,14 +101,14 @@ def load_spec_from_content(content: str, content_type: str = "json") -> dict:
 
 def to_snake_case(name: str) -> str:
     """Convert PascalCase or camelCase to snake_case."""
-    s1 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
-    s2 = re.sub("([A-Z]+)([A-Z][a-z])", r"\1_\2", s1)
+    s1 = re.sub(r"([a-z0-9])(?=[A-Z])", r"\1_", name)
+    s2 = re.sub(r"([A-Z])(?=[A-Z][a-z])", r"\1_", s1)
     return s2.lower().replace("-", "_").replace(" ", "_")
 
 
 def to_pascal_case(name: str) -> str:
     """Convert snake_case, kebab-case, or camelCase to PascalCase."""
-    name = re.sub(r"\d+\.\d+", "", name)
+    name = re.sub(r"\d{1,32}\.\d{1,32}", "", name)
     words = re.split(r"[_\-\s.]+", name)
 
     result_parts = []
@@ -136,7 +136,7 @@ def to_pascal_case(name: str) -> str:
 
 def sanitize_class_name(name: str) -> str:
     """Sanitize a string to be a valid Python class name."""
-    name = re.sub(r"\d+\.\d+", "", name)
+    name = re.sub(r"\d{1,32}\.\d{1,32}", "", name)
     name = re.sub(r"[^a-zA-Z0-9]+", "", name)
     if name and name[0].isdigit():
         name = f"Api{name}"
@@ -364,7 +364,7 @@ def generate_model(
 
 def generate_method_name(path: str, method: str) -> str:
     """Generate a clean method name from path and HTTP method."""
-    clean_path = re.sub(r"\{[^}]+\}", "", path)
+    clean_path = re.sub(r"\{[^}]{1,256}\}", "", path)
     parts = [p for p in clean_path.split("/") if p]
 
     resource = to_snake_case(parts[-1] if parts else "resource")
@@ -469,7 +469,7 @@ def extract_models_and_methods(
             method_names.add(method_name)
 
             # Build parameters
-            path_params = re.findall(r"\{([^}]+)\}", path)
+            path_params = re.findall(r"\{([^}]{1,256})\}", path)
             params = []
             for path_param in path_params:
                 params.append(f"{to_snake_case(path_param)}: str")
