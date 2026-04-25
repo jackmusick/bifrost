@@ -219,12 +219,6 @@ def _ast_value_to_python(node: ast.AST) -> Any:
     """Convert an AST node to a Python value."""
     if isinstance(node, ast.Constant):
         return node.value
-    elif isinstance(node, ast.Str):  # Python 3.7 compatibility
-        return node.s
-    elif isinstance(node, ast.Num):  # Python 3.7 compatibility
-        return node.n
-    elif isinstance(node, ast.NameConstant):  # Python 3.7 compatibility
-        return node.value
     elif isinstance(node, ast.List):
         return [_ast_value_to_python(elt) for elt in node.elts]
     elif isinstance(node, ast.Dict):
