@@ -1,0 +1,8 @@
+name: "Bifrost CodeQL Config"
+paths-ignore:
+  - "api/alembic/versions/**"  # generated migrations with required-by-framework module-level vars
+  - "client/playwright-report/**"  # generated test report HTML
+  - "client/dist/**"  # build output
+  - "client/node_modules/**"
+  - "**/__pycache__/**"
+  - "**/.venv/**"
