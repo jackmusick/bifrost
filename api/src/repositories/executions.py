@@ -313,15 +313,17 @@ class ExecutionRepository(BaseRepository[Execution]):
             try:
                 start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
                 query = query.where(Execution.started_at >= start_dt)
-            except ValueError:
-                pass
+            except ValueError as e:
+                # Malformed ISO date — drop the filter rather than 500
+                logger.debug(f"invalid start_date {start_date!r}, ignoring filter: {e}")
 
         if end_date:
             try:
                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
                 query = query.where(Execution.started_at <= end_dt)
-            except ValueError:
-                pass
+            except ValueError as e:
+                # Malformed ISO date — drop the filter rather than 500
+                logger.debug(f"invalid end_date {end_date!r}, ignoring filter: {e}")
 
         # Order by newest first
         query = query.order_by(desc(Execution.started_at))
