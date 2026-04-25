@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	PlayCircle,
@@ -85,12 +85,16 @@ export function Workflows() {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 	const [typeFilter, setTypeFilter] = useState<string>("all");
-	const [sidebarOpen, setSidebarOpen] = useState(true);
-
-	// Auto-collapse sidebar on smaller screens
-	useEffect(() => {
+	// Auto-collapse sidebar on smaller screens. Tracking the previous
+	// `isDesktop` and adjusting state during render is the React-recommended
+	// pattern for "reset state when an external value changes" — avoids the
+	// extra effect+render cycle of useEffect+setState. (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+	const [sidebarOpen, setSidebarOpen] = useState(isDesktop);
+	const [prevIsDesktop, setPrevIsDesktop] = useState(isDesktop);
+	if (prevIsDesktop !== isDesktop) {
+		setPrevIsDesktop(isDesktop);
 		setSidebarOpen(isDesktop);
-	}, [isDesktop]);
+	}
 
 	// Edit workflow dialog state
 	const [editDialogOpen, setEditDialogOpen] = useState(false);

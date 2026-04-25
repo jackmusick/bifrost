@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
 	Card,
 	CardContent,
@@ -83,24 +83,31 @@ export function GitHub() {
 	// Track the saved token for use in configuration
 	const [savedToken, setSavedToken] = useState<string | null>(null);
 
-	// Update local state when config data loads
-	useEffect(() => {
-		if (configData) {
-			setConfig(configData);
-
-			// If token is saved but not configured, set token as valid
-			if (configData.token_saved && !configData.configured) {
-				setTokenValid(true);
-			}
+	// Mirror server-loaded configData into local state so handlers can patch
+	// it without going back through the query cache. Adjust during render
+	// with a previous-value sentinel to avoid setState-in-effect.
+	const [prevConfigDataRef, setPrevConfigDataRef] =
+		useState<GitHubConfigResponse | undefined>(undefined);
+	if (configData && prevConfigDataRef !== configData) {
+		setPrevConfigDataRef(configData);
+		setConfig(configData);
+		if (configData.token_saved && !configData.configured) {
+			setTokenValid(true);
 		}
-	}, [configData]);
+	}
 
-	// Load repositories when they're available from the saved token
-	useEffect(() => {
-		if (reposData?.repositories && config?.token_saved && !config?.configured) {
-			setRepositories(reposData.repositories);
-		}
-	}, [reposData, config?.token_saved, config?.configured]);
+	// Load repositories when they become available for an unconfigured token.
+	const [prevReposDataRef, setPrevReposDataRef] =
+		useState<typeof reposData | undefined>(undefined);
+	if (
+		reposData?.repositories &&
+		config?.token_saved &&
+		!config?.configured &&
+		prevReposDataRef !== reposData
+	) {
+		setPrevReposDataRef(reposData);
+		setRepositories(reposData.repositories);
+	}
 
 	// Validate token and load repositories
 	const handleTokenValidation = async () => {
