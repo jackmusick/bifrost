@@ -15,6 +15,7 @@ from sqlalchemy import select, delete
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.services.audit import emit_audit
 from src.models import (
     Role as RoleORM,
@@ -111,7 +112,7 @@ async def create_role(
     await db.flush()
     await db.refresh(role)
 
-    logger.info(f"Created role {role.id}: {role.name}")
+    logger.info(f"Created role {role.id}: {log_safe(role.name)}")
 
     # Invalidate cache (roles are global, no org_id needed)
     if CACHE_INVALIDATION_AVAILABLE and invalidate_role:
@@ -310,7 +311,7 @@ async def assign_users_to_role(
             )
             user_uuid = result.scalar_one_or_none()
             if not user_uuid:
-                logger.warning(f"User {user_id_str} not found, skipping")
+                logger.warning(f"User {log_safe(user_id_str)} not found, skipping")
                 continue
 
         # Check if already assigned
