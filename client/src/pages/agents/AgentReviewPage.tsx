@@ -84,13 +84,12 @@ export function AgentReviewPage() {
 	const [idx, setIdx] = useState(0);
 
 	// Keep idx in bounds when the queue shrinks (e.g. after applying a verdict).
-	useEffect(() => {
-		if (queue.length === 0) {
-			setIdx(0);
-		} else if (idx >= queue.length) {
-			setIdx(queue.length - 1);
-		}
-	}, [queue.length, idx]);
+	// Adjust during render rather than via setState-in-effect.
+	if (queue.length === 0 && idx !== 0) {
+		setIdx(0);
+	} else if (queue.length > 0 && idx >= queue.length) {
+		setIdx(queue.length - 1);
+	}
 
 	const current = queue[idx];
 	const { data: rawDetail } = useAgentRun(current?.id);
@@ -100,10 +99,14 @@ export function AgentReviewPage() {
 	const clearVerdict = useClearVerdict();
 	const [note, setNote] = useState("");
 
-	// Reset the note whenever we move to a new run.
-	useEffect(() => {
+	// Reset the note whenever we move to a new run. Adjust during render
+	// rather than via a setState-in-effect cycle.
+	const detailKey = `${detail?.id ?? ""}:${detail?.verdict_note ?? ""}`;
+	const [prevDetailKey, setPrevDetailKey] = useState(detailKey);
+	if (prevDetailKey !== detailKey) {
+		setPrevDetailKey(detailKey);
 		setNote((detail?.verdict_note as string | undefined) ?? "");
-	}, [detail?.id, detail?.verdict_note]);
+	}
 
 	function invalidate() {
 		queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
