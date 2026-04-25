@@ -1,17 +1,21 @@
 """Unit test fixtures shared across the unit suite."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 from uuid import uuid4
 
 import pytest_asyncio
 from sqlalchemy import delete
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
 from src.models.orm.users import User
+
+logger = logging.getLogger(__name__)
 
 
 @pytest_asyncio.fixture
@@ -47,8 +51,9 @@ async def seed_agent(db_session: AsyncSession) -> AsyncGenerator[Agent, None]:
     try:
         await db_session.execute(delete(Agent).where(Agent.id == agent.id))
         await db_session.flush()
-    except Exception:
-        pass
+    except SQLAlchemyError as e:
+        # Session may already be rolled back / closed — that's the happy path
+        logger.debug(f"seed_agent defensive cleanup skipped: {e}")
 
 
 @pytest_asyncio.fixture
@@ -79,5 +84,6 @@ async def seed_user(db_session: AsyncSession) -> AsyncGenerator[User, None]:
     try:
         await db_session.execute(delete(User).where(User.id == user.id))
         await db_session.flush()
-    except Exception:
-        pass
+    except SQLAlchemyError as e:
+        # Session may already be rolled back / closed — that's the happy path
+        logger.debug(f"seed_user defensive cleanup skipped: {e}")

@@ -17,6 +17,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.constants import PROVIDER_ORG_ID
+from src.core.log_safety import log_safe
 from src.models import User
 from src.repositories.organizations import OrganizationRepository
 from src.repositories.users import UserRepository
@@ -75,7 +76,7 @@ async def ensure_user_provisioned(
         raise ValueError(f"Invalid email format: {email}")
 
     email = email.lower()
-    logger.info(f"Processing user provisioning for {email}")
+    logger.info(f"Processing user provisioning for {log_safe(email)}")
 
     user_repo = UserRepository(db)
     org_repo = OrganizationRepository(db)
@@ -84,7 +85,7 @@ async def ensure_user_provisioned(
     user = await user_repo.get_by_email(email)
 
     if user:
-        logger.info(f"Found existing user: {email}")
+        logger.info(f"Found existing user: {log_safe(email)}")
         return ProvisioningResult(
             user=user,
             is_platform_admin=user.is_superuser,
@@ -93,14 +94,14 @@ async def ensure_user_provisioned(
         )
 
     # User doesn't exist - check if first user
-    logger.info(f"User {email} not found, checking provisioning rules")
+    logger.info(f"User {log_safe(email)} not found, checking provisioning rules")
 
     has_users = await user_repo.has_any_users()
     is_first_user = not has_users
 
     if is_first_user:
         # First user in system - create as superuser
-        logger.info(f"First user login detected! Auto-promoting {email} to superuser")
+        logger.info(f"First user login detected! Auto-promoting {log_safe(email)} to superuser")
 
         user = await user_repo.create_user(
             email=email,
@@ -111,7 +112,7 @@ async def ensure_user_provisioned(
         await db.commit()
         await db.refresh(user)
 
-        logger.info(f"Successfully created first user as superuser: {email}")
+        logger.info(f"Successfully created first user as superuser: {log_safe(email)}")
 
         return ProvisioningResult(
             user=user,
@@ -121,23 +122,23 @@ async def ensure_user_provisioned(
         )
 
     # Not first user - try domain-based auto-provisioning
-    logger.info(f"Attempting domain-based auto-provisioning for {email}")
+    logger.info(f"Attempting domain-based auto-provisioning for {log_safe(email)}")
 
     # Extract domain from email
     user_domain = email.split("@")[1].lower()
-    logger.info(f"Looking for organization with domain: {user_domain}")
+    logger.info(f"Looking for organization with domain: {log_safe(user_domain)}")
 
     # Query organizations with matching domain
     matched_org = await org_repo.get_by_domain(user_domain)
 
     if not matched_org:
-        logger.warning(f"No organization found with domain: {user_domain}")
+        logger.warning(f"No organization found with domain: {log_safe(user_domain)}")
         raise ValueError(
             f"No organization configured for domain: {user_domain}. "
             f"Contact your administrator to be added manually."
         )
 
-    logger.info(f"Found matching organization: {matched_org.name} with domain {matched_org.domain}")
+    logger.info(f"Found matching organization: {log_safe(matched_org.name)} with domain {log_safe(matched_org.domain)}")
 
     # Create new ORG user
     user = await user_repo.create_user(
@@ -149,7 +150,7 @@ async def ensure_user_provisioned(
     await db.commit()
     await db.refresh(user)
 
-    logger.info(f"Auto-created ORG user: {email} for org {matched_org.id}")
+    logger.info(f"Auto-created ORG user: {log_safe(email)} for org {matched_org.id}")
 
     return ProvisioningResult(
         user=user,
