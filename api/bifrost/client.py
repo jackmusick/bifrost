@@ -8,6 +8,7 @@ Supports two modes:
 """
 
 import asyncio
+import logging
 import os
 import sys
 import threading
@@ -23,6 +24,8 @@ from .credentials import (
     is_token_expired,
     save_credentials,
 )
+
+logger = logging.getLogger(__name__)
 
 # Global client injection for platform mode
 _injected_client: Optional["BifrostClient"] = None
@@ -45,8 +48,9 @@ def raise_for_status_with_detail(response: httpx.Response) -> None:
     try:
         body = response.json()
         detail = body.get("detail") or body.get("message") or body.get("error") or ""
-    except Exception:
-        pass
+    except (ValueError, AttributeError) as e:
+        # Response wasn't JSON or didn't have dict-like .get — fall back to raise_for_status
+        logger.debug(f"could not extract error detail from response body: {e}")
 
     if detail:
         raise httpx.HTTPStatusError(
@@ -301,13 +305,8 @@ class BifrostClient:
 
         # Check if we need a new client (no client, or different event loop)
         if self._http is None or (current_loop is not None and self._http_loop != current_loop):
-            # Close old client if it exists (best effort, ignore errors)
-            if self._http is not None:
-                try:
-                    # Can't await in sync method, but we can try to close transport
-                    pass  # httpx will handle cleanup when garbage collected
-                except Exception:
-                    pass
+            # Old client (if any) will be cleaned up by httpx when it's garbage collected.
+            # We can't await aclose() here since this is a sync method.
 
             # Create new client bound to current event loop
             self._http = httpx.AsyncClient(

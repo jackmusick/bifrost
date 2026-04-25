@@ -425,15 +425,17 @@ async def cli_get_config(
     elif config_type == "json" and isinstance(raw_value, str):
         try:
             raw_value = json.loads(raw_value)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            # Stored value is not valid JSON — return raw string as fallback
+            logger.debug(f"config {request.key} stored as json but failed to parse, returning raw: {e}")
     elif config_type == "bool":
         raw_value = str(raw_value).lower() == "true" if isinstance(raw_value, str) else bool(raw_value)
     elif config_type == "int":
         try:
             raw_value = int(raw_value)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            # Stored value isn't coercible to int — return raw value
+            logger.debug(f"config {request.key} stored as int but failed to coerce, returning raw: {e}")
 
     return CLIConfigValue(
         key=request.key,
@@ -509,8 +511,9 @@ async def cli_set_config(
         from src.core.cache import upsert_config
         config_type_str = config_type.value
         await upsert_config(org_id, request.key, stored_value, config_type_str)
-    except ImportError:
-        pass
+    except ImportError as e:
+        # cache module is optional in some deploys; DB write already committed
+        logger.debug(f"cache module unavailable, skipping config cache upsert: {e}")
 
     logger.info(f"CLI set config {request.key} for user {current_user.email}")
 
@@ -592,8 +595,9 @@ async def cli_delete_config(
     try:
         from src.core.cache import invalidate_config
         await invalidate_config(org_id, request.key)
-    except ImportError:
-        pass
+    except ImportError as e:
+        # cache module is optional; DB delete already committed
+        logger.debug(f"cache module unavailable, skipping config cache invalidate: {e}")
 
     logger.info(f"CLI deleted config {request.key} for user {current_user.email}")
     return True
@@ -1755,8 +1759,9 @@ async def post_cli_result(
             logs_flushed = await flush_logs_to_postgres(execution_id)
             if logs_flushed > 0:
                 logger.debug(f"Flushed {logs_flushed} logs from stream for CLI execution {execution_id}")
-        except ImportError:
-            pass
+        except ImportError as e:
+            # bifrost._logging optional (CLI bundle may not include it) — skip stream flush
+            logger.debug(f"bifrost._logging not available, skipping stream flush: {e}")
         except Exception as e:
             logger.warning(f"Failed to flush logs from stream: {e}")
 

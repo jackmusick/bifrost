@@ -298,7 +298,8 @@ async def list_app_files(
             if compiled_str != source:
                 compiled = compiled_str
         except FileNotFoundError:
-            pass
+            # No compiled artifact (file not yet built / non-compiled type) — return source only
+            logger.debug(f"no compiled artifact for app {app.id} {storage_mode} {rel_path}")
 
         files.append(SimpleFileResponse(path=rel_path, source=source, compiled=compiled))
 
@@ -349,7 +350,8 @@ async def read_app_file(
         if compiled_str != source:
             compiled = compiled_str
     except FileNotFoundError:
-        pass
+        # No compiled artifact yet — return source only
+        logger.debug(f"no compiled artifact for app {app.id} {storage_mode} {file_path}")
 
     return SimpleFileResponse(path=file_path, source=source, compiled=compiled)
 

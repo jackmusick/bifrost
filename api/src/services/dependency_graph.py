@@ -8,6 +8,7 @@ This service is query-time (not precomputed) since the dependency canvas
 is rarely accessed and complexity is bounded by the depth limit.
 """
 
+import logging
 from collections import deque
 from typing import Literal
 from uuid import UUID
@@ -24,6 +25,8 @@ from src.models.orm import (
     Workflow,
 )
 from src.models.orm.file_index import FileIndex
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_workflows_from_props(obj: dict | list | str | int | None) -> set[UUID]:
@@ -50,16 +53,18 @@ def _extract_workflows_from_props(obj: dict | list | str | int | None) -> set[UU
             if isinstance(wf_id, str):
                 try:
                     workflows.add(UUID(wf_id))
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    # Non-UUID workflowId values (e.g. portable refs) — skip
+                    logger.debug(f"workflowId not a UUID, skipping: {e}")
 
         # Check for dataProviderId key
         if dp_id := obj.get("dataProviderId"):
             if isinstance(dp_id, str):
                 try:
                     workflows.add(UUID(dp_id))
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    # Non-UUID dataProviderId values — skip
+                    logger.debug(f"dataProviderId not a UUID, skipping: {e}")
 
         # Recurse into all values
         for value in obj.values():
@@ -386,16 +391,18 @@ class DependencyGraphService:
                     try:
                         wf_id = UUID(form.workflow_id)
                         dependencies.append(("workflow", wf_id, "uses"))
-                    except ValueError:
-                        pass
+                    except ValueError as e:
+                        # Non-UUID portable ref — skip
+                        logger.debug(f"form.workflow_id not a UUID, skipping: {e}")
 
                 # Launch workflow
                 if form.launch_workflow_id:
                     try:
                         wf_id = UUID(form.launch_workflow_id)
                         dependencies.append(("workflow", wf_id, "uses"))
-                    except ValueError:
-                        pass
+                    except ValueError as e:
+                        # Non-UUID portable ref — skip
+                        logger.debug(f"form.launch_workflow_id not a UUID, skipping: {e}")
 
                 # Data provider workflows from fields
                 for field in form.fields:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import textwrap
 from collections.abc import Coroutine
 from datetime import datetime
@@ -14,6 +15,8 @@ from textual.containers import VerticalScroll
 from textual.widgets import Footer, Header, Static
 
 from bifrost.tui.theme import BifrostApp
+
+logger = logging.getLogger(__name__)
 
 _SPINNER = "\u280b\u2819\u2838\u2830\u2826\u2807"
 
@@ -177,8 +180,9 @@ class WatchApp(BifrostApp[None]):
     def _update_status(self) -> None:
         try:
             self.query_one("#status-bar", Static).update(self._format_status())
-        except Exception:
-            pass
+        except Exception as e:
+            # Status bar may not be mounted yet (early startup) — skip update
+            logger.debug(f"_update_status skipped: {e}")
 
     def _add_row(
         self,
@@ -194,8 +198,9 @@ class WatchApp(BifrostApp[None]):
             scroll = self.query_one("#activity-log", VerticalScroll)
             scroll.mount(row)
             scroll.scroll_end(animate=False)
-        except Exception:
-            pass
+        except Exception as e:
+            # Scroll widget may not be mounted (early startup / shutdown) — drop the row
+            logger.debug(f"_add_row could not mount: {e}")
         row.freeze(level, icon, action_word, path, user)
         return row
 
@@ -207,8 +212,9 @@ class WatchApp(BifrostApp[None]):
             scroll = self.query_one("#activity-log", VerticalScroll)
             scroll.mount(row)
             scroll.scroll_end(animate=False)
-        except Exception:
-            pass
+        except Exception as e:
+            # Scroll widget may not be mounted yet — return unmounted row anyway
+            logger.debug(f"create_batch_row could not mount: {e}")
         return row
 
     async def spin_row(self, row: _BatchRow) -> None:
@@ -272,8 +278,9 @@ class WatchApp(BifrostApp[None]):
                     scroll = self.query_one("#activity-log", VerticalScroll)
                     scroll.mount(row)
                     scroll.scroll_end(animate=False)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Scroll widget may not be mounted — drop this detail row
+                    logger.debug(f"_add_detail_rows could not mount: {e}")
 
     def log_info(self, message: str) -> None:
         self._add_row("info", "\u00b7", "Info", message)

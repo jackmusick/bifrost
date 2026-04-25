@@ -8,6 +8,7 @@ Handles Graph API subscription lifecycle:
 - Validating client state on incoming notifications
 """
 
+import logging
 from datetime import timedelta
 from typing import Any
 
@@ -23,6 +24,8 @@ from src.services.webhooks.protocol import (
     WebhookAdapter,
     WebhookRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MicrosoftGraphAdapter(WebhookAdapter):
@@ -138,8 +141,9 @@ class MicrosoftGraphAdapter(WebhookAdapter):
                     error_data = response.json()
                     if "error" in error_data:
                         error_msg = error_data["error"].get("message", error_msg)
-                except Exception:
-                    pass
+                except (ValueError, KeyError) as e:
+                    # Response wasn't JSON or didn't have expected shape — fall back to raw text
+                    logger.debug(f"could not parse Graph error response as JSON: {e}")
                 raise ValueError(f"Failed to fetch users: {error_msg}")
 
             data = response.json()
@@ -256,8 +260,9 @@ class MicrosoftGraphAdapter(WebhookAdapter):
                     error_data = response.json()
                     if "error" in error_data:
                         error_msg = error_data["error"].get("message", error_msg)
-                except Exception:
-                    pass
+                except (ValueError, KeyError) as e:
+                    # Response wasn't JSON or didn't have expected shape — fall back to raw text
+                    logger.debug(f"could not parse Graph subscribe error response as JSON: {e}")
                 raise ValueError(f"Failed to create Graph subscription: {error_msg}")
 
     async def unsubscribe(
