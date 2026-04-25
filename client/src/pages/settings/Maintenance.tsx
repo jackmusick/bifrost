@@ -260,20 +260,25 @@ export function Maintenance() {
 		});
 	};
 
-	// Process the queue - runs next action when current one finishes
+	// Process the queue - runs next action when current one finishes. The
+	// dequeue+dispatch is wrapped in a microtask so it does not run inside
+	// the synchronous body of the effect (which would synchronously call
+	// setActionQueue and trigger the set-state-in-effect rule).
 	useEffect(() => {
 		if (runningAction !== null || actionQueue.length === 0) return;
 
-		const [next, ...rest] = actionQueue;
-		setActionQueue(rest);
+		queueMicrotask(() => {
+			const [next, ...rest] = actionQueue;
+			setActionQueue(rest);
 
-		const handlers: Record<string, () => Promise<void>> = {
-			docs: handleDocsIndex,
-			"app-deps": handleAppDepScan,
-			reimport: handleReimport,
-		};
+			const handlers: Record<string, () => Promise<void>> = {
+				docs: handleDocsIndex,
+				"app-deps": handleAppDepScan,
+				reimport: handleReimport,
+			};
 
-		handlers[next]?.();
+			void handlers[next]?.();
+		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [runningAction, actionQueue]);
 
