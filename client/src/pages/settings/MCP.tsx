@@ -7,7 +7,7 @@
  * agent access and handled outside this page.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
 	Card,
 	CardContent,
@@ -95,15 +95,16 @@ export function MCP() {
 	const saveMutation = $api.useMutation("put", "/api/mcp/config");
 	const deleteMutation = $api.useMutation("delete", "/api/mcp/config");
 
-	// Update form when config loads
-	useEffect(() => {
-		if (config) {
-			setEnabled(config.enabled);
-			setAllowedToolIds(config.allowed_tool_ids ?? null);
-			setBlockedToolIds(config.blocked_tool_ids ?? []);
-			setHasChanges(false);
-		}
-	}, [config]);
+	// Update form when config loads. Adjust during render with a previous-
+	// reference sentinel to avoid setState-in-effect.
+	const [prevConfigRef, setPrevConfigRef] = useState<typeof config>(undefined);
+	if (config && prevConfigRef !== config) {
+		setPrevConfigRef(config);
+		setEnabled(config.enabled);
+		setAllowedToolIds(config.allowed_tool_ids ?? null);
+		setBlockedToolIds(config.blocked_tool_ids ?? []);
+		setHasChanges(false);
+	}
 
 	// Track changes
 	const handleChange = () => {

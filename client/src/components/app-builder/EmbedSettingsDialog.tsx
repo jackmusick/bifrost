@@ -121,10 +121,13 @@ export function EmbedSettingsDialog({
     }
   }, [appId]);
 
+  // Network fetches: setState happens after `await`, so wrapping in a void
+  // IIFE keeps the synchronous part of the effect free of setState calls.
   useEffect(() => {
-    if (open) {
-      fetchSecrets();
-    }
+    if (!open) return;
+    void (async () => {
+      await fetchSecrets();
+    })();
   }, [open, fetchSecrets]);
 
   // ========================================================================
