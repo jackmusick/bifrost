@@ -12,12 +12,15 @@ Supported auth types:
 - oauth: Uses Bifrost OAuth provider tokens
 """
 
+import ipaddress
 import json
 import logging
 import re
+import socket
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -73,9 +76,45 @@ class MethodInfo:
 # =============================================================================
 
 
+def _validate_spec_url(url: str) -> None:
+    """Validate a URL is safe to fetch (https only, public address).
+
+    Prevents SSRF by rejecting non-https schemes and hostnames that resolve
+    to private, loopback, link-local, reserved, or multicast addresses.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(f"Only https URLs are allowed, got {parsed.scheme!r}")
+    if not parsed.hostname:
+        raise ValueError("URL must have a hostname")
+    try:
+        addr_info = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror as e:
+        raise ValueError(f"Cannot resolve hostname {parsed.hostname}: {e}") from e
+    for _family, _type, _proto, _canon, sockaddr in addr_info:
+        ip_str = sockaddr[0]
+        ip = ipaddress.ip_address(ip_str)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValueError(
+                f"URL hostname resolves to non-public address: {ip_str}"
+            )
+
+
 def load_spec_from_url(url: str) -> dict:
-    """Load OpenAPI spec from a URL."""
-    response = requests.get(url, timeout=30)
+    """Load OpenAPI spec from a URL.
+
+    Only https URLs that resolve to public addresses are allowed. Redirects
+    are disabled to prevent redirect-to-private bypass.
+    """
+    _validate_spec_url(url)
+    response = requests.get(url, timeout=30, allow_redirects=False)
     response.raise_for_status()
 
     content_type = response.headers.get("Content-Type", "")

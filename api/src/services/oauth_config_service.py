@@ -341,7 +341,9 @@ class OAuthConfigService:
         tenant_id: str | None = None,
     ) -> OAuthConfigTestResponse:
         """Test Microsoft OAuth configuration by checking the discovery endpoint."""
-        # Use provided values or fall back to saved config
+        # Use provided values or fall back to saved config. We only need
+        # tenant_id for the discovery URL — client_id/client_secret aren't
+        # exercised by the discovery probe, so we don't load them here.
         if not client_id or not client_secret:
             config = await self.get_provider_config("microsoft")
             if not config:
@@ -349,8 +351,6 @@ class OAuthConfigService:
                     success=False,
                     message="Microsoft OAuth is not configured",
                 )
-            client_id = client_id or config.client_id
-            client_secret = client_secret or config.client_secret
             tenant_id = tenant_id or config.tenant_id
 
         tenant = tenant_id or "common"
@@ -387,7 +387,8 @@ class OAuthConfigService:
         client_secret: str | None = None,
     ) -> OAuthConfigTestResponse:
         """Test Google OAuth configuration by checking the discovery endpoint."""
-        # Use provided values or fall back to saved config
+        # The discovery probe doesn't exercise client_id / client_secret —
+        # we only need to confirm a saved config exists when none was passed.
         if not client_id or not client_secret:
             config = await self.get_provider_config("google")
             if not config:
@@ -395,8 +396,6 @@ class OAuthConfigService:
                     success=False,
                     message="Google OAuth is not configured",
                 )
-            client_id = client_id or config.client_id
-            client_secret = client_secret or config.client_secret
 
         discovery_url = "https://accounts.google.com/.well-known/openid-configuration"
 
@@ -432,7 +431,8 @@ class OAuthConfigService:
         client_secret: str | None = None,
     ) -> OAuthConfigTestResponse:
         """Test OIDC configuration by fetching and validating the discovery document."""
-        # Use provided values or fall back to saved config
+        # We only need discovery_url for the probe — client_id/client_secret
+        # aren't exercised, so we don't load them from saved config.
         if not discovery_url or not client_id or not client_secret:
             config = await self.get_provider_config("oidc")
             if not config:
@@ -441,8 +441,6 @@ class OAuthConfigService:
                     message="OIDC is not configured",
                 )
             discovery_url = discovery_url or config.discovery_url
-            client_id = client_id or config.client_id
-            client_secret = client_secret or config.client_secret
 
         if not discovery_url:
             return OAuthConfigTestResponse(

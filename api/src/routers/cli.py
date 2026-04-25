@@ -1887,7 +1887,7 @@ async def cli_ai_complete(
         logger.error(f"CLI AI complete failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI completion failed: {str(e)}",
+            detail="AI completion failed. See server logs for details.",
         )
 
 
@@ -1953,7 +1953,8 @@ async def cli_ai_stream(
                     yield f"data: {json.dumps({'error': chunk.error})}\n\n"
                     break
         except ValueError as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            logger.warning(f"CLI AI stream rejected: {e}")
+            yield f"data: {json.dumps({'error': 'AI stream is unavailable. See server logs for details.'})}\n\n"
         except Exception as e:
             # Check for authentication errors from LLM providers
             error_type = type(e).__name__
@@ -1964,7 +1965,7 @@ async def cli_ai_stream(
                 yield f"data: {json.dumps({'error': f'{provider} API key is invalid or expired. Please update the API key in System Settings > AI Configuration.'})}\n\n"
             else:
                 logger.error(f"CLI AI stream failed: {e}")
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                yield f"data: {json.dumps({'error': 'AI stream failed. See server logs for details.'})}\n\n"
 
     return StreamingResponse(
         generate(),

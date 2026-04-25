@@ -81,16 +81,13 @@ def install_requirements() -> None:
 
     except subprocess.TimeoutExpired:
         logger.warning("[pool] pip install timed out after 5 minutes")
-
+    except Exception as e:
+        logger.warning(f"[pool] Failed to install requirements: {e}")
     finally:
         try:
             os.unlink(temp_path)
         except OSError:
             pass
-
-        except Exception as e:
-            logger.warning(f"[pool] Failed to install requirements: {e}")
-            return
 
 
 def _clear_workspace_modules() -> None:
