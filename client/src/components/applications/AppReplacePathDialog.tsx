@@ -153,9 +153,13 @@ function FolderPicker({
 		}
 	}, []);
 
-	// Load root on mount
+	// Load root on mount. setState inside loadPath only fires after the
+	// awaited fetch resolves — wrapping in a void IIFE keeps the synchronous
+	// effect body free of setState calls.
 	useEffect(() => {
-		loadPath("");
+		void (async () => {
+			await loadPath("");
+		})();
 	}, [loadPath]);
 
 	const toggle = useCallback(
@@ -178,9 +182,12 @@ function FolderPicker({
 	);
 
 	// Auto-expand ancestors of the selectedPath when it changes (so the text
-	// field → tree sync works). Only expand, never collapse.
-	useEffect(() => {
-		if (!selectedPath) return;
+	// field → tree sync works). Only expand, never collapse. Adjust during
+	// render with a previous-selectedPath sentinel rather than via
+	// setState-in-effect.
+	const [prevSelectedPath, setPrevSelectedPath] = useState(selectedPath);
+	if (prevSelectedPath !== selectedPath && selectedPath) {
+		setPrevSelectedPath(selectedPath);
 		const parts = selectedPath.split("/");
 		const ancestors: string[] = [];
 		for (let i = 1; i < parts.length; i++) {
@@ -202,7 +209,7 @@ function FolderPicker({
 				loadPath(a);
 			}
 		}
-	}, [selectedPath, childrenByPath, loadingPaths, loadPath]);
+	}
 
 	const renderLevel = (parentPath: string, level: number): React.ReactNode => {
 		const nodes = childrenByPath[parentPath];

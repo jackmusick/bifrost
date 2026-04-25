@@ -103,11 +103,13 @@ export async function registerPasskey(
 			if (error.name === "NotAllowedError") {
 				throw new Error(
 					"Passkey registration was cancelled or not allowed",
+					{ cause: error },
 				);
 			}
 			if (error.name === "InvalidStateError") {
 				throw new Error(
 					"This passkey is already registered on this device",
+					{ cause: error },
 				);
 			}
 		}
@@ -172,10 +174,13 @@ export async function authenticateWithPasskey(
 			if (error.name === "NotAllowedError") {
 				throw new Error(
 					"Passkey authentication was cancelled or not allowed",
+					{ cause: error },
 				);
 			}
 			if (error.name === "AbortError") {
-				throw new Error("Passkey authentication was cancelled");
+				throw new Error("Passkey authentication was cancelled", {
+					cause: error,
+				});
 			}
 		}
 		throw error;
@@ -291,16 +296,19 @@ export async function setupWithPasskey(
 			if (error.name === "NotAllowedError") {
 				throw new Error(
 					"Passkey creation was cancelled or not allowed",
+					{ cause: error },
 				);
 			}
 			if (error.name === "InvalidStateError") {
 				throw new Error(
 					"This passkey is already registered on this device",
+					{ cause: error },
 				);
 			}
 			if (error.name === "NotSupportedError") {
 				throw new Error(
 					"Your browser or device does not support passkeys",
+					{ cause: error },
 				);
 			}
 		}
