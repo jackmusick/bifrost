@@ -383,8 +383,9 @@ class GitHubAPIClient:
                 error_body = {}
                 try:
                     error_body = e.response.json()
-                except Exception:
-                    pass
+                except ValueError as parse_err:
+                    # Non-JSON error body — fall back to str(e) as message
+                    logger.debug(f"GitHub error response was not JSON: {parse_err}")
 
                 error_message = error_body.get("message", str(e))
                 raise GitHubAPIError(

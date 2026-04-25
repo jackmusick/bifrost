@@ -431,15 +431,17 @@ async def get_form(
                 try:
                     workflow = await workflow_repo.get(id=UUID_TYPE(form.workflow_id))
                     workflow_name = workflow.name if workflow else None
-                except Exception:
-                    pass
+                except (ValueError, AttributeError) as e:
+                    # Non-UUID portable ref or workflow lookup failed — name stays None
+                    logger.debug(f"could not resolve workflow {form.workflow_id!r} for form {form.id}: {e}")
 
             if form.launch_workflow_id:
                 try:
                     launch_workflow = await workflow_repo.get(id=UUID_TYPE(form.launch_workflow_id))
                     launch_workflow_name = launch_workflow.name if launch_workflow else None
-                except Exception:
-                    pass
+                except (ValueError, AttributeError) as e:
+                    # Non-UUID portable ref or workflow lookup failed — name stays None
+                    logger.debug(f"could not resolve launch workflow {form.launch_workflow_id!r} for form {form.id}: {e}")
 
             # Sort fields by position
             sorted_fields = sorted(form.fields, key=lambda f: f.position) if form.fields else []

@@ -2,11 +2,14 @@
 Test variable capture during workflow exceptions.
 """
 
+import logging
 import sys
 import pytest
 from src.sdk.decorators import workflow
 from src.services.execution.engine import execute, ExecutionRequest, ExecutionStatus
 from src.sdk.context import Caller, Organization
+
+logger = logging.getLogger(__name__)
 
 
 def is_coverage_running() -> bool:
@@ -19,8 +22,9 @@ def is_coverage_running() -> bool:
             cov = coverage.Coverage.current()
             if cov is not None:
                 return True
-        except (ImportError, AttributeError):
-            pass
+        except (ImportError, AttributeError) as e:
+            # Older/incompatible coverage versions don't have Coverage.current — fall through to trace check
+            logger.debug(f"coverage.Coverage.current unavailable: {e}")
 
     # Fallback: check trace function
     trace = sys.gettrace()

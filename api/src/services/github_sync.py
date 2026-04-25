@@ -361,12 +361,14 @@ class GitHubSyncService:
                 theirs_content = None
                 try:
                     ours_content = repo.git.show(f":2:{cpath}")
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Stage 2 (ours) may not exist in some conflict types (e.g. delete/modify)
+                    logger.debug(f"could not read stage 2 for {cpath}: {e}")
                 try:
                     theirs_content = repo.git.show(f":3:{cpath}")
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Stage 3 (theirs) may not exist (e.g. modify/delete)
+                    logger.debug(f"could not read stage 3 for {cpath}: {e}")
                 metadata = extract_entity_metadata(cpath)
                 conflict_list.append(MergeConflict(
                     path=cpath,
@@ -384,12 +386,14 @@ class GitHubSyncService:
         if repo.head.is_valid():
             try:
                 ahead = int(repo.git.rev_list("--count", f"origin/{self.branch}..HEAD"))
-            except Exception:
-                pass
+            except Exception as e:
+                # No origin/<branch> ref locally (never fetched) — leave ahead=0
+                logger.debug(f"could not compute commits ahead of origin/{self.branch}: {e}")
             try:
                 behind = int(repo.git.rev_list("--count", f"HEAD..origin/{self.branch}"))
-            except Exception:
-                pass
+            except Exception as e:
+                # No origin/<branch> ref locally — leave behind=0
+                logger.debug(f"could not compute commits behind origin/{self.branch}: {e}")
 
         if conflict_list:
             return WorkingTreeStatus(
@@ -563,12 +567,14 @@ class GitHubSyncService:
                         theirs_content = None
                         try:
                             ours_content = repo.git.show(f":2:{cpath}")
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            # Stage 2 may not exist in some conflict types
+                            logger.debug(f"could not read stage 2 for {cpath}: {e}")
                         try:
                             theirs_content = repo.git.show(f":3:{cpath}")
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            # Stage 3 may not exist in some conflict types
+                            logger.debug(f"could not read stage 3 for {cpath}: {e}")
 
                         metadata = extract_entity_metadata(cpath)
                         conflicts.append(MergeConflict(
@@ -986,12 +992,14 @@ class GitHubSyncService:
                 behind = 0
                 try:
                     ahead = int(repo.git.rev_list("--count", f"origin/{self.branch}..HEAD"))
-                except Exception:
-                    pass
+                except Exception as e:
+                    # No origin/<branch> ref locally — leave ahead=0
+                    logger.debug(f"could not compute commits ahead of origin/{self.branch}: {e}")
                 try:
                     behind = int(repo.git.rev_list("--count", f"HEAD..origin/{self.branch}"))
-                except Exception:
-                    pass
+                except Exception as e:
+                    # No origin/<branch> ref locally — leave behind=0
+                    logger.debug(f"could not compute commits behind origin/{self.branch}: {e}")
 
                 logger.info("Resolved conflicts, created merge commit (local)")
                 return ResolveResult(success=True, commits_ahead=ahead, commits_behind=behind)
@@ -1048,8 +1056,9 @@ class GitHubSyncService:
                                 repo.git.checkout("HEAD", "--", path)
                                 discarded.append(path)
                                 continue
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                # Path isn't tracked in HEAD — fall through to delete branch
+                                logger.debug(f"git checkout HEAD failed for {path}, falling back to unlink: {e}")
                         # Untracked or not in HEAD — just delete
                         if file_path.exists():
                             file_path.unlink()
@@ -1310,7 +1319,7 @@ class GitHubSyncService:
             # Clone into a temp dir first (git clone requires clean dir)
             clone_dir = Path(tempfile.mkdtemp(prefix="bifrost-clone-"))
             try:
-                repo = GitRepo.clone_from(
+                GitRepo.clone_from(
                     self.repo_url,
                     str(clone_dir),
                     branch=self.branch,
