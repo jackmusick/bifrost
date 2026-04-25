@@ -92,8 +92,9 @@ class EmailService:
         if data.get("configured_at"):
             try:
                 configured_at = datetime.fromisoformat(data["configured_at"])
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                # Stored configured_at is malformed — leave as None
+                logger.debug(f"could not parse configured_at {data.get('configured_at')!r}: {e}")
 
         return EmailWorkflowConfig(
             workflow_id=data["workflow_id"],

@@ -24,6 +24,8 @@ import sys
 from multiprocessing.connection import Connection
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 
 class _SendQueue:
     """
@@ -46,8 +48,9 @@ class _SendQueue:
     def close(self) -> None:
         try:
             self._conn.close()
-        except Exception:
-            pass
+        except (OSError, BrokenPipeError) as e:
+            # Connection already closed or broken — close is idempotent
+            logger.debug(f"_SendQueue.close ignoring: {e}")
 
 
 class _RecvQueue:
@@ -78,10 +81,9 @@ class _RecvQueue:
     def close(self) -> None:
         try:
             self._conn.close()
-        except Exception:
-            pass
-
-logger = logging.getLogger(__name__)
+        except (OSError, BrokenPipeError) as e:
+            # Connection already closed or broken — close is idempotent
+            logger.debug(f"_RecvQueue.close ignoring: {e}")
 
 # Commands sent from consumer to template via pipe
 CMD_FORK = "fork"
@@ -238,12 +240,14 @@ def _handle_fork_request(
         # Close the child-side connections — the child owns them now
         try:
             work_recv.close()
-        except Exception:
-            pass
+        except (OSError, BrokenPipeError) as e:
+            # Already closed — ignore
+            logger.debug(f"parent: work_recv.close ignored: {e}")
         try:
             result_send.close()
-        except Exception:
-            pass
+        except (OSError, BrokenPipeError) as e:
+            # Already closed — ignore
+            logger.debug(f"parent: result_send.close ignored: {e}")
 
         # Send child PID back to consumer
         pipe.send({
@@ -256,8 +260,9 @@ def _handle_fork_request(
         # Close the template's control pipe — child doesn't need it
         try:
             pipe.close()
-        except Exception:
-            pass
+        except (OSError, BrokenPipeError) as e:
+            # Already closed in parent post-fork — ignore
+            logger.debug(f"child: pipe.close ignored: {e}")
 
         # Run the worker function (this blocks until the child exits)
         _run_forked_child(work_recv, result_send, worker_id, persistent)
@@ -327,8 +332,9 @@ def _run_forked_child(
                 try:
                     from src.services.execution.simple_worker import _clear_workspace_modules
                     _clear_workspace_modules()
-                except ImportError:
-                    pass
+                except ImportError as e:
+                    # simple_worker is optional in some test contexts — skip module clearing
+                    logger.debug(f"_clear_workspace_modules unavailable: {e}")
 
             # Execute
             try:
@@ -348,8 +354,9 @@ def _run_forked_child(
             try:
                 from bifrost._logging import clear_sequence_counter
                 clear_sequence_counter(execution_id)
-            except Exception:
-                pass
+            except Exception as e:
+                # bifrost._logging may not be importable; counter cleanup is best-effort
+                logger.debug(f"clear_sequence_counter failed for {execution_id}: {e}")
 
             # Force GC before measuring RSS
             gc.collect()
@@ -361,8 +368,10 @@ def _run_forked_child(
                 result["process_rss_bytes"] = process_rss
                 if isinstance(result.get("metrics"), dict):
                     result["metrics"]["process_rss_bytes"] = process_rss
-            except (ImportError, Exception):
-                pass
+            except (ImportError, OSError, KeyError) as e:
+                # simple_worker import optional; _get_process_rss reads /proc which may
+                # be missing on macOS; result may be a non-dict — all best-effort metrics
+                logger.debug(f"could not record RSS for execution {execution_id}: {e}")
 
             result_send.send(result)
 
@@ -396,8 +405,9 @@ def _run_forked_child(
                         "duration_ms": 0,
                         "worker_id": worker_id,
                     })
-                except Exception:
-                    pass
+                except (OSError, BrokenPipeError) as send_err:
+                    # Result pipe closed (consumer gone) — child is about to exit anyway
+                    logger.debug(f"could not send error result for {execution_id}: {send_err}")
                 execution_id = None
 
             # On-demand mode: exit even on error
@@ -526,8 +536,9 @@ class TemplateProcess:
         if self._pipe is not None:
             try:
                 self._pipe.send({"action": CMD_SHUTDOWN})
-            except (OSError, BrokenPipeError):
-                pass
+            except (OSError, BrokenPipeError) as e:
+                # Template already exited — no need to send shutdown
+                logger.debug(f"template pipe closed before shutdown send: {e}")
 
         if self._process is not None:
             self._process.join(timeout=10)

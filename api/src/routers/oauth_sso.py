@@ -22,6 +22,7 @@ from src.core.cache.keys import (
     TTL_OAUTH_STATE,
     TTL_REFRESH_TOKEN,
 )
+from src.core.log_safety import log_safe
 from src.config import get_settings
 from src.core.auth import CurrentActiveUser, get_current_user_from_db
 from src.core.database import DbSession
@@ -310,7 +311,7 @@ async def oauth_callback(
         code_verifier = state_data["code_verifier"]
         redirect_uri = state_data["redirect_uri"]
     except (json.JSONDecodeError, KeyError) as e:
-        logger.error(f"Invalid OAuth state data format: {e}")
+        logger.error(f"Invalid OAuth state data format: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid OAuth state data",
@@ -339,7 +340,7 @@ async def oauth_callback(
             )
 
     except OAuthError as e:
-        logger.error(f"OAuth callback error: {e}")
+        logger.error(f"OAuth callback error: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),

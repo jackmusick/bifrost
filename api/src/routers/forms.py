@@ -21,6 +21,7 @@ from sqlalchemy.orm import selectinload
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter
 from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
@@ -352,7 +353,7 @@ async def create_form(
     # Sync form roles to referenced workflows (additive)
     await sync_form_roles_to_workflows(db, form, form.fields, assigned_by=ctx.user.email)
 
-    logger.info(f"Created form {form.id}: {form.name}")
+    logger.info(f"Created form {form.id}: {log_safe(form.name)}")
 
     # Invalidate cache after successful create
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
@@ -525,7 +526,7 @@ async def update_form(
         )
         # Also set to role_based access level (effectively no access)
         form.access_level = FormAccessLevel.ROLE_BASED
-        logger.info(f"Cleared all role assignments for form '{form.name}'")
+        logger.info(f"Cleared all role assignments for form '{log_safe(form.name)}'")
 
     form.updated_at = datetime.now(timezone.utc)
 
@@ -848,13 +849,13 @@ async def execute_form(
         return response
 
     except WorkflowNotFoundError as e:
-        logger.error(f"Workflow not found for form {form_id}: {e}")
+        logger.error(f"Workflow not found for form {form_id}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workflow not found: {form.workflow_id}",
         )
     except WorkflowLoadError as e:
-        logger.error(f"Workflow load error for form {form_id}: {e}")
+        logger.error(f"Workflow load error for form {form_id}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load workflow: {str(e)}",
@@ -862,7 +863,7 @@ async def execute_form(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error executing form {form_id}: {str(e)}", exc_info=True)
+        logger.error(f"Error executing form {form_id}: {log_safe(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute form",
@@ -964,13 +965,13 @@ async def execute_startup_workflow(
         return FormStartupResponse(result=response.result)
 
     except WorkflowNotFoundError as e:
-        logger.error(f"Launch workflow not found for form {form_id}: {e}")
+        logger.error(f"Launch workflow not found for form {form_id}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Launch workflow not found: {form.launch_workflow_id}",
         )
     except WorkflowLoadError as e:
-        logger.error(f"Launch workflow load error for form {form_id}: {e}")
+        logger.error(f"Launch workflow load error for form {form_id}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load launch workflow: {str(e)}",
@@ -978,7 +979,7 @@ async def execute_startup_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error executing launch workflow for form {form_id}: {str(e)}", exc_info=True)
+        logger.error(f"Error executing launch workflow for form {form_id}: {log_safe(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute launch workflow",
@@ -1139,7 +1140,7 @@ async def generate_upload_url(
             expires_in=600,  # 10 minutes
         )
     except Exception as e:
-        logger.error(f"Failed to generate presigned URL for form {form_id}: {e}", exc_info=True)
+        logger.error(f"Failed to generate presigned URL for form {form_id}: {log_safe(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate upload URL",
