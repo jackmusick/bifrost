@@ -10,6 +10,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Query
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
@@ -97,7 +98,11 @@ async def list_tools(
             return ToolsResponse(tools=tools)
 
         # Query workflows that are tools
-        query = select(Workflow).where(Workflow.type == "tool")
+        query = (
+            select(Workflow)
+            .where(Workflow.type == "tool")
+            .options(selectinload(Workflow.organization))
+        )
         if not include_inactive:
             query = query.where(Workflow.is_active.is_(True))
 
@@ -121,6 +126,8 @@ async def list_tools(
                     category=workflow.category,
                     default_enabled_for_coding_agent=False,
                     is_active=workflow.is_active,
+                    organization_id=str(workflow.organization_id) if workflow.organization_id else None,
+                    organization_name=workflow.organization.name if workflow.organization else None,
                 )
             )
 

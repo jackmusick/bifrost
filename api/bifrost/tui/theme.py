@@ -6,7 +6,7 @@ minimal accent color.
 
 from __future__ import annotations
 
-from typing import TypeVar
+from typing import Generic, TypeVar
 
 from textual.app import App
 from textual.theme import Theme
@@ -60,7 +60,7 @@ FooterKey .footer-key--description {
 """
 
 
-class BifrostApp(App[T]):
+class BifrostApp(App[T], Generic[T]):
     """Base app with Bifrost theme pre-registered."""
 
     CSS = _BIFROST_BASE_CSS

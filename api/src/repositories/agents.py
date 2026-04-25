@@ -151,9 +151,12 @@ class AgentRepository(OrgScopedRepository[Agent]):
 
     async def get_agent_with_access_check(self, agent_id: UUID) -> Agent | None:
         """
-        Get agent by ID with cascade scoping and role-based access check.
+        Get agent by ID with access check, honoring the platform-admin bypass.
 
-        Uses the base class get() with eager loading of relationships.
+        Matches the ``OrgScopedRepository.get(id=...)`` contract:
+        - Superusers get the entity regardless of its organization scope.
+        - Regular users must find the entity in their own org or global scope,
+          AND pass the role-based access check.
 
         Args:
             agent_id: Agent UUID
@@ -161,7 +164,6 @@ class AgentRepository(OrgScopedRepository[Agent]):
         Returns:
             Agent ORM object if found and accessible, None otherwise
         """
-        # Build query with eager loading
         query = (
             select(self.model)
             .options(
@@ -173,9 +175,13 @@ class AgentRepository(OrgScopedRepository[Agent]):
             .where(self.model.id == agent_id)
         )
 
-        # Apply cascade scoping: prioritize org-specific, then global
+        # Superuser: no scoping. IDs are globally unique; trust the ID lookup.
+        if self.is_superuser:
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+
+        # Regular user: cascade scope (org-specific first, then global) + role check.
         if self.org_id is not None:
-            # Try org-specific first
             org_query = query.where(self.model.organization_id == self.org_id)
             result = await self.session.execute(org_query)
             entity = result.scalar_one_or_none()
@@ -184,7 +190,6 @@ class AgentRepository(OrgScopedRepository[Agent]):
                     return entity
                 return None
 
-        # Fall back to global
         global_query = query.where(self.model.organization_id.is_(None))
         result = await self.session.execute(global_query)
         entity = result.scalar_one_or_none()

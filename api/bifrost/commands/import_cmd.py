@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import pathlib
+import sys
 from typing import Any
 from uuid import UUID
 
@@ -239,6 +240,84 @@ def _print_response(response_body: dict[str, Any], *, dry_run: bool) -> None:
             click.echo(f"  - {w}", err=True)
 
 
+async def _post_import(
+    client: BifrostClient,
+    *,
+    manifest_files: dict[str, str],
+    dry_run: bool,
+    delete_removed: bool,
+    role_mode: str,
+    target_org: UUID | None,
+    entity_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    """POST /api/files/manifest/import and return the parsed body.
+
+    Raises click.ClickException on non-200. Shared between dry-run (diff)
+    and apply (write) phases of the import pipeline.
+    """
+    payload: dict[str, Any] = {
+        "files": manifest_files,
+        "dry_run": dry_run,
+        "delete_removed_entities": delete_removed,
+        "role_resolution": role_mode,
+    }
+    if target_org is not None:
+        payload["target_organization_id"] = str(target_org)
+    if entity_ids is not None:
+        payload["entity_ids"] = sorted(entity_ids)
+
+    resp = await client.post("/api/files/manifest/import", json=payload)
+    if resp.status_code != 200:
+        # Surface the server body verbatim — 422 carries the specific rebinding
+        # precondition that failed (orgs+target clash, unknown role, etc.).
+        click.echo(f"HTTP {resp.status_code}", err=True)
+        click.echo(resp.text, err=True)
+        raise click.ClickException("manifest import failed")
+
+    body = resp.json()
+    if not isinstance(body, dict):
+        raise click.ClickException(
+            f"unexpected manifest/import response type: {type(body).__name__}"
+        )
+    return body
+
+
+def _entity_changes_to_sync_items(entity_changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build TUI sync-items from a server dry-run entity_changes list.
+
+    Each item defaults to `push` (apply the change) and allows `skip` as the
+    only alternative — import is inherently one-direction (bundle → env), so
+    pull/delete don't apply. `keep` entries are filtered out since there's
+    nothing to review.
+    """
+    items: list[dict[str, Any]] = []
+    for change in entity_changes:
+        action = change.get("action", "keep")
+        if action == "keep":
+            continue
+        eid = change.get("id", "")
+        entity_type = change.get("entity_type", "")
+        name = change.get("name", "")
+        org = change.get("organization", "Global")
+        display = f"{entity_type}: {name}"
+        if org and org != "Global":
+            display += f" ({org})"
+
+        why = {"add": "new", "update": "changed", "delete": "removed"}.get(action, action)
+        items.append({
+            "name": display,
+            "why": why,
+            "modified": "",
+            "author": "",
+            "default_action": "push",
+            "valid_actions": ["push", "skip"],
+            "section": "entities",
+            "entity_id": eid,
+            "entity_action": action,
+        })
+    return items
+
+
 async def _import_impl(
     *,
     client: BifrostClient,
@@ -247,12 +326,18 @@ async def _import_impl(
     role_mode: str,
     dry_run: bool,
     delete_removed: bool,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Shared import pipeline usable from the Click callback and from tests.
 
+    When stdin+stdout are a TTY and neither --dry-run nor --force is set,
+    runs a server-side dry-run first, shows the diff in the sync TUI for
+    per-entity push/skip selection, then applies only the selected entity
+    IDs. --dry-run prints the diff and exits; --force or non-TTY applies
+    the full diff without a review step.
+
     Returns the parsed server response body on success; raises
-    :class:`click.ClickException` on any error path so callers get a
-    uniform exit-code surface.
+    :class:`click.ClickException` on any error path.
     """
     bifrost_dir = _validate_bundle_dir(bundle_dir)
     _log_bundle_meta(bundle_dir)
@@ -272,29 +357,68 @@ async def _import_impl(
     )
     click.echo(f"Importing manifest ({len(manifest_files)} file(s))…")
 
-    payload: dict[str, Any] = {
-        "files": manifest_files,
-        "dry_run": dry_run,
-        "delete_removed_entities": delete_removed,
-        "role_resolution": role_mode,
-    }
-    if target_org is not None:
-        payload["target_organization_id"] = str(target_org)
+    interactive = (
+        not dry_run
+        and not force
+        and sys.stdin.isatty()
+        and sys.stdout.isatty()
+    )
 
-    resp = await client.post("/api/files/manifest/import", json=payload)
-    if resp.status_code != 200:
-        # Surface the server body verbatim — 422 carries the specific rebinding
-        # precondition that failed (orgs+target clash, unknown role, etc.).
-        click.echo(f"HTTP {resp.status_code}", err=True)
-        click.echo(resp.text, err=True)
-        raise click.ClickException("manifest import failed")
-
-    body = resp.json()
-    if not isinstance(body, dict):
-        raise click.ClickException(
-            f"unexpected manifest/import response type: {type(body).__name__}"
+    # Non-interactive path: single call (dry-run preview OR force-apply-all).
+    if not interactive:
+        body = await _post_import(
+            client,
+            manifest_files=manifest_files,
+            dry_run=dry_run,
+            delete_removed=delete_removed,
+            role_mode=role_mode,
+            target_org=target_org,
         )
-    _print_response(body, dry_run=dry_run)
+        _print_response(body, dry_run=dry_run)
+        return body
+
+    # Interactive path: dry-run → TUI cherry-pick → apply selected.
+    preview = await _post_import(
+        client,
+        manifest_files=manifest_files,
+        dry_run=True,
+        delete_removed=delete_removed,
+        role_mode=role_mode,
+        target_org=target_org,
+    )
+    entity_changes = preview.get("entity_changes") or []
+    sync_items = _entity_changes_to_sync_items(entity_changes)
+
+    if not sync_items:
+        click.echo("Already up to date.")
+        return preview
+
+    from bifrost.tui.sync_app import interactive_sync
+    sync_result = await interactive_sync(
+        sync_items,
+        entity_count=len(sync_items),
+        subtitle=f"Bundle: {bundle_dir.name}",
+        title="bifrost import",
+    )
+    if sync_result is None:
+        click.echo("Import cancelled.")
+        return preview
+
+    selected_ids = {i["entity_id"] for i in sync_result.push if i.get("entity_id")}
+    if not selected_ids:
+        click.echo("Nothing selected.")
+        return preview
+
+    body = await _post_import(
+        client,
+        manifest_files=manifest_files,
+        dry_run=False,
+        delete_removed=delete_removed,
+        role_mode=role_mode,
+        target_org=target_org,
+        entity_ids=selected_ids,
+    )
+    _print_response(body, dry_run=False)
     return body
 
 
@@ -337,6 +461,12 @@ def import_group() -> None:
     default=False,
     help="Delete entities present in the target DB but missing from the bundle.",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Skip the interactive review TUI and apply every change in the bundle.",
+)
 @click.pass_context
 @pass_resolver
 @run_async
@@ -348,6 +478,7 @@ async def import_apply(
     role_mode: str,
     dry_run: bool,
     delete_removed: bool,
+    force: bool,
     client: BifrostClient,
     resolver: Any,  # noqa: ARG001 - unused but required by pass_resolver
 ) -> None:
@@ -355,8 +486,10 @@ async def import_apply(
 
     Uploads workflow / app source files first, then POSTs ``.bifrost/``
     manifest contents to ``/api/files/manifest/import`` with the supplied
-    rebinding flags. Prints the server's change diff on success; exits 1
-    with the server body on failure.
+    rebinding flags. By default, shows an interactive TUI to review and
+    cherry-pick the diff before applying; pass ``--force`` to skip review
+    and apply everything, or ``--dry-run`` to print the diff and exit.
+    Exits 1 with the server body on failure.
     """
     await _import_impl(
         client=client,
@@ -365,6 +498,7 @@ async def import_apply(
         role_mode=role_mode.lower(),
         dry_run=dry_run,
         delete_removed=delete_removed,
+        force=force,
     )
 
 

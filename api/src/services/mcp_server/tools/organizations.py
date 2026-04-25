@@ -18,7 +18,7 @@ import re
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from sqlalchemy import select
 
 from src.services.mcp_server.tools.db import get_tool_db

@@ -609,12 +609,7 @@ async def mfa_initial_verify(
 
     # Generate tokens for auto-login after MFA enrollment
     db_roles = await get_user_roles(db, user.id)
-    roles = ["authenticated"]
-    if user.is_superuser:
-        roles.append("PlatformAdmin")
-    else:
-        roles.append("OrgUser")
-    roles.extend(db_roles)
+    roles = ["authenticated", *db_roles]
 
     token_data = {
         "sub": str(user.id),
@@ -760,14 +755,7 @@ async def _generate_login_tokens(user, db, response: Response | None = None) -> 
 
     # Get user roles from database
     db_roles = await get_user_roles(db, user.id)
-
-    # Build role list (include type-based roles + database roles)
-    roles = ["authenticated"]
-    if user.is_superuser:
-        roles.append("PlatformAdmin")
-    else:
-        roles.append("OrgUser")
-    roles.extend(db_roles)
+    roles = ["authenticated", *db_roles]
 
     # Build JWT claims with user info
     token_data = {
@@ -929,14 +917,7 @@ async def refresh_token(
 
     # Get fresh user roles from database
     db_roles = await get_user_roles(db, user.id)
-
-    # Build role list
-    roles = ["authenticated"]
-    if user.is_superuser:
-        roles.append("PlatformAdmin")
-    else:
-        roles.append("OrgUser")
-    roles.extend(db_roles)
+    roles = ["authenticated", *db_roles]
 
     # Build JWT claims with fresh user info
     new_token_data = {
@@ -1238,13 +1219,6 @@ async def register_user(
                 }
             )
 
-            # Build roles list
-            roles = ["authenticated"]
-            if existing_user.is_superuser:
-                roles.append("PlatformAdmin")
-            else:
-                roles.append("OrgUser")
-
             return UserResponse(
                 id=str(existing_user.id),
                 email=existing_user.email,
@@ -1253,7 +1227,7 @@ async def register_user(
                 is_superuser=existing_user.is_superuser,
                 is_verified=existing_user.is_verified,
                 organization_id=str(existing_user.organization_id) if existing_user.organization_id else None,
-                roles=roles,
+                roles=["authenticated"],
             )
         else:
             # Already registered user
@@ -1697,8 +1671,7 @@ async def setup_passkey_verify(
 
     # Generate tokens for immediate login
     db_roles = await get_user_roles(db, user.id)
-    roles = ["authenticated", "PlatformAdmin"]  # First user is always PlatformAdmin
-    roles.extend(db_roles)
+    roles = ["authenticated", *db_roles]
 
     token_data = {
         "sub": str(user.id),

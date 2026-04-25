@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { ContentLayout } from "@/components/layout/ContentLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -38,11 +38,28 @@ const Organizations = lazyWithReload(() =>
 const Forms = lazyWithReload(() =>
 	import("@/pages/Forms").then((m) => ({ default: m.Forms })),
 );
-const Agents = lazyWithReload(() =>
-	import("@/pages/Agents").then((m) => ({ default: m.Agents })),
+const FleetPage = lazyWithReload(() =>
+	import("@/pages/agents/FleetPage").then((m) => ({ default: m.FleetPage })),
 );
-const AgentRunDetail = lazyWithReload(() =>
-	import("@/pages/AgentRunDetail").then((m) => ({ default: m.AgentRunDetail })),
+const AgentDetailPage = lazyWithReload(() =>
+	import("@/pages/agents/AgentDetailPage").then((m) => ({
+		default: m.AgentDetailPage,
+	})),
+);
+const AgentReviewPage = lazyWithReload(() =>
+	import("@/pages/agents/AgentReviewPage").then((m) => ({
+		default: m.AgentReviewPage,
+	})),
+);
+const AgentTuneWorkbench = lazyWithReload(() =>
+	import("@/pages/agents/AgentTuneWorkbench").then((m) => ({
+		default: m.AgentTuneWorkbench,
+	})),
+);
+const AgentRunDetailPage = lazyWithReload(() =>
+	import("@/pages/agents/AgentRunDetailPage").then((m) => ({
+		default: m.AgentRunDetailPage,
+	})),
 );
 const FormBuilder = lazyWithReload(() =>
 	import("@/pages/FormBuilder").then((m) => ({ default: m.FormBuilder })),
@@ -412,15 +429,49 @@ function AppRoutes() {
 							path="agents"
 							element={
 								<ProtectedRoute>
-									<Agents />
+									<FleetPage />
 								</ProtectedRoute>
 							}
 						/>
-
-						{/* Agent Runs list — redirect to History with agents tab */}
 						<Route
-							path="agent-runs"
-							element={<Navigate to="/history?type=agents" replace />}
+							path="agents/new"
+							element={
+								<ProtectedRoute>
+									<AgentDetailPage />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="agents/:id"
+							element={
+								<ProtectedRoute>
+									<AgentDetailPage />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="agents/:id/review"
+							element={
+								<ProtectedRoute>
+									<AgentReviewPage />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="agents/:id/tune"
+							element={
+								<ProtectedRoute>
+									<AgentTuneWorkbench />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="agents/:agentId/runs/:runId"
+							element={
+								<ProtectedRoute>
+									<AgentRunDetailPage />
+								</ProtectedRoute>
+							}
 						/>
 						{/* Knowledge - PlatformAdmin only */}
 						<Route
@@ -606,15 +657,6 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requireOrgUser>
 									<ExecutionDetails />
-								</ProtectedRoute>
-							}
-						/>
-						{/* Agent Run Detail - manages its own padding like ExecutionDetails */}
-						<Route
-							path="agent-runs/:runId"
-							element={
-								<ProtectedRoute>
-									<AgentRunDetail />
 								</ProtectedRoute>
 							}
 						/>

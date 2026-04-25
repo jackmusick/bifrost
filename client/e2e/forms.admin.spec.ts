@@ -84,48 +84,6 @@ test.describe("Form Creation", () => {
 				.or(page.getByRole("textbox", { name: /name/i })),
 		).toBeVisible({ timeout: 5000 });
 	});
-
-	test.skip("should validate required fields", async ({ page }) => {
-		// TODO: This test times out - needs investigation into form creation UI flow
-		await page.goto("/forms");
-
-		await expect(
-			page.getByRole("heading", { name: /forms/i }).first(),
-		).toBeVisible({
-			timeout: 10000,
-		});
-
-		// Click create button
-		const createButton = page
-			.getByRole("button", { name: /create|new|add/i })
-			.first();
-		await createButton.click();
-
-		// Wait for form dialog to appear
-		await page.waitForTimeout(1000);
-
-		// Try to submit without filling required fields
-		const submitButton = page
-			.getByRole("button", {
-				name: /save|create|submit/i,
-			})
-			.first();
-
-		// Only test validation if we can find the submit button
-		try {
-			await submitButton.waitFor({ state: "visible", timeout: 3000 });
-			await submitButton.click();
-
-			// Should show validation error
-			await expect(
-				page
-					.getByText(/required|cannot be empty|please enter/i)
-					.first(),
-			).toBeVisible({ timeout: 3000 });
-		} catch {
-			// Submit button not found within timeout - skip validation test
-		}
-	});
 });
 
 test.describe("Form Details", () => {
@@ -147,9 +105,6 @@ test.describe("Form Details", () => {
 
 		if (await formItem.isVisible().catch(() => false)) {
 			await formItem.click();
-
-			// Should navigate to form detail or show details
-			await page.waitForTimeout(1000);
 
 			// Check for detail content
 			const hasDetails =

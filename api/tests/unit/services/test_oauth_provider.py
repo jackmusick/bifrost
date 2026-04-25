@@ -151,6 +151,82 @@ class TestOAuthProviderTokenExchange:
             assert result["error"] == "invalid_grant"
             assert "invalid" in result["error_description"].lower()
 
+    @pytest.mark.asyncio
+    async def test_exchange_includes_scope_when_provided(self, oauth_client):
+        """Should include scope in auth code exchange payload when provided."""
+        token_url = "https://oauth.example.com/token"
+
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_response = MagicMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={
+                "access_token": "access_token_123",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            })
+
+            mock_post_context = MagicMock()
+            mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_post_context.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session = MagicMock()
+            mock_session.post = MagicMock(return_value=mock_post_context)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session_class.return_value = mock_session
+
+            success, _result = await oauth_client.exchange_code_for_token(
+                token_url=token_url,
+                code="authorization_code_123",
+                client_id="client-id-456",
+                client_secret="client-secret-789",
+                redirect_uri="https://app.example.com/callback",
+                scopes="openid profile offline_access",
+            )
+
+            assert success is True
+            data = mock_session.post.call_args[1]["data"]
+            assert data["scope"] == "openid profile offline_access"
+
+    @pytest.mark.asyncio
+    async def test_exchange_omits_scope_when_not_provided(self, oauth_client):
+        """Should omit scope in auth code exchange payload when not provided."""
+        token_url = "https://oauth.example.com/token"
+
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_response = MagicMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={
+                "access_token": "access_token_123",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            })
+
+            mock_post_context = MagicMock()
+            mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_post_context.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session = MagicMock()
+            mock_session.post = MagicMock(return_value=mock_post_context)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session_class.return_value = mock_session
+
+            success, _result = await oauth_client.exchange_code_for_token(
+                token_url=token_url,
+                code="authorization_code_123",
+                client_id="client-id-456",
+                client_secret="client-secret-789",
+                redirect_uri="https://app.example.com/callback",
+                scopes=None,
+            )
+
+            assert success is True
+            data = mock_session.post.call_args[1]["data"]
+            assert "scope" not in data
+
 
 class TestOAuthProviderTokenRefresh:
     """Test access token refresh flow"""
@@ -231,6 +307,80 @@ class TestOAuthProviderTokenRefresh:
 
             assert success is False
             assert "invalid_grant" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_refresh_includes_scope_when_provided(self, oauth_client):
+        """Should include scope in refresh payload when provided."""
+        token_url = "https://oauth.example.com/token"
+
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_response = MagicMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={
+                "access_token": "new_access_token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            })
+
+            mock_post_context = MagicMock()
+            mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_post_context.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session = MagicMock()
+            mock_session.post = MagicMock(return_value=mock_post_context)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session_class.return_value = mock_session
+
+            success, _result = await oauth_client.refresh_access_token(
+                token_url=token_url,
+                refresh_token="refresh_token_123",
+                client_id="client-id",
+                client_secret="client-secret",
+                scopes="openid profile offline_access",
+            )
+
+            assert success is True
+            data = mock_session.post.call_args[1]["data"]
+            assert data["scope"] == "openid profile offline_access"
+
+    @pytest.mark.asyncio
+    async def test_refresh_omits_scope_when_not_provided(self, oauth_client):
+        """Should omit scope in refresh payload when not provided."""
+        token_url = "https://oauth.example.com/token"
+
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_response = MagicMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={
+                "access_token": "new_access_token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            })
+
+            mock_post_context = MagicMock()
+            mock_post_context.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_post_context.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session = MagicMock()
+            mock_session.post = MagicMock(return_value=mock_post_context)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+
+            mock_session_class.return_value = mock_session
+
+            success, _result = await oauth_client.refresh_access_token(
+                token_url=token_url,
+                refresh_token="refresh_token_123",
+                client_id="client-id",
+                client_secret="client-secret",
+                scopes=None,
+            )
+
+            assert success is True
+            data = mock_session.post.call_args[1]["data"]
+            assert "scope" not in data
 
 
 class TestOAuthProviderScopes:

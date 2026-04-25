@@ -17,20 +17,17 @@ import {
 	validateAppCodePath,
 } from "@/components/file-tree";
 import { AppCodeEditor } from "./AppCodeEditor";
-import { AppCodePreview } from "./AppCodePreview";
 import { useAppCodeEditor } from "./useAppCodeEditor";
 import { useAppCodeUpdates, type LastUpdate } from "@/hooks/useAppCodeUpdates";
 import { authFetch } from "@/lib/api-client";
-import { JsxAppShell } from "@/components/jsx-app/JsxAppShell";
+import { BundledAppShell } from "@/components/jsx-app/BundledAppShell";
 import { toast } from "sonner";
 import {
 	Save,
 	Play,
 	Code,
-	Eye,
 	PanelLeftClose,
 	PanelLeft,
-	LayoutGrid,
 	AppWindow,
 } from "lucide-react";
 import { DependencyPanel } from "./DependencyPanel";
@@ -47,7 +44,7 @@ interface AppCodeEditorLayoutProps {
 	onSave?: (path: string, source: string, compiled: string) => Promise<void>;
 }
 
-type ViewMode = "split" | "code" | "preview" | "app";
+type ViewMode = "code" | "app";
 type SidebarTab = "files" | "packages";
 
 /**
@@ -65,7 +62,7 @@ export function AppCodeEditorLayout({
 
 	// Layout state
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-	const [viewMode, setViewMode] = useState<ViewMode>("split");
+	const [viewMode, setViewMode] = useState<ViewMode>("code");
 	const [sidebarTab, setSidebarTab] = useState<SidebarTab>("files");
 
 	// Compute base path for the app preview
@@ -289,7 +286,7 @@ export function AppCodeEditorLayout({
 	// Handle run/preview
 	const handleRun = useCallback(() => {
 		if (viewMode === "code") {
-			setViewMode("split");
+			setViewMode("app");
 		}
 	}, [viewMode]);
 
@@ -344,24 +341,6 @@ export function AppCodeEditorLayout({
 							title="Code only"
 						>
 							<Code className="h-4 w-4" />
-						</Button>
-						<Button
-							variant={viewMode === "split" ? "secondary" : "ghost"}
-							size="icon"
-							className="h-7 w-7"
-							onClick={() => setViewMode("split")}
-							title="Split view (code + file preview)"
-						>
-							<LayoutGrid className="h-4 w-4" />
-						</Button>
-						<Button
-							variant={viewMode === "preview" ? "secondary" : "ghost"}
-							size="icon"
-							className="h-7 w-7"
-							onClick={() => setViewMode("preview")}
-							title="File preview only"
-						>
-							<Eye className="h-4 w-4" />
 						</Button>
 						<Button
 							variant={viewMode === "app" ? "secondary" : "ghost"}
@@ -462,38 +441,7 @@ export function AppCodeEditorLayout({
 
 				{/* Editor and Preview */}
 				<div className="flex-1 min-h-0 flex">
-					{viewMode === "split" ? (
-						<>
-							{/* Code Editor */}
-							<div className="flex-1 min-w-0 border-r">
-								{currentFile ? (
-									<AppCodeEditor
-										value={editorState.source}
-										onChange={setSource}
-										onSave={handleSave}
-										errors={editorState.errors}
-										path={currentFile.path}
-									/>
-								) : (
-									<div className="h-full flex items-center justify-center text-muted-foreground">
-										<p className="text-sm">
-											Select a file to edit
-										</p>
-									</div>
-								)}
-							</div>
-
-							{/* File Preview */}
-							<div className="flex-1 min-w-0 overflow-auto">
-								<AppCodePreview
-									compiled={editorState.compiled}
-									errors={editorState.errors}
-									isCompiling={editorState.isCompiling}
-									bordered={false}
-								/>
-							</div>
-						</>
-					) : viewMode === "code" ? (
+					{viewMode === "code" ? (
 						<div className="flex-1 min-w-0">
 							{currentFile ? (
 								<AppCodeEditor
@@ -509,19 +457,10 @@ export function AppCodeEditorLayout({
 								</div>
 							)}
 						</div>
-					) : viewMode === "preview" ? (
-						<div className="flex-1 min-w-0 overflow-auto">
-							<AppCodePreview
-								compiled={editorState.compiled}
-								errors={editorState.errors}
-								isCompiling={editorState.isCompiling}
-								bordered={false}
-							/>
-						</div>
 					) : (
 						/* App preview - full app with navigation */
 						<div className="flex-1 min-h-0 overflow-hidden">
-							<JsxAppShell
+							<BundledAppShell
 								appId={appId}
 								appSlug={appSlug || ""}
 								isPreview={true}

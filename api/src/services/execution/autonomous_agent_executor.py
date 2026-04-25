@@ -94,6 +94,20 @@ class AutonomousAgentExecutor:
         """
         run_id = run_id or str(uuid4())
         self._current_run_id = run_id
+
+        # Short-circuit if agent is paused. Runs already past this point continue
+        # normally — this check only gates new runs at entry.
+        if not agent.is_active:
+            return {
+                "output": None,
+                "iterations_used": 0,
+                "tokens_used": 0,
+                "status": "paused",
+                "accepted": False,
+                "message": f"Agent '{agent.name}' is paused. Request not processed.",
+                "llm_model": agent.llm_model,
+            }
+
         step_number = 0
         iterations_used = 0
         tokens_used = 0

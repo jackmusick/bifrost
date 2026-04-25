@@ -32,6 +32,7 @@ from src.models.contracts.applications import (
     ApplicationListResponse,
     ApplicationPublic,
     ApplicationPublishRequest,
+    ApplicationReplaceRequest,
     ApplicationRollbackRequest,
     ApplicationUpdate,
 )
@@ -151,42 +152,6 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def get_by_id(self, id: UUID) -> Application | None:
-        """
-        Get application by UUID with cascade scoping and role-based access check.
-
-        Prioritizes org-specific over global to avoid MultipleResultsFound
-        when the same ID exists in both scopes.
-
-        Args:
-            id: Application UUID
-
-        Returns:
-            Application if found and accessible, None otherwise
-        """
-        # Build query filtering by ID
-        query = select(self.model).where(self.model.id == id)
-
-        # Apply cascade scoping: prioritize org-specific, then global
-        if self.org_id is not None:
-            # Try org-specific first
-            org_query = query.where(self.model.organization_id == self.org_id)
-            result = await self.session.execute(org_query)
-            entity = result.scalar_one_or_none()
-            if entity:
-                if await self._can_access_entity(entity):
-                    return entity
-                return None
-
-        # Fall back to global
-        global_query = query.where(self.model.organization_id.is_(None))
-        result = await self.session.execute(global_query)
-        entity = result.scalar_one_or_none()
-
-        if entity and await self._can_access_entity(entity):
-            return entity
-        return None
-
     async def get_by_slug_global(self, slug: str) -> Application | None:
         """Check if any application exists with this slug (globally unique)."""
         query = select(self.model).where(self.model.slug == slug)
@@ -250,7 +215,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         is_platform_admin: bool = False,
     ) -> Application | None:
         """Update application metadata and access control by ID."""
-        application = await self.get_by_id(app_id)
+        application = await self.get(id=app_id)
         if not application:
             return None
 
@@ -305,9 +270,94 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         logger.info(f"Updated application '{app_id}'")
         return application
 
+    async def replace_application(
+        self,
+        app_id: UUID,
+        new_repo_path: str,
+        *,
+        force: bool = False,
+    ) -> Application | None:
+        """Repoint an application's source directory.
+
+        Validates uniqueness, nesting, and that the new prefix has source files
+        in file_index. Any of those checks may be bypassed with ``force=True``.
+        No file moves — updates DB only.
+
+        Returns the updated Application, or None if the app was not found.
+        Raises ValueError on validation failure.
+        """
+        from src.models.orm.file_index import FileIndex
+
+        app = await self.get(id=app_id)
+        if app is None:
+            return None
+
+        # Normalize: strip trailing slash, reject empty string.
+        normalized = new_repo_path.rstrip("/")
+        if not normalized:
+            raise ValueError("repo_path cannot be empty")
+
+        # No-op fast path.
+        if normalized == app.repo_path:
+            return app
+
+        if not force:
+            # Uniqueness check (excluding the app itself).
+            existing_stmt = select(Application).where(
+                Application.repo_path == normalized,
+                Application.id != app_id,
+            )
+            conflict = (await self.session.execute(existing_stmt)).scalar_one_or_none()
+            if conflict is not None:
+                raise ValueError(
+                    f"repo_path '{normalized}' already claimed by app "
+                    f"{conflict.slug} ({conflict.id}). Pass force=True to override."
+                )
+
+            # Nesting check: no other app's repo_path is a prefix of new (with /),
+            # and new (with /) is not a prefix of any other app's repo_path.
+            # Simple Python-side approach: fetch all other apps' repo_paths and check.
+            # This is fine because app count is small (tens, not millions).
+            new_prefix = f"{normalized}/"
+            others_stmt = select(Application).where(Application.id != app_id)
+            others = (await self.session.execute(others_stmt)).scalars().all()
+            for other in others:
+                other_prefix = f"{other.repo_path}/"
+                # new is nested inside other: new_prefix starts with other_prefix
+                if new_prefix.startswith(other_prefix):
+                    raise ValueError(
+                        f"repo_path '{normalized}' is nested under app "
+                        f"{other.slug} ({other.repo_path}). Pass force=True to override."
+                    )
+                # other is nested inside new: other_prefix starts with new_prefix
+                if other_prefix.startswith(new_prefix):
+                    raise ValueError(
+                        f"repo_path '{normalized}' would contain app "
+                        f"{other.slug} ({other.repo_path}) nested inside it. "
+                        "Pass force=True to override."
+                    )
+
+            # Source-exists check: at least one file_index row starts with new_prefix.
+            file_stmt = select(FileIndex).where(
+                FileIndex.path.like(f"{new_prefix}%")
+            ).limit(1)
+            has_source = (await self.session.execute(file_stmt)).scalar_one_or_none()
+            if has_source is None:
+                raise ValueError(
+                    f"no files found under '{normalized}'. "
+                    "Push source first, or pass force=True to repoint ahead of a push."
+                )
+
+        app.repo_path = normalized
+        await self.session.flush()
+        await self.session.refresh(app)
+
+        logger.info(f"Repointed application {app_id} to repo_path={normalized!r}")
+        return app
+
     async def delete_application(self, app_id: UUID) -> bool:
         """Delete an application by ID (cascade deletes pages and components)."""
-        application = await self.get_by_id(app_id)
+        application = await self.get(id=app_id)
         if not application:
             return False
 
@@ -329,7 +379,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         Copies preview files to live in S3 via AppStorageService, then
         captures a published_snapshot for backwards compatibility.
         """
-        application = await self.get_by_id(app_id)
+        application = await self.get(id=app_id)
         if not application:
             return None
 
@@ -339,12 +389,13 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         # hashed chunks) that matches the source being published. A failed
         # bundle MUST fail the publish — we will not promote a stale or
         # partial preview into live.
-        from src.services.app_bundler import BundlerService
+        from src.services.app_bundler import build_with_migrate
         from src.services.app_storage import AppStorageService
         app_storage = AppStorageService()
 
-        bundler = BundlerService()
-        bundle_result = await bundler.build(
+        # build_with_migrate runs auto-migration first so a publish from a
+        # legacy source tree picks up the rewritten imports before bundling.
+        bundle_result, _migrated = await build_with_migrate(
             str(app_id),
             application.repo_prefix,
             "preview",
@@ -542,6 +593,7 @@ async def application_to_public(
         has_unpublished_changes=application.has_unpublished_changes,
         access_level=application.access_level,
         role_ids=role_ids,
+        repo_path=application.repo_path,
     )
 
 
@@ -926,6 +978,53 @@ async def publish_application(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+# =============================================================================
+# Replace Endpoint
+# =============================================================================
+
+
+@router.post(
+    "/{app_id}/replace",
+    response_model=ApplicationPublic,
+    summary="Repoint application source directory",
+)
+async def replace_application_endpoint(
+    app_id: UUID,
+    data: ApplicationReplaceRequest,
+    ctx: Context,
+    user: CurrentUser,
+) -> ApplicationPublic:
+    """Update ``repo_path`` after source files have been moved/renamed.
+
+    Validates that the new path is unique, non-nested with other apps, and has
+    source files under it. ``force: true`` bypasses all three checks.
+    """
+    repo = ApplicationRepository(
+        ctx.db,
+        ctx.org_id,
+        user_id=user.user_id,
+        is_superuser=user.is_platform_admin,
+    )
+
+    try:
+        application = await repo.replace_application(
+            app_id, data.repo_path, force=data.force
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    if application is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{app_id}' not found",
+        )
+
+    return await application_to_public(application, repo)
 
 
 # =============================================================================

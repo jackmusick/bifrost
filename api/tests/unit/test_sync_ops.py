@@ -5,7 +5,7 @@ describe() tests run without any database connection and are always fast.
 
 execute() tests require a real AsyncSession backed by PostgreSQL; they are
 marked with ``@pytest.mark.e2e`` and will be skipped when run without the
-full Docker stack (``./test.sh --e2e``).
+full Docker stack (``./test.sh e2e``).
 
 Run describe() tests only::
 
@@ -13,7 +13,7 @@ Run describe() tests only::
 
 Run all tests (requires Docker)::
 
-    ./test.sh --e2e tests/unit/test_sync_ops.py
+    ./test.sh tests/unit/test_sync_ops.py -m e2e
 """
 
 from __future__ import annotations
@@ -316,7 +316,7 @@ class TestUpsertExecute:
 
     These tests require a live PostgreSQL database and must be run via::
 
-        ./test.sh --e2e tests/unit/test_sync_ops.py::TestUpsertExecute
+        ./test.sh tests/unit/test_sync_ops.py::TestUpsertExecute -m e2e
 
     They are skipped automatically in unit-only runs.
     """
@@ -406,7 +406,7 @@ class TestSyncRolesExecute:
 
     Requires a live PostgreSQL database::
 
-        ./test.sh --e2e tests/unit/test_sync_ops.py::TestSyncRolesExecute
+        ./test.sh tests/unit/test_sync_ops.py::TestSyncRolesExecute -m e2e
     """
 
     async def test_sync_roles_replaces_existing_assignments(
@@ -515,7 +515,7 @@ class TestDeleteExecute:
 
     Requires a live PostgreSQL database::
 
-        ./test.sh --e2e tests/unit/test_sync_ops.py::TestDeleteExecute
+        ./test.sh tests/unit/test_sync_ops.py::TestDeleteExecute -m e2e
     """
 
     async def test_delete_removes_row(self, db_session) -> None:
@@ -553,7 +553,7 @@ class TestDeactivateExecute:
 
     Requires a live PostgreSQL database::
 
-        ./test.sh --e2e tests/unit/test_sync_ops.py::TestDeactivateExecute
+        ./test.sh tests/unit/test_sync_ops.py::TestDeactivateExecute -m e2e
     """
 
     async def test_deactivate_sets_is_active_false(self, db_session) -> None:

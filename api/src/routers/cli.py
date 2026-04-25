@@ -1187,6 +1187,10 @@ async def sdk_integrations_refresh_token(
             )
             db.add(new_token)
 
+        provider.status = "completed"
+        provider.status_message = None
+        provider.last_token_refresh = datetime.now(timezone.utc)
+
         await db.commit()
 
         logger.info(
@@ -2335,6 +2339,44 @@ async def cli_knowledge_get(
 # =============================================================================
 
 
+def _to_pep440(version: str) -> str:
+    """Coerce `git describe --tags --always --dirty` output to a PEP 440 version.
+
+    Examples:
+        "v0.6-219-g24b8acb9-dirty" -> "0.6.post219+g24b8acb9.dirty"
+        "v1.2.3"                   -> "1.2.3"
+        "v1.2.3-dirty"             -> "1.2.3+dirty"
+        "abc1234"                  -> "0.0.0+gabc1234"   (no-tag fallback)
+        "unknown"                  -> "0.0.0"
+    """
+    import re as _re
+
+    if not version or version == "unknown":
+        return "0.0.0"
+
+    # Strip leading 'v' from tag prefix
+    v = version[1:] if version.startswith("v") else version
+
+    dirty = v.endswith("-dirty")
+    if dirty:
+        v = v[: -len("-dirty")]
+
+    # Shape: <tag>-<N>-g<sha>
+    m = _re.match(r"^(.+)-(\d+)-(g[0-9a-f]+)$", v)
+    if m:
+        tag, n, sha = m.group(1), m.group(2), m.group(3)
+        local = f"{sha}.dirty" if dirty else sha
+        return f"{tag}.post{n}+{local}"
+
+    # Clean tag (e.g. "1.2.3")
+    if _re.match(r"^\d+(\.\d+)*$", v):
+        return f"{v}+dirty" if dirty else v
+
+    # No-tag fallback: bare sha from `git describe --always`
+    local = f"g{v}.dirty" if dirty else f"g{v}"
+    return f"0.0.0+{local}"
+
+
 @router.get(
     "/download",
     summary="Download CLI package",
@@ -2372,15 +2414,18 @@ async def download_cli() -> Response:
         import re as _re
         import io as _io
         live_version = get_version()
+        pep440_version = _to_pep440(live_version)
 
         with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
-            # Add pyproject.toml at root level with version stamped
+            # Add pyproject.toml at root level with PEP 440 version stamped
+            # (setuptools validates project.version against PEP 440; git describe
+            # output like "v0.6-219-gabc1234-dirty" must be coerced first)
             pyproject_path = package_dir / "pyproject.toml"
             if pyproject_path.exists():
                 content = pyproject_path.read_text()
                 content = _re.sub(
                     r'^version\s*=\s*"[^"]*"',
-                    f'version = "{live_version}"',
+                    f'version = "{pep440_version}"',
                     content,
                     flags=_re.MULTILINE,
                 )

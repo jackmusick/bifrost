@@ -22,12 +22,21 @@ from pathlib import Path
 from typing import Literal
 
 from bifrost.platform_names import PLATFORM_EXPORT_NAMES
+from src.core.malloc import trim_malloc
 from src.services.app_storage import AppStorageService
 from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
 
 BUNDLE_SCRIPT = Path(__file__).parent / "bundle.js"
+
+# Bump this whenever the bundler or auto-migrator's output semantics change.
+# Manifest.json records this; readers compare against it and trigger a
+# rebuild (which runs auto-migration first) when they see an older value.
+# This is how a deploy transparently heals every app's bundle — the first
+# viewer after deploy pays a ~200ms migrate+rebuild cost, subsequent views
+# are cached.
+SCHEMA_VERSION = 2
 
 # Externals resolved via import map in the browser rather than bundled.
 # react / react-dom / react-router-dom come from esm.sh in the host page.
@@ -121,6 +130,22 @@ class BundlerService:
             success=False + errors on esbuild failure. On failure the S3
             manifest.json is NOT overwritten — last good bundle stays live.
         """
+        try:
+            return await self._build(app_id, repo_prefix, mode, dependencies)
+        finally:
+            # Every build materializes a source tree + holds esbuild output
+            # bytes in Python before uploading to S3. Glibc retains the
+            # freed pages per-arena; trim them back so long-lived API pods
+            # don't drift toward OOM.
+            trim_malloc()
+
+    async def _build(
+        self,
+        app_id: str,
+        repo_prefix: str,
+        mode: Mode,
+        dependencies: dict[str, str] | None,
+    ) -> BundleResult:
         if not repo_prefix.endswith("/"):
             repo_prefix += "/"
         dependencies = dependencies or {}
@@ -201,6 +226,7 @@ class BundlerService:
             # 6. Write manifest — only on success, so failures preserve
             #    the last good bundle in S3.
             manifest = {
+                "schema_version": SCHEMA_VERSION,
                 "entry": result["entry_file"],
                 "css": result["css_file"],
                 "outputs": uploaded,
@@ -507,20 +533,27 @@ class BundlerService:
             joined = ", ".join(sorted(lucide_names))
             lines.append(f'export {{ {joined} }} from "lucide-react";')
 
-        # React Router navigation primitives. Re-export DIRECTLY from
-        # "react-router-dom" (resolved via import map to the host's copy).
+        # React Router navigation primitives.
         #
-        # The platform scope has wrapped versions of these that prepend the
-        # app base path. In the bundled runtime the inner BrowserRouter has
-        # `basename` set, so real React Router handles the prefix correctly —
-        # the wrapper would double-prepend and produce wrong URLs.
+        # Link / NavLink / Navigate / useNavigate / navigate route through the
+        # platform wrappers in `app-code-platform/navigation.tsx` — they prepend
+        # the app base path (`/apps/<slug>/preview` or `/apps/<slug>`) so bare
+        # `<Link to="/other">` inside a bundled app resolves correctly under the
+        # host's shared BrowserRouter. They live on `globalThis.__bifrost_platform`
+        # just like the rest of the platform scope, populated by BundledAppShell
+        # before the bundle imports.
         #
-        # Only re-export the primitives user code actually imported from
-        # "bifrost" — otherwise we'd generate an export for every router
-        # name on every bundle.
+        # Everything else (Routes, Route, Outlet, useLocation, etc.) re-exports
+        # directly from "react-router-dom" (resolved via import map to the host's
+        # copy).
+        #
+        # Only emit re-exports for names user code actually imported.
+        wrapped_router_names = {"Link", "NavLink", "Navigate", "useNavigate", "navigate"}
         router_re_exported = router_primitives & imported_names
-        if router_re_exported:
-            joined_router = ", ".join(sorted(router_re_exported))
+        raw_router_names = router_re_exported - wrapped_router_names
+        wrapped_router_re_exported = router_re_exported & wrapped_router_names
+        if raw_router_names:
+            joined_router = ", ".join(sorted(raw_router_names))
             lines.append("")
             lines.append(
                 f'export {{ {joined_router} }} from "react-router-dom";'
@@ -543,13 +576,15 @@ class BundlerService:
         lines.append(
             "const _p = globalThis.__bifrost_platform || {};"
         )
-        # Exclude router primitives (exported from react-router-dom above)
-        # to avoid duplicate export errors.
+        # Exclude router primitives re-exported directly from "react-router-dom"
+        # above to avoid duplicate export errors. Wrapped router primitives
+        # (Link/NavLink/Navigate/useNavigate/navigate) DO go through the
+        # platform scope — add them here so they route through globalThis.
         platform_names = (
-            (_PLATFORM_EXPORT_NAMES & imported_names)
+            ((_PLATFORM_EXPORT_NAMES & imported_names) | wrapped_router_re_exported)
             - user_names
             - lucide_names
-            - router_re_exported
+            - raw_router_names
         )
         for n in sorted(platform_names):
             lines.append(f"export const {n} = _p[{n!r}];")
@@ -592,6 +627,34 @@ class BundlerService:
             return {"success": False, "errors": [{"text": f"invalid JSON from bundler: {e}"}]}
 
 
+async def build_with_migrate(
+    app_id: str,
+    repo_prefix: str,
+    mode: Mode,
+    dependencies: dict[str, str] | None = None,
+) -> tuple[BundleResult, bool]:
+    """Run auto-migration, then bundle.
+
+    Used by every callsite that triggers a bundle build — save path, preview
+    first-view / stale-version path, and publish. Migration is idempotent
+    (no-op on already-migrated sources) so the extra cost is a materialize +
+    regex-scan of the app's TSX/TS files, typically under 50ms.
+
+    Keeping the migrate-then-build pairing in one place means a new
+    bundler/migrator entry point can't accidentally skip migration. Returns
+    `(result, migrated)` — `migrated` is True iff at least one source file
+    was rewritten in this call, used by the preview endpoint to surface a
+    dismissible banner so the developer knows to `bifrost pull`.
+    """
+    # Local import avoids a circular: auto_migrate imports from bifrost.*,
+    # which is cheap, but sub-modules of app_bundler can import this one.
+    from src.services.app_bundler.auto_migrate import auto_migrate_repo_prefix
+
+    migrated, _results = await auto_migrate_repo_prefix(app_id, repo_prefix)
+    result = await BundlerService().build(app_id, repo_prefix, mode, dependencies)
+    return result, migrated
+
+
 def _msg_from_dict(d: dict) -> BundleMessage:
     return BundleMessage(
         text=d.get("text", ""),
@@ -602,7 +665,7 @@ def _msg_from_dict(d: dict) -> BundleMessage:
     )
 
 
-import re as _re
+import re as _re  # noqa: E402  -- scoped helper for _has_default_export below
 
 _DEFAULT_EXPORT_RE = _re.compile(
     r"^\s*export\s+default\b|^\s*export\s*\{\s*default\b",

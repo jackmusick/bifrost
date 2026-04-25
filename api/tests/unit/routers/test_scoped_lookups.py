@@ -937,6 +937,7 @@ def make_application(slug: str, org_id=None) -> Application:
         slug=slug,
         organization_id=org_id,
         access_level="authenticated",
+        repo_path=f"apps/{slug}",
     )
 
 

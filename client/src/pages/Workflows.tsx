@@ -107,6 +107,7 @@ export function Workflows() {
 	const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [endpointFilter, setEndpointFilter] = useState(false);
+	const [orphanedFilter, setOrphanedFilter] = useState(false);
 
 	// Open in editor state
 	const [openingWorkflowId, setOpeningWorkflowId] = useState<string | null>(null);
@@ -155,7 +156,7 @@ export function Workflows() {
 			.sort((a, b) => a.name.localeCompare(b.name));
 	}, [workflows]);
 
-	// Apply category and endpoint filters
+	// Apply category, endpoint, and orphaned filters
 	const categoryFilteredWorkflows = useMemo(() => {
 		let filtered = workflows;
 		if (selectedCategory) {
@@ -164,8 +165,11 @@ export function Workflows() {
 		if (endpointFilter) {
 			filtered = filtered.filter((w) => w.endpoint_enabled);
 		}
+		if (orphanedFilter) {
+			filtered = filtered.filter((w) => w.is_orphaned);
+		}
 		return filtered;
-	}, [workflows, selectedCategory, endpointFilter]);
+	}, [workflows, selectedCategory, endpointFilter, orphanedFilter]);
 
 	// Apply search filter (type filtering is now done server-side)
 	const filteredWorkflows = useSearch(categoryFilteredWorkflows, searchTerm, [
@@ -376,6 +380,8 @@ export function Workflows() {
 						onAgentSelect={setSelectedAgentId}
 						endpointFilter={endpointFilter}
 						onEndpointFilterChange={setEndpointFilter}
+						orphanedFilter={orphanedFilter}
+						onOrphanedFilterChange={setOrphanedFilter}
 						scope={isPlatformAdmin ? filterOrgId ?? undefined : undefined}
 						onClose={() => setSidebarOpen(false)}
 						className="w-64 shrink-0"
@@ -698,7 +704,23 @@ export function Workflows() {
 													</DataTableCell>
 												)}
 												<DataTableCell className="font-mono font-medium">
-													{workflow.name}
+													<div className="flex items-center gap-2">
+														<span>{workflow.name}</span>
+														{workflow.is_orphaned && (
+															<Badge
+																variant="outline"
+																className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300 cursor-pointer hover:bg-yellow-200 dark:hover:bg-yellow-800"
+																title="This workflow's file no longer exists. Click to resolve."
+																onClick={(e) => {
+																	e.stopPropagation();
+																	handleOpenOrphanedDialog(workflow);
+																}}
+															>
+																<Unlink className="mr-1 h-3 w-3" />
+																Orphaned
+															</Badge>
+														)}
+													</div>
 												</DataTableCell>
 												<DataTableCell className="max-w-xs truncate text-muted-foreground">
 													{workflow.description || (

@@ -137,6 +137,39 @@ export function useUpdateApplication() {
 }
 
 /**
+ * Hook to repoint an application's source directory (repo_path).
+ */
+export function useReplaceApplication() {
+	const queryClient = useQueryClient();
+
+	return $api.useMutation("post", "/api/applications/{app_id}/replace", {
+		onSuccess: (data) => {
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/applications"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/applications/{slug}"],
+			});
+			toast.success("Path replaced", {
+				description: `"${data.name}" now points to ${data.repo_path}`,
+			});
+		},
+		onError: (error) => {
+			toast.error("Failed to replace path", {
+				description: getErrorMessage(error, "Unknown error"),
+			});
+		},
+	});
+}
+
+/**
+ * Hook to validate an application's source files.
+ */
+export function useValidateApplication() {
+	return $api.useMutation("post", "/api/applications/{app_id}/validate");
+}
+
+/**
  * Hook to delete an application
  */
 export function useDeleteApplication() {

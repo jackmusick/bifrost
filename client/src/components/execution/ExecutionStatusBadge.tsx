@@ -15,8 +15,18 @@ interface ExecutionStatusBadgeProps {
 	availableMemoryMb?: number;
 	/** Required memory in MB */
 	requiredMemoryMb?: number;
+	/** ISO datetime when a Scheduled execution will run; surfaced via title hover */
+	scheduledAt?: string | null;
 	/** Optional className */
 	className?: string;
+}
+
+function formatScheduledTitle(iso: string): string {
+	try {
+		return `Scheduled for ${new Date(iso).toLocaleString()}`;
+	} catch {
+		return `Scheduled for ${iso}`;
+	}
 }
 
 /**
@@ -28,9 +38,25 @@ export function ExecutionStatusBadge({
 	waitReason,
 	availableMemoryMb,
 	requiredMemoryMb,
+	scheduledAt,
 	className,
 }: ExecutionStatusBadgeProps) {
 	switch (status) {
+		case "Scheduled": {
+			const title = scheduledAt
+				? formatScheduledTitle(scheduledAt)
+				: undefined;
+			return (
+				<Badge
+					variant="outline"
+					className={`border-sky-500 text-sky-700 dark:text-sky-300 ${className ?? ""}`}
+					{...(title ? { title } : {})}
+				>
+					<Clock className="mr-1 h-3 w-3" />
+					Scheduled
+				</Badge>
+			);
+		}
 		case "Success":
 			return (
 				<Badge

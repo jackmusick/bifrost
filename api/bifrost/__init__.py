@@ -271,8 +271,8 @@ __all__ = [
     'ConfigurationError',
 ]
 
-import os as _os
-import subprocess as _subprocess
+import os as _os  # noqa: E402  -- kept below __all__ so it isn't re-exported
+import subprocess as _subprocess  # noqa: E402
 
 
 def _compute_version() -> str:

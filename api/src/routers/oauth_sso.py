@@ -390,14 +390,7 @@ async def oauth_callback(
 
     # Get user roles
     db_roles = await get_user_roles(db, user.id)
-
-    # Build role list
-    roles = ["authenticated"]
-    if user.is_superuser:
-        roles.append("PlatformAdmin")
-    else:
-        roles.append("OrgUser")
-    roles.extend(db_roles)
+    roles = ["authenticated", *db_roles]
 
     # Build JWT claims
     token_data = {

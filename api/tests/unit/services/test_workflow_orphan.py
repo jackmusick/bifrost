@@ -4,8 +4,11 @@ Unit tests for Workflow Orphan Service.
 Tests the WorkflowOrphanService data models and basic service initialization.
 """
 
-from unittest.mock import MagicMock
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
+import pytest
 
 from src.services.workflow_orphan import (
     WorkflowOrphanService,
@@ -198,3 +201,212 @@ class TestFunctionSignature:
 
         assert sig.parameters[0][1] is None
         assert sig.parameters[1][1] is None
+
+
+# =============================================================================
+# Tests for replace_workflow (new AST-based semantics)
+# =============================================================================
+
+_WORKFLOW_CODE = """\
+from src.sdk import workflow
+
+@workflow
+def my_func(name: str = "world") -> str:
+    return f"hello {name}"
+"""
+
+_TOOL_CODE = """\
+from src.sdk import tool
+
+@tool
+def my_func(name: str = "world") -> str:
+    return f"hello {name}"
+"""
+
+_DATA_PROVIDER_CODE = """\
+from src.sdk import data_provider
+
+@data_provider
+def my_func(name: str = "world") -> str:
+    return f"hello {name}"
+"""
+
+_NO_DECORATOR_CODE = """\
+def my_func(name: str = "world") -> str:
+    return f"hello {name}"
+"""
+
+
+def _make_workflow(
+    *,
+    is_orphaned: bool = True,
+    type: str = "workflow",
+    path: str = "workflows/old.py",
+    function_name: str = "my_func",
+) -> MagicMock:
+    wf = MagicMock()
+    wf.id = uuid4()
+    wf.name = "My Workflow"
+    wf.type = type
+    wf.path = path
+    wf.function_name = function_name
+    wf.is_orphaned = is_orphaned
+    wf.is_active = not is_orphaned
+    wf.updated_at = datetime.now(timezone.utc)
+    return wf
+
+
+def _make_service(*, workflow=None, conflict_row=None):
+    """Build a WorkflowOrphanService with a mocked AsyncSession.
+
+    workflow      — row returned by db.get(Workflow, id)
+    conflict_row  — row returned by the uniqueness-conflict select
+    """
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=workflow)
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = conflict_row
+    db.execute = AsyncMock(return_value=result_mock)
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    service = WorkflowOrphanService(db=db)
+    return service, db
+
+
+class TestReplaceWorkflowASTSemantics:
+    """replace_workflow now validates via file content (AST), not a sibling DB row."""
+
+    @pytest.mark.asyncio
+    async def test_happy_path_repoints_and_clears_orphan_flag(self):
+        """Successfully repoints an orphaned workflow at a valid decorated function."""
+        wf = _make_workflow(is_orphaned=True, type="workflow")
+        service, db = _make_service(workflow=wf, conflict_row=None)
+
+        with patch.object(service, "_read_file", return_value=_WORKFLOW_CODE):
+            result = await service.replace_workflow(
+                workflow_id=wf.id,
+                source_path="workflows/new.py",
+                function_name="my_func",
+            )
+
+        assert result.path == "workflows/new.py"
+        assert result.function_name == "my_func"
+        assert result.is_orphaned is False
+        db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_workflow_not_found(self):
+        """Raises ValueError when no workflow row exists for the given ID."""
+        service, _ = _make_service(workflow=None)
+
+        with pytest.raises(ValueError, match="not found"):
+            await service.replace_workflow(
+                workflow_id=uuid4(),
+                source_path="workflows/new.py",
+                function_name="my_func",
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_workflow_not_orphaned(self):
+        """Raises ValueError when the target workflow is active (not orphaned)."""
+        wf = _make_workflow(is_orphaned=False)
+        service, _ = _make_service(workflow=wf)
+
+        with pytest.raises(ValueError, match="not orphaned"):
+            await service.replace_workflow(
+                workflow_id=wf.id,
+                source_path="workflows/new.py",
+                function_name="my_func",
+            )
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_file_not_found(self):
+        """Raises ValueError when the target file cannot be read."""
+        wf = _make_workflow(is_orphaned=True)
+        service, _ = _make_service(workflow=wf, conflict_row=None)
+
+        with patch.object(service, "_read_file", return_value=None):
+            with pytest.raises(ValueError, match="not found"):
+                await service.replace_workflow(
+                    workflow_id=wf.id,
+                    source_path="workflows/missing.py",
+                    function_name="my_func",
+                )
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_function_missing_from_file(self):
+        """Raises ValueError when file exists but lacks the named decorated function."""
+        wf = _make_workflow(is_orphaned=True)
+        service, _ = _make_service(workflow=wf, conflict_row=None)
+
+        with patch.object(service, "_read_file", return_value=_NO_DECORATOR_CODE):
+            with pytest.raises(ValueError, match="not found in"):
+                await service.replace_workflow(
+                    workflow_id=wf.id,
+                    source_path="workflows/new.py",
+                    function_name="my_func",
+                )
+
+    @pytest.mark.asyncio
+    async def test_rejects_uniqueness_collision(self):
+        """Raises ValueError when (path, function_name) is already claimed by an active row."""
+        wf = _make_workflow(is_orphaned=True)
+        other_wf = _make_workflow(is_orphaned=False)  # already active at that location
+        service, _ = _make_service(workflow=wf, conflict_row=other_wf)
+
+        with patch.object(service, "_read_file", return_value=_WORKFLOW_CODE):
+            with pytest.raises(ValueError, match="already registered"):
+                await service.replace_workflow(
+                    workflow_id=wf.id,
+                    source_path="workflows/new.py",
+                    function_name="my_func",
+                )
+
+    @pytest.mark.asyncio
+    async def test_rejects_decorator_type_change_by_default(self):
+        """Raises ValueError when new decorator type differs from original (default-deny)."""
+        wf = _make_workflow(is_orphaned=True, type="workflow")
+        service, _ = _make_service(workflow=wf, conflict_row=None)
+
+        # new file has @data_provider, but wf.type == "workflow"
+        with patch.object(service, "_read_file", return_value=_DATA_PROVIDER_CODE):
+            with pytest.raises(ValueError, match="type change"):
+                await service.replace_workflow(
+                    workflow_id=wf.id,
+                    source_path="workflows/new.py",
+                    function_name="my_func",
+                )
+
+    @pytest.mark.asyncio
+    async def test_allows_decorator_type_change_when_flag_set(self):
+        """Allows type change when allow_type_change=True is passed."""
+        wf = _make_workflow(is_orphaned=True, type="workflow")
+        service, _ = _make_service(workflow=wf, conflict_row=None)
+
+        with patch.object(service, "_read_file", return_value=_DATA_PROVIDER_CODE):
+            result = await service.replace_workflow(
+                workflow_id=wf.id,
+                source_path="workflows/new.py",
+                function_name="my_func",
+                allow_type_change=True,
+            )
+
+        assert result.path == "workflows/new.py"
+        assert result.is_orphaned is False
+
+    @pytest.mark.asyncio
+    async def test_accepts_tool_decorator(self):
+        """@tool-decorated functions are accepted (same decorator family)."""
+        wf = _make_workflow(is_orphaned=True, type="tool")
+        service, _ = _make_service(workflow=wf, conflict_row=None)
+
+        with patch.object(service, "_read_file", return_value=_TOOL_CODE):
+            result = await service.replace_workflow(
+                workflow_id=wf.id,
+                source_path="workflows/new.py",
+                function_name="my_func",
+            )
+
+        assert result.is_orphaned is False

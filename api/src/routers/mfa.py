@@ -220,12 +220,7 @@ async def verify_mfa(
 
     # Generate tokens for auto-login after MFA enrollment
     db_roles = await get_user_roles(db, user.id)
-    roles = ["authenticated"]
-    if user.is_superuser:
-        roles.append("PlatformAdmin")
-    else:
-        roles.append("OrgUser")
-    roles.extend(db_roles)
+    roles = ["authenticated", *db_roles]
 
     token_data = {
         "sub": str(user.id),

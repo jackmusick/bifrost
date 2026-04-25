@@ -25,11 +25,13 @@ class MCPConfig:
     """
     MCP server configuration.
 
-    Controls external access to the MCP endpoint.
+    Controls external access to the MCP endpoint. Per-user/tool access is
+    governed by agent role membership via ``MCPToolAccessService``; this
+    config only exposes the master on/off switch plus platform-wide
+    allowlist/blocklist for tools.
     """
 
     enabled: bool = True
-    require_platform_admin: bool = True
     allowed_tool_ids: list[str] | None = None  # None = all tools
     blocked_tool_ids: list[str] | None = None
     configured_at: datetime | None = None
@@ -75,7 +77,6 @@ class MCPConfigService:
         data = config.value_json
         return MCPConfig(
             enabled=data.get("enabled", True),
-            require_platform_admin=data.get("require_platform_admin", True),
             allowed_tool_ids=data.get("allowed_tool_ids"),
             blocked_tool_ids=data.get("blocked_tool_ids", []),
             configured_at=config.updated_at,
@@ -86,7 +87,6 @@ class MCPConfigService:
         self,
         *,
         enabled: bool = True,
-        require_platform_admin: bool = True,
         allowed_tool_ids: list[str] | None = None,
         blocked_tool_ids: list[str] | None = None,
         updated_by: str,
@@ -96,7 +96,6 @@ class MCPConfigService:
 
         Args:
             enabled: Whether external MCP access is enabled
-            require_platform_admin: Whether only platform admins can access
             allowed_tool_ids: List of allowed tool IDs (None = all)
             blocked_tool_ids: List of blocked tool IDs
             updated_by: Email of user making the change
@@ -106,7 +105,6 @@ class MCPConfigService:
         """
         config_data = {
             "enabled": enabled,
-            "require_platform_admin": require_platform_admin,
             "allowed_tool_ids": allowed_tool_ids,
             "blocked_tool_ids": blocked_tool_ids or [],
         }
@@ -143,7 +141,6 @@ class MCPConfigService:
 
         return MCPConfig(
             enabled=enabled,
-            require_platform_admin=require_platform_admin,
             allowed_tool_ids=allowed_tool_ids,
             blocked_tool_ids=blocked_tool_ids or [],
             configured_at=now,

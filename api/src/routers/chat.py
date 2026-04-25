@@ -402,12 +402,7 @@ async def _check_agent_access(db: DbSession, user, agent: Agent) -> bool:
 
     # Role-based access requires matching roles
     if agent.access_level == AgentAccessLevel.ROLE_BASED:
-        # Check if user is platform admin (user.roles is list[str] from JWT)
-        is_admin = user.is_superuser or any(
-            role in ["Platform Admin", "Platform Owner"]
-            for role in user.roles
-        )
-        if is_admin:
+        if user.is_platform_admin:
             return True
 
         # Check if user has any role assigned to this agent

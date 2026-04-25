@@ -107,6 +107,19 @@ Present the summary as:
 
 Show this to the user and confirm they want to proceed with tagging.
 
+### 2b. Credit external contributors
+
+Find PRs merged since the last release that were authored by someone other than the repo owner — they must be credited in the release notes.
+
+```bash
+LAST_TAG_DATE=$(git log -1 --format=%cI $(git describe --tags --abbrev=0))
+gh pr list --state merged --base main --search "merged:>=${LAST_TAG_DATE}" \
+    --limit 200 --json number,title,author,mergedAt \
+    | jq -r '.[] | select(.author.login != "jackmusick") | "#\(.number) @\(.author.login) — \(.title)"'
+```
+
+Include a **Contributors** section in the release notes listing each PR with author attribution (e.g., `- #22 by @sdc53 — embed token sessionStorage fix`). If a PR's change maps to a bullet you've already written elsewhere in the notes, append the `(#NN by @user)` credit to that bullet too.
+
 ### 3. Run pre-tag checks
 
 ```bash

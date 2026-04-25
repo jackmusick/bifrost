@@ -104,54 +104,99 @@ def _format_candidates(candidates: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _current_ctx() -> click.Context | None:
+    try:
+        return click.get_current_context(silent=True)
+    except RuntimeError:
+        return None
+
+
+def _emit_error(payload: dict[str, Any], human_lines: list[str]) -> None:
+    """Emit an error to stderr in JSON or human format based on --json.
+
+    ``payload`` is the machine-readable shape (single-line JSON when --json is
+    set). ``human_lines`` are the stderr lines used when --json is NOT set.
+    """
+    if _json_requested(_current_ctx()):
+        click.echo(json.dumps(payload, default=str), err=True)
+        return
+    for line in human_lines:
+        click.echo(line, err=True)
+
+
 def _print_http_error(exc: httpx.HTTPStatusError) -> _ExitCode:
     status = exc.response.status_code
-    body_text: str
     body_json: Any = None
     try:
         body_json = exc.response.json()
-        body_text = json.dumps(body_json, indent=2, sort_keys=True)
     except ValueError:
-        body_text = exc.response.text or ""
+        body_json = None
+    body_text_raw = exc.response.text or ""
 
-    click.echo(f"HTTP {status} {exc.response.reason_phrase}", err=True)
-    if body_text:
-        click.echo(body_text, err=True)
+    required: Any = None
+    if status == 403 and isinstance(body_json, dict):
+        required = (
+            body_json.get("required_role")
+            or body_json.get("required_permission")
+            or body_json.get("required")
+        )
 
-    if status == 403:
-        required = None
-        if isinstance(body_json, dict):
-            required = (
-                body_json.get("required_role")
-                or body_json.get("required_permission")
-                or body_json.get("required")
-            )
-        if required:
-            click.echo(f"Required: {required}", err=True)
+    payload: dict[str, Any] = {
+        "error": "http_error",
+        "status": status,
+        "reason": exc.response.reason_phrase,
+    }
+    if body_json is not None:
+        payload["body"] = body_json
+    elif body_text_raw:
+        payload["body"] = body_text_raw
+    if required:
+        payload["required"] = required
 
+    human: list[str] = [f"HTTP {status} {exc.response.reason_phrase}"]
+    if body_json is not None:
+        human.append(json.dumps(body_json, indent=2, sort_keys=True))
+    elif body_text_raw:
+        human.append(body_text_raw)
+    if required:
+        human.append(f"Required: {required}")
     if 500 <= status < 600:
-        click.echo("Server error — retry later.", err=True)
+        human.append("Server error — retry later.")
+
+    _emit_error(payload, human)
+    if 500 <= status < 600:
         return 3
     return 1
 
 
 def _handle_exception(exc: BaseException) -> _ExitCode:
     if isinstance(exc, RefNotFoundError):
-        click.echo(
-            f"Could not find {exc.kind} matching {exc.value!r}.", err=True
+        _emit_error(
+            {"error": "ref_not_found", "kind": exc.kind, "value": exc.value},
+            [f"Could not find {exc.kind} matching {exc.value!r}."],
         )
         return 2
     if isinstance(exc, AmbiguousRefError):
-        click.echo(
-            f"Multiple {exc.kind} entities match {exc.value!r} — pass the UUID instead.",
-            err=True,
+        _emit_error(
+            {
+                "error": "ambiguous_ref",
+                "kind": exc.kind,
+                "value": exc.value,
+                "candidates": exc.candidates,
+            },
+            [
+                f"Multiple {exc.kind} entities match {exc.value!r} — pass the UUID instead.",
+                _format_candidates(exc.candidates),
+            ],
         )
-        click.echo(_format_candidates(exc.candidates), err=True)
         return 2
     if isinstance(exc, httpx.HTTPStatusError):
         return _print_http_error(exc)
     if isinstance(exc, RuntimeError) and "Not logged in" in str(exc):
-        click.echo(str(exc), err=True)
+        _emit_error(
+            {"error": "not_logged_in", "message": str(exc)},
+            [str(exc)],
+        )
         return 1
     raise exc
 

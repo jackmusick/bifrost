@@ -257,8 +257,16 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 				if (loadedEntry === entry) return;
 
 				const entryUrl = `${baseUrl}/${entry}?mode=${mode}`;
-				// @vite-ignore: runtime URL, don't try to resolve at build time.
-				const module = await import(/* @vite-ignore */ entryUrl);
+				const nextCssHref = css ? `${baseUrl}/${css}?mode=${mode}` : null;
+
+				// Load JS and CSS in parallel, but don't commit either until
+				// BOTH have resolved — otherwise the component renders for a
+				// tick before the <link> attaches and we get a FOUC.
+				const [module] = await Promise.all([
+					// @vite-ignore: runtime URL, don't try to resolve at build time.
+					import(/* @vite-ignore */ entryUrl),
+					nextCssHref ? preloadStylesheet(nextCssHref, controller.signal) : Promise.resolve(),
+				]);
 
 				if (controller.signal.aborted) return;
 
@@ -268,9 +276,9 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 					);
 				}
 
+				setCssHref(nextCssHref);
 				setBundledApp(() => module.default as BundledAppComponent);
 				setLoadedEntry(entry);
-				setCssHref(css ? `${baseUrl}/${css}?mode=${mode}` : null);
 
 				// Successful reload — clear any prior build-error banner.
 				setBuildErrors(null);
@@ -377,6 +385,43 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 			)}
 		</div>
 	);
+}
+
+/**
+ * Warm the browser cache for a stylesheet before we mount the bundled
+ * component, so the <link> that BundleStyles appends applies on first paint.
+ */
+function preloadStylesheet(href: string, signal: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const el = document.createElement("link");
+		el.rel = "preload";
+		el.as = "style";
+		el.href = href;
+		const cleanup = () => {
+			el.remove();
+			signal.removeEventListener("abort", onAbort);
+		};
+		const onAbort = () => {
+			cleanup();
+			reject(new DOMException("Aborted", "AbortError"));
+		};
+		el.onload = () => {
+			cleanup();
+			resolve();
+		};
+		el.onerror = () => {
+			cleanup();
+			// Non-fatal — let the bundle render even if CSS fails so the user
+			// sees *something* instead of a hang.
+			resolve();
+		};
+		if (signal.aborted) {
+			onAbort();
+			return;
+		}
+		signal.addEventListener("abort", onAbort);
+		document.head.appendChild(el);
+	});
 }
 
 /**

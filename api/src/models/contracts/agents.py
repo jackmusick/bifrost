@@ -420,6 +420,14 @@ class ToolInfo(BaseModel):
         default=True,
         description="Whether the workflow tool is active (always true for system tools)"
     )
+    organization_id: str | None = Field(
+        default=None,
+        description="Owning organization UUID (workflow tools only; null = global tool or system tool)"
+    )
+    organization_name: str | None = Field(
+        default=None,
+        description="Owning organization display name (workflow tools only; null = global tool or system tool)"
+    )
 
 
 class ToolsResponse(BaseModel):

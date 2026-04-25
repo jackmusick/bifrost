@@ -30,7 +30,13 @@ export default defineConfig({
 		// Use environment variable for Docker, fallback to localhost for local dev
 		baseURL: process.env.TEST_BASE_URL || "http://localhost:3000",
 		trace: "on-first-retry",
-		screenshot: "only-on-failure",
+		// PLAYWRIGHT_SCREENSHOT_ALL=1 (set by `./test.sh client e2e --screenshots`)
+		// captures a screenshot for every test instead of only on failure.
+		// Used by the bifrost-testing skill's UX review workflow.
+		screenshot:
+			process.env.PLAYWRIGHT_SCREENSHOT_ALL === "1"
+				? "on"
+				: "only-on-failure",
 		video: "on-first-retry",
 	},
 
@@ -43,20 +49,6 @@ export default defineConfig({
 			name: "setup",
 			testMatch: /setup\/global\.setup\.ts/,
 			retries: 0,
-		},
-
-		// =============================================================
-		// Journey tests (sequential full-suite tests)
-		// Self-healing auth - handles own setup, no dependency on setup project
-		// =============================================================
-		{
-			name: "journey",
-			use: {
-				...devices["Desktop Chrome"],
-				// No storageState - handled by self-healing auth in beforeAll
-			},
-			// No dependencies - tests handle their own auth setup
-			testMatch: /journey\/.*\.spec\.ts$/,
 		},
 
 		// =============================================================

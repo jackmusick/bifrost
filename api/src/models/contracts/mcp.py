@@ -15,9 +15,6 @@ class MCPConfigResponse(BaseModel):
     enabled: bool = Field(
         description="Whether external MCP access is enabled"
     )
-    require_platform_admin: bool = Field(
-        description="Whether only platform admins can access MCP"
-    )
     allowed_tool_ids: list[str] | None = Field(
         default=None,
         description="List of allowed tool IDs (None = all tools allowed)"
@@ -45,10 +42,6 @@ class MCPConfigRequest(BaseModel):
     enabled: bool = Field(
         default=True,
         description="Whether external MCP access is enabled"
-    )
-    require_platform_admin: bool = Field(
-        default=True,
-        description="Whether only platform admins can access MCP"
     )
     allowed_tool_ids: list[str] | None = Field(
         default=None,

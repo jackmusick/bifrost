@@ -29,7 +29,7 @@ class Application(Base):
     """Application entity for App Builder.
 
     Applications hold app metadata. Files are stored in S3 at
-    _repo/{repo_path}/ paths (defaults to apps/{slug}), indexed in file_index table.
+    _repo/{repo_path}/ paths, indexed in file_index table.
 
     - organization_id = NULL: Global application (platform-wide)
     - organization_id = UUID: Organization-scoped application
@@ -40,7 +40,7 @@ class Application(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
-    repo_path: Mapped[str | None] = mapped_column(String(500), default=None)
+    repo_path: Mapped[str] = mapped_column(String(500), nullable=False)
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), default=None
     )
@@ -111,10 +111,5 @@ class Application(Base):
 
     @property
     def repo_prefix(self) -> str:
-        """Return the repo path prefix for this app, with trailing slash.
-
-        Uses repo_path from DB (set by git sync / manifest import).
-        Falls back to convention default apps/{slug} for legacy apps.
-        """
-        base = self.repo_path or f"apps/{self.slug}"
-        return f"{base.rstrip('/')}/"
+        """Return the repo path prefix for this app, with trailing slash."""
+        return f"{self.repo_path.rstrip('/')}/"

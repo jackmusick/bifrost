@@ -426,3 +426,126 @@ class TestIdempotency:
         await db_session.commit()
         assert second.applied is True
         assert second.entity_changes == [], f"expected no-op, got {second.entity_changes}"
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestEntityIdCherryPick:
+    """entity_ids filter: apply only selected entities from a multi-entity diff.
+
+    Exercises the TUI cherry-pick path — caller runs dry_run to see a diff,
+    picks a subset, then re-submits with entity_ids to apply only the
+    selection. Entities outside the set must not land in the DB.
+    """
+
+    async def test_subset_filter_writes_only_selected_entities(
+        self,
+        db_session: AsyncSession,
+        repo_storage: RepoStorage,
+        cleanup_manifest_import,
+    ):
+        target_org_id = await _make_target_org(db_session, "mi-org-cherrypick")
+        wf_a_id = str(uuid4())
+        wf_b_id = str(uuid4())
+
+        await repo_storage.write(
+            "workflows/manifest_import_test_wf.py", SAMPLE_WORKFLOW_PY,
+        )
+        await _write_manifest_files(repo_storage, {
+            "workflows.yaml": _yaml({
+                "workflows": {
+                    wf_a_id: {
+                        "id": wf_a_id,
+                        "name": "Manifest Import Test Workflow A",
+                        "path": "workflows/manifest_import_test_wf.py",
+                        "function_name": "manifest_import_test_wf",
+                        "type": "workflow",
+                    },
+                    wf_b_id: {
+                        "id": wf_b_id,
+                        "name": "Manifest Import Test Workflow B",
+                        "path": "workflows/manifest_import_test_wf.py",
+                        "function_name": "manifest_import_test_wf",
+                        "type": "workflow",
+                    },
+                }
+            }),
+        })
+
+        # Dry-run returns both workflows in the diff with their ids.
+        dry = await import_manifest_from_repo(
+            db_session,
+            delete_removed_entities=False,
+            dry_run=True,
+            target_organization_id=target_org_id,
+        )
+        diff_ids = {c.get("id") for c in dry.entity_changes}
+        assert {wf_a_id, wf_b_id}.issubset(diff_ids), f"expected both ids in diff, got {diff_ids}"
+
+        # Apply only workflow A.
+        result = await import_manifest_from_repo(
+            db_session,
+            delete_removed_entities=False,
+            dry_run=False,
+            target_organization_id=target_org_id,
+            entity_ids={wf_a_id},
+        )
+        await db_session.commit()
+        assert result.applied is True
+        # entity_changes reflects what was applied, not the full diff.
+        applied_ids = {c.get("id") for c in result.entity_changes}
+        assert applied_ids == {wf_a_id}, f"expected only A, got {applied_ids}"
+
+        # Workflow A landed; workflow B did not.
+        a_row = (await db_session.execute(
+            select(Workflow).where(Workflow.id == UUID(wf_a_id))
+        )).scalar_one_or_none()
+        b_row = (await db_session.execute(
+            select(Workflow).where(Workflow.id == UUID(wf_b_id))
+        )).scalar_one_or_none()
+        assert a_row is not None, "workflow A should be written"
+        assert b_row is None, "workflow B should NOT be written"
+
+    async def test_empty_entity_ids_is_noop(
+        self,
+        db_session: AsyncSession,
+        repo_storage: RepoStorage,
+        cleanup_manifest_import,
+    ):
+        """entity_ids=set() → no writes even if the bundle has changes."""
+        target_org_id = await _make_target_org(db_session, "mi-org-emptyset")
+        wf_id = str(uuid4())
+
+        await repo_storage.write(
+            "workflows/manifest_import_test_wf.py", SAMPLE_WORKFLOW_PY,
+        )
+        await _write_manifest_files(repo_storage, {
+            "workflows.yaml": _yaml({
+                "workflows": {
+                    wf_id: {
+                        "id": wf_id,
+                        "name": "Manifest Import Test Workflow",
+                        "path": "workflows/manifest_import_test_wf.py",
+                        "function_name": "manifest_import_test_wf",
+                        "type": "workflow",
+                    },
+                }
+            }),
+        })
+
+        result = await import_manifest_from_repo(
+            db_session,
+            delete_removed_entities=False,
+            dry_run=False,
+            target_organization_id=target_org_id,
+            entity_ids=set(),
+        )
+        await db_session.commit()
+        assert result.applied is True
+        assert result.entity_changes == [], f"expected no-op, got {result.entity_changes}"
+
+        # Nothing written.
+        row = (await db_session.execute(
+            select(Workflow).where(Workflow.id == UUID(wf_id))
+        )).scalar_one_or_none()
+        assert row is None, "no workflow should be written when entity_ids is empty"

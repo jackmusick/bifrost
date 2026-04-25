@@ -1,7 +1,10 @@
-"""Unified sync TUI — shows files and entities in a single interactive list.
+"""Sync TUI — shows file and/or entity changes in an interactive list.
 
 Users cycle actions (Push/Pull/Delete/Skip) per item with arrow keys,
-then confirm or cancel the whole batch.
+then confirm or cancel the whole batch. Items with section="files" render
+under a "Files" header; items with section="entities" render under an
+"Entities" header. `bifrost sync/push/pull/watch` only emits file items;
+`bifrost import` emits entity items.
 """
 
 from __future__ import annotations
@@ -156,9 +159,10 @@ class _SectionHeader(ListItem):
 
 
 class SyncApp(BifrostApp[SyncResult | None]):
-    """Unified sync review TUI.
+    """Sync review TUI.
 
-    Shows files and entities in a single list with per-item action cycling.
+    Renders items grouped into "Files" and "Entities" sections when both are
+    present; a single section's header is suppressed to reduce visual noise.
     """
 
     CSS = """
@@ -208,12 +212,13 @@ class SyncApp(BifrostApp[SyncResult | None]):
         file_count: int = 0,
         entity_count: int = 0,
         subtitle: str = "",
+        title: str = "bifrost sync",
     ) -> None:
         super().__init__()
         self._items = items
         self._file_count = file_count
         self._entity_count = entity_count
-        self.title = "bifrost sync"
+        self.title = title
         if subtitle:
             self.sub_title = subtitle
 
@@ -239,6 +244,7 @@ class SyncApp(BifrostApp[SyncResult | None]):
         return text
 
     def _status_text(self) -> str:
+        hints = "\u2191\u2193 navigate \u00b7 \u2190\u2192 cycle action \u00b7 Enter confirm \u00b7 Esc cancel"
         parts: list[str] = []
         if self._file_count:
             parts.append(f"{self._file_count} file{'s' if self._file_count != 1 else ''}")
@@ -246,39 +252,38 @@ class SyncApp(BifrostApp[SyncResult | None]):
             parts.append(
                 f"{self._entity_count} entit{'ies' if self._entity_count != 1 else 'y'}"
             )
-        hints = "\u2191\u2193 navigate \u00b7 \u2190\u2192 cycle action \u00b7 Enter confirm \u00b7 Esc cancel"
-        count_str = " \u00b7 ".join(parts) if parts else ""
-        if count_str:
-            return f"  {count_str} \u00b7 {hints}"
+        if parts:
+            sep = " \u00b7 "
+            return f"  {sep.join(parts)} \u00b7 {hints}"
         return f"  {hints}"
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(self._build_header_text(), id="column-header")
 
-        # Separate items by section
+        # Group by section — headers only shown when both sections are present
+        # (a single-section list doesn't need a divider).
         file_items = [i for i in self._items if i.get("section") == "files"]
         entity_items = [i for i in self._items if i.get("section") == "entities"]
-        # Anything without a section goes at the end
         other_items = [
             i for i in self._items if i.get("section") not in ("files", "entities")
         ]
 
-        list_items: list[ListItem] = []
+        show_headers = bool(file_items) and bool(entity_items)
 
+        list_items: list[ListItem] = []
         if file_items:
-            list_items.append(_SectionHeader("Files"))
+            if show_headers:
+                list_items.append(_SectionHeader("Files"))
             for item in file_items:
                 list_items.append(SyncRow(item, self._item_w))
-
         if entity_items:
-            list_items.append(_SectionHeader("Entities"))
+            if show_headers:
+                list_items.append(_SectionHeader("Entities"))
             for item in entity_items:
                 list_items.append(SyncRow(item, self._item_w))
-
-        if other_items:
-            for item in other_items:
-                list_items.append(SyncRow(item, self._item_w))
+        for item in other_items:
+            list_items.append(SyncRow(item, self._item_w))
 
         yield ListView(*list_items)
         yield Static(self._status_text(), id="status-bar")
@@ -333,8 +338,9 @@ async def interactive_sync(
     file_count: int = 0,
     entity_count: int = 0,
     subtitle: str = "",
+    title: str = "bifrost sync",
 ) -> SyncResult | None:
-    """Show the unified sync TUI and return the result.
+    """Show the sync TUI and return the result.
 
     Non-TTY fallback: returns all items grouped by their default actions.
     """
@@ -353,5 +359,5 @@ async def interactive_sync(
                 result.skip.append(item)
         return result
 
-    app = SyncApp(items, file_count, entity_count, subtitle)
+    app = SyncApp(items, file_count, entity_count, subtitle, title)
     return await app.run_async()

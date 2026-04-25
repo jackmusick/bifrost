@@ -109,6 +109,7 @@ For YAML field formats and DTO schemas, grep `/tmp/bifrost-docs/llms.txt` for `W
 
 1. **Pick the right surface for what you're creating:**
    - **Code entities** (workflow `.py`, app `.tsx`): write the file in the workspace; let `bifrost watch` sync it; then for workflows run `bifrost workflows register --path workflows/foo.py --function-name foo` to index the decorated function (the server assigns the UUID and returns it).
+   - **Renaming or moving a workflow:** Do NOT re-register after a rename/move — that mints a new UUID and breaks form/agent references. Instead: write the new file, then `bifrost workflows replace <old-uuid> --path <new-path> --function-name <new-func>`. Find the orphaned UUID first with `bifrost workflows list-orphaned --json` if needed.
    - **Content entities** (forms, agents, integrations, tables, configs, event sources, roles, orgs): use the entity's `create` command — `bifrost <entity> create --name foo ...`. The server assigns the UUID and returns it. File-loaded fields (form schemas, agent system prompts, etc.) accept `@path/to/file` syntax (e.g. `--system-prompt @prompt.md`, `--form-schema @schema.yaml`, `--config-schema @schema.yaml`).
 2. **Capture the returned UUID** from the create command's JSON output if anything else needs to reference it (forms reference workflows, agents reference tools, etc.). Cross-references can also be portable refs (`name`, `path::func`, slug) — the CLI resolves them at submit time.
 3. **Verify by re-querying:** `bifrost <entity> get <uuid>` (or by name) confirms the platform sees what you intended.
@@ -148,6 +149,8 @@ Example — Agent Tuning tools:
 | `bifrost pull` | One-shot download — **interactive TUI, user must run manually** |
 | `bifrost <entity> list \| get \| create \| update \| delete` | Discover and mutate entity records (orgs, roles, workflows, forms, agents, apps, integrations, tables, configs, events). Server assigns the UUID on create. Flag list per verb: `bifrost <entity> <verb> --help` (generated from the DTO, always in sync). |
 | `bifrost workflows register --path workflows/foo.py --function-name foo` | Register a decorated workflow function from a `.py` file that `bifrost watch` has already synced. |
+| `bifrost workflows list-orphaned` | List workflows whose source file was deleted or function renamed without using `replace`. These are invisible to `bifrost workflows list`. |
+| `bifrost workflows replace <uuid> --path <new-path> --function-name <new-func>` | Repoint an orphaned workflow UUID to a new file location. UUID is preserved — form/agent/app references stay intact. File must exist and contain the named decorated function. |
 | `bifrost migrate-imports` | Rewrite `import from "bifrost"` statements to use `lucide-react` / `react-router-dom` / relative paths. **Always review the diff** before applying — the classifier uses regex, not AST, so a local binding that shadows a platform name can be misclassified. |
 
 ### Platform Operations

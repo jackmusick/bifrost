@@ -44,7 +44,7 @@ class MockAuthHelper:
         principal_data = {
             "userId": user_id,
             "userDetails": email,
-            "userRoles": ["authenticated", "PlatformAdmin"],
+            "userRoles": ["authenticated"],
             "identityProvider": "aad"
         }
 

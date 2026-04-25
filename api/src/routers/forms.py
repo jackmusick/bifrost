@@ -32,6 +32,7 @@ from src.models.contracts.forms import FormField, FormSchema
 from src.models import WorkflowExecutionResponse
 from src.models import FileUploadRequest, FileUploadResponse, UploadedFileMetadata
 from src.models import FormExecuteRequest, FormStartupResponse
+from src.models.enums import ExecutionStatus
 
 # Import cache invalidation
 try:
@@ -756,6 +757,51 @@ async def execute_form(
     # Merge: defaults < verified HMAC params < user form input
     verified_params = ctx.user.verified_params or {}
     merged_params = {**(form.default_launch_params or {}), **verified_params, **request.form_data}
+
+    # Scheduled execution: normalize delay_seconds -> scheduled_at and insert a
+    # SCHEDULED row directly. The deferred_execution_promoter job picks it up
+    # when it matures — we never call run_workflow here.
+    scheduled_at: datetime | None = request.scheduled_at
+    if request.delay_seconds is not None:
+        scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=request.delay_seconds)
+
+    if scheduled_at is not None:
+        from src.routers.workflows import _insert_scheduled_execution
+
+        workflow_result = await db.execute(
+            select(WorkflowORM).where(WorkflowORM.id == UUID(form.workflow_id))
+        )
+        workflow = workflow_result.scalar_one_or_none()
+        if not workflow:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow not found: {form.workflow_id}",
+            )
+
+        exec_id = await _insert_scheduled_execution(
+            db=db,
+            workflow_id=workflow.id,
+            workflow_name=workflow.name,
+            parameters=merged_params,
+            scheduled_at=scheduled_at,
+            organization_id=ctx.org_id,
+            executed_by=ctx.user.user_id,
+            executed_by_name=ctx.user.name or ctx.user.email or "Unknown",
+            form_id=form.id,
+            api_key_id=None,
+            is_platform_admin=ctx.user.is_superuser,
+        )
+        logger.info(
+            f"Form {form_id} scheduled by user {ctx.user.email}, "
+            f"execution_id={exec_id}, scheduled_at={scheduled_at.isoformat()}"
+        )
+        return WorkflowExecutionResponse(
+            execution_id=str(exec_id),
+            workflow_id=str(workflow.id),
+            workflow_name=workflow.name,
+            status=ExecutionStatus.SCHEDULED,
+            scheduled_at=scheduled_at,
+        )
 
     # Create organization object if org_id is set
     org = None

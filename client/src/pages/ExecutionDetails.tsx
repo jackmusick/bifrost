@@ -25,10 +25,7 @@ import { useEditorStore } from "@/stores/editorStore";
 import { fileService } from "@/services/fileService";
 import { toast } from "sonner";
 import { useExecutionStream } from "@/hooks/useExecutionStream";
-import {
-	useExecutionStreamStore,
-	type StreamingLog,
-} from "@/stores/executionStreamStore";
+import { useExecutionStreamStore } from "@/stores/executionStreamStore";
 import {
 	ExecutionResultPanel,
 	ExecutionLogsPanel,
@@ -41,6 +38,10 @@ import {
 	type LogEntry,
 } from "@/components/execution";
 import type { components } from "@/lib/v1";
+import {
+	mergeLogsWithDedup,
+	type ExecutionLogEntry,
+} from "@/lib/executionLogs";
 import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { useEffect, useState, useCallback } from "react";
@@ -61,16 +62,6 @@ interface WorkflowsMetadataResponse {
 	dataProviders: unknown[];
 }
 
-// Type for execution log entry
-interface ExecutionLogEntry {
-	id?: number; // Unique log ID for exact deduplication
-	level?: string;
-	message?: string;
-	timestamp?: string;
-	data?: Record<string, unknown>;
-	sequence?: number; // For ordering and range-based deduplication
-}
-
 interface ExecutionDetailsProps {
 	/** Execution ID - if not provided, uses URL param */
 	executionId?: string;
@@ -80,32 +71,6 @@ interface ExecutionDetailsProps {
 	actionsContainerRef?: React.RefObject<HTMLDivElement | null>;
 	/** Called when a rerun creates a new execution (embedded mode switches to it instead of navigating) */
 	onExecutionChange?: (newExecutionId: string) => void;
-}
-
-/**
- * Merge API logs with streaming logs, deduplicating by sequence number.
- * API logs are the baseline; only keep streaming logs with sequence > max API sequence.
- */
-function mergeLogsWithDedup(
-	apiLogs: ExecutionLogEntry[],
-	streamingLogs: StreamingLog[],
-): ExecutionLogEntry[] {
-	if (streamingLogs.length === 0) return apiLogs;
-	if (apiLogs.length === 0) return streamingLogs as ExecutionLogEntry[];
-
-	// Find the highest sequence in API logs — anything at or below is already covered
-	const maxApiSeq = apiLogs.reduce(
-		(max, log) => Math.max(max, log.sequence ?? -1),
-		-1,
-	);
-
-	// Only keep streaming logs with sequence beyond what the API returned
-	const newStreamingLogs = streamingLogs.filter(
-		(log) => (log.sequence ?? -1) > maxApiSeq,
-	);
-
-	if (newStreamingLogs.length === 0) return apiLogs;
-	return [...apiLogs, ...newStreamingLogs];
 }
 
 export function ExecutionDetails({
@@ -836,6 +801,7 @@ export function ExecutionDetails({
 						workflowName={execution.workflow_name}
 						executedByName={execution.executed_by_name}
 						orgName={execution.org_name}
+						scheduledAt={execution.scheduled_at}
 						startedAt={execution.started_at}
 						completedAt={execution.completed_at}
 						inputData={execution.input_data}

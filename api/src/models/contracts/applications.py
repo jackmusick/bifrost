@@ -144,6 +144,9 @@ class ApplicationPublic(ApplicationBase):
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
     role_ids: list[UUID] = Field(default_factory=list)
+    repo_path: str = Field(
+        description="Workspace-relative path to the app's source directory. Mutated via POST /api/applications/{id}/replace."
+    )
 
     @field_serializer("created_at", "updated_at", "published_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -367,3 +370,23 @@ class EmbedSecretUpdate(BaseModel):
 
 # ==================== IMPORT MODELS ====================
 # Applications use file sync (like forms/agents), not a dedicated import endpoint
+
+
+class ApplicationReplaceRequest(BaseModel):
+    """Input for repointing an application's source directory.
+
+    Mutation-only surface. See ``POST /api/applications/{id}/replace``.
+    """
+
+    repo_path: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Workspace-relative path to the new source directory (e.g. apps/my-app-v2).",
+    )
+    force: bool = Field(
+        default=False,
+        description=(
+            "Bypass the uniqueness, nesting, and source-exists checks. "
+            "Use when repointing before files are pushed."
+        ),
+    )

@@ -13,10 +13,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools._http_bridge import call_rest
 from src.services.mcp_server.tools.db import get_tool_db
 
 logger = logging.getLogger(__name__)
@@ -418,6 +419,39 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
         return error_result(f"Error publishing app: {str(e)}")
 
 
+async def replace_app(
+    context: Any,
+    app_id: str,
+    repo_path: str,
+    force: bool = False,
+) -> ToolResult:
+    """Repoint an application's source directory — thin wrapper over
+    ``POST /api/applications/{app_id}/replace``.
+
+    Updates ``repo_path`` after source files have been moved/renamed. The
+    server validates that the new path is unique, non-nested with other
+    apps, and has source files under it. ``force=True`` bypasses all
+    three checks.
+    """
+    if not app_id:
+        return error_result("app_id is required")
+    if not repo_path:
+        return error_result("repo_path is required")
+
+    body: dict[str, Any] = {"repo_path": repo_path, "force": force}
+    status_code, resp = await call_rest(
+        context, "POST", f"/api/applications/{app_id}/replace", json_body=body
+    )
+    if status_code != 200:
+        return error_result(
+            f"replace_app failed: HTTP {status_code}", {"body": resp}
+        )
+    return success_result(
+        f"Repointed application {app_id} to {repo_path}",
+        resp if isinstance(resp, dict) else {"body": resp},
+    )
+
+
 async def get_app_schema(context: Any) -> ToolResult:  # noqa: ARG001
     """Get application schema documentation for code-based apps."""
     from src.models.contracts.applications import (
@@ -809,7 +843,7 @@ async def push_files(
             # Build prefix -> app mapping
             app_by_prefix: dict[str, Application] = {}
             for app_obj in all_apps:
-                prefix = (app_obj.repo_path or f"apps/{app_obj.slug}").rstrip("/") + "/"
+                prefix = app_obj.repo_path.rstrip("/") + "/"
                 app_by_prefix[prefix] = app_obj
 
             for repo_path, content in files.items():
@@ -1033,6 +1067,7 @@ TOOLS = [
     ("get_app", "Get Application", "Get application metadata and file list."),
     ("update_app", "Update Application", "Update application metadata (name, description)."),
     ("publish_app", "Publish Application", "Publish all draft files to live."),
+    ("replace_app", "Replace Application Source Path", "Repoint an application's repo_path after source files have been moved/renamed."),
     ("validate_app", "Validate Application", "Build and validate an app: compiles all files, checks for missing/unused dependencies, unknown components, and bad workflow IDs."),
     ("push_files", "Push Files", "Push multiple files to _repo/ in a single batch. Useful for creating or updating entire apps or workflow sets."),
 ("get_app_dependencies", "Get App Dependencies", "Get npm dependencies declared for an app."),
@@ -1050,6 +1085,7 @@ def register_tools(mcp: Any, get_context_fn: Any) -> None:
         "get_app": get_app,
         "update_app": update_app,
         "publish_app": publish_app,
+        "replace_app": replace_app,
         "validate_app": validate_app,
         "push_files": push_files,
 "get_app_dependencies": get_app_dependencies,

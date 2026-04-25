@@ -49,6 +49,8 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-unknown}
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
@@ -68,6 +70,8 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-unknown}
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_DEBUG: ${BIFROST_DEBUG:-true}
@@ -103,6 +107,8 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-unknown}
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
@@ -125,6 +131,8 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-unknown}
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
@@ -152,6 +160,8 @@ services:
       context: ./client
       dockerfile: Dockerfile.dev
       target: "" # Clear the production target from base compose file
+      args:
+        VITE_BIFROST_VERSION: ${VITE_BIFROST_VERSION:-unknown}
     volumes:
       - ./client/src:/app/src
       - ./client/public:/app/public

@@ -2852,6 +2852,7 @@ class TestPullUpsertNaturalKeys:
         app = Application(
             id=id_a, name="Natural Key App", slug="natural-key-app",
             organization_id=None,
+            repo_path="apps/natural-key-app",
         )
         db_session.add(app)
         await db_session.commit()

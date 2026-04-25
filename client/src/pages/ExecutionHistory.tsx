@@ -14,8 +14,6 @@ import {
 	Info,
 	Eye,
 	Terminal,
-	Workflow,
-	Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +39,9 @@ import {
 } from "@/components/ui/tooltip";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { AgentRunsPanel } from "@/components/agents/AgentRunsPanel";
+import { Bot as BotIcon, Workflow as WorkflowIcon } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -50,6 +51,17 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ExecutionStatusBadge } from "@/components/execution/ExecutionStatusBadge";
 import { useExecutions, cancelExecution } from "@/hooks/useExecutions";
 import { useExecutionHistory } from "@/hooks/useExecutionStream";
 import { WorkflowSelector } from "@/components/forms/WorkflowSelector";
@@ -72,11 +84,6 @@ import {
 	PaginationPrevious,
 } from "@/components/ui/pagination";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import {
-	ToggleGroup,
-	ToggleGroupItem,
-} from "@/components/ui/toggle-group";
-import { AgentRunsTable } from "@/components/agents/AgentRunsTable";
 import type { DateRange } from "react-day-picker";
 import type { components } from "@/lib/v1";
 
@@ -107,7 +114,6 @@ export function ExecutionHistory() {
 	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const { isPlatformAdmin, user } = useAuth();
-	const historyType = (searchParams.get("type") || "workflows") as "workflows" | "agents";
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
 	);
@@ -127,9 +133,22 @@ export function ExecutionHistory() {
 	const [cleaningUp, setCleaningUp] = useState(false);
 	const [showLocal, setShowLocal] = useState(false);
 	const [viewMode, setViewMode] = useState<"executions" | "logs">("executions");
+	const historyType = (searchParams.get("type") === "agents"
+		? "agents"
+		: "workflows") as "workflows" | "agents";
 	const [logLevelFilter, setLogLevelFilter] = useState<string>("all");
 	const [drawerExecutionId, setDrawerExecutionId] = useState<string | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
+	// Target for the "cancel scheduled run" confirm dialog. Null = closed.
+	const [scheduledCancelTarget, setScheduledCancelTarget] = useState<{
+		execution_id: string;
+		workflow_name: string;
+		scheduled_at: string | null | undefined;
+	} | null>(null);
+	// IDs that were optimistically flipped to Cancelled after a successful 200.
+	const [optimisticCancelledIds, setOptimisticCancelledIds] = useState<
+		Set<string>
+	>(new Set());
 	const isGlobalScope = useScopeStore((state) => state.isGlobalScope);
 	const orgId = useScopeStore((state) => state.scope.orgId);
 
@@ -304,6 +323,61 @@ export function ExecutionHistory() {
 		}
 	};
 
+	// Cancel a SCHEDULED row via the workflows router. Different from the
+	// generic cancel path above: Scheduled rows haven't been published yet, so
+	// the cancel endpoint is a status-guarded UPDATE that returns 409 if the
+	// promoter (or another caller) already moved it.
+	const handleConfirmCancelScheduled = async () => {
+		if (!scheduledCancelTarget) return;
+		const { execution_id, workflow_name } = scheduledCancelTarget;
+		setScheduledCancelTarget(null);
+		try {
+			const { data, error, response } = await apiClient.POST(
+				"/api/workflows/executions/{execution_id}/cancel",
+				{ params: { path: { execution_id } } },
+			);
+			if (error || (response && !response.ok)) {
+				const status = response?.status;
+				if (status === 409) {
+					// Pull the current status out of the server's detail string
+					// if possible, else fall back to a generic message.
+					const detail =
+						(error as { detail?: string } | undefined)?.detail ||
+						"";
+					const match = detail.match(/current status: (\w+)/i);
+					const currentStatus = match ? match[1] : "already moved";
+					toast.error(
+						`Execution is ${currentStatus} — refreshing`,
+					);
+				} else {
+					toast.error(
+						`Failed to cancel ${workflow_name}: ${
+							(error as { detail?: string } | undefined)?.detail ||
+							"unknown error"
+						}`,
+					);
+				}
+				refetch();
+				return;
+			}
+			// 200: optimistic flip to Cancelled so the row updates instantly,
+			// and invalidate the list so we converge with the server.
+			setOptimisticCancelledIds((prev) => {
+				const next = new Set(prev);
+				next.add(execution_id);
+				return next;
+			});
+			toast.success(
+				`Cancelled scheduled run of ${workflow_name}`,
+			);
+			void data; // data is { execution_id, status } — we already know both
+			refetch();
+		} catch (err) {
+			toast.error(`Failed to cancel ${workflow_name}: ${err}`);
+			refetch();
+		}
+	};
+
 	const handleOpenCleanup = async () => {
 		setCleanupDialogOpen(true);
 		setLoadingStuck(true);
@@ -380,67 +454,73 @@ export function ExecutionHistory() {
 		setCurrentToken(undefined);
 	}, [statusFilter, dateRange, showLocal, filterOrgId, workflowIdFilter]);
 
-	const historyToggle = isPlatformAdmin ? (
-		<ToggleGroup
-			type="single"
-			value={historyType}
-			onValueChange={(value) => {
-				if (!value) return;
-				setSearchParams((prev) => {
-					const next = new URLSearchParams(prev);
-					if (value === "workflows") {
-						next.delete("type");
-					} else {
-						next.set("type", value);
-					}
-					return next;
-				}, { replace: true });
-			}}
-			className="border rounded-lg p-1"
-		>
-			<ToggleGroupItem value="workflows" aria-label="Workflows" className="gap-1.5 w-[120px] justify-center">
-				<Workflow className="h-4 w-4" />
-				Workflows
-			</ToggleGroupItem>
-			<ToggleGroupItem value="agents" aria-label="Agents" className="gap-1.5 w-[120px] justify-center">
-				<Bot className="h-4 w-4" />
-				Agents
-			</ToggleGroupItem>
-		</ToggleGroup>
-	) : null;
-
-	if (historyType === "agents") {
-		return (
-			<div className="h-full flex flex-col space-y-6">
-				{/* Header */}
-				<div className="flex items-center justify-between">
-					<div>
-						{historyToggle || (
-							<h1 className="text-4xl font-extrabold tracking-tight">
-								History
-							</h1>
-						)}
-					</div>
-				</div>
-				<p className="-mt-4 text-muted-foreground">
-					Autonomous agent execution history
-				</p>
-
-				<AgentRunsTable isPlatformAdmin={isPlatformAdmin} />
-			</div>
-		);
-	}
+	// Drop optimistic-cancel entries once the server echoes the row as Cancelled
+	// (or it drops off the current page). Keeps the set from growing forever.
+	useEffect(() => {
+		setOptimisticCancelledIds((prev) => {
+			if (prev.size === 0) return prev;
+			const visibleIds = new Set(
+				executions.map((e) => e.execution_id),
+			);
+			const next = new Set<string>();
+			for (const id of prev) {
+				// Keep only IDs still visible AND not yet echoed as Cancelled.
+				const row = executions.find((e) => e.execution_id === id);
+				if (!row) continue; // dropped off page → forget
+				if (row.status === "Cancelled") continue; // server caught up
+				if (visibleIds.has(id)) next.add(id);
+			}
+			return next;
+		});
+	}, [executions]);
 
 	return (
 		<div className="h-full flex flex-col space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
-				<div>
-					{historyToggle || (
-						<h1 className="text-4xl font-extrabold tracking-tight">
-							History
-						</h1>
-					)}
+				<div className="flex items-center gap-4">
+					<h1 className="text-4xl font-extrabold tracking-tight">
+						History
+					</h1>
+					{isPlatformAdmin ? (
+						<ToggleGroup
+							type="single"
+							value={historyType}
+							onValueChange={(value: string) => {
+								if (!value) return;
+								setSearchParams(
+									(prev) => {
+										const next = new URLSearchParams(prev);
+										if (value === "workflows") {
+											next.delete("type");
+										} else {
+											next.set("type", value);
+										}
+										return next;
+									},
+									{ replace: true },
+								);
+							}}
+							data-testid="history-type-toggle"
+						>
+							<ToggleGroupItem
+								value="workflows"
+								aria-label="Workflows"
+								className="gap-1.5"
+							>
+								<WorkflowIcon className="h-3.5 w-3.5" />
+								Workflows
+							</ToggleGroupItem>
+							<ToggleGroupItem
+								value="agents"
+								aria-label="Agents"
+								className="gap-1.5"
+							>
+								<BotIcon className="h-3.5 w-3.5" />
+								Agents
+							</ToggleGroupItem>
+						</ToggleGroup>
+					) : null}
 				</div>
 				<div className="flex items-center gap-2">
 					<Dialog
@@ -574,8 +654,10 @@ export function ExecutionHistory() {
 				</div>
 			</div>
 			<p className="-mt-4 text-muted-foreground">
-				View and track workflow execution history
-				{executions.length > 0 && (
+				{historyType === "agents"
+					? "View agent run history across the fleet"
+					: "View and track workflow execution history"}
+				{historyType === "workflows" && executions.length > 0 && (
 					<span className="ml-2">
 						· Showing {executions.length} execution
 						{executions.length !== 1 ? "s" : ""}
@@ -584,6 +666,10 @@ export function ExecutionHistory() {
 				)}
 			</p>
 
+			{historyType === "agents" ? <AgentRunsPanel /> : null}
+
+			{historyType === "workflows" ? (
+			<>
 			{/* Search and Filters */}
 			<div className="flex items-center gap-4">
 				{isPlatformAdmin && (
@@ -705,6 +791,7 @@ export function ExecutionHistory() {
 					<TabsTrigger value="Running">Running</TabsTrigger>
 					<TabsTrigger value="Failed">Failed</TabsTrigger>
 					<TabsTrigger value="Pending">Pending</TabsTrigger>
+					<TabsTrigger value="Scheduled">Scheduled</TabsTrigger>
 				</TabsList>
 
 				<TabsContent
@@ -751,6 +838,18 @@ export function ExecutionHistory() {
 
 									// Use actual org_id from execution to determine scope
 									const isGlobalExecution = !execution.org_id;
+
+									// Apply optimistic flip: if the user just
+									// confirmed cancel on this row, render it
+									// as Cancelled until refetch converges.
+									const displayStatus =
+										optimisticCancelledIds.has(
+											execution.execution_id,
+										)
+											? "Cancelled"
+											: execution.status;
+									const isScheduled = displayStatus ===
+										"Scheduled";
 
 									return (
 										<DataTableRow
@@ -827,8 +926,21 @@ export function ExecutionHistory() {
 											</DataTableCell>
 											<DataTableCell>
 												<div className="flex items-center gap-2">
-													{getStatusBadge(
-														execution.status,
+													{isScheduled ||
+													displayStatus ===
+														"Cancelled" ? (
+														<ExecutionStatusBadge
+															status={
+																displayStatus
+															}
+															scheduledAt={
+																execution.scheduled_at
+															}
+														/>
+													) : (
+														getStatusBadge(
+															displayStatus,
+														)
 													)}
 													{execution.error_message && (
 														<TooltipProvider>
@@ -892,6 +1004,28 @@ export function ExecutionHistory() {
 																);
 															}}
 															title="Cancel Execution"
+														>
+															<XCircle className="h-4 w-4" />
+														</Button>
+													)}
+													{isScheduled && (
+														<Button
+															variant="ghost"
+															size="icon"
+															onClick={(e) => {
+																e.stopPropagation();
+																setScheduledCancelTarget(
+																	{
+																		execution_id:
+																			execution.execution_id,
+																		workflow_name:
+																			execution.workflow_name,
+																		scheduled_at:
+																			execution.scheduled_at,
+																	},
+																);
+															}}
+															title="Cancel scheduled execution"
 														>
 															<XCircle className="h-4 w-4" />
 														</Button>
@@ -995,6 +1129,43 @@ export function ExecutionHistory() {
 				</TabsContent>
 				</Tabs>
 			)}
+			</>
+			) : null}
+			<AlertDialog
+				open={!!scheduledCancelTarget}
+				onOpenChange={(open) => {
+					if (!open) setScheduledCancelTarget(null);
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>
+							Cancel scheduled run?
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Cancel scheduled run of{" "}
+							<span className="font-mono">
+								{scheduledCancelTarget?.workflow_name}
+							</span>
+							{scheduledCancelTarget?.scheduled_at
+								? ` for ${new Date(
+										scheduledCancelTarget.scheduled_at,
+									).toLocaleString()}`
+								: ""}
+							? The workflow will not run.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Keep scheduled</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={handleConfirmCancelScheduled}
+							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							Confirm cancel
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 			<ExecutionDrawer
 				executionId={drawerExecutionId}
 				open={drawerOpen}

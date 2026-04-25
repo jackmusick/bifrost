@@ -8,12 +8,17 @@ generated source; no esbuild subprocess is run.
 from __future__ import annotations
 
 import pathlib
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.services.app_bundler import (
     _PLATFORM_EXPORT_NAMES,
+    SCHEMA_VERSION,
+    BundleManifest,
+    BundleResult,
     BundlerService,
+    build_with_migrate,
 )
 
 
@@ -175,4 +180,128 @@ def test_write_bifrost_package_proxy_count_matches_imported_subset(
     )
     assert proxy_line_count == len(imported), (
         f"expected {len(imported)} proxies, got {proxy_line_count}:\n{pkg}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# build_with_migrate + SCHEMA_VERSION — the deploy-time auto-heal contract.
+#
+# These pin two guarantees relied on by app_code_files.get_bundle_manifest:
+#   1. build_with_migrate always calls the migrator BEFORE the bundler and
+#      returns whatever `migrated` the migrator reported — even when the
+#      build itself fails. This is what lets a failed first-build still
+#      surface the "your source was rewritten, pull on next sync" banner.
+#   2. The bundler writes the current SCHEMA_VERSION into every successful
+#      manifest.json. Readers compare against this and trigger a fresh
+#      migrate+build when the value is missing or older than current.
+# ---------------------------------------------------------------------------
+
+
+async def test_build_with_migrate_runs_migration_before_bundle() -> None:
+    """Migration must be called strictly before the bundler, and the
+    `migrated` flag bubbles up unchanged.
+
+    Regression: before the schema_version fix, file saves + publishes called
+    `bundler.build()` directly, skipping auto-migration entirely. An app
+    whose first bundle was produced by the save path never had its imports
+    rewritten, so <Outlet />, <LayoutDashboard />, <QuillEditor />, etc.
+    used-but-unimported in the legacy auto-scope runtime all failed with
+    ReferenceError at render time.
+    """
+    call_order: list[str] = []
+
+    async def fake_migrate(
+        app_id: str, repo_prefix: str
+    ) -> tuple[bool, list[object]]:
+        call_order.append("migrate")
+        return True, []
+
+    async def fake_build(
+        self, app_id, repo_prefix, mode, dependencies=None
+    ) -> BundleResult:
+        call_order.append("build")
+        return BundleResult(
+            success=True,
+            manifest=BundleManifest(
+                entry="entry.js",
+                css=None,
+                outputs=["entry.js"],
+                duration_ms=5,
+                warnings=[],
+                dependencies={},
+            ),
+            duration_ms=5,
+        )
+
+    with patch(
+        "src.services.app_bundler.auto_migrate.auto_migrate_repo_prefix",
+        new=fake_migrate,
+    ), patch.object(BundlerService, "build", new=fake_build):
+        result, migrated = await build_with_migrate(
+            app_id="app-id",
+            repo_prefix="apps/test/",
+            mode="preview",
+            dependencies={},
+        )
+
+    assert call_order == ["migrate", "build"]
+    assert migrated is True
+    assert result.success is True
+
+
+async def test_build_writes_current_schema_version_into_manifest(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Every successful build must stamp `schema_version` into manifest.json
+    so readers can detect staleness after a deploy that bumps the constant.
+    """
+    import json
+
+    from src.services.app_bundler import BundlerService as _BundlerService
+
+    bundler = _BundlerService()
+
+    # Mock the subprocess and storage layers — we're asserting the manifest
+    # dict shape, not exercising esbuild.
+    async def fake_materialize(src_dir: pathlib.Path, repo_prefix: str) -> list[str]:
+        (src_dir / "_layout.tsx").write_text("export default function Layout(){}")
+        return ["_layout.tsx"]
+
+    async def fake_run_esbuild(cfg: dict) -> dict:
+        out_dir = pathlib.Path(cfg["out_dir"])
+        out_dir.mkdir(exist_ok=True)
+        (out_dir / "entry.js").write_bytes(b"// fake entry\n")
+        return {
+            "success": True,
+            "outputs": [{"path": "entry.js"}],
+            "entry_file": "entry.js",
+            "css_file": None,
+            "duration_ms": 1,
+            "warnings": [],
+        }
+
+    written: dict[str, bytes] = {}
+
+    async def fake_write_preview_file(app_id: str, rel: str, data: bytes) -> None:
+        written[rel] = data
+
+    with patch.object(bundler, "_materialize_source", new=fake_materialize), \
+         patch.object(bundler, "_run_esbuild", new=fake_run_esbuild), \
+         patch.object(
+             bundler._app_storage, "write_preview_file",
+             new=AsyncMock(side_effect=fake_write_preview_file),
+         ):
+        result = await bundler.build(
+            app_id="app-id",
+            repo_prefix="apps/test/",
+            mode="preview",
+            dependencies={},
+        )
+
+    assert result.success is True
+    assert "manifest.json" in written, "manifest.json must be written"
+    manifest = json.loads(written["manifest.json"].decode())
+    assert manifest["schema_version"] == SCHEMA_VERSION, (
+        "manifest must record the bundler's current SCHEMA_VERSION so readers "
+        "can detect stale manifests and trigger a rebuild"
     )

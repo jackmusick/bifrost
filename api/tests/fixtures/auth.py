@@ -65,7 +65,7 @@ def create_test_jwt(
         "name": name,
         "is_superuser": is_superuser,
         "org_id": None if (is_superuser and organization_id is None) else organization_id,
-        "roles": ["authenticated", "PlatformAdmin"] if is_superuser else ["authenticated", "OrgUser"],
+        "roles": ["authenticated"],
         "exp": now + timedelta(hours=2),
         "iat": now,
         "iss": TEST_JWT_ISSUER,

@@ -189,7 +189,7 @@ async def isolate_redis_module_cache(request) -> AsyncGenerator[None, None]:
     try:
         from src.core.redis_client import get_redis_client
 
-        redis = await get_redis_client()
+        redis = get_redis_client()
         # Delete only module-cache keys, not session/rate-limit/pubsub keys
         cursor = 0
         while True:

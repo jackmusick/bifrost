@@ -61,7 +61,10 @@ fi
 # 5. Unit tests pass
 echo ""
 echo -e "${YELLOW}Running unit tests...${NC}"
-if ./test.sh tests/unit/ -v; then
+# Stack must be up for the verb-style test.sh; boot it if it isn't (caller may
+# have one running already, in which case stack up is a no-op).
+./test.sh stack up >/dev/null
+if ./test.sh unit; then
     echo -e "${GREEN}✓ Unit tests passed${NC}"
 else
     echo -e "${RED}✗ Unit tests failed. Fix before tagging.${NC}"

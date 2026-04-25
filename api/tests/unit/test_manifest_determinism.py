@@ -81,7 +81,7 @@ def _mock_app(app_id=APP_ID, name="det_app"):
     app.id = app_id
     app.name = name
     app.slug = name.lower()
-    app.repo_path = None
+    app.repo_path = f"apps/{app.slug}"
     app.organization_id = None
     app.access_level = "authenticated"
     app.description = None

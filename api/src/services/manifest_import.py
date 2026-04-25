@@ -135,6 +135,7 @@ def _diff_and_collect(
                 name = getattr(entity, "name", None) or getattr(entity, "function_name", None) or str(eid)
 
             changes.append({
+                "id": eid,
                 "action": action,
                 "entity_type": entity_type,
                 "name": name,
@@ -190,6 +191,7 @@ def _diff_list_entities(
         org = (org_lookup.get(oid, oid) or "Global") if oid else "Global"
 
         changes.append({
+            "id": eid,
             "action": action,
             "entity_type": entity_type,
             "name": getattr(entity, "name", "") or str(eid),
@@ -492,6 +494,7 @@ async def import_manifest_from_repo(
     dry_run: bool = False,
     target_organization_id: UUID | None = None,
     role_resolution: RoleResolution = "uuid",
+    entity_ids: set[str] | None = None,
 ) -> ManifestImportResult:
     """Import manifest from S3 _repo/.bifrost/ into DB.
 
@@ -582,7 +585,14 @@ async def import_manifest_from_repo(
         result.dry_run = True
         return result
 
-    # 4b. Short-circuit: nothing changed — no write-back needed
+    # 4b. Caller-supplied subset filter (e.g. interactive import TUI). Restrict
+    # the write to the user's selection, and trim entity_changes to match so
+    # the response accurately reflects what was applied.
+    if entity_ids is not None:
+        changed_ids &= entity_ids
+        entity_changes = [c for c in entity_changes if c.get("id") in changed_ids]
+
+    # 4c. Short-circuit: nothing changed — no write-back needed
     if not changed_ids:
         result.applied = True
         result.entity_changes = entity_changes  # empty list

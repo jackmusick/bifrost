@@ -5,7 +5,7 @@ Handles automatic user creation and organization assignment for FastAPI.
 Adapted from shared/user_provisioning.py for PostgreSQL repositories.
 
 Key Features:
-- First user becomes PlatformAdmin automatically
+- First user becomes a superuser automatically (is_superuser=True)
 - Subsequent users auto-join by email domain matching
 - Idempotent - safe to call multiple times
 """
@@ -42,12 +42,7 @@ class ProvisioningResult:
     @property
     def roles(self) -> list[str]:
         """Get roles for this user (for JWT claims)."""
-        roles = ["authenticated"]
-        if self.is_platform_admin:
-            roles.append("PlatformAdmin")
-        else:
-            roles.append("OrgUser")
-        return roles
+        return ["authenticated"]
 
 
 async def ensure_user_provisioned(
@@ -61,7 +56,7 @@ async def ensure_user_provisioned(
     This function is idempotent and safe to call on every login.
 
     Auto-Provisioning Rules:
-    1. First user in system -> PlatformAdmin
+    1. First user in system -> superuser (is_superuser=True)
     2. Subsequent users -> Match email domain to organization
     3. No domain match -> Raise error (user must be manually added)
 
@@ -104,8 +99,8 @@ async def ensure_user_provisioned(
     is_first_user = not has_users
 
     if is_first_user:
-        # First user in system - create as PlatformAdmin
-        logger.info(f"First user login detected! Auto-promoting {email} to PlatformAdmin")
+        # First user in system - create as superuser
+        logger.info(f"First user login detected! Auto-promoting {email} to superuser")
 
         user = await user_repo.create_user(
             email=email,
@@ -116,7 +111,7 @@ async def ensure_user_provisioned(
         await db.commit()
         await db.refresh(user)
 
-        logger.info(f"Successfully created first user as PlatformAdmin: {email}")
+        logger.info(f"Successfully created first user as superuser: {email}")
 
         return ProvisioningResult(
             user=user,

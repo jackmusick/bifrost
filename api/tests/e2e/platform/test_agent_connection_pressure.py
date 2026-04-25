@@ -14,7 +14,6 @@ import logging
 import os
 import time
 
-import httpx
 import pytest
 
 logger = logging.getLogger(__name__)

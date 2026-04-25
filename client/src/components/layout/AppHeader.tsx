@@ -6,6 +6,7 @@
  * and standard user controls (search, notifications, theme, profile).
  */
 
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
 import { useAuth } from "@/contexts/AuthContext";
+import { APP_VERSION } from "@/lib/version";
 import { useProfile } from "@/hooks/useProfile";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { profileService } from "@/services/profile";
@@ -167,10 +169,30 @@ export function AppHeader({ appName, isPreview = false }: AppHeaderProps) {
 								<LogOut className="mr-2 h-4 w-4" />
 								Log out
 							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<VersionMenuItem />
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</div>
 			</div>
 		</header>
+	);
+}
+
+function VersionMenuItem() {
+	const [copied, setCopied] = useState(false);
+	return (
+		<DropdownMenuItem
+			className="text-xs text-muted-foreground font-mono justify-center focus:bg-transparent cursor-pointer"
+			onSelect={(e) => {
+				e.preventDefault();
+				void navigator.clipboard.writeText(APP_VERSION);
+				setCopied(true);
+				setTimeout(() => setCopied(false), 1500);
+			}}
+			title="Click to copy"
+		>
+			{copied ? "Copied!" : APP_VERSION}
+		</DropdownMenuItem>
 	);
 }

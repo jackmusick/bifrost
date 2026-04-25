@@ -393,10 +393,7 @@ class FileOperationsService:
         # Uses starts_with() instead of LIKE to avoid wildcard chars (_, %) in repo_path.
         stmt = (
             select(Application)
-            .where(
-                Application.repo_path.isnot(None),
-                text("starts_with(:path, repo_path || '/')").bindparams(path=path),
-            )
+            .where(text("starts_with(:path, repo_path || '/')").bindparams(path=path))
             .order_by(func.length(Application.repo_path).desc())
             .limit(1)
         )
@@ -450,15 +447,14 @@ class FileOperationsService:
         line, column, text) so the UI can render a banner over the last-good
         render. A system diagnostic notification is also created.
         """
-        from src.services.app_bundler import BundleMessage, BundleResult, BundlerService
+        from src.services.app_bundler import BundleMessage, BundleResult, build_with_migrate
 
         app_prefix = app.repo_prefix
         relative_path = path[len(app_prefix):] if path.startswith(app_prefix) else path
         app_id = str(app.id)
 
-        bundler = BundlerService()
         try:
-            result = await bundler.build(
+            result, _migrated = await build_with_migrate(
                 app_id=app_id,
                 repo_prefix=app_prefix,
                 mode="preview",

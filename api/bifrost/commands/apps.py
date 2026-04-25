@@ -331,4 +331,51 @@ async def delete_app(
     output_result({"deleted": app_uuid}, ctx=ctx)
 
 
+@apps_group.command("replace")
+@click.argument("ref")
+@click.option(
+    "--repo-path",
+    "repo_path",
+    required=True,
+    type=str,
+    help="Workspace-relative path to the new source directory (e.g. apps/my-app-v2).",
+)
+@click.option(
+    "--force",
+    "force",
+    is_flag=True,
+    default=False,
+    help=(
+        "Bypass the uniqueness, nesting, and source-exists checks. "
+        "Use when repointing before files are pushed."
+    ),
+)
+@click.pass_context
+@pass_resolver
+@run_async
+async def replace_app(
+    ctx: click.Context,
+    ref: str,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+    repo_path: str,
+    force: bool,
+) -> None:
+    """Repoint an application's source directory.
+
+    ``REF`` is a slug, UUID, or application name. ``--repo-path`` must be
+    the workspace-relative path to the new source directory. By default the
+    path must already contain files; ``--force`` bypasses that check (and
+    uniqueness / nesting checks) for repointing ahead of a push.
+    """
+    app_uuid = await resolver.resolve("app", ref)
+    body: dict[str, Any] = {"repo_path": repo_path, "force": force}
+    response = await client.post(
+        f"/api/applications/{app_uuid}/replace", json=body
+    )
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)
+
+
 __all__ = ["apps_group"]

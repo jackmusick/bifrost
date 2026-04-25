@@ -1,23 +1,29 @@
 /**
  * Organization Select Component
  *
- * A reusable select component for choosing an organization scope.
+ * A reusable searchable select for choosing an organization scope.
  * Platform admins can select "Global" (null) or any organization.
  * Org users should have this component hidden with their org pre-selected.
  */
 
-import { Building2, Globe, Star } from "lucide-react";
+import { useState } from "react";
+import { Building2, Check, ChevronsUpDown, Globe, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
-	Select,
-	SelectContent,
-	SelectGroup,
-	SelectItem,
-	SelectLabel,
-	SelectSeparator,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+	CommandSeparator,
+} from "@/components/ui/command";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import type { components } from "@/lib/v1";
 
@@ -38,13 +44,12 @@ export interface OrganizationSelectProps {
 	showAll?: boolean;
 	/** Placeholder text when nothing is selected */
 	placeholder?: string;
-	/** Custom className for the SelectTrigger */
+	/** Custom className for the trigger button */
 	triggerClassName?: string;
-	/** Custom className for the SelectContent dropdown (useful for z-index overrides) */
+	/** Custom className for the popover content (useful for z-index overrides) */
 	contentClassName?: string;
 }
 
-// Special values for the Select (since null/undefined aren't valid values)
 const GLOBAL_VALUE = "__GLOBAL__";
 const ALL_VALUE = "__ALL__";
 
@@ -59,144 +64,200 @@ export function OrganizationSelect({
 	contentClassName,
 }: OrganizationSelectProps) {
 	const { data: organizations, isLoading } = useOrganizations();
+	const [open, setOpen] = useState(false);
 
-	// Convert null/undefined to our special values for the Select component
-	const selectValue =
-		value === undefined ? ALL_VALUE : value === null ? GLOBAL_VALUE : value;
-
-	const handleValueChange = (newValue: string) => {
-		// Ignore empty string - Radix Select's BubbleInput fires onChange('')
-		// during mount which would incorrectly clear the selected value
-		if (newValue === "") {
-			return;
-		}
-		// Convert our special values back to null/undefined
-		if (newValue === ALL_VALUE) {
-			onChange(undefined);
-		} else if (newValue === GLOBAL_VALUE) {
-			onChange(null);
-		} else {
-			onChange(newValue);
-		}
-	};
-
-	// Find the selected organization for display
 	const selectedOrg = organizations?.find(
 		(org: Organization) => org.id === value,
 	);
 
+	const handleSelect = (selected: string) => {
+		if (selected === ALL_VALUE) {
+			onChange(undefined);
+		} else if (selected === GLOBAL_VALUE) {
+			onChange(null);
+		} else {
+			onChange(selected);
+		}
+		setOpen(false);
+	};
+
+	const renderTriggerContent = () => {
+		if (isLoading) {
+			return <span className="text-muted-foreground">Loading...</span>;
+		}
+		if (value === undefined && showAll) {
+			return <span>All</span>;
+		}
+		if (value === null) {
+			return (
+				<div className="flex items-center gap-2">
+					<Globe className="h-4 w-4 text-muted-foreground" />
+					<span>Global</span>
+				</div>
+			);
+		}
+		if (selectedOrg) {
+			return (
+				<div className="flex items-center gap-2">
+					{selectedOrg.is_provider ? (
+						<Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+					) : (
+						<Building2 className="h-4 w-4 text-muted-foreground" />
+					)}
+					<span>{selectedOrg.name}</span>
+				</div>
+			);
+		}
+		if (value) {
+			return (
+				<div className="flex items-center gap-2">
+					<Building2 className="h-4 w-4 text-muted-foreground animate-pulse" />
+					<span className="text-muted-foreground">Loading...</span>
+				</div>
+			);
+		}
+		return <span className="text-muted-foreground">{placeholder}</span>;
+	};
+
 	return (
-		<Select
-			value={selectValue}
-			onValueChange={handleValueChange}
-			disabled={disabled || isLoading}
-		>
-			<SelectTrigger className={cn("w-full", triggerClassName)}>
-				<SelectValue
-					placeholder={isLoading ? "Loading..." : placeholder}
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<Button
+					variant="outline"
+					role="combobox"
+					aria-expanded={open}
+					className={cn(
+						"w-full justify-between font-normal",
+						triggerClassName,
+					)}
+					disabled={disabled || isLoading}
 				>
-					{value === undefined && showAll ? (
-						<span>All</span>
-					) : value === null ? (
-						<div className="flex items-center gap-2">
-							<Globe className="h-4 w-4 text-muted-foreground" />
-							<span>Global</span>
-						</div>
-					) : selectedOrg ? (
-						<div className="flex items-center gap-2">
-							{selectedOrg.is_provider ? (
-								<Star className="h-4 w-4 text-amber-500 fill-amber-500" />
-							) : (
-								<Building2 className="h-4 w-4 text-muted-foreground" />
-							)}
-							<span>{selectedOrg.name}</span>
-						</div>
-					) : value ? (
-						<div className="flex items-center gap-2">
-							<Building2 className="h-4 w-4 text-muted-foreground animate-pulse" />
-							<span className="text-muted-foreground">Loading...</span>
-						</div>
-					) : (
-						placeholder
-					)}
-				</SelectValue>
-			</SelectTrigger>
-			<SelectContent className={contentClassName}>
-				{showAll && (
-					<>
-						<SelectGroup>
-							<SelectItem value={ALL_VALUE}>
-								<div className="flex flex-col">
-									<span className="font-medium">All</span>
-									<span className="text-xs text-muted-foreground">
-										Show all organizations
-									</span>
-								</div>
-							</SelectItem>
-						</SelectGroup>
-						<SelectSeparator />
-					</>
+					{renderTriggerContent()}
+					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				className={cn(
+					"w-[var(--radix-popover-trigger-width)] p-0",
+					contentClassName,
 				)}
-				{showGlobal && (
-					<>
-						<SelectGroup>
-							<SelectItem value={GLOBAL_VALUE}>
-								<div className="flex items-center gap-2">
-									<Globe className="h-4 w-4 text-muted-foreground" />
-									<div className="flex flex-col">
-										<span className="font-medium">
-											Global
-										</span>
-										<span className="text-xs text-muted-foreground">
-											Available to all organizations
-										</span>
-									</div>
-								</div>
-							</SelectItem>
-						</SelectGroup>
-						<SelectSeparator />
-					</>
-				)}
-				<SelectGroup>
-					<SelectLabel>Organizations</SelectLabel>
-					{isLoading ? (
-						<SelectItem value="loading" disabled>
-							Loading organizations...
-						</SelectItem>
-					) : organizations && organizations.length > 0 ? (
-						organizations.map((org: Organization) => (
-							<SelectItem key={org.id} value={org.id}>
-								<div className="flex items-center gap-2">
-									{org.is_provider ? (
-										<Star className="h-4 w-4 text-amber-500 fill-amber-500" />
-									) : (
-										<Building2 className="h-4 w-4 text-muted-foreground" />
-									)}
-									<div className="flex flex-col">
-										<span className="flex items-center gap-2">
-											{org.name}
-											{org.is_provider && (
-												<span className="text-xs text-amber-600 font-medium">
-													Provider
-												</span>
-											)}
-										</span>
-										{org.domain && (
+				align="start"
+			>
+				<Command>
+					<CommandInput placeholder="Search organizations..." />
+					<CommandList className="max-h-60 overflow-y-auto">
+						<CommandEmpty>No organizations found.</CommandEmpty>
+
+						{showAll && (
+							<>
+								<CommandGroup>
+									<CommandItem
+										value={ALL_VALUE}
+										keywords={["all"]}
+										onSelect={() => handleSelect(ALL_VALUE)}
+									>
+										<div className="flex flex-col flex-1">
+											<span className="font-medium">All</span>
 											<span className="text-xs text-muted-foreground">
-												@{org.domain}
+												Show all organizations
 											</span>
-										)}
-									</div>
-								</div>
-							</SelectItem>
-						))
-					) : (
-						<SelectItem value="none" disabled>
-							No organizations available
-						</SelectItem>
-					)}
-				</SelectGroup>
-			</SelectContent>
-		</Select>
+										</div>
+										<Check
+											className={cn(
+												"ml-auto h-4 w-4",
+												value === undefined
+													? "opacity-100"
+													: "opacity-0",
+											)}
+										/>
+									</CommandItem>
+								</CommandGroup>
+								<CommandSeparator />
+							</>
+						)}
+
+						{showGlobal && (
+							<>
+								<CommandGroup>
+									<CommandItem
+										value={GLOBAL_VALUE}
+										keywords={["global", "all organizations"]}
+										onSelect={() => handleSelect(GLOBAL_VALUE)}
+									>
+										<Globe className="mr-2 h-4 w-4 text-muted-foreground" />
+										<div className="flex flex-col flex-1">
+											<span className="font-medium">Global</span>
+											<span className="text-xs text-muted-foreground">
+												Available to all organizations
+											</span>
+										</div>
+										<Check
+											className={cn(
+												"ml-auto h-4 w-4",
+												value === null
+													? "opacity-100"
+													: "opacity-0",
+											)}
+										/>
+									</CommandItem>
+								</CommandGroup>
+								<CommandSeparator />
+							</>
+						)}
+
+						<CommandGroup heading="Organizations">
+							{organizations && organizations.length > 0 ? (
+								organizations.map((org: Organization) => {
+									const keywords = [org.name];
+									if (org.domain) keywords.push(org.domain);
+									if (org.is_provider) keywords.push("provider");
+									return (
+										<CommandItem
+											key={org.id}
+											value={org.id}
+											keywords={keywords}
+											onSelect={() => handleSelect(org.id)}
+										>
+											{org.is_provider ? (
+												<Star className="mr-2 h-4 w-4 text-amber-500 fill-amber-500" />
+											) : (
+												<Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
+											)}
+											<div className="flex flex-col flex-1">
+												<span className="flex items-center gap-2">
+													{org.name}
+													{org.is_provider && (
+														<span className="text-xs text-amber-600 font-medium">
+															Provider
+														</span>
+													)}
+												</span>
+												{org.domain && (
+													<span className="text-xs text-muted-foreground">
+														@{org.domain}
+													</span>
+												)}
+											</div>
+											<Check
+												className={cn(
+													"ml-auto h-4 w-4",
+													value === org.id
+														? "opacity-100"
+														: "opacity-0",
+												)}
+											/>
+										</CommandItem>
+									);
+								})
+							) : (
+								<CommandItem disabled value="__none__">
+									No organizations available
+								</CommandItem>
+							)}
+						</CommandGroup>
+					</CommandList>
+				</Command>
+			</PopoverContent>
+		</Popover>
 	);
 }

@@ -14,6 +14,4 @@ export type {
 	AppCodeEditorState,
 } from "./useAppCodeEditor";
 
-export { AppCodePreview, createSandboxedPreview } from "./AppCodePreview";
-
 export { AppCodeEditorLayout } from "./AppCodeEditorLayout";

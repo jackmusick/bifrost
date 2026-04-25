@@ -33,3 +33,9 @@ data:
 
   # Public URL
   BIFROST_PUBLIC_URL: "https://bifrost.example.com"
+
+  # glibc arena cap. Default is 8*nproc arenas, each caching up to ~64MB of
+  # freed memory. On a 2-CPU pod with a 1GiB limit, the default can retain
+  # ~1GiB of cached-free memory (inactive_anon), leaving no headroom for
+  # allocation bursts (e.g. app bundler runs). Cap at 2 for Python workloads.
+  MALLOC_ARENA_MAX: "2"

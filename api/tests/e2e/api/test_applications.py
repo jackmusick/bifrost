@@ -416,13 +416,10 @@ class TestApplicationScopeFiltering:
 
         yield apps
 
-        # Cleanup — platform admin can delete global apps directly
+        # Platform admin can delete any app by ID (global or org-scoped) —
+        # ApplicationRepository inherits OrgScopedRepository.get(id=...) which
+        # bypasses scope filtering for superusers.
         _delete_app(e2e_client, platform_admin.headers, apps["global"]["id"])
-        # For org-scoped apps, use org1_user context or just let it be
-        # The delete endpoint scopes by the caller's org, so platform admin
-        # without org context can't delete org-scoped apps.
-        # Use org1 headers via the org1 user fixture if available,
-        # otherwise accept that cleanup may 404 (test DB is ephemeral).
         _delete_app(e2e_client, platform_admin.headers, apps["org"]["id"])
 
     def test_list_with_global_scope(
@@ -456,6 +453,99 @@ class TestApplicationScopeFiltering:
 
         assert scoped_apps["org"]["slug"] in app_slugs
         # Global may or may not be included depending on filter type
+
+
+@pytest.mark.e2e
+class TestApplicationCrossOrgAdmin:
+    """Platform admins must be able to mutate apps in any org.
+
+    Regression tests for the bug where ApplicationRepository overrode
+    get_by_id with cascade-only scoping, dropping the superuser bypass
+    that OrgScopedRepository.get(id=...) provides. GET worked (it used
+    can_access(id=...) → base class path) but PATCH/DELETE/publish/replace
+    all returned 404 for cross-org apps.
+    """
+
+    def test_platform_admin_patch_cross_org_app(
+        self, e2e_client, platform_admin, org1
+    ):
+        """Platform admin can PATCH an app owned by another org."""
+        suffix = uuid.uuid4().hex[:8]
+        app = _create_app(
+            e2e_client,
+            platform_admin.headers,
+            f"cross-org-patch-{suffix}",
+            name="Cross-org Patch",
+            organization_id=org1["id"],
+        )
+
+        try:
+            response = e2e_client.patch(
+                f"/api/applications/{app['id']}",
+                headers=platform_admin.headers,
+                json={"description": "Edited cross-org"},
+            )
+            assert response.status_code == 200, (
+                f"Platform admin should be able to PATCH cross-org app: {response.text}"
+            )
+            assert response.json()["description"] == "Edited cross-org"
+        finally:
+            _delete_app(e2e_client, platform_admin.headers, app["id"])
+
+    def test_platform_admin_delete_cross_org_app(
+        self, e2e_client, platform_admin, org1
+    ):
+        """Platform admin can DELETE an app owned by another org."""
+        suffix = uuid.uuid4().hex[:8]
+        slug = f"cross-org-delete-{suffix}"
+        app = _create_app(
+            e2e_client,
+            platform_admin.headers,
+            slug,
+            name="Cross-org Delete",
+            organization_id=org1["id"],
+        )
+
+        response = e2e_client.delete(
+            f"/api/applications/{app['id']}",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code in (200, 204), (
+            f"Platform admin should be able to DELETE cross-org app: {response.text}"
+        )
+
+        # Confirm it's gone (GET is by slug)
+        response = e2e_client.get(
+            f"/api/applications/{slug}",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 404
+
+    def test_non_admin_cannot_patch_cross_org_app(
+        self, e2e_client, platform_admin, org1_user, org2
+    ):
+        """Regular user in org1 cannot PATCH an app in org2 — scope check still denies."""
+        suffix = uuid.uuid4().hex[:8]
+        app = _create_app(
+            e2e_client,
+            platform_admin.headers,
+            f"cross-org-deny-{suffix}",
+            name="Cross-org Deny",
+            organization_id=org2["id"],
+        )
+
+        try:
+            response = e2e_client.patch(
+                f"/api/applications/{app['id']}",
+                headers=org1_user.headers,
+                json={"description": "Should not work"},
+            )
+            assert response.status_code == 404, (
+                f"Non-admin in org1 should not be able to PATCH org2 app: "
+                f"status={response.status_code} body={response.text}"
+            )
+        finally:
+            _delete_app(e2e_client, platform_admin.headers, app["id"])
 
 
 @pytest.mark.e2e

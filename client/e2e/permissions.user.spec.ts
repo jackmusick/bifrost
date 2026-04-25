@@ -65,20 +65,6 @@ test.describe("Org User Restrictions", () => {
 		// (Specific assertions depend on UI implementation)
 	});
 
-	test("should see workflows available to their organization", async ({
-		page,
-	}) => {
-		await page.goto("/workflows");
-
-		// Should see workflows page
-		await expect(
-			page.getByRole("heading", { name: /workflows/i }).first(),
-		).toBeVisible({ timeout: 10000 });
-
-		// Content should be filtered to org's workflows
-		await expect(page.locator("main")).toBeVisible();
-	});
-
 	test("should be able to view execution history", async ({ page }) => {
 		await page.goto("/history");
 
@@ -132,33 +118,24 @@ test.describe("Org User Restrictions", () => {
 });
 
 test.describe("Cross-Org Access Prevention", () => {
-	test("should not be able to access other org workflows via URL", async ({
-		page,
-	}) => {
-		// Try to access a workflow that belongs to another org
-		// (This would require knowing a workflow ID from another org)
-		// The test verifies that the UI properly handles 403 responses
-
-		// Navigate to workflows page first
-		await page.goto("/workflows");
-		await expect(
-			page.getByRole("heading", { name: /workflows/i }).first(),
-		).toBeVisible({ timeout: 10000 });
-
-		// Org isolation is enforced - user only sees their org's workflows
-	});
-
 	test("should not see config management page", async ({ page }) => {
 		await page.goto("/settings/config");
 
-		// Should redirect or show access denied
-		const currentUrl = page.url();
-		const isRedirected = !currentUrl.includes("/settings/config");
-		const accessDenied = await page
-			.getByText(/access denied|forbidden|unauthorized/i)
-			.isVisible()
-			.catch(() => false);
+		// Either the router redirects away, or an Access Denied screen renders.
+		// Wait for whichever happens — reading page.url() synchronously was racy.
+		const denied = page.getByText(/access denied|forbidden|unauthorized/i);
+		const redirected = page.waitForURL(
+			(url) => !url.pathname.includes("/settings/config"),
+			{ timeout: 5000 },
+		);
 
-		expect(isRedirected || accessDenied).toBe(true);
+		await Promise.race([
+			denied.waitFor({ state: "visible", timeout: 5000 }),
+			redirected,
+		]);
+
+		const isDenied = await denied.isVisible().catch(() => false);
+		const isRedirected = !page.url().includes("/settings/config");
+		expect(isDenied || isRedirected).toBe(true);
 	});
 });

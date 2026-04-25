@@ -2,8 +2,7 @@
 # Runs Playwright tests inside a container against the client service
 #
 # Usage (via test.sh):
-#   ./test.sh --client        # Run backend + frontend E2E tests
-#   ./test.sh --client-only   # Run frontend E2E tests only
+#   ./test.sh client e2e      # Run Playwright E2E tests in the client container
 
 FROM mcr.microsoft.com/playwright:v1.56.0-jammy
 

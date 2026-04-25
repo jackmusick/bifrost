@@ -61,6 +61,8 @@ async def get_llm_config(
         endpoint=config.endpoint,
         max_tokens=config.max_tokens,
         default_system_prompt=config.default_system_prompt,
+        summarization_model=config.summarization_model,
+        tuning_model=config.tuning_model,
         is_configured=config.is_configured,
         api_key_set=config.api_key_set,
     )
@@ -88,6 +90,8 @@ async def set_llm_config(
             endpoint=request.endpoint,
             max_tokens=request.max_tokens,
             default_system_prompt=request.default_system_prompt,
+            summarization_model=request.summarization_model,
+            tuning_model=request.tuning_model,
             updated_by=user.email,
         )
     except ValueError as e:
@@ -126,6 +130,8 @@ async def set_llm_config(
         endpoint=request.endpoint,
         max_tokens=request.max_tokens,
         default_system_prompt=request.default_system_prompt,
+        summarization_model=request.summarization_model,
+        tuning_model=request.tuning_model,
         is_configured=True,
         api_key_set=api_key_set,
     )

@@ -1,0 +1,19 @@
+name: Chore
+description: Maintenance, tooling, deps, CI, or refactor without user-visible change
+title: "[chore]: "
+labels: ["chore"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: What change is being made
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Why now — what does this unblock, fix, or prevent?
+    validations:
+      required: true

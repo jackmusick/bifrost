@@ -5,6 +5,7 @@ Provides Python API for workflow operations (list, get status, execute).
 All operations go through HTTP API endpoints.
 """
 
+from datetime import datetime
 from typing import Any
 
 from .client import get_client, raise_for_status_with_detail
@@ -69,6 +70,8 @@ class workflows:
         *,
         org_id: str | None = None,
         run_as: str | None = None,
+        scheduled_at: datetime | None = None,
+        delay_seconds: int | None = None,
     ) -> str:
         """
         Execute a workflow (fire-and-forget).
@@ -83,11 +86,18 @@ class workflows:
                      Like `bifrost run --org <org_id>`.
             run_as: Execute as this user UUID (admin only).
                     The execution will run under this user's identity.
+            scheduled_at: Run at this timezone-aware datetime (ISO-8601 in
+                the payload). Must be strictly in the future and within 1
+                year of now. Mutually exclusive with ``delay_seconds``.
+            delay_seconds: Run this many seconds from now (>= 1, <= 1 year).
+                Mutually exclusive with ``scheduled_at``.
 
         Returns:
             str: The execution ID
 
         Raises:
+            ValueError: If ``scheduled_at`` and ``delay_seconds`` are both
+                provided, or if ``scheduled_at`` is naive (no tzinfo).
             httpx.HTTPStatusError: If the request fails (403 for non-admin
                 using org_id/run_as, 404 for workflow not found, etc.)
             RuntimeError: If not authenticated
@@ -100,6 +110,13 @@ class workflows:
             >>> execution = await workflows.get(eid)
             >>> print(execution.status)
         """
+        if scheduled_at is not None and delay_seconds is not None:
+            raise ValueError(
+                "'scheduled_at' and 'delay_seconds' are mutually exclusive"
+            )
+        if scheduled_at is not None and scheduled_at.tzinfo is None:
+            raise ValueError("'scheduled_at' must be timezone-aware")
+
         from ._context import get_default_scope
 
         # Auto-include org_id from execution context if not explicitly provided,
@@ -117,9 +134,35 @@ class workflows:
             payload["org_id"] = org_id
         if run_as is not None:
             payload["run_as"] = run_as
+        if scheduled_at is not None:
+            payload["scheduled_at"] = scheduled_at.isoformat()
+        if delay_seconds is not None:
+            payload["delay_seconds"] = delay_seconds
         response = await client.post("/api/workflows/execute", json=payload)
         raise_for_status_with_detail(response)
         return response.json()["execution_id"]
+
+    @staticmethod
+    async def cancel(execution_id: str) -> None:
+        """Cancel a Scheduled workflow execution.
+
+        Args:
+            execution_id: The execution ID to cancel.
+
+        Raises:
+            httpx.HTTPStatusError: 409 if the execution is not Scheduled,
+                404 if not found, 403 if forbidden.
+            RuntimeError: If not authenticated.
+
+        Example:
+            >>> from bifrost import workflows
+            >>> await workflows.cancel("exec-123")
+        """
+        client = get_client()
+        response = await client.post(
+            f"/api/workflows/executions/{execution_id}/cancel"
+        )
+        raise_for_status_with_detail(response)
 
     @staticmethod
     async def get(execution_id: str) -> WorkflowExecution:

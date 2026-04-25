@@ -2,7 +2,7 @@
  * App Router
  *
  * Universal router for App Builder applications.
- * Renders JsxAppShell for file-based JSX apps with AppLayout wrapper.
+ * Renders BundledAppShell (esbuild-bundled runtime) wrapped in AppLayout.
  *
  * Routes:
  * - /apps/:slug/preview/* - Preview mode (uses draft files)
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/card";
 import { useApplication } from "@/hooks/useApplications";
 import { useAuth } from "@/contexts/AuthContext";
-import { JsxAppShell } from "@/components/jsx-app/JsxAppShell";
+import { BundledAppShell } from "@/components/jsx-app/BundledAppShell";
 import { AppLayout } from "@/components/layout/AppLayout";
 
 interface AppRouterProps {
@@ -143,7 +143,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 	}
 
 	const shell = (
-		<JsxAppShell
+		<BundledAppShell
 			appId={application.id}
 			appSlug={application.slug}
 			isPreview={preview}

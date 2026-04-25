@@ -134,74 +134,61 @@ This starts:
 
 ## Local Development
 
-### Docker (Recommended)
+### Starting the dev stack
 
 The full stack runs in Docker with hot reload enabled for both API and client:
 
 ```bash
-# Start all services with hot reload
-docker compose up
+./debug.sh              # Start all services with hot reload
+```
 
-# Or run in background
-docker compose up -d
+This launches PostgreSQL, Redis, RabbitMQ, MinIO, the API, the client, the scheduler, and workers. Access the app at **http://localhost:3000** — Vite proxies `/api/*` to the API container, so you don't hit the API on a separate port.
 
+Changes to files in `api/src/`, `api/shared/`, and `client/src/` automatically reload — **do not restart containers for code changes.**
+
+```bash
 # View logs
 docker compose logs -f api
 docker compose logs -f client
 ```
 
-Changes to files in `api/src/`, `api/shared/`, and `client/src/` automatically reload.
-
-**VS Code Debugging:**
+**VS Code debugging:**
 
 ```bash
-# Start with debugger enabled (API waits for VS Code to attach)
-ENABLE_DEBUG=true docker compose up
+ENABLE_DEBUG=true ./debug.sh
 ```
 
-Then attach VS Code debugger to port 5678. The API will wait for the debugger before starting.
+Attach VS Code to port 5678. The API waits for the debugger before starting.
 
-### Native
-
-For native development, run infrastructure in Docker and applications locally:
-
-```bash
-# Start infrastructure only
-docker compose up -d postgres redis rabbitmq
-
-# Set up Python virtual environment
-cd api
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Run database migrations
-alembic upgrade head
-
-# Start the API with hot reload
-uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-# In another terminal, start the client
-cd client
-npm install
-npm run dev
-```
+For the full container-management contract (when to restart what, hot-reload rules, type-generation workflow), see [`CLAUDE.md` → Development Environment](./CLAUDE.md#development-environment-critical---read-first).
 
 ### Running Tests
 
+The test stack runs in Docker and is separate from your dev stack. Boot it once per worktree and run tests as many times as you like — state is reset between runs.
+
 ```bash
-# Run all tests (starts dependencies in Docker)
-./test.sh
+# Stack lifecycle (per worktree)
+./test.sh stack up                                 # Boot the test stack
+./test.sh stack reset                              # Fast state reset between runs
+./test.sh stack down                               # Tear down + remove volumes
 
-# Run specific test file
-./test.sh tests/integration/platform/test_sdk_from_workflow.py
+# Backend tests (stack must be up)
+./test.sh                                          # Unit tests (fast default)
+./test.sh e2e                                      # Backend e2e
+./test.sh all                                      # Unit + e2e (mirrors CI)
+./test.sh tests/unit/test_foo.py::test_bar -v      # Passthrough to pytest
 
-# Run with coverage
-./test.sh --coverage
+# Client tests
+./test.sh client unit                              # Vitest (no stack needed)
+./test.sh client e2e                               # Playwright in containers
 
-# Run E2E tests
-./test.sh --e2e
+# CI-equivalent (one-shot: boot → run → tear down)
+./test.sh ci
 ```
+
+Parallel worktrees each get their own isolated stack, so you can run tests in several worktrees simultaneously without conflict.
+
+For test authoring conventions, fixture layout, and debugging tips, see [`CLAUDE.md`](./CLAUDE.md#testing--quality).
 
 ---
 

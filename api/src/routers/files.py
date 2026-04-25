@@ -438,6 +438,14 @@ class ManifestImportRequest(BaseModel):
             "missing names fail with 422."
         ),
     )
+    entity_ids: set[str] | None = Field(
+        default=None,
+        description=(
+            "Optional subset of entity UUIDs to apply. When set, only entities whose id is in "
+            "this set are written; all other diff entries are skipped. Use for interactive "
+            "cherry-pick import where the user approves a subset of a dry-run diff."
+        ),
+    )
 
 
 @router.post("/manifest/import", response_model=ManifestImportResponse)
@@ -473,6 +481,7 @@ async def import_manifest(
     dry_run = request.dry_run if request else False
     target_org = request.target_organization_id if request else None
     role_resolution = request.role_resolution if request else "uuid"
+    entity_ids = request.entity_ids if request else None
 
     try:
         result = await import_manifest_from_repo(
@@ -481,6 +490,7 @@ async def import_manifest(
             dry_run=dry_run,
             target_organization_id=target_org,
             role_resolution=role_resolution,
+            entity_ids=entity_ids,
         )
     except ValueError as e:
         # Cross-env rebinding precondition failure (orgs+target clash, unknown role, etc.)

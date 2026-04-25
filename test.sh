@@ -1,871 +1,324 @@
-#!/bin/bash
-# Bifrost API - Test Runner
+#!/usr/bin/env bash
+# Bifrost test runner — verb-style subcommand interface.
 #
-# This script runs tests in an isolated Docker environment using docker-compose.test.yml.
-# All dependencies (PostgreSQL, RabbitMQ, Redis, API, Worker) are ephemeral and cleaned up after tests.
+# Stack lifecycle (long-lived, per worktree):
+#   ./test.sh stack up                  Boot the stack.
+#   ./test.sh stack down                Tear it down + remove volumes.
+#   ./test.sh stack reset               Fast state reset (DB clone, redis flush, minio wipe).
+#   ./test.sh stack status              Print project name and running services.
 #
-# Usage:
-#   ./test.sh                          # Run ALL backend tests (unit + e2e)
-#   ./test.sh --coverage               # Run all tests with coverage report
-#   ./test.sh --wait                   # Wait before cleanup (for debugging)
-#   ./test.sh tests/unit/ -v           # Run only unit tests
-#   ./test.sh tests/e2e/ -v            # Run only E2E tests
-#   ./test.sh tests/unit/test_foo.py::test_bar -v  # Run single test
-#   ./test.sh --client                 # Run backend tests + Playwright E2E tests
-#   ./test.sh --client-only            # Run only Playwright E2E tests (skip backend)
-#   ./test.sh --client-dev             # Fast iteration: reset DB + run Playwright (keeps stack running)
-#   ./test.sh --client-dev e2e/auth.unauth.spec.ts  # Run specific test file
-#   ./test.sh --client-dev --grep "login"          # Run tests matching pattern
-#   ./test.sh --local                  # Start API stack for LOCAL Playwright testing
-#   ./test.sh --reset-db               # Reset database (keeps containers running)
+# Backend tests (stack must be up):
+#   ./test.sh                           Unit tests only (fast default).
+#   ./test.sh unit                      Same as above.
+#   ./test.sh e2e                       Backend e2e tests.
+#   ./test.sh all                       Unit + e2e (mirrors CI).
+#   ./test.sh tests/path/... [args]     Pass through to pytest.
+#
+# Client tests:
+#   ./test.sh client unit               Vitest on the host (no stack).
+#   ./test.sh client e2e                Playwright in the stack's client container.
+#   ./test.sh client e2e --screenshots  Capture a screenshot for every test (UX review).
+#   ./test.sh client e2e e2e/auth.unauth.spec.ts   Pass through to playwright.
+#
+# CI escape hatch:
+#   ./test.sh ci                        Full isolated run: up, all tests, down.
+#
+# Global flags (apply to most subcommands):
+#   --no-reset    Skip state reset before running tests.
+#   --coverage    Enable coverage reporting (backend only).
+#   --wait        On failure, pause before cleanup.
 
-set -e
+set -euo pipefail
 
-# Get script directory (repo root)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# =============================================================================
-# Configuration
-# =============================================================================
-COMPOSE_FILE="docker-compose.test.yml"
-COMPOSE_LOCAL="docker-compose.local.yml"
-COVERAGE=false
-WAIT_MODE=false
-CLIENT_TESTS=false
-CLIENT_ONLY=false
-CLIENT_DEV=false
-LOCAL_MODE=false
-RESET_DB=false
-NO_RESET=false
-CI_MODE=false
-PYTEST_ARGS=()
-PLAYWRIGHT_ARGS=()
+# shellcheck source=scripts/lib/test_helpers.sh
+source "$SCRIPT_DIR/scripts/lib/test_helpers.sh"
 
-# Load .env.test if it exists (for GitHub PAT and other test secrets)
+COMPOSE_FILE="docker-compose.test.yml"
+export COMPOSE_PROJECT_NAME
+COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+
+LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+mkdir -p "$LOG_DIR"
+export LOG_DIR
+
+# Load .env.test for optional secrets (GitHub PAT, LLM keys, etc.)
 if [ -f ".env.test" ]; then
-    echo "Loading test configuration from .env.test..."
-    set -a  # automatically export all variables
+    set -a
+    # shellcheck disable=SC1091
     source .env.test
     set +a
 fi
 
-# Parse command line arguments
-for arg in "$@"; do
-    if [ "$arg" = "--coverage" ]; then
-        COVERAGE=true
-    elif [ "$arg" = "--wait" ]; then
-        WAIT_MODE=true
-    elif [ "$arg" = "--ci" ]; then
-        CI_MODE=true
-    elif [ "$arg" = "--e2e" ]; then
-        # Legacy flag - E2E now runs by default, kept for backwards compatibility
-        true
-    elif [ "$arg" = "--client" ]; then
-        # Run Playwright E2E tests after backend tests
-        CLIENT_TESTS=true
-    elif [ "$arg" = "--client-only" ]; then
-        # Run only Playwright E2E tests (skip backend tests)
-        CLIENT_TESTS=true
-        CLIENT_ONLY=true
-    elif [ "$arg" = "--client-dev" ]; then
-        # Fast iteration mode: reset DB + run Playwright, keep stack running
-        CLIENT_DEV=true
-    elif [ "$arg" = "--local" ]; then
-        # Start API stack for local Playwright testing (port exposed)
-        LOCAL_MODE=true
-    elif [ "$arg" = "--reset-db" ]; then
-        # Reset database without restarting containers
-        RESET_DB=true
-    elif [ "$arg" = "--no-reset" ]; then
-        # Skip database reset in client-dev mode
-        NO_RESET=true
-    elif [[ "$arg" == e2e/* ]] || [[ "$arg" == *".spec.ts"* ]] || [[ "$arg" == "--"* && "$CLIENT_DEV" = true ]]; then
-        # Playwright-specific args (e2e files, spec files, or flags when in client-dev mode)
-        PLAYWRIGHT_ARGS+=("$arg")
-    else
-        PYTEST_ARGS+=("$arg")
-    fi
-done
-
 # =============================================================================
-# Docker log export directory (skipped in CI mode)
+# Common helpers
 # =============================================================================
-if [ "$CI_MODE" = false ]; then
-    LOG_DIR="/tmp/bifrost"
-    mkdir -p "$LOG_DIR"
-else
-    LOG_DIR=""
-fi
 
-# =============================================================================
-# Function to export docker logs
-# =============================================================================
-export_docker_logs() {
-    # Skip log export in CI mode (no /tmp outputs)
-    if [ -z "$LOG_DIR" ]; then
-        return
-    fi
-
-    echo "Exporting docker logs to $LOG_DIR/..."
-
-    # Clean up old docker log files from previous runs (preserve test-runner.log and xml results)
-    find "$LOG_DIR" -maxdepth 1 -name "*.log" ! -name "test-runner.log" -delete 2>/dev/null
-    rm -f "$LOG_DIR"/docker-logs.txt 2>/dev/null
-
-    # Export combined logs with timestamps
-    {
-        echo "============================================================"
-        echo "Docker Compose Logs - $(date)"
-        echo "============================================================"
-        docker compose -f "$COMPOSE_FILE" logs --no-color --timestamps 2>&1
-    } > "$LOG_DIR/docker-logs.txt" 2>&1
-
-    # Dynamically get all service names (include all profiles to capture worker, test-runner, etc.)
-    local services
-    services=$(docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client config --services 2>/dev/null)
-
-    for service in $services; do
-        local log_file="$LOG_DIR/$service.log"
-        if docker compose -f "$COMPOSE_FILE" logs --no-color --timestamps "$service" > "$log_file" 2>&1; then
-            if [ -s "$log_file" ]; then
-                echo "  Exported: $service.log ($(wc -l < "$log_file") lines)"
-            else
-                rm -f "$log_file"  # Remove empty log files
-            fi
-        fi
-    done
-
-    echo ""
-    echo "Logs exported to $LOG_DIR/"
-    ls -la "$LOG_DIR"/*.log 2>/dev/null || echo "  No individual logs captured"
+print_project() {
+    echo "Worktree: $(git rev-parse --show-toplevel)"
+    echo "Project:  $COMPOSE_PROJECT_NAME"
 }
 
-# =============================================================================
-# Cleanup function
-# =============================================================================
-cleanup() {
-    echo ""
-    # Export logs before cleanup
-    export_docker_logs
-    echo "Cleaning up test environment..."
-    docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client --profile zitadel down -v 2>/dev/null || true
-    echo "Cleanup complete"
-}
-
-# =============================================================================
-# Error handler - prompts before cleanup on any failure
-# =============================================================================
-error_handler() {
-    local exit_code=$?
-    local line_number=$1
-
-    echo ""
-    echo "============================================================"
-    echo "ERROR: Script failed at line $line_number (exit code: $exit_code)"
-    echo "============================================================"
-
-    # Show recent container logs for debugging
-    echo ""
-    echo "Recent container logs:"
-    echo "------------------------------------------------------------"
-    docker compose -f "$COMPOSE_FILE" logs --tail=50 2>/dev/null || true
-    echo "------------------------------------------------------------"
-
-    # In wait mode, wait for user before cleanup
-    if [ "$WAIT_MODE" = true ]; then
-        echo ""
-        echo "Press Enter to cleanup and exit (or Ctrl+C to keep containers running for debugging)..."
-        read -r
+require_stack_up() {
+    if ! stack_is_up "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; then
+        echo "ERROR: stack not running for this worktree. Run:" >&2
+        echo "  ./test.sh stack up" >&2
+        exit 1
     fi
 }
 
-# Trap errors to show logs and wait before cleanup
-trap 'error_handler $LINENO' ERR
-# Trap to ensure cleanup on exit or Ctrl+C
-trap cleanup EXIT
+reset_state() {
+    echo "Resetting state..."
+
+    docker compose -f "$COMPOSE_FILE" stop api worker scheduler pgbouncer 2>/dev/null || true
+
+    docker compose -f "$COMPOSE_FILE" exec -T postgres psql -U bifrost -d postgres -c \
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'bifrost_test' AND pid <> pg_backend_pid();" \
+        > /dev/null 2>&1 || true
+    docker compose -f "$COMPOSE_FILE" exec -T postgres psql -U bifrost -d postgres -c \
+        "DROP DATABASE IF EXISTS bifrost_test;" > /dev/null
+    docker compose -f "$COMPOSE_FILE" exec -T postgres psql -U bifrost -d postgres -c \
+        "CREATE DATABASE bifrost_test TEMPLATE bifrost_test_template;" > /dev/null
+
+    docker compose -f "$COMPOSE_FILE" exec -T redis redis-cli FLUSHDB > /dev/null
+    docker compose -f "$COMPOSE_FILE" run --rm --no-deps minio-init > /dev/null
+
+    rm -f client/e2e/.auth/credentials.json \
+          client/e2e/.auth/platform_admin.json \
+          client/e2e/.auth/org1_user.json \
+          client/e2e/.auth/org2_user.json
+
+    docker compose -f "$COMPOSE_FILE" start pgbouncer > /dev/null
+    wait_for_service "$COMPOSE_FILE" pgbouncer pg_isready -h localhost -p 5432 -U bifrost
+    docker compose -f "$COMPOSE_FILE" --profile e2e start api worker scheduler > /dev/null
+    wait_for_service "$COMPOSE_FILE" api curl -sf http://localhost:8000/health
+
+    echo "State reset complete."
+}
 
 # =============================================================================
-# Local Mode - Start API stack with exposed port for local Playwright testing
+# stack up|down|reset|status
 # =============================================================================
-if [ "$LOCAL_MODE" = true ]; then
-    echo "============================================================"
-    echo "Bifrost API - Local Playwright Testing Mode"
-    echo "============================================================"
-    echo ""
-    echo "Starting API stack with port 8000 exposed to host..."
-    echo ""
 
-    # Stop any existing test containers
-    echo "Stopping any existing test containers..."
-    docker compose -f "$COMPOSE_FILE" -f "$COMPOSE_LOCAL" --profile e2e --profile test --profile client down -v 2>/dev/null || true
+cmd_stack() {
+    local subcmd="${1:-status}"
+    shift || true
 
-    # Start services with local override (exposes port 8000)
-    echo "Starting infrastructure + API + Worker..."
-    docker compose -f "$COMPOSE_FILE" -f "$COMPOSE_LOCAL" --profile e2e up -d --build
+    case "$subcmd" in
+        up) stack_up "$@" ;;
+        down) stack_down ;;
+        reset) stack_reset ;;
+        status) stack_status ;;
+        *)
+            echo "Unknown stack subcommand: $subcmd" >&2
+            echo "Valid: up, down, reset, status" >&2
+            exit 2
+            ;;
+    esac
+}
 
-    # Wait for API to be healthy
-    echo ""
-    echo "Waiting for API to be ready..."
-    for i in {1..120}; do
-        if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-            echo "API is ready at http://localhost:8000"
-            break
-        fi
-        if [ $i -eq 120 ]; then
-            echo "ERROR: API failed to start within 120 seconds"
-            exit 1
-        fi
-        echo "  Waiting for API... (attempt $i/120)"
-        sleep 1
-    done
+stack_up() {
+    print_project
 
-    echo ""
-    echo "============================================================"
-    echo "API stack is running with port 8000 exposed!"
-    echo "============================================================"
-    echo ""
-    echo "Run Playwright tests locally:"
-    echo "  cd client"
-    echo "  npx playwright test              # Run all tests"
-    echo "  npx playwright test --headed     # Watch tests run"
-    echo "  npx playwright test --debug      # Step-through debugging"
-    echo "  npx playwright test -g 'login'   # Run specific test"
-    echo ""
-    echo "Press Ctrl+C to stop the API stack and cleanup..."
-    echo ""
-
-    # Set up cleanup for local mode
-    local_cleanup() {
-        echo ""
-        echo "Stopping API stack..."
-        docker compose -f "$COMPOSE_FILE" -f "$COMPOSE_LOCAL" --profile e2e down -v 2>/dev/null || true
-        echo "Cleanup complete"
-        exit 0
-    }
-    trap local_cleanup EXIT INT TERM
-
-    # Wait for user to stop
-    while true; do
-        sleep 1
-    done
-fi
-
-# =============================================================================
-# Reset Database Mode - Quick reset without restarting containers
-# =============================================================================
-if [ "$RESET_DB" = true ]; then
-    # Disable cleanup trap for reset-db mode
-    trap - EXIT
-
-    echo "============================================================"
-    echo "Bifrost API - Database Reset"
-    echo "============================================================"
-    echo ""
-
-    # Check if postgres container is running
-    if ! docker compose -f "$COMPOSE_FILE" ps postgres 2>/dev/null | grep -q "running"; then
-        echo "ERROR: Postgres container not running."
-        echo "Start the stack first with: ./test.sh --local"
-        exit 1
+    if stack_is_up "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; then
+        echo "Stack already up."
+        return 0
     fi
 
-    echo "Terminating database connections and recreating database..."
-    docker compose -f "$COMPOSE_FILE" exec -T postgres \
-        psql -U bifrost -d postgres -c "
-            SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-            WHERE datname = 'bifrost_test' AND pid <> pg_backend_pid();
-            DROP DATABASE IF EXISTS bifrost_test;
-            CREATE DATABASE bifrost_test;
-        " > /dev/null
+    echo "Booting infrastructure..."
+    docker compose -f "$COMPOSE_FILE" up -d postgres rabbitmq redis minio
 
-    echo "Running database migrations..."
-    docker compose -f "$COMPOSE_FILE" exec -T api alembic upgrade head
+    wait_for_service "$COMPOSE_FILE" postgres pg_isready -U bifrost -d postgres
+    wait_for_service "$COMPOSE_FILE" rabbitmq rabbitmq-diagnostics check_running
+    wait_for_service "$COMPOSE_FILE" redis redis-cli ping
 
-    echo "Clearing Playwright auth state..."
-    rm -f client/e2e/.auth/credentials.json
-    rm -f client/e2e/.auth/platform_admin.json
-    rm -f client/e2e/.auth/org1_user.json
-    rm -f client/e2e/.auth/org2_user.json
+    docker compose -f "$COMPOSE_FILE" up -d pgbouncer minio-init
+    wait_for_service "$COMPOSE_FILE" pgbouncer pg_isready -h localhost -p 5432 -U bifrost
 
-    echo ""
-    echo "============================================================"
-    echo "Database reset complete!"
-    echo "============================================================"
-    echo ""
-    echo "Run your Playwright tests now - setup will recreate users:"
-    echo "  cd client"
-    echo "  TEST_API_URL=http://localhost:8000 TEST_BASE_URL=http://localhost:3000 npx playwright test"
-    echo ""
-    exit 0
-fi
+    echo "Building template database..."
+    "$SCRIPT_DIR/scripts/stack_template_init.sh"
 
-# =============================================================================
-# Client Dev Mode - Fast iteration: start stack if needed, reset DB, run tests
-# =============================================================================
-if [ "$CLIENT_DEV" = true ]; then
-    # Disable cleanup trap - we want to keep containers running
-    trap - EXIT
+    echo "Starting API + Worker + Scheduler..."
+    docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build
+    wait_for_service "$COMPOSE_FILE" api curl -sf http://localhost:8000/health
 
-    echo "============================================================"
-    echo "Bifrost API - Client Dev Mode (Fast Iteration)"
-    echo "============================================================"
-    echo ""
-
-    # Check if stack is already running
-    STACK_RUNNING=false
-    if docker compose -f "$COMPOSE_FILE" ps api 2>/dev/null | grep -q "running"; then
-        STACK_RUNNING=true
-        echo "Stack already running, skipping startup..."
-    fi
-
-    if [ "$STACK_RUNNING" = false ]; then
-        echo "Starting test stack..."
-
-        # Start infrastructure
-        docker compose -f "$COMPOSE_FILE" up -d postgres rabbitmq redis minio
-
-        # Wait for postgres
-        echo "Waiting for PostgreSQL..."
-        for i in {1..60}; do
-            if docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U bifrost -d bifrost_test > /dev/null 2>&1; then
-                break
-            fi
-            sleep 1
-        done
-
-        # Start PgBouncer and MinIO init
-        docker compose -f "$COMPOSE_FILE" up -d pgbouncer minio-init
-
-        # Wait for PgBouncer
-        echo "Waiting for PgBouncer..."
-        for i in {1..30}; do
-            if docker compose -f "$COMPOSE_FILE" exec -T pgbouncer pg_isready -h localhost -p 5432 -U bifrost > /dev/null 2>&1; then
-                break
-            fi
-            sleep 1
-        done
-
-        # Start API, Worker, and Coding Agent
-        echo "Starting API, Worker, and Coding Agent..."
-        docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build
-
-        # Wait for API
-        echo "Waiting for API..."
-        for i in {1..120}; do
-            if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                echo "API is ready!"
-                break
-            fi
-            sleep 1
-        done
-
-        # Start client
-        echo "Starting Client..."
-        docker compose -f "$COMPOSE_FILE" --profile client up -d --build client
-
-        # Wait for client
-        echo "Waiting for Client..."
-        for i in {1..120}; do
-            HEALTH_STATUS=$(docker inspect -f '{{.State.Health.Status}}' bifrost-test-client 2>/dev/null || echo "unknown")
-            if [ "$HEALTH_STATUS" = "healthy" ]; then
-                echo "Client is ready!"
-                break
-            fi
-            sleep 1
-        done
-    fi
-
-    # Reset database unless --no-reset was passed
-    if [ "$NO_RESET" = false ]; then
-        echo ""
-        echo "Stopping API and worker to release database connections..."
-        docker compose -f "$COMPOSE_FILE" stop api worker 2>/dev/null || true
-        sleep 1
-
-        echo "Resetting database..."
-        # Terminate any remaining connections, then drop and recreate
-        docker compose -f "$COMPOSE_FILE" exec -T postgres \
-            psql -U bifrost -d postgres -c \
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'bifrost_test' AND pid <> pg_backend_pid();" \
-            > /dev/null 2>&1 || true
-        docker compose -f "$COMPOSE_FILE" exec -T postgres \
-            psql -U bifrost -d postgres -c "DROP DATABASE IF EXISTS bifrost_test;" > /dev/null
-        docker compose -f "$COMPOSE_FILE" exec -T postgres \
-            psql -U bifrost -d postgres -c "CREATE DATABASE bifrost_test;" > /dev/null
-
-        # Restart API, Worker, and Coding Agent to run migrations and start server
-        echo "Restarting API (runs migrations on startup)..."
-        docker compose -f "$COMPOSE_FILE" --profile e2e start api worker coding-agent
-
-        # Wait for API to be ready
-        echo "Waiting for API to be ready..."
-        for i in {1..60}; do
-            if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                echo "API is ready!"
-                break
-            fi
-            sleep 2
-        done
-
-        # Clear auth state
-        rm -f client/e2e/.auth/credentials.json
-        rm -f client/e2e/.auth/platform_admin.json
-        rm -f client/e2e/.auth/org1_user.json
-        rm -f client/e2e/.auth/org2_user.json
-    else
-        echo ""
-        echo "Skipping database reset (--no-reset)"
-    fi
-
-    # Run Playwright tests
-    echo ""
-    echo "============================================================"
-    echo "Running Playwright E2E tests..."
-    if [ ${#PLAYWRIGHT_ARGS[@]} -gt 0 ]; then
-        echo "Args: ${PLAYWRIGHT_ARGS[*]}"
-    fi
-    echo "============================================================"
-    echo ""
-
-    set +e
-    if [ ${#PLAYWRIGHT_ARGS[@]} -gt 0 ]; then
-        docker compose -f "$COMPOSE_FILE" --profile client run --rm playwright-runner \
-            npx playwright test "${PLAYWRIGHT_ARGS[@]}"
-    else
-        docker compose -f "$COMPOSE_FILE" --profile client run --rm playwright-runner
-    fi
-    PLAYWRIGHT_EXIT_CODE=$?
-    set -e
-
-    echo ""
-    echo "============================================================"
-    if [ $PLAYWRIGHT_EXIT_CODE -eq 0 ]; then
-        echo "Tests PASSED!"
-    else
-        echo "Tests FAILED (exit code $PLAYWRIGHT_EXIT_CODE)"
-    fi
-    echo "============================================================"
-    echo ""
-    echo "Stack is still running. Run './test.sh --client-dev' again to reset and re-test."
-    echo "Run './test.sh --reset-db' to just reset the database."
-    echo "Run 'docker compose -f docker-compose.test.yml down -v' to stop everything."
-    echo ""
-
-    exit $PLAYWRIGHT_EXIT_CODE
-fi
-
-# =============================================================================
-# Start services
-# =============================================================================
-echo "============================================================"
-echo "Bifrost API - Test Runner (Containerized)"
-echo "============================================================"
-echo ""
-
-# Stop any existing test containers
-echo "Stopping any existing test containers..."
-docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client down -v 2>/dev/null || true
-
-# Build the test runner image
-echo "Building test runner image..."
-docker compose -f "$COMPOSE_FILE" build test-runner
-
-# Start infrastructure services
-echo "Starting PostgreSQL, PgBouncer, RabbitMQ, and Redis..."
-docker compose -f "$COMPOSE_FILE" up -d postgres rabbitmq redis
-
-# Wait for PostgreSQL to be ready
-echo "Waiting for PostgreSQL to be ready..."
-for i in {1..30}; do
-    if docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U bifrost -d bifrost_test > /dev/null 2>&1; then
-        echo "PostgreSQL is ready!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "ERROR: PostgreSQL failed to start within 30 seconds"
-        exit 1
-    fi
-    echo "  Waiting for PostgreSQL... (attempt $i/30)"
-    sleep 1
-done
-
-# Wait for RabbitMQ to be ready
-echo "Waiting for RabbitMQ to be ready..."
-for i in {1..30}; do
-    if docker compose -f "$COMPOSE_FILE" exec -T rabbitmq rabbitmq-diagnostics check_running > /dev/null 2>&1; then
-        echo "RabbitMQ is ready!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "ERROR: RabbitMQ failed to start within 30 seconds"
-        exit 1
-    fi
-    echo "  Waiting for RabbitMQ... (attempt $i/30)"
-    sleep 1
-done
-
-# Wait for Redis to be ready
-echo "Waiting for Redis to be ready..."
-for i in {1..15}; do
-    if docker compose -f "$COMPOSE_FILE" exec -T redis redis-cli ping > /dev/null 2>&1; then
-        echo "Redis is ready!"
-        break
-    fi
-    if [ $i -eq 15 ]; then
-        echo "ERROR: Redis failed to start within 15 seconds"
-        exit 1
-    fi
-    echo "  Waiting for Redis... (attempt $i/15)"
-    sleep 1
-done
-
-# Start PgBouncer (depends on PostgreSQL being healthy)
-echo "Starting PgBouncer..."
-docker compose -f "$COMPOSE_FILE" up -d pgbouncer
-
-# Wait for PgBouncer to be ready
-echo "Waiting for PgBouncer to be ready..."
-for i in {1..15}; do
-    if docker compose -f "$COMPOSE_FILE" exec -T pgbouncer pg_isready -h localhost -p 5432 -U bifrost > /dev/null 2>&1; then
-        echo "PgBouncer is ready!"
-        break
-    fi
-    if [ $i -eq 15 ]; then
-        echo "ERROR: PgBouncer failed to start within 15 seconds"
-        exit 1
-    fi
-    echo "  Waiting for PgBouncer... (attempt $i/15)"
-    sleep 1
-done
-
-# =============================================================================
-# Run backend tests (skip if --client-only)
-# =============================================================================
-# Note: Database migrations and cache warming are handled by the init container
-# which the test-runner depends on via docker-compose.test.yml
-#
-# Two-phase execution (default, no custom args):
-#   Phase 1: unit tests (NO e2e services running)
-#   Phase 2: start API + worker, then run e2e tests
-# This prevents e2e tests (which do DDL) from hanging on locks
-# held by API/worker database connections.
-#
-# Custom args: start e2e services first, run single invocation (user may target e2e tests)
-TEST_EXIT_CODE=0
-
-if [ "$CLIENT_ONLY" = false ]; then
-    if [ ${#PYTEST_ARGS[@]} -eq 0 ]; then
-        # =================================================================
-        # Default: Two-phase execution
-        # =================================================================
-
-        # --- Phase 1: Unit tests (no e2e services) ---
-        echo ""
-        echo "============================================================"
-        echo "Phase 1: Running unit tests..."
-        echo "============================================================"
-        echo ""
-
-        # Ignore tests that require a running API service
-        PHASE1_CMD=("pytest" "tests/" "--ignore=tests/e2e/" "-v")
-        if [ -n "$LOG_DIR" ]; then
-            PHASE1_CMD+=("--junitxml=/tmp/bifrost/unit-results.xml")
-        fi
-        if [ "$COVERAGE" = true ]; then
-            PHASE1_CMD+=("--cov=src" "--cov-report=term-missing")
-        fi
-
-        trap - ERR
-        set +e
-        if [ -n "$LOG_DIR" ]; then
-            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${PHASE1_CMD[@]}" 2>&1 | tee "$LOG_DIR/test-runner.log"
-        else
-            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${PHASE1_CMD[@]}"
-        fi
-        TEST_EXIT_CODE=${PIPESTATUS[0]}
-        set -e
-
-        echo ""
-        echo "============================================================"
-        if [ $TEST_EXIT_CODE -eq 0 ]; then
-            echo "Phase 1 PASSED"
-        else
-            echo "Phase 1 FAILED (exit code $TEST_EXIT_CODE)"
-            echo "Skipping Phase 2 (e2e)"
-            echo "============================================================"
-        fi
-        echo "============================================================"
-
-        # --- Phase 2: E2E tests (with API + worker) ---
-        if [ $TEST_EXIT_CODE -eq 0 ]; then
-            echo ""
-            echo "============================================================"
-            echo "Phase 2: Starting API + Worker for E2E tests..."
-            echo "============================================================"
-            echo ""
-
-            docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build
-
-            echo "Waiting for API to be ready..."
-            for i in {1..60}; do
-                if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                    echo "API is ready!"
-                    break
-                fi
-                if [ $i -eq 60 ]; then
-                    echo "ERROR: API failed to start within 60 seconds"
-                    exit 1
-                fi
-                echo "  Waiting for API... (attempt $i/60)"
-                sleep 1
-            done
-
-            echo ""
-            echo "============================================================"
-            echo "Running E2E tests..."
-            echo "============================================================"
-            echo ""
-
-            # Run e2e tests that need a live API
-            PHASE2_CMD=("pytest" "tests/e2e/" "-v")
-            if [ -n "$LOG_DIR" ]; then
-                PHASE2_CMD+=("--junitxml=/tmp/bifrost/e2e-results.xml")
-            fi
-            if [ "$COVERAGE" = true ]; then
-                PHASE2_CMD+=("--cov=src" "--cov-append" "--cov-report=term-missing" "--cov-report=xml:/app/coverage.xml")
-            fi
-
-            trap - ERR
-            set +e
-            if [ -n "$LOG_DIR" ]; then
-                docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${PHASE2_CMD[@]}" 2>&1 | tee -a "$LOG_DIR/test-runner.log"
-            else
-                docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${PHASE2_CMD[@]}"
-            fi
-            TEST_EXIT_CODE=${PIPESTATUS[0]}
-            set -e
-
-            echo ""
-            echo "============================================================"
-            if [ $TEST_EXIT_CODE -eq 0 ]; then
-                echo "Phase 2 PASSED"
-            else
-                echo "Phase 2 FAILED (exit code $TEST_EXIT_CODE)"
-            fi
-            echo "============================================================"
-        fi
-
-        # Copy coverage report if generated
-        if [ "$COVERAGE" = true ]; then
-            echo ""
-            echo "Copying coverage report..."
-            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner cat /app/coverage.xml > coverage.xml 2>/dev/null || true
-        fi
-
-    else
-        # =================================================================
-        # Custom args: single invocation with e2e services
-        # (user may be targeting e2e tests)
-        # =================================================================
-        echo ""
-        echo "Starting API and Worker (custom args may target e2e tests)..."
-        docker compose -f "$COMPOSE_FILE" --profile e2e up -d --build
-
-        echo "Waiting for API to be ready..."
-        for i in {1..60}; do
-            if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                echo "API is ready!"
-                break
-            fi
-            if [ $i -eq 60 ]; then
-                echo "ERROR: API failed to start within 60 seconds"
-                exit 1
-            fi
-            echo "  Waiting for API... (attempt $i/60)"
-            sleep 1
-        done
-
-        echo ""
-        echo "============================================================"
-        echo "Running tests..."
-        echo "============================================================"
-        echo ""
-
-        PYTEST_CMD=("pytest")
-        if [ "$COVERAGE" = true ]; then
-            PYTEST_CMD+=("--cov=src" "--cov-report=term-missing" "--cov-report=xml:/app/coverage.xml")
-        fi
-        PYTEST_CMD+=("${PYTEST_ARGS[@]}")
-
-        trap - ERR
-        set +e
-        if [ -n "$LOG_DIR" ]; then
-            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${PYTEST_CMD[@]}" 2>&1 | tee "$LOG_DIR/test-runner.log"
-        else
-            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner "${PYTEST_CMD[@]}"
-        fi
-        TEST_EXIT_CODE=${PIPESTATUS[0]}
-        set -e
-
-        # Copy coverage report if generated
-        if [ "$COVERAGE" = true ]; then
-            echo ""
-            echo "Copying coverage report..."
-            docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner cat /app/coverage.xml > coverage.xml 2>/dev/null || true
-        fi
-
-        echo ""
-        echo "============================================================"
-        if [ $TEST_EXIT_CODE -eq 0 ]; then
-            echo "Tests completed successfully!"
-        else
-            echo "Tests failed with exit code $TEST_EXIT_CODE"
-        fi
-        echo "============================================================"
-    fi
-else
-    echo ""
-    echo "============================================================"
-    echo "Skipping backend tests (--client-only mode)"
-    echo "============================================================"
-fi
-
-# =============================================================================
-# Run Playwright E2E tests (if --client or --client-only)
-# =============================================================================
-PLAYWRIGHT_EXIT_CODE=0
-
-if [ "$CLIENT_TESTS" = true ]; then
-    echo ""
-    echo "============================================================"
-    echo "Starting client services for Playwright tests..."
-    echo "============================================================"
-
-    # Start client service
+    echo "Starting client..."
     docker compose -f "$COMPOSE_FILE" --profile client up -d --build client
-
-    # Wait for client to be healthy (using Docker health check status)
-    echo "Waiting for client to be ready..."
+    echo "Waiting for client to be healthy..."
     for i in {1..120}; do
-        # Check if container is running
-        CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' bifrost-test-client 2>/dev/null || echo "not_found")
-        if [ "$CONTAINER_STATUS" = "exited" ] || [ "$CONTAINER_STATUS" = "dead" ]; then
-            echo "ERROR: Client container crashed!"
-            echo "Container logs:"
-            docker logs bifrost-test-client --tail=50 2>&1 || true
-            export_docker_logs
-            exit 1
+        cid=$(docker compose -f "$COMPOSE_FILE" ps -q client 2>/dev/null)
+        if [ -n "$cid" ]; then
+            status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo unknown)
+            if [ "$status" = "healthy" ]; then
+                echo "Client ready."
+                break
+            fi
         fi
-
-        # Check health status
-        HEALTH_STATUS=$(docker inspect -f '{{.State.Health.Status}}' bifrost-test-client 2>/dev/null || echo "unknown")
-        if [ "$HEALTH_STATUS" = "healthy" ]; then
-            echo "Client is ready!"
-            break
-        fi
-
         if [ $i -eq 120 ]; then
-            echo "ERROR: Client failed to start within 120 seconds"
-            echo "Health status: $HEALTH_STATUS"
-            echo "Container logs:"
-            docker logs bifrost-test-client --tail=50 2>&1 || true
-            export_docker_logs
+            echo "ERROR: client not healthy after 120s" >&2
             exit 1
         fi
-        echo "  Waiting for client... (attempt $i/120, status: $HEALTH_STATUS)"
         sleep 1
     done
 
     echo ""
-    echo "============================================================"
-    echo "Running Playwright E2E tests..."
-    echo "============================================================"
-    echo ""
+    echo "Stack is up. Project: $COMPOSE_PROJECT_NAME"
+}
 
-    # Run Playwright tests (disable ERR trap - we handle exit code manually)
-    trap - ERR
-    set +e
-    docker compose -f "$COMPOSE_FILE" --profile client run --rm playwright-runner
-    PLAYWRIGHT_EXIT_CODE=$?
-    set -e
+stack_down() {
+    print_project
+    echo "Tearing down stack..."
+    export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"
+    docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client down -v
+    echo "Done."
+}
 
-    echo ""
-    echo "============================================================"
-    if [ $PLAYWRIGHT_EXIT_CODE -eq 0 ]; then
-        echo "Playwright tests completed successfully!"
+stack_reset() {
+    require_stack_up
+    # Stop DB consumers before template_init runs — template_init may need to
+    # DROP bifrost_test (when migrations changed), and it cannot do so while
+    # api/worker/scheduler hold live connections to it. reset_state will
+    # restart them afterward. Don't stop pgbouncer — compose's `start` later
+    # won't re-attach its network endpoint cleanly, and its pool only proxies
+    # bifrost_test anyway (nothing here connects to bifrost_test through it
+    # while it's stopped).
+    docker compose -f "$COMPOSE_FILE" stop api worker scheduler 2>/dev/null || true
+    "$SCRIPT_DIR/scripts/stack_template_init.sh"
+    reset_state
+}
+
+stack_status() {
+    print_project
+    if stack_is_up "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; then
+        echo "Status: UP"
+        docker compose -f "$COMPOSE_FILE" ps
     else
-        echo "Playwright tests failed with exit code $PLAYWRIGHT_EXIT_CODE"
+        echo "Status: DOWN"
     fi
-    echo "============================================================"
-fi
+}
 
 # =============================================================================
-# Final summary
+# Test subcommands
 # =============================================================================
-echo ""
-echo "============================================================"
-echo "Test Summary"
-echo "============================================================"
-if [ "$CLIENT_ONLY" = false ]; then
-    if [ -n "$LOG_DIR" ]; then
-        # Parse JUnit XML for counts (only available when not in CI mode)
-        TOTAL_TESTS=0
-        TOTAL_PASSED=0
-        TOTAL_FAILED=0
-        TOTAL_SKIPPED=0
-        for xml in "$LOG_DIR"/unit-results.xml "$LOG_DIR"/e2e-results.xml; do
-            if [ -f "$xml" ]; then
-                tests=$(python3 -c "import xml.etree.ElementTree as ET; ts=ET.parse('$xml').find('.//testsuite'); print(ts.get('tests','0'))" 2>/dev/null || echo 0)
-                failures=$(python3 -c "import xml.etree.ElementTree as ET; ts=ET.parse('$xml').find('.//testsuite'); print(ts.get('failures','0'))" 2>/dev/null || echo 0)
-                errors=$(python3 -c "import xml.etree.ElementTree as ET; ts=ET.parse('$xml').find('.//testsuite'); print(ts.get('errors','0'))" 2>/dev/null || echo 0)
-                skipped=$(python3 -c "import xml.etree.ElementTree as ET; ts=ET.parse('$xml').find('.//testsuite'); print(ts.get('skipped','0'))" 2>/dev/null || echo 0)
-                TOTAL_TESTS=$((TOTAL_TESTS + tests))
-                TOTAL_FAILED=$((TOTAL_FAILED + failures + errors))
-                TOTAL_SKIPPED=$((TOTAL_SKIPPED + skipped))
-            fi
-        done
-        TOTAL_PASSED=$((TOTAL_TESTS - TOTAL_FAILED - TOTAL_SKIPPED))
 
-        if [ $TEST_EXIT_CODE -eq 0 ]; then
-            echo "  Backend tests: PASSED ($TOTAL_PASSED passed, $TOTAL_SKIPPED skipped, $TOTAL_FAILED failed / $TOTAL_TESTS total)"
-        else
-            echo "  Backend tests: FAILED ($TOTAL_PASSED passed, $TOTAL_SKIPPED skipped, $TOTAL_FAILED failed / $TOTAL_TESTS total)"
+run_pytest() {
+    # Note: we deliberately do NOT re-run stack_template_init.sh here.
+    # `stack reset` / `stack up` is where migration changes flow into the
+    # template. `run_pytest` clones the current template, so if the user
+    # changed migrations they should run `./test.sh stack reset` once.
+    require_stack_up
+    reset_state
+    docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner \
+        pytest "$@" --junitxml="/tmp/bifrost/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
+    return "${PIPESTATUS[0]}"
+}
+
+cmd_unit() { run_pytest tests/ --ignore=tests/e2e/ -v "$@"; }
+cmd_e2e()  { run_pytest tests/e2e/ -v "$@"; }
+cmd_all()  { run_pytest tests/ -v "$@"; }
+
+cmd_client() {
+    local sub="${1:-}"
+    shift || true
+    case "$sub" in
+        unit) client_unit "$@" ;;
+        e2e) client_e2e "$@" ;;
+        *)
+            echo "Usage: ./test.sh client {unit|e2e} [args]" >&2
+            exit 2
+            ;;
+    esac
+}
+
+client_unit() {
+    echo "Running vitest on host..."
+    (cd client && npm test "$@")
+}
+
+client_e2e() {
+    require_stack_up
+    local screenshots_all=false
+    local passthrough=()
+    for a in "$@"; do
+        if [ "$a" = "--screenshots" ]; then screenshots_all=true
+        else passthrough+=("$a")
         fi
-    else
-        if [ $TEST_EXIT_CODE -eq 0 ]; then
-            echo "  Backend tests: PASSED"
-        else
-            echo "  Backend tests: FAILED (exit code $TEST_EXIT_CODE)"
-        fi
-    fi
-fi
-if [ "$CLIENT_TESTS" = true ]; then
-    if [ $PLAYWRIGHT_EXIT_CODE -eq 0 ]; then
-        echo "  Playwright tests: PASSED"
-    else
-        echo "  Playwright tests: FAILED (exit code $PLAYWRIGHT_EXIT_CODE)"
-    fi
-fi
-if [ -n "$LOG_DIR" ]; then
-    echo ""
-    echo "  Logs: $LOG_DIR/test-runner.log"
-    echo "  Results: $LOG_DIR/*-results.xml"
-fi
-echo "============================================================"
+    done
 
-# In wait mode, wait for user before cleanup
-if [ "$WAIT_MODE" = true ]; then
-    echo ""
-    echo "Press Enter to cleanup and exit (or Ctrl+C to keep containers running)..."
-    read -r
+    reset_state
+
+    local env_args=()
+    if [ "$screenshots_all" = true ]; then
+        env_args=(-e PLAYWRIGHT_SCREENSHOT_ALL=1)
+    fi
+
+    if [ ${#passthrough[@]} -gt 0 ]; then
+        docker compose -f "$COMPOSE_FILE" --profile client run --rm "${env_args[@]}" \
+            playwright-runner npx playwright test "${passthrough[@]}"
+    else
+        docker compose -f "$COMPOSE_FILE" --profile client run --rm "${env_args[@]}" \
+            playwright-runner
+    fi
+}
+
+cmd_ci() {
+    print_project
+    # Install teardown trap BEFORE stack_up so a boot-time failure still tears
+    # down the partially-booted stack instead of leaking containers/volumes.
+    trap 'export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; stack_down' EXIT
+    stack_up
+    cmd_all
+    client_unit
+    client_e2e
+}
+
+# =============================================================================
+# Dispatch
+# =============================================================================
+
+if [ $# -eq 0 ]; then
+    cmd_unit
+    exit $?
 fi
 
-# Exit with failure if any tests failed
-if [ $TEST_EXIT_CODE -ne 0 ]; then
-    exit $TEST_EXIT_CODE
-fi
-if [ $PLAYWRIGHT_EXIT_CODE -ne 0 ]; then
-    exit $PLAYWRIGHT_EXIT_CODE
-fi
-exit 0
+case "$1" in
+    stack) shift; cmd_stack "$@" ;;
+    unit) shift; cmd_unit "$@" ;;
+    e2e) shift; cmd_e2e "$@" ;;
+    all) shift; cmd_all "$@" ;;
+    client) shift; cmd_client "$@" ;;
+    ci) cmd_ci ;;
+    -h|--help|help)
+        sed -n '2,35p' "$0"
+        ;;
+    # Legacy flags from the pre-refactor test.sh. Point the user at the new
+    # verb before silent pytest "unrecognized argument" errors confuse them.
+    --client|--client-only|--client-dev|--local|--reset-db|--no-reset|--e2e|--coverage|--wait|--ci)
+        cat >&2 <<EOF
+ERROR: '$1' is no longer supported. The test.sh interface is now verb-style.
+
+  old                          new
+  ./test.sh --e2e              ./test.sh e2e
+  ./test.sh --client           ./test.sh client e2e
+  ./test.sh --client-dev       ./test.sh client e2e   (stack stays up between runs)
+  ./test.sh --client-only      ./test.sh client e2e
+  ./test.sh --local            ./test.sh stack up     (then run playwright locally)
+  ./test.sh --reset-db         ./test.sh stack reset
+  ./test.sh --coverage         ./test.sh all --coverage     (pytest passthrough)
+  ./test.sh --ci               ./test.sh ci
+
+Run './test.sh --help' for the full command list.
+EOF
+        exit 2
+        ;;
+    tests/*|--*)
+        run_pytest "$@"
+        ;;
+    *)
+        echo "Unknown subcommand: $1" >&2
+        echo "Run: ./test.sh --help" >&2
+        exit 2
+        ;;
+esac

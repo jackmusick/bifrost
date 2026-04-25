@@ -15,6 +15,11 @@ import {
 	type ReactNode,
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import {
+	ACCESS_TOKEN_KEY,
+	clearAuthTokens,
+	clearEmbedToken,
+} from "@/lib/auth-token";
 
 // User info extracted from JWT
 export interface AuthUser {
@@ -71,7 +76,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 // Token storage keys
 // Note: Refresh token is stored in HttpOnly cookie only (more secure)
-const ACCESS_TOKEN_KEY = "bifrost_access_token";
 const USER_KEY = "bifrost_user";
 
 // JWT payload structure
@@ -280,6 +284,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 			// Success - store access token (refresh token is in HttpOnly cookie)
 			if (data.access_token) {
+				clearEmbedToken();
 				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
 
 				const payload = parseJwt(data.access_token);
@@ -326,6 +331,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			const data = await res.json();
 
 			if (data.access_token) {
+				clearEmbedToken();
 				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
 
 				const payload = parseJwt(data.access_token);
@@ -370,6 +376,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			const data = await res.json();
 
 			if (data.access_token) {
+				clearEmbedToken();
 				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
 
 				const payload = parseJwt(data.access_token);
@@ -397,6 +404,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			const tokens = await authenticateWithPasskey(email);
 
 			if (tokens.access_token) {
+				clearEmbedToken();
 				localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
 
 				const payload = parseJwt(tokens.access_token);
@@ -416,7 +424,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 	// Logout
 	const logout = useCallback(() => {
-		localStorage.removeItem(ACCESS_TOKEN_KEY);
+		clearAuthTokens();
 		localStorage.removeItem(USER_KEY);
 		sessionStorage.removeItem("userId");
 		setUser(null);
@@ -464,8 +472,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			isAuthenticated: !!user,
 			isLoading,
 			needsSetup,
-			isPlatformAdmin: user?.roles.includes("PlatformAdmin") ?? false,
-			isOrgUser: user?.roles.includes("OrgUser") ?? false,
+			isPlatformAdmin: user?.isSuperuser ?? false,
+			isOrgUser: !user?.isSuperuser && user?.organizationId != null,
 			hasRole: (role: string) => user?.roles.includes(role) ?? false,
 			login,
 			loginWithMfa,

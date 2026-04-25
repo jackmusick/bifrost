@@ -346,6 +346,50 @@ class TestAgentScopeFiltering:
         assert scoped_agents["org1"]["id"] in agent_ids, "Should see org1 agent"
         assert scoped_agents["org2"]["id"] not in agent_ids, "Should NOT see org2 agent"
 
+    def test_platform_admin_can_get_cross_org_agent(
+        self, e2e_client, platform_admin, scoped_agents
+    ):
+        """Platform admin GET /agents/{id} must succeed for a cross-org agent.
+
+        Regression for the bug where ``get_agent_with_access_check`` scoped the
+        lookup to the admin's own org and only consulted ``is_superuser`` AFTER
+        finding the entity. A cross-org agent shows up in LIST and can be
+        updated via PUT, but GET would 404 — inconsistent and surprising.
+        """
+        org2_agent_id = scoped_agents["org2"]["id"]
+        response = e2e_client.get(
+            f"/api/agents/{org2_agent_id}",
+            headers=platform_admin.headers,
+        )
+        assert response.status_code == 200, (
+            f"Platform admin should get 200 for cross-org agent "
+            f"{org2_agent_id}, got {response.status_code}: {response.text}"
+        )
+        data = response.json()
+        assert data["id"] == org2_agent_id
+        # The response must include the eager-loaded relations the handler has
+        # historically returned (tools, delegated agents, roles, owner).
+        assert "tools" in data or "tool_ids" in data
+        assert "roles" in data or "role_ids" in data
+
+    def test_org_user_cannot_get_cross_org_agent(
+        self, e2e_client, org1_user, scoped_agents
+    ):
+        """Non-admin org user must NOT be able to GET a cross-org agent.
+
+        This is the counter-case to the admin test above — the fix must keep
+        regular users scoped to their own org and global agents.
+        """
+        org2_agent_id = scoped_agents["org2"]["id"]
+        response = e2e_client.get(
+            f"/api/agents/{org2_agent_id}",
+            headers=org1_user.headers,
+        )
+        assert response.status_code == 404, (
+            f"Org1 user should get 404 for Org2 agent {org2_agent_id}, "
+            f"got {response.status_code}"
+        )
+
 
 # =============================================================================
 # Fixtures

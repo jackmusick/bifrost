@@ -13,6 +13,9 @@ RUN npm ci
 # Don't copy source code - it comes from volume mounts in docker-compose.dev.yml
 # This prevents any risk of stale built code overwriting live source
 
+ARG VITE_BIFROST_VERSION=unknown
+ENV VITE_BIFROST_VERSION=${VITE_BIFROST_VERSION}
+
 # Expose port 80 to match production nginx
 EXPOSE 80
 

@@ -298,10 +298,33 @@ async def publish_agent_run_update(
         "org_id": str(run.org_id) if run.org_id else None,
         "started_at": run.started_at.isoformat() if isinstance(run.started_at, datetime) else run.started_at,
         "completed_at": run.completed_at.isoformat() if isinstance(run.completed_at, datetime) else run.completed_at,
+        "summary_status": getattr(run, "summary_status", None),
+        "summary_error": getattr(run, "summary_error", None),
+        "asked": getattr(run, "asked", None),
+        "did": getattr(run, "did", None),
+        "confidence": float(run.confidence) if run.confidence is not None else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     await manager.broadcast(f"agent-run:{run.id}", message)
     await manager.broadcast("agent-runs", message)
+
+
+async def publish_summary_backfill_update(
+    job_id: str | UUID,
+    payload: dict[str, Any],
+) -> None:
+    """Broadcast a summary backfill job progress update.
+
+    Broadcasts to ``summary-backfill:{job_id}``. Platform admins only
+    (enforced in the websocket router's channel whitelist).
+    """
+    message = {
+        "type": "summary_backfill_update",
+        "job_id": str(job_id),
+        **payload,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await manager.broadcast(f"summary-backfill:{job_id}", message)
 
 
 async def publish_agent_run_step(

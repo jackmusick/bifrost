@@ -27,20 +27,27 @@ import re
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 
-# React Router primitives previously re-exported from "bifrost". Must stay
-# in sync with `router_primitives` in app_bundler/__init__.py so the classifier
-# and bundler agree on which names route to "react-router-dom" rather than
-# staying in "bifrost" (platform) or moving to "lucide-react".
+# React Router primitives that should be moved to "react-router-dom" by the
+# classifier. Must stay in sync with `router_primitives` in
+# app_bundler/__init__.py.
+#
+# NOT in this set (intentionally): Link, NavLink, Navigate, useNavigate,
+# navigate. These five MUST stay as "bifrost" imports so the bundler's
+# `wrapped_router_names` path routes them through the platform wrappers in
+# `app-code-platform/navigation.tsx`, which prepend the app base path
+# (`/apps/<slug>/preview` or `/apps/<slug>`) to absolute `to="/..."` props.
+# The host's BrowserRouter has no `basename`, so raw react-router-dom Link
+# would navigate to `/email` absolute instead of `/apps/<slug>/preview/email`.
 #
 # Only runtime values (components / hooks / factory fns) — TypeScript types
 # are not runtime names and don't belong here.
 _ROUTER_NAMES: set[str] = {
-    # Components
-    "Link", "NavLink", "Navigate", "Outlet", "Routes", "Route",
+    # Components (minus the 5 platform-wrapped ones)
+    "Outlet", "Routes", "Route",
     "BrowserRouter", "HashRouter", "MemoryRouter", "Router",
     "RouterProvider", "ScrollRestoration", "Form", "Await",
-    # Hooks
-    "useNavigate", "navigate", "useLocation", "useParams",
+    # Hooks (minus useNavigate/navigate)
+    "useLocation", "useParams",
     "useSearchParams", "useOutletContext", "useOutlet", "useMatch",
     "useResolvedPath", "useRoutes", "useHref",
     "useLinkClickHandler", "useInRouterContext",
@@ -501,6 +508,64 @@ def _merge_named_import(
     return before + sep + line + tail_sep + after
 
 
+# Navigation primitives that MUST be imported from "bifrost" (platform
+# wrappers), NOT raw "react-router-dom". Kept as a tuple so membership
+# checks stay cheap and the intent is documented inline.
+_PLATFORM_WRAPPED_NAMES: frozenset[str] = frozenset({
+    "Link", "NavLink", "Navigate", "useNavigate", "navigate",
+})
+
+
+def _rescue_platform_wrapped_names(src: str) -> str:
+    """Rewrite any `from "react-router-dom"` imports that contain the 5
+    platform-wrapped navigation names, moving just those names to a
+    `from "bifrost"` import.
+
+    Recovers apps that a previous (buggy) migration routed through raw
+    react-router-dom, which bypassed the platform `transformPath` wrappers
+    and navigated `<Link to="/email">` to `/email` absolute instead of
+    `/apps/<slug>/preview/email`. Idempotent: if there are no platform-
+    wrapped names in any react-router-dom import, returns src unchanged.
+    """
+    rr_pattern = re.compile(
+        r'import\s*\{([^}]*)\}\s*from\s*["\']react-router-dom["\'];?',
+        re.DOTALL,
+    )
+
+    rescued: list[_ParsedSpecifier] = []
+    def _rewrite_rr(m: re.Match[str]) -> str:
+        specs = _parse_specifiers(m.group(1))
+        keep: list[_ParsedSpecifier] = []
+        for s in specs:
+            if s.original in _PLATFORM_WRAPPED_NAMES:
+                rescued.append(s)
+            else:
+                keep.append(s)
+        if not rescued or len(keep) == len(specs):
+            # Nothing to rescue from THIS import; leave it alone.
+            return m.group(0)
+        if not keep:
+            # Entire react-router-dom import was platform-wrapped names —
+            # drop the line entirely (trailing newline swallowed by the
+            # caller's cleanup pass if needed).
+            return ""
+        return _render_named_import(keep, "react-router-dom")
+
+    new_src = rr_pattern.sub(_rewrite_rr, src)
+    if not rescued:
+        return src
+
+    # Merge rescued names into an existing `from "bifrost"` import if one
+    # exists; otherwise insert a fresh line after the last top-level import.
+    # Dedupe by local_name so a file that already has `Link` from bifrost
+    # plus `Link` from react-router-dom (shouldn't happen, but be safe)
+    # doesn't produce a duplicate.
+    new_src = _merge_named_import(
+        new_src, "bifrost", rescued, _end_of_last_import(new_src),
+    )
+    return new_src
+
+
 def migrate_file(
     source_file: pathlib.Path,
     app_dir: pathlib.Path,
@@ -512,7 +577,12 @@ def migrate_file(
     Apply all migrations to a single source file.
     """
     original = source_file.read_text(encoding="utf-8")
-    src = original
+    # Reverse pass first: recover the 5 platform-wrapped navigation primitives
+    # that a previous (buggy) migration may have moved to "react-router-dom".
+    # Done before the main pass so the downstream classification logic sees
+    # them as "bifrost" imports and leaves them there (platform_names has
+    # them, so they stay).
+    src = _rescue_platform_wrapped_names(original)
     moved_icons = 0
     moved_router = 0
     added_components = 0
@@ -543,7 +613,12 @@ def migrate_file(
             # 4. Lucide icon.
             # 5. Unknown — keep in "bifrost" as a passthrough.
             if name in user_components:
-                if name in _ROUTER_NAMES or name in lucide_names or name in platform_names:
+                if (
+                    name in _ROUTER_NAMES
+                    or name in _PLATFORM_WRAPPED_NAMES
+                    or name in lucide_names
+                    or name in platform_names
+                ):
                     shadow_warnings.append(name)
                 user_component_rewrites.append((name, spec.alias))
                 continue

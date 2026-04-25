@@ -8,6 +8,20 @@ from .client import get_client, raise_for_status_with_detail
 logger = logging.getLogger(__name__)
 
 
+class AgentPausedError(Exception):
+    """Raised when an agent run is requested for a paused agent.
+
+    The execute endpoint returns HTTP 200 with a structured paused body so that
+    webhook senders can treat pause as a graceful state. The SDK helper, however,
+    surfaces it as a typed exception so workflow code does not silently receive
+    ``None`` and continue as if the agent had completed.
+    """
+
+    def __init__(self, message: str, *, agent_id: str | None = None):
+        super().__init__(message)
+        self.agent_id = agent_id
+
+
 class agents:
     """Agent execution operations."""
 
@@ -33,6 +47,7 @@ class agents:
         Raises:
             RuntimeError: If the agent run fails.
             ValueError: If the agent is not found.
+            AgentPausedError: If the target agent is paused (is_active=False).
         """
         client = get_client()
         response = await client.post(
@@ -47,6 +62,12 @@ class agents:
         raise_for_status_with_detail(response)
         data = response.json()
 
+        if isinstance(data, dict) and data.get("status") == "paused":
+            raise AgentPausedError(
+                data.get("message") or f"Agent '{agent_name}' is paused.",
+                agent_id=data.get("agent_id"),
+            )
+
         if data.get("error"):
             raise RuntimeError(f"Agent run failed: {data['error']}")
 
@@ -56,4 +77,4 @@ class agents:
                 return json.loads(output)
             except json.JSONDecodeError:
                 return output
-        return output
+        return output  # type: ignore[return-value]

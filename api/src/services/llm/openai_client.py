@@ -110,10 +110,14 @@ class OpenAIClient(BaseLLMClient):
         # Log tool_call IDs to debug duplicate ID issues (e.g. Minimax)
         tc_ids_in_history = []
         for m in openai_messages:
-            if isinstance(m, dict) and m.get("tool_calls"):
-                for tc in m["tool_calls"]:
-                    tc_id = tc.get("id", "?") if isinstance(tc, dict) else getattr(tc, "id", "?")
-                    tc_ids_in_history.append(tc_id)
+            if not isinstance(m, dict):
+                continue
+            tool_calls = m.get("tool_calls")
+            if not tool_calls:
+                continue
+            for tc in tool_calls:
+                tc_id = tc.get("id", "?") if isinstance(tc, dict) else getattr(tc, "id", "?")
+                tc_ids_in_history.append(tc_id)
         if tc_ids_in_history:
             unique_ids = set(tc_ids_in_history)
             if len(unique_ids) < len(tc_ids_in_history):

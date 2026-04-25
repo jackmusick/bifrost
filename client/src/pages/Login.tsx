@@ -72,6 +72,31 @@ export function Login() {
 		searchParams.get("returnTo") || searchParams.get("return_to");
 	const from = returnTo || (location.state as { from?: string })?.from || "/";
 
+	// MCP OAuth returns an absolute URL in return_to; react-router's navigate()
+	// treats those as relative paths and produces nonsense like
+	// /login/https:/example.com/mcp/callback. For same-origin absolute URLs
+	// we route via SPA navigation so components like MCPCallback actually
+	// mount (and can issue the Accept: application/json XHR that keeps us on
+	// the success screen instead of following the server's 302).
+	const redirectToFrom = useCallback(() => {
+		if (from.startsWith("http://") || from.startsWith("https://")) {
+			try {
+				const url = new URL(from);
+				if (url.origin === window.location.origin) {
+					navigate(url.pathname + url.search + url.hash, {
+						replace: true,
+					});
+					return;
+				}
+			} catch {
+				// Malformed URL — fall through to full navigation.
+			}
+			window.location.href = from;
+		} else {
+			navigate(from, { replace: true });
+		}
+	}, [from, navigate]);
+
 	// Passkey login handler (defined early for use in auto-trigger effect)
 	const handlePasskeyLogin = useCallback(async () => {
 		setError(null);
@@ -80,7 +105,7 @@ export function Login() {
 		try {
 			// Pass email if user has entered one (helps target specific credentials)
 			await loginWithPasskey(email || undefined);
-			navigate(from, { replace: true });
+			redirectToFrom();
 		} catch (err) {
 			// Don't show error for user cancellation
 			if (err instanceof Error) {
@@ -99,7 +124,7 @@ export function Login() {
 		} finally {
 			setIsPasskeyLoading(false);
 		}
-	}, [email, from, loginWithPasskey, navigate]);
+	}, [email, loginWithPasskey, redirectToFrom]);
 
 	// Load OAuth providers
 	useEffect(() => {
@@ -152,9 +177,9 @@ export function Login() {
 	// Redirect if already authenticated
 	useEffect(() => {
 		if (!authLoading && isAuthenticated) {
-			navigate(from, { replace: true });
+			redirectToFrom();
 		}
-	}, [authLoading, isAuthenticated, navigate, from]);
+	}, [authLoading, isAuthenticated, redirectToFrom]);
 
 	const handleCredentialsSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -165,7 +190,7 @@ export function Login() {
 			const result = await login(email, password);
 
 			if (result.success) {
-				navigate(from, { replace: true });
+				redirectToFrom();
 				return;
 			}
 
@@ -202,7 +227,7 @@ export function Login() {
 
 		try {
 			await loginWithMfa(mfaState.mfaToken, mfaCode, trustDevice);
-			navigate(from, { replace: true });
+			redirectToFrom();
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "MFA verification failed",

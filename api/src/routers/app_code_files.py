@@ -549,46 +549,52 @@ async def get_bundle_manifest(
     app_id_str = str(app.id)
 
     import json as _json
+    from src.services.app_bundler import SCHEMA_VERSION, build_with_migrate
+    from src.core.cache import get_shared_redis
 
+    # A manifest is "stale" when it's missing the schema_version field or has
+    # an older value. We treat stale manifests the same as missing manifests:
+    # run auto-migration against _repo/<app>/, then rebuild. This is how a
+    # deploy that bumps SCHEMA_VERSION transparently heals every app (preview
+    # AND live) — the first viewer after deploy pays the migrate+rebuild
+    # cost, subsequent views are cached.
+    manifest_bytes: bytes | None = None
     try:
         manifest_bytes = await app_storage.read_file(
             app_id_str, storage_mode, "manifest.json"
         )
     except FileNotFoundError:
-        # No manifest yet — build on demand. For preview this covers new
-        # apps that haven't been saved. For live this covers apps last
-        # published under the legacy per-file compiler (no bundle manifest
-        # yet); the first live viewer triggers a fresh bundle from current
-        # source. Admins who had unpublished drafts at upgrade time are
-        # warned in the release notes to publish or revert beforehand.
-        #
-        # Before bundling: run `bifrost migrate-imports` against the repo
-        # source so auto-injected JSX references (e.g. `<Outlet />` used
-        # without an import — legal under the old scope-injection runtime,
-        # broken on esbuild) get real import statements. Skip the migration
-        # step for the save-loop path; that runs during active editing and
-        # has its own workspace on the developer's machine.
-        from src.services.app_bundler import BundlerService
-        from src.services.app_bundler.auto_migrate import (
-            auto_migrate_repo_prefix,
-        )
-        from src.core.cache import get_shared_redis
+        manifest_bytes = None
 
-        bundler = BundlerService()
+    needs_rebuild = manifest_bytes is None
+    if manifest_bytes is not None:
+        try:
+            parsed = _json.loads(manifest_bytes)
+        except (ValueError, TypeError):
+            parsed = None
+        if parsed is None:
+            needs_rebuild = True
+        else:
+            existing_version = parsed.get("schema_version")
+            if not isinstance(existing_version, int) or existing_version < SCHEMA_VERSION:
+                needs_rebuild = True
+
+    if needs_rebuild:
         repo_prefix = app.repo_prefix
-
-        # Serialize migration across concurrent first-viewers of the same app
-        # so two requests don't double-migrate or race on writes. Hold the
-        # lock across migrate+build so the second caller sees a valid
-        # manifest on retry rather than partial state.
+        # Serialize migrate+rebuild across concurrent first-viewers so two
+        # requests don't double-migrate or race on writes. Hold the lock
+        # across migrate+build so the second caller sees a valid manifest on
+        # retry rather than partial state. Separate locks per-mode so a
+        # preview rebuild doesn't block a live viewer on the same app.
         lock_key = f"bifrost:automigrate:{app_id_str}:{storage_mode}"
         lock_ttl = 60
         migrated = False
         redis = await get_shared_redis()
         acquired = bool(await redis.set(lock_key, "1", nx=True, ex=lock_ttl))
         if not acquired:
-            # Another request is building. Wait briefly, then retry the S3
-            # HEAD — by that point the holder has written manifest.json.
+            # Another request is building. Wait briefly, then retry — the
+            # holder will have written a fresh manifest with the current
+            # schema_version by the time we re-read.
             import asyncio as _asyncio
 
             for _ in range(40):  # ~20s total
@@ -598,14 +604,16 @@ async def get_bundle_manifest(
                         app_id_str, storage_mode, "manifest.json"
                     )
                     m = _json.loads(manifest_bytes)
-                    return {
-                        "entry": m.get("entry"),
-                        "css": m.get("css"),
-                        "base_url": f"/api/applications/{app_id}/bundle-asset",
-                        "mode": storage_mode,
-                        "dependencies": m.get("dependencies") or (app.dependencies or {}),
-                        "migrated": False,
-                    }
+                    v = m.get("schema_version")
+                    if isinstance(v, int) and v >= SCHEMA_VERSION:
+                        return {
+                            "entry": m.get("entry"),
+                            "css": m.get("css"),
+                            "base_url": f"/api/applications/{app_id}/bundle-asset",
+                            "mode": storage_mode,
+                            "dependencies": m.get("dependencies") or (app.dependencies or {}),
+                            "migrated": False,
+                        }
                 except FileNotFoundError:
                     continue
             raise HTTPException(
@@ -613,16 +621,12 @@ async def get_bundle_manifest(
                 detail="Auto-migrate lock held by another request; manifest never appeared",
             )
         try:
-            migrated, _results = await auto_migrate_repo_prefix(
-                app_id_str, repo_prefix
-            )
-            if not migrated:
-                logger.info(f"No migration needed for app={app_id_str}")
-
-            result = await bundler.build(
+            result, migrated = await build_with_migrate(
                 app_id_str, repo_prefix, storage_mode,
                 dependencies=app.dependencies or {},
             )
+            if not migrated:
+                logger.info(f"No migration needed for app={app_id_str}")
         finally:
             await redis.delete(lock_key)
 
@@ -642,6 +646,7 @@ async def get_bundle_manifest(
             "migrated": migrated,
         }
 
+    assert manifest_bytes is not None
     m = _json.loads(manifest_bytes)
     return {
         "entry": m.get("entry"),

@@ -29,11 +29,21 @@ from tests.conftest import TEST_REDIS_URL
 # Reset module-level redis connection before tests
 @pytest.fixture(autouse=True)
 def reset_redis_connections():
-    """Reset module-level Redis connections before each test."""
+    """Reset module-level Redis connections before each test.
+
+    Each of these modules caches its own ``redis.asyncio`` client in a
+    module global. Redis connections pin themselves to the asyncio loop
+    that first touched them, so a client cached by a prior test's loop
+    will raise ``Event loop is closed`` when reused here.
+    """
     import src.routers.platform.workers as workers_module
+    import src.services.execution.queue_tracker as queue_tracker_module
+
     workers_module._redis = None
+    queue_tracker_module._redis = None
     yield
     workers_module._redis = None
+    queue_tracker_module._redis = None
 
 
 @pytest_asyncio.fixture

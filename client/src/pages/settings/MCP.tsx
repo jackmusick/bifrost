@@ -2,8 +2,9 @@
  * MCP Configuration Settings
  *
  * Configure external MCP (Model Context Protocol) access for Claude Desktop
- * and other MCP clients. Platform admins can enable/disable access,
- * control who can connect, and manage which tools are exposed.
+ * and other MCP clients. Platform admins toggle the master enable switch and
+ * manage which tools are exposed — per-user visibility is role-scoped via
+ * agent access and handled outside this page.
  */
 
 import { useState, useEffect } from "react";
@@ -52,7 +53,6 @@ type MCPToolInfo = components["schemas"]["MCPToolInfo"];
 export function MCP() {
 	// Form state
 	const [enabled, setEnabled] = useState(true);
-	const [requirePlatformAdmin, setRequirePlatformAdmin] = useState(true);
 	const [allowedToolIds, setAllowedToolIds] = useState<string[] | null>(null);
 	const [blockedToolIds, setBlockedToolIds] = useState<string[]>([]);
 
@@ -99,7 +99,6 @@ export function MCP() {
 	useEffect(() => {
 		if (config) {
 			setEnabled(config.enabled);
-			setRequirePlatformAdmin(config.require_platform_admin);
 			setAllowedToolIds(config.allowed_tool_ids ?? null);
 			setBlockedToolIds(config.blocked_tool_ids ?? []);
 			setHasChanges(false);
@@ -117,7 +116,6 @@ export function MCP() {
 			await saveMutation.mutateAsync({
 				body: {
 					enabled,
-					require_platform_admin: requirePlatformAdmin,
 					allowed_tool_ids: allowedToolIds,
 					blocked_tool_ids: blockedToolIds,
 				},
@@ -252,8 +250,9 @@ export function MCP() {
 								Enable MCP Access
 							</Label>
 							<p className="text-sm text-muted-foreground">
-								When disabled, all external MCP connections are
-								blocked.
+								When enabled, users can connect via MCP. Each
+								user sees only the tools they're granted access
+								to via agent roles.
 							</p>
 						</div>
 						<Switch
@@ -261,30 +260,6 @@ export function MCP() {
 							checked={enabled}
 							onCheckedChange={(checked) => {
 								setEnabled(checked);
-								handleChange();
-							}}
-						/>
-					</div>
-
-					{/* Require Platform Admin Toggle */}
-					<div className="flex items-center justify-between">
-						<div className="space-y-0.5">
-							<Label
-								htmlFor="require-admin"
-								className="text-base"
-							>
-								Require Platform Admin
-							</Label>
-							<p className="text-sm text-muted-foreground">
-								Only platform administrators can connect via
-								MCP.
-							</p>
-						</div>
-						<Switch
-							id="require-admin"
-							checked={requirePlatformAdmin}
-							onCheckedChange={(checked) => {
-								setRequirePlatformAdmin(checked);
 								handleChange();
 							}}
 						/>

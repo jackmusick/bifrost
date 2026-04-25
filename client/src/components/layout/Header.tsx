@@ -23,6 +23,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/contexts/AuthContext";
+import { APP_VERSION } from "@/lib/version";
 import { useEditorStore } from "@/stores/editorStore";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
@@ -261,9 +262,29 @@ export function Header({
 							<LogOut className="mr-2 h-4 w-4" />
 							Log out
 						</DropdownMenuItem>
+						<DropdownMenuSeparator />
+						<VersionMenuItem />
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
 		</header>
+	);
+}
+
+function VersionMenuItem() {
+	const [copied, setCopied] = useState(false);
+	return (
+		<DropdownMenuItem
+			className="text-xs text-muted-foreground font-mono justify-center focus:bg-transparent cursor-pointer"
+			onSelect={(e) => {
+				e.preventDefault();
+				void navigator.clipboard.writeText(APP_VERSION);
+				setCopied(true);
+				setTimeout(() => setCopied(false), 1500);
+			}}
+			title="Click to copy"
+		>
+			{copied ? "Copied!" : APP_VERSION}
+		</DropdownMenuItem>
 	);
 }

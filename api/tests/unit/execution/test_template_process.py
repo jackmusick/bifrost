@@ -248,7 +248,7 @@ class TestForkPerformance:
             print(f"\n  Template RSS: {template_rss_mb:.0f}MB")
             print(f"  Forked 10 children in {fork_all_ms:.0f}ms ({alive} alive)")
             print(f"  Spawn would need: ~{10 * template_rss_mb:.0f}MB (10 x {template_rss_mb:.0f}MB)")
-            print(f"  Fork shares template memory via COW — actual unique memory is minimal")
+            print("  Fork shares template memory via COW — actual unique memory is minimal")
 
             assert alive >= 8, f"Only {alive}/10 children alive"
         finally:

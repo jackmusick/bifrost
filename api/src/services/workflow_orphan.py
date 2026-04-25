@@ -225,28 +225,27 @@ class WorkflowOrphanService:
 
         return replacements
 
+    async def _read_file(self, path: str) -> str | None:
+        """Load file content from storage (Redis→S3 cache chain)."""
+        return await self._get_code(path)
+
     async def replace_workflow(
         self,
         workflow_id: UUID,
         source_path: str,
         function_name: str,
+        allow_type_change: bool = False,
     ) -> Workflow:
-        """
-        Replace orphaned workflow with content from existing file.
+        """Repoint an orphaned workflow to a new file location.
 
-        This links the orphaned workflow to an existing function in another file,
-        updating its path and clearing the orphaned flag.
-
-        Args:
-            workflow_id: UUID of the orphaned workflow
-            source_path: Path to the file containing the replacement function
-            function_name: Name of the function to use as replacement
-
-        Returns:
-            Updated Workflow
+        Validates that ``source_path`` exists and contains a
+        ``@workflow``/``@tool``/``@data_provider``-decorated function named
+        ``function_name``, then updates the row in place, preserving the UUID
+        so all form/agent references remain intact.
 
         Raises:
-            ValueError: If workflow not found, not orphaned, or replacement not found
+            ValueError: workflow not found, not orphaned, file/function missing,
+                        uniqueness collision, or decorator type mismatch.
         """
         wf = await self.db.get(Workflow, workflow_id)
         if not wf:
@@ -254,21 +253,41 @@ class WorkflowOrphanService:
         if not wf.is_orphaned:
             raise ValueError(f"Workflow {workflow_id} is not orphaned")
 
-        # Find the source workflow
+        # Validate file exists and contains the decorated function.
+        code = await self._read_file(source_path)
+        if not code:
+            raise ValueError(
+                f"File {source_path} not found in storage"
+            )
+        if not self.file_contains_workflow(code, function_name):
+            raise ValueError(
+                f"Function '{function_name}' not found in {source_path} "
+                f"(must have a @workflow, @tool, or @data_provider decorator)"
+            )
+
+        # Guard against (path, function_name) already claimed by an active row.
         stmt = select(Workflow).where(
             Workflow.path == source_path,
             Workflow.function_name == function_name,
             Workflow.is_active.is_(True),
         )
         result = await self.db.execute(stmt)
-        source_wf = result.scalar_one_or_none()
-
-        if not source_wf:
+        conflict = result.scalar_one_or_none()
+        if conflict is not None:
             raise ValueError(
-                f"Function {function_name} not found in {source_path}"
+                f"{source_path}::{function_name} is already registered "
+                f"(workflow id={conflict.id}). Delete or deregister it first."
             )
 
-        # Update the orphaned workflow to point to the new location
+        # Guard decorator-type changes unless explicitly allowed.
+        if not allow_type_change:
+            new_type = self._detect_type(code, function_name)
+            if new_type is not None and new_type != wf.type:
+                raise ValueError(
+                    f"Decorator type change detected: original type is '{wf.type}', "
+                    f"new function has '{new_type}'. Pass allow_type_change=True to override."
+                )
+
         wf.path = source_path
         wf.function_name = function_name
         wf.is_orphaned = False
@@ -282,6 +301,21 @@ class WorkflowOrphanService:
         )
 
         return wf
+
+    def _detect_type(self, code: str, function_name: str) -> str | None:
+        """Return the workflow-family type from the decorator on ``function_name``."""
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            return None
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.name == function_name:
+                    for decorator in node.decorator_list:
+                        dec_name = self._get_decorator_name(decorator)
+                        if dec_name in ("workflow", "tool", "data_provider"):
+                            return dec_name
+        return None
 
     async def recreate_file(self, workflow_id: UUID) -> Workflow:
         """
