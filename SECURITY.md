@@ -4,7 +4,7 @@
 
 Bifrost is in active development against `main`. Only `main` is supported
 at this time — there are no LTS branches. If you're running a fork or a
-historical commit, please rebase onto current `main` before reporting.
+historical commit, please rebase onto the latest `main` before reporting.
 
 | Version | Supported          |
 | ------- | ------------------ |
