@@ -49,6 +49,7 @@ from src.models.contracts.passkeys import (
 from src.config import get_settings
 from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.rate_limit import auth_limiter, mfa_limiter, get_client_ip
 from src.services.audit import emit_audit
 from src.services.audit_context import ActorContext, current_actor
@@ -897,7 +898,7 @@ async def refresh_token(
     jti_valid = await validate_and_revoke_refresh_token_jti(user_id, jti)
     if not jti_valid:
         # JTI not found - token was already used or revoked
-        logger.warning(f"Refresh token reuse attempt for user {user_id}, JTI {jti}")
+        logger.warning(f"Refresh token reuse attempt for user {log_safe(user_id)}, JTI {log_safe(jti)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked or already used",

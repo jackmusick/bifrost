@@ -93,7 +93,8 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
             if progress_data:
                 progress = json.loads(progress_data)
                 phase_message = progress.get("phase")
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort progress lookup; phase_message stays None and we return "pending"
+        logger.debug(f"failed to fetch progress phase for job {job_id}: {e}")
 
     return JobStatusResponse(status="pending", message=phase_message)

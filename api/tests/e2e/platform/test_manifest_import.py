@@ -14,6 +14,7 @@ call `import_manifest_from_repo` — skipping git to exercise the pure import pa
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID, uuid4
 
 import pytest
@@ -30,6 +31,8 @@ from src.models.orm.users import Role
 from src.models.orm.workflows import Workflow
 from src.services.manifest_import import import_manifest_from_repo
 from src.services.repo_storage import RepoStorage
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_WORKFLOW_PY = b'''\
 from bifrost import workflow
@@ -74,8 +77,9 @@ async def cleanup_manifest_import(db_session: AsyncSession, repo_storage: RepoSt
         for path in _MANIFEST_PATHS:
             try:
                 await repo_storage.delete(path)
-            except Exception:
-                pass
+            except Exception as e:
+                # Best-effort per-path cleanup; missing keys are normal
+                logger.debug(f"_wipe_s3 could not delete {path}: {e}")
 
     # Pre-test: clear any S3 state left by prior tests so this test starts clean
     await _wipe_s3()

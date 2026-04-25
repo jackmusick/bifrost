@@ -5,6 +5,7 @@ Validates the Task 18 behavior: admin-only auth, summary state reset to
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 from uuid import UUID, uuid4
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.agent_runs import AgentRun
 
+
+logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.asyncio
 
@@ -41,8 +44,9 @@ async def regen_test_agent(e2e_client, platform_admin) -> AsyncGenerator[dict, N
         e2e_client.delete(
             f"/api/agents/{agent['id']}", headers=platform_admin.headers
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")
 
 
 @pytest_asyncio.fixture
