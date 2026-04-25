@@ -11428,6 +11428,13 @@ export interface components {
              * @description Shared secret. If omitted, one is auto-generated.
              */
             secret?: string | null;
+            /**
+             * Hmac Scheme
+             * @description HMAC signing scheme. 'shopify' signs all query params; 'halopsa' signs only agent_id.
+             * @default shopify
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
         };
         /**
          * EmbedSecretCreatedResponse
@@ -11440,6 +11447,11 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
             /** Created At */
             created_at: string;
             /** Raw Secret */
@@ -11456,6 +11468,11 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
             /** Created At */
             created_at: string;
         };
@@ -11468,6 +11485,11 @@ export interface components {
             is_active?: boolean | null;
             /** Name */
             name?: string | null;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme?: "shopify" | "halopsa" | null;
         };
         /**
          * EmbeddingConfigRequest

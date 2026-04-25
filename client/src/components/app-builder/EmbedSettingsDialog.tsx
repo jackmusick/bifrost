@@ -38,6 +38,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authFetch } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -46,10 +53,13 @@ import { toast } from "sonner";
 // Types
 // ============================================================================
 
+type HmacScheme = "shopify" | "halopsa";
+
 interface EmbedSecret {
   id: string;
   name: string;
   is_active: boolean;
+  hmac_scheme: HmacScheme;
   created_at: string;
 }
 
@@ -81,6 +91,7 @@ export function EmbedSettingsDialog({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createSecret, setCreateSecret] = useState("");
+  const [createScheme, setCreateScheme] = useState<HmacScheme>("shopify");
   const [isCreating, setIsCreating] = useState(false);
 
   // Reveal dialog state (shown once after creation)
@@ -133,6 +144,7 @@ export function EmbedSettingsDialog({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: createName.trim(),
+            hmac_scheme: createScheme,
             ...(createSecret.trim() && { secret: createSecret.trim() }),
           }),
         },
@@ -143,6 +155,7 @@ export function EmbedSettingsDialog({
       setIsCreateOpen(false);
       setCreateName("");
       setCreateSecret("");
+      setCreateScheme("shopify");
       fetchSecrets();
       toast.success("Embed secret created");
     } catch {
@@ -278,6 +291,11 @@ export function EmbedSettingsDialog({
                         >
                           {secret.is_active ? "Active" : "Inactive"}
                         </Badge>
+                        <Badge variant="outline">
+                          {secret.hmac_scheme === "halopsa"
+                            ? "HaloPSA"
+                            : "Standard"}
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button
@@ -360,6 +378,26 @@ export function EmbedSettingsDialog({
                   onChange={(e) => setCreateSecret(e.target.value)}
                   className="font-mono text-sm"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="secret-scheme">HMAC scheme</Label>
+                <Select
+                  value={createScheme}
+                  onValueChange={(v) => setCreateScheme(v as HmacScheme)}
+                >
+                  <SelectTrigger id="secret-scheme">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="shopify">Standard</SelectItem>
+                    <SelectItem value="halopsa">HaloPSA</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {createScheme === "shopify"
+                    ? "Signs all query parameters (recommended for most integrations)."
+                    : "Signs only agent_id. Use for HaloPSA Custom Tab embeds."}
+                </p>
               </div>
             </div>
             <DialogFooter>
