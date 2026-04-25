@@ -38,12 +38,11 @@ def _human_size(num_bytes: int) -> str:
 
 # Import unified log streaming (Redis Stream + PubSub)
 try:
-    from bifrost._logging import log_and_broadcast, flush_logs_to_postgres
+    from bifrost._logging import log_and_broadcast
     STREAM_LOGGING_AVAILABLE = True
 except ImportError:
     STREAM_LOGGING_AVAILABLE = False
     log_and_broadcast = None  # type: ignore
-    flush_logs_to_postgres = None  # type: ignore
 
 # Import bifrost context management for SDK support
 project_root = Path(__file__).parent.parent
