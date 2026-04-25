@@ -31,11 +31,17 @@ interface JsxTemplateRendererProps {
  * </div>
  * ```
  */
-export function JsxTemplateRenderer({
-	template,
-	context,
-	className,
-}: JsxTemplateRendererProps) {
+/**
+ * Compile + evaluate the template synchronously. Returns the produced React
+ * element on success, or an error string on failure. Pulled out so the JSX
+ * render (`<div>{element}</div>`) never sits inside a try/catch — render
+ * errors of the produced element won't be caught synchronously and need an
+ * error boundary at the call site.
+ */
+function evaluateTemplate(
+	template: string,
+	context: JsxTemplateRendererProps["context"],
+): { ok: true; element: React.ReactNode } | { ok: false; error: string } {
 	try {
 		// Wrap template in an IIFE to capture the JSX expression
 		const wrappedTemplate = `(function() { return (${template}); })()`;
@@ -47,7 +53,7 @@ export function JsxTemplateRenderer({
 		});
 
 		if (!result.code) {
-			throw new Error("Babel transformation produced no code");
+			return { ok: false, error: "Babel transformation produced no code" };
 		}
 
 		// Evaluate the transformed code with React and context in scope
@@ -57,21 +63,34 @@ export function JsxTemplateRenderer({
 			"context",
 			`"use strict"; return ${result.code};`,
 		);
-		const element = evaluator(React, context);
-
-		return <div className={className}>{element}</div>;
+		return { ok: true, element: evaluator(React, context) };
 	} catch (error) {
+		return {
+			ok: false,
+			error: error instanceof Error ? error.message : "Invalid template",
+		};
+	}
+}
+
+export function JsxTemplateRenderer({
+	template,
+	context,
+	className,
+}: JsxTemplateRendererProps) {
+	const result = evaluateTemplate(template, context);
+
+	if (!result.ok) {
 		return (
 			<div className={className}>
 				<div className="text-destructive text-sm p-4 border border-destructive rounded-md">
 					<p className="font-semibold">Template Error</p>
 					<p className="text-xs mt-1 font-mono whitespace-pre-wrap">
-						{error instanceof Error
-							? error.message
-							: "Invalid template"}
+						{result.error}
 					</p>
 				</div>
 			</div>
 		);
 	}
+
+	return <div className={className}>{result.element}</div>;
 }

@@ -106,13 +106,17 @@ export function WorkflowSelectorDialog({
 	);
 	const [isLoadingRoles, setIsLoadingRoles] = useState(false);
 
-	// Reset local selection when dialog opens
-	useEffect(() => {
+	// Reset local selection when dialog opens. Use the "adjusting state on
+	// prop change" idiom: track the previous open state and reset during
+	// render rather than in a useEffect.
+	const [prevOpen, setPrevOpen] = useState(open);
+	if (prevOpen !== open) {
+		setPrevOpen(open);
 		if (open) {
 			setLocalSelection(new Set(selectedWorkflowIds));
 			setSearchQuery("");
 		}
-	}, [open, selectedWorkflowIds]);
+	}
 
 	// Build query params for scope
 	const queryParams = useMemo(() => {
