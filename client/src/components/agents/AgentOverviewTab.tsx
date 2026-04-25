@@ -334,12 +334,28 @@ function ActivityRow({
 				<Icon className="h-3 w-3" />
 			</div>
 			<div className="min-w-0 flex-1">
-				<div className="truncate">
-					{run.did || <SummaryPlaceholder status={run.summary_status} runStatus={run.status} />}
+				<div className="truncate" title={run.asked ?? undefined}>
+					{run.asked || (
+						<SummaryPlaceholder
+							status={run.summary_status}
+							runStatus={run.status}
+						/>
+					)}
 				</div>
-				<div className="mt-0.5 truncate text-[12px] text-muted-foreground">
-					{run.asked ? `"${truncate(run.asked, 60)}"` : <SummaryPlaceholder status={run.summary_status} runStatus={run.status} muted />} ·{" "}
-					{formatRelativeTime(run.started_at ?? run.created_at ?? "")} ·{" "}
+				<div
+					className="mt-0.5 truncate text-[12px] text-muted-foreground"
+					title={run.did ?? undefined}
+				>
+					{run.did || (
+						<SummaryPlaceholder
+							status={run.summary_status}
+							runStatus={run.status}
+							muted
+						/>
+					)}{" "}
+					·{" "}
+					{formatRelativeTime(run.started_at ?? run.created_at ?? "")}{" "}
+					·{" "}
 					{formatDuration(run.duration_ms ?? 0)}
 				</div>
 			</div>
@@ -352,6 +368,3 @@ function ActivityRow({
 	);
 }
 
-function truncate(s: string, n: number): string {
-	return s.length <= n ? s : s.slice(0, n - 1) + "…";
-}

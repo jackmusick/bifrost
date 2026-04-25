@@ -27,7 +27,6 @@ import {
 	CheckCircle,
 	ChevronDown,
 	Clock,
-	Cpu,
 	Loader2,
 	RefreshCw,
 	Sparkles,
@@ -75,9 +74,9 @@ import {
 	RunReviewPanel,
 	type Verdict,
 } from "@/components/agents/RunReviewPanel";
+import { Timeline } from "@/components/agents/Timeline";
 
 type AgentRunDetailResponse = components["schemas"]["AgentRunDetailResponse"];
-type AgentRunStepResponse = components["schemas"]["AgentRunStepResponse"];
 
 export function AgentRunDetailPage() {
 	const { agentId, runId } = useParams<{
@@ -313,18 +312,17 @@ export function AgentRunDetailPage() {
 								/>
 								<Terminal className="h-3 w-3" />
 								<span>
-									Raw step timeline ({(run.steps ?? []).length}{" "}
-									steps)
+									Timeline ({(run.steps ?? []).length} steps)
 								</span>
 								<span className="ml-2 text-[11px]">
-									For debugging — what the executor actually did
+									Step-by-step view of what the executor did
 								</span>
 							</button>
 						</CollapsibleTrigger>
 						<CollapsibleContent>
 							<Card className="mt-2">
 								<CardContent className="p-3">
-									<RawStepTimeline steps={run.steps ?? []} />
+									<Timeline steps={run.steps ?? []} />
 								</CardContent>
 							</Card>
 						</CollapsibleContent>
@@ -518,46 +516,6 @@ function RunStatusBadge({ status }: { status: string }) {
 		default:
 			return <Badge variant="outline">{status}</Badge>;
 	}
-}
-
-function RawStepTimeline({ steps }: { steps: AgentRunStepResponse[] }) {
-	if (!steps.length) {
-		return (
-			<p className="text-xs text-muted-foreground">
-				No steps recorded.
-			</p>
-		);
-	}
-	return (
-		<ul className="flex flex-col gap-2">
-			{steps.map((step, i) => (
-				<li
-					key={step.id ?? i}
-					className="rounded border bg-muted/30 p-2 text-xs"
-				>
-					<div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-						<Cpu className="h-3 w-3" />
-						<span>#{i + 1}</span>
-						<span>·</span>
-						<span>{step.type ?? "step"}</span>
-						{step.duration_ms != null ? (
-							<>
-								<span>·</span>
-								<span>
-									{formatDuration(step.duration_ms)}
-								</span>
-							</>
-						) : null}
-					</div>
-					{step.content ? (
-						<pre className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[11px] text-foreground/80">
-							{JSON.stringify(step.content, null, 2)}
-						</pre>
-					) : null}
-				</li>
-			))}
-		</ul>
-	);
 }
 
 interface AIUsageEntry {

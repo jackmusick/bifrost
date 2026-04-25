@@ -7,7 +7,8 @@
  * component is purely presentational.
  */
 
-import { Sparkles } from "lucide-react";
+import { ExternalLink, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import {
 	Sheet,
@@ -67,9 +68,19 @@ export function RunReviewSheet({
 				className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
 			>
 				<SheetHeader className="border-b px-6 py-4">
-					<SheetTitle className="truncate">
-						{run.did || run.asked || "Run review"}
-					</SheetTitle>
+					<div className="flex items-center justify-between gap-3">
+						<SheetTitle className="truncate">
+							{run.did || run.asked || "Run review"}
+						</SheetTitle>
+						<Link
+							to={`/agents/${run.agent_id}/runs/${run.id}`}
+							className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+							aria-label="Open full run page"
+						>
+							Open full run
+							<ExternalLink className="h-3 w-3" />
+						</Link>
+					</div>
 				</SheetHeader>
 				<Tabs
 					defaultValue={defaultTab}

@@ -32,6 +32,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRegenerateSummary } from "@/services/agentRuns";
 import type { components } from "@/lib/v1";
 
+import { DidNarrative } from "./DidNarrative";
 import { SummaryPlaceholder } from "./SummaryPlaceholder";
 
 export type Verdict = "up" | "down" | null;
@@ -83,6 +84,86 @@ function extractToolCalls(steps: AgentRunStep[] | undefined): {
 		});
 }
 
+/** True when the tool's args object is effectively empty (no info to show). */
+function _argsAreEmpty(args: unknown): boolean {
+	if (args === null || args === undefined) return true;
+	if (typeof args === "string") return args.trim() === "";
+	if (typeof args === "object") {
+		try {
+			return Object.keys(args as Record<string, unknown>).length === 0;
+		} catch {
+			return false;
+		}
+	}
+	return false;
+}
+
+interface ToolCallRowProps {
+	tool: string;
+	args: unknown;
+	duration_ms: number | null;
+	compact?: boolean;
+}
+
+/** Tool-call row: tool name, optional expandable args, duration.
+ *
+ * Empty `{}`-shaped args render no second column — there's nothing useful
+ * to show and the empty `{}` was visual clutter. Non-empty args collapse
+ * to a single line with a chevron; expanded form is pretty-printed JSON
+ * that wraps + scrolls vertically (no horizontal sheet overflow).
+ */
+function ToolCallRow({ tool, args, duration_ms, compact }: ToolCallRowProps) {
+	const [open, setOpen] = useState(false);
+	const empty = _argsAreEmpty(args);
+	const argsString =
+		typeof args === "string" ? args : JSON.stringify(args);
+	const argsPretty =
+		typeof args === "string" ? args : JSON.stringify(args, null, 2);
+
+	return (
+		<div className="rounded border bg-card text-xs">
+			<div className="flex items-center gap-2 px-2 py-1.5">
+				<span className="font-mono font-medium shrink-0">{tool}</span>
+				{empty ? (
+					<span className="flex-1" />
+				) : (
+					<button
+						type="button"
+						onClick={() => setOpen((v) => !v)}
+						className="flex flex-1 min-w-0 items-center gap-1 text-left text-muted-foreground hover:text-foreground"
+						aria-expanded={open}
+						aria-label={
+							open ? "Hide arguments" : "Show arguments"
+						}
+					>
+						<ChevronRight
+							className={cn(
+								"h-3 w-3 shrink-0 transition-transform",
+								open && "rotate-90",
+							)}
+						/>
+						<span className="truncate font-mono">{argsString}</span>
+					</button>
+				)}
+				<span className="shrink-0 text-[11px] text-muted-foreground">
+					{duration_ms != null ? formatDuration(duration_ms) : ""}
+				</span>
+			</div>
+			{!empty && open ? (
+				<pre
+					className={cn(
+						"max-h-[240px] overflow-y-auto border-t bg-muted/30 px-3 py-2 font-mono whitespace-pre-wrap break-words",
+						compact ? "text-[11px]" : "text-xs",
+					)}
+				>
+					{argsPretty}
+				</pre>
+			) : null}
+		</div>
+	);
+}
+
+
 /** Render input/output that may be a string OR a JSON object. */
 function renderPayload(value: unknown): string {
 	if (value === null || value === undefined) return "";
@@ -104,6 +185,10 @@ export function RunReviewPanel({
 	hideVerdictBar = false,
 }: RunReviewPanelProps) {
 	const toolCalls = extractToolCalls(run.steps);
+	// v3 summarizer wraps tool names in [brackets]. Detect that to choose
+	// between the prose narrative (with chips) and the raw tool-call list
+	// (used for v1/v2 summaries that predate the marker convention).
+	const didHasMarkers = !!run.did && /\[[a-zA-Z_][a-zA-Z0-9_.-]*\]/.test(run.did);
 	const canVerdict = run.status === "completed" && !hideVerdictBar;
 	const compact = variant === "drawer";
 	const maxToolCalls = compact ? 3 : 4;
@@ -207,7 +292,29 @@ export function RunReviewPanel({
 					</div>
 				</Section>
 
-				{toolCalls.length > 0 ? (
+				{didHasMarkers ? (
+					<Section
+						icon={<Wrench size={13} />}
+						iconClassName="bg-blue-500/15 text-blue-600 dark:text-blue-400"
+						label="What it did"
+						compact={compact}
+					>
+						<div
+							className={cn(
+								"rounded-md border bg-muted/40 px-3 py-2",
+								compact ? "text-xs" : "text-sm",
+							)}
+						>
+							<DidNarrative
+								text={run.did}
+								steps={run.steps}
+								compact={compact}
+							/>
+						</div>
+					</Section>
+				) : toolCalls.length > 0 ? (
+					// Fallback for runs summarized under prompt v1/v2 (no
+					// [tool] markers in `did`) — show the raw tool-call list.
 					<Section
 						icon={<Wrench size={13} />}
 						iconClassName="bg-blue-500/15 text-blue-600 dark:text-blue-400"
@@ -216,22 +323,13 @@ export function RunReviewPanel({
 					>
 						<div className="grid gap-1.5">
 							{visibleTools.map((c, i) => (
-								<div
+								<ToolCallRow
 									key={i}
-									className="flex items-center gap-2 rounded border bg-card px-2 py-1.5 text-xs"
-								>
-									<span className="font-mono font-medium">{c.tool}</span>
-									<span className="flex-1 truncate font-mono text-muted-foreground">
-										{typeof c.args === "string"
-											? c.args
-											: JSON.stringify(c.args)}
-									</span>
-									<span className="shrink-0 text-[11px] text-muted-foreground">
-										{c.duration_ms != null
-											? formatDuration(c.duration_ms)
-											: ""}
-									</span>
-								</div>
+									tool={c.tool}
+									args={c.args}
+									duration_ms={c.duration_ms}
+									compact={compact}
+								/>
 							))}
 							{overflow > 0 ? (
 								<div className="text-xs text-muted-foreground">
@@ -261,9 +359,14 @@ export function RunReviewPanel({
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
-							{run.did || (
-								<SummaryPlaceholder status={run.summary_status} runStatus={run.status} />
-							)}
+							{run.answered ||
+								// Fall back to `did` for v1/v2 summaries (no
+								// separate `answered` field). Shows the
+								// generic-but-better-than-nothing one-liner.
+								run.did ||
+								(
+									<SummaryPlaceholder status={run.summary_status} runStatus={run.status} />
+								)}
 						</div>
 					</Section>
 				) : (

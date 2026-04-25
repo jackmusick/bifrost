@@ -44,7 +44,7 @@ SUMMARIZE_BACKFILL_QUEUE = "agent-summarization-backfill"
 # user-message payload changes meaningfully, so admins can use the backfill
 # endpoint's ``prompt_version_below`` filter to re-summarize runs stamped
 # with an older version.
-SUMMARIZE_PROMPT_VERSION = "v2"
+SUMMARIZE_PROMPT_VERSION = "v3"
 
 # Transient LLM provider errors worth retrying in-handler. The consumer runs
 # with prefetch_count=1, so retrying here naturally backpressures the whole
@@ -72,12 +72,25 @@ run's input, and the run's output. Produce a JSON object with:
   - asked: one short sentence (<100 chars) describing what the user or event
     asked for, in the user's voice. Extract the specific ask, not a generic
     restatement of the agent's purpose.
-  - did: one short sentence (<100 chars) describing the SPECIFIC OUTCOME of
-    THIS run — what was decided, which entities were touched, which values
-    were assigned. DO NOT restate the agent's role or purpose. "The agent
-    triaged the ticket" is useless (it's a triage agent — of course it
-    triaged). "Routed to Tier 2 as high-urgency billing dispute" is useful.
-    When you extract metadata below, reference its specifics in `did`.
+
+  - did: a short prose explanation of how the agent worked through the
+    request — the way someone would describe their work to a coworker. 1-4
+    sentences (<800 chars total). Walk through the meaningful decisions and
+    the reason behind each one ("I needed X, so I called Y; that gave me Z,
+    which told me to..."). Skip filler tool calls (a couple of look-ups
+    aren't worth narrating). When you reference a tool, wrap its exact name
+    in square brackets, e.g. `I called [ai_ticketing_get_ticket_details] to
+    fetch the ticket, then delegated to [security_subagent] when it
+    confirmed the alert was an end-of-life issue.` These bracket markers
+    are rendered as inline chips by the UI, so use the tool's exact
+    machine-readable name (the same string visible in the run's tool_call
+    steps), not a friendly label. DO NOT restate the agent's role or
+    purpose — describe THIS run.
+
+  - answered: one short sentence (<100 chars) capturing the agent's final
+    answer or outcome — the user-facing result of the run. Different from
+    `did`: `did` is the work, `answered` is the result.
+
   - confidence: float 0.0-1.0 — how confident the agent's output appears to
     be.
   - confidence_reason: one sentence explaining the confidence assessment.
@@ -428,7 +441,8 @@ async def summarize_run(
             await db.execute(select(AgentRun).where(AgentRun.id == run_id))
         ).scalar_one()
         run.asked = _truncate(parsed.get("asked"), 400)
-        run.did = _truncate(parsed.get("did"), 400)
+        run.did = _truncate(parsed.get("did"), 1200)
+        run.answered = _truncate(parsed.get("answered"), 400)
         run.confidence = _clamp_confidence(parsed.get("confidence"))
         run.confidence_reason = _truncate(parsed.get("confidence_reason"), 500)
 

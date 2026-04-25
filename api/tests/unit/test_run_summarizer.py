@@ -107,6 +107,7 @@ async def test_summarize_run_populates_asked_did_confidence(
 
     mock_resp = _build_mock_llm_response(
         '{"asked": "reset my password", "did": "routed to Support", '
+        '"answered": "Sent password-reset link", '
         '"confidence": 0.9, "confidence_reason": "clear intent", '
         '"metadata": {"intent": "password_reset"}}'
     )
@@ -127,6 +128,7 @@ async def test_summarize_run_populates_asked_did_confidence(
         ).scalar_one()
         assert run.asked == "reset my password"
         assert run.did == "routed to Support"
+        assert run.answered == "Sent password-reset link"
         assert run.confidence == 0.9
         assert run.confidence_reason == "clear intent"
         assert run.summary_status == "completed"

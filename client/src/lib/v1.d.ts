@@ -3423,22 +3423,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8333,6 +8333,8 @@ export interface components {
             asked?: string | null;
             /** Did */
             did?: string | null;
+            /** Answered */
+            answered?: string | null;
             /** Metadata */
             metadata?: {
                 [key: string]: string;
@@ -8452,6 +8454,8 @@ export interface components {
             asked?: string | null;
             /** Did */
             did?: string | null;
+            /** Answered */
+            answered?: string | null;
             /** Metadata */
             metadata?: {
                 [key: string]: string;
@@ -25582,7 +25586,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -25615,7 +25619,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -25648,7 +25652,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -25681,7 +25685,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {

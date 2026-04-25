@@ -48,6 +48,7 @@ class AgentRunResponse(BaseModel):
     llm_model: str | None = None
     asked: str | None = None
     did: str | None = None
+    answered: str | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
     confidence: float | None = None
     confidence_reason: str | None = None

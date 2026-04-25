@@ -44,6 +44,10 @@ class AgentRun(Base):
     # in raw SQL / Alembic.
     asked: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     did: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Short user-facing answer/outcome — distinct from `did` (the work). The
+    # summarizer prompt v3 produces this as a separate field; v1/v2 left it
+    # unset, so the column is nullable and existing rows backfill on rerun.
+    answered: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     run_metadata: Mapped[dict] = mapped_column(
         "metadata",
         JSONB,

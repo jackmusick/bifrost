@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { renderWithProviders, screen } from "@/test-utils";
 import type { components } from "@/lib/v1";
 
@@ -188,7 +189,8 @@ describe("RunReviewPanel", () => {
 
 	it("renders tool call rows even when arguments object is empty", () => {
 		// Regression guard for the `tool {}` screenshot — zero-arg tool calls
-		// must still show the tool name as the row label.
+		// must still show the tool name as the row label, but the args column
+		// renders nothing (no `{}` clutter) and there's no expand affordance.
 		const run: AgentRunDetail = {
 			...baseRun,
 			steps: [
@@ -213,6 +215,47 @@ describe("RunReviewPanel", () => {
 			/>,
 		);
 		expect(screen.getByText("list_workflows")).toBeInTheDocument();
+		// No "{}" placeholder should appear; no expand button either.
+		expect(screen.queryByText("{}")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /show arguments/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("collapses non-empty tool args behind a disclosure that expands inline", () => {
+		const run: AgentRunDetail = {
+			...baseRun,
+			steps: [
+				{
+					id: "s1",
+					run_id: baseRun.id,
+					step_number: 1,
+					type: "tool_call",
+					content: {
+						tool_name: "send_email",
+						arguments: { to: "user@x.com", subject: "Hi" },
+					},
+					duration_ms: 120,
+					created_at: baseRun.created_at,
+				},
+			],
+		};
+		renderWithProviders(
+			<RunReviewPanel
+				run={run}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		// Collapsed: button with the show-args label; one-line preview visible.
+		const expandBtn = screen.getByRole("button", { name: /show arguments/i });
+		expect(expandBtn).toHaveAttribute("aria-expanded", "false");
+		fireEvent.click(expandBtn);
+		expect(
+			screen.getByRole("button", { name: /hide arguments/i }),
+		).toHaveAttribute("aria-expanded", "true");
 	});
 
 	it("renders metadata chips when metadata present", () => {

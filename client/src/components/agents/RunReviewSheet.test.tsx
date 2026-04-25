@@ -160,4 +160,25 @@ describe("RunReviewSheet", () => {
 		await user.click(screen.getByRole("button", { name: /close/i }));
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
+
+	it("exposes an 'Open full run' link in the header pointing at the run page", () => {
+		renderWithProviders(
+			<RunReviewSheet
+				open={true}
+				onOpenChange={() => {}}
+				run={baseRun}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+				conversation={baseConversation}
+				onSendChat={() => {}}
+			/>,
+		);
+		const link = screen.getByRole("link", { name: /open full run/i });
+		expect(link).toHaveAttribute(
+			"href",
+			`/agents/${baseRun.agent_id}/runs/${baseRun.id}`,
+		);
+	});
 });
