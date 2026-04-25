@@ -67,8 +67,9 @@ interface ExecutionDetailsProps {
 	executionId?: string;
 	/** Embedded mode - hides navigation header for use in panels */
 	embedded?: boolean;
-	/** Ref to a DOM element where action buttons should be portaled (embedded mode) */
-	actionsContainerRef?: React.RefObject<HTMLDivElement | null>;
+	/** DOM element where action buttons should be portaled (embedded mode).
+	 * Pass via callback ref / state to keep this in render-friendly form. */
+	actionsContainer?: HTMLDivElement | null;
 	/** Called when a rerun creates a new execution (embedded mode switches to it instead of navigating) */
 	onExecutionChange?: (newExecutionId: string) => void;
 }
@@ -76,7 +77,7 @@ interface ExecutionDetailsProps {
 export function ExecutionDetails({
 	executionId: propExecutionId,
 	embedded = false,
-	actionsContainerRef,
+	actionsContainer,
 	onExecutionChange,
 }: ExecutionDetailsProps) {
 	const { executionId: urlExecutionId } = useParams();
@@ -112,17 +113,23 @@ export function ExecutionDetails({
 	);
 	const streamingLogs = streamState?.streamingLogs ?? [];
 
-	// Fallback timer effect - reset on ID change and set 5s fallback for navigation state
-	useEffect(() => {
-		// Reset fallback when execution ID changes (important for rerun navigation)
+	// Reset fallback when execution ID changes (important for rerun
+	// navigation). Adjust during render with a previous-ID sentinel rather
+	// than a setState-in-effect cycle.
+	const [prevExecutionId, setPrevExecutionId] = useState(executionId);
+	if (prevExecutionId !== executionId) {
+		setPrevExecutionId(executionId);
 		setFetchFallbackEnabled(!hasNavigationState);
+	}
 
-		// If we have navigation state (from trigger), wait 5s as fallback in case WebSocket fails
+	// Fallback timer — set 5s fallback for navigation state. Timer-based
+	// state transitions are a legitimate effect since they happen after a
+	// scheduled callback (not synchronously in the effect body).
+	useEffect(() => {
 		if (hasNavigationState) {
 			const timer = setTimeout(() => setFetchFallbackEnabled(true), 5000);
 			return () => clearTimeout(timer);
 		}
-		// No timer needed for direct links - fetchFallbackEnabled is already true
 		return undefined;
 	}, [executionId, hasNavigationState]);
 
@@ -205,34 +212,24 @@ export function ExecutionDetails({
 	const isLoadingResult = isLoading;
 	const isLoadingLogs = isLoading;
 
-	// Enable WebSocket for running executions
-	// Only disable when stream explicitly completes (not when status changes in cache)
-	// This prevents race condition where we disconnect before completion callback fires
-	useEffect(() => {
-		// If we came from an execution trigger (has navigation state), start WebSocket immediately
-		// We know the execution is fresh and will be Pending/Running
-		if (hasNavigationState) {
-			setSignalrEnabled(true);
-			return;
-		}
-		// Otherwise, enable streaming if execution is in a running state
-		if (
+	// Drive `signalrEnabled` directly from current props/state during render.
+	// Three rules, in order:
+	//   1. If the stream has reported completion, force OFF (sticky).
+	//   2. Otherwise, if we navigated in from a trigger, force ON.
+	//   3. Otherwise, ON iff the execution looks running.
+	// This avoids the race where status flips to a terminal state before
+	// the stream's onComplete callback fires (we keep streaming until the
+	// stream itself says it's done).
+	const desiredSignalrEnabled = streamState?.isComplete
+		? false
+		: hasNavigationState ||
 			executionStatus === "Pending" ||
 			executionStatus === "Running" ||
-			executionStatus === "Cancelling"
-		) {
-			setSignalrEnabled(true);
-		}
-		// Only disable on initial load if already complete (not from stream updates)
-		// The stream's onComplete callback will handle cleanup for live executions
-	}, [executionStatus, hasNavigationState]);
-
-	// Disable streaming when stream reports completion
-	useEffect(() => {
-		if (streamState?.isComplete) {
-			setSignalrEnabled(false);
-		}
-	}, [streamState?.isComplete]);
+			executionStatus === "Cancelling" ||
+			signalrEnabled;
+	if (desiredSignalrEnabled !== signalrEnabled) {
+		setSignalrEnabled(desiredSignalrEnabled);
+	}
 
 	// Update execution status optimistically from stream
 	// Only depend on status, not the entire streamState object, to avoid running
@@ -536,8 +533,8 @@ export function ExecutionDetails({
 
 		return (
 			<div className="h-full">
-				{actionsContainerRef?.current &&
-					createPortal(actionButtons, actionsContainerRef.current)}
+				{actionsContainer &&
+					createPortal(actionButtons, actionsContainer)}
 
 				<div className="p-4 space-y-3">
 					{/* Compact metadata header */}

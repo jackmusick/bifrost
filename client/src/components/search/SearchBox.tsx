@@ -20,10 +20,14 @@ export function SearchBox({
 }: SearchBoxProps) {
 	const [localValue, setLocalValue] = useState(value);
 
-	// Update local value when external value changes
-	useEffect(() => {
+	// Sync local value when controlled `value` prop changes (e.g. parent
+	// reset). Adjust during render rather than in an effect — see
+	// https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+	const [prevValue, setPrevValue] = useState(value);
+	if (prevValue !== value) {
+		setPrevValue(value);
 		setLocalValue(value);
-	}, [value]);
+	}
 
 	// Debounce the onChange callback
 	useEffect(() => {
