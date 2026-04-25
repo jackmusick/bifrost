@@ -449,27 +449,31 @@ def _preload_required_modules() -> None:
     # Force encodings.idna to be loaded (needed for hostname resolution)
     try:
         import encodings.idna  # noqa: F401
-    except ImportError:
-        pass
+    except ImportError as e:
+        # Stdlib module — should always exist; trimmed Python build would log here
+        logger.debug(f"encodings.idna preload failed: {e}")
 
     # Force other encoding modules that might be needed
     try:
         import encodings.utf_8  # noqa: F401
         import encodings.ascii  # noqa: F401
-    except ImportError:
-        pass
+    except ImportError as e:
+        # Stdlib modules — log if a stripped build is missing them
+        logger.debug(f"encodings.utf_8/ascii preload failed: {e}")
 
     # Force stringprep (needed by encodings.idna)
     try:
         import stringprep  # noqa: F401
-    except ImportError:
-        pass
+    except ImportError as e:
+        # Stdlib module — log if missing
+        logger.debug(f"stringprep preload failed: {e}")
 
     # Ensure codecs is loaded
     try:
         import codecs  # noqa: F401
-    except ImportError:
-        pass
+    except ImportError as e:
+        # Stdlib module — should never fail
+        logger.debug(f"codecs preload failed: {e}")
 
 
 def remove_virtual_import_hook() -> None:

@@ -48,8 +48,9 @@ def _llm_configured(e2e_client, platform_admin):
     yield config
     try:
         e2e_client.delete("/api/admin/llm/config", headers=platform_admin.headers)
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"LLM config fixture cleanup error: {e}")
 
 
 @pytest.fixture(scope="module")
@@ -84,8 +85,9 @@ def simple_agent(e2e_client, platform_admin, _llm_configured):
             f"/api/agents/{agent['id']}",
             headers=platform_admin.headers,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")
 
 
 class TestConcurrentAgentRuns:

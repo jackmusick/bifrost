@@ -149,6 +149,7 @@ class AgentRunConsumer(BaseConsumer):
                     try:
                         await executor_task
                     except asyncio.CancelledError:
+                        # Expected — we just cancelled the task on timeout
                         pass
                     run_result = {
                         "output": None,
@@ -171,6 +172,7 @@ class AgentRunConsumer(BaseConsumer):
                     try:
                         await cancel_watcher
                     except asyncio.CancelledError:
+                        # Expected — we just cancelled the watcher
                         pass
 
             # Update run record and flush buffered steps (brief DB session)
@@ -203,8 +205,9 @@ class AgentRunConsumer(BaseConsumer):
             try:
                 async with get_redis() as r:
                     await r.delete(agent_run_steps_stream_key(run_id))
-            except Exception:
-                pass
+            except Exception as e:
+                # Stream cleanup is best-effort — Redis stream has a TTL anyway
+                logger.debug(f"failed to delete agent_run steps stream for {run_id}: {e}")
 
             await publish_agent_run_update(agent_run, agent.name)
 
@@ -270,15 +273,17 @@ class AgentRunConsumer(BaseConsumer):
                 try:
                     async with get_redis() as r:
                         await r.delete(agent_run_steps_stream_key(run_id))
-                except Exception:
-                    pass
+                except Exception as cleanup_err:
+                    # Stream cleanup is best-effort
+                    logger.debug(f"failed to delete agent_run steps stream for {run_id}: {cleanup_err}")
 
                 try:
                     await publish_agent_run_update(
                         agent_run, agent.name if agent else "Unknown"
                     )
-                except Exception:
-                    pass
+                except Exception as pub_err:
+                    # Pubsub notify is a UI hint; the DB row already reflects the failure
+                    logger.debug(f"failed to publish agent_run failure update for {run_id}: {pub_err}")
 
             if sync:
                 result_key = f"{REDIS_PREFIX}:{run_id}:result"
@@ -294,8 +299,9 @@ class AgentRunConsumer(BaseConsumer):
             try:
                 async with get_redis() as r:
                     await r.delete(f"{REDIS_PREFIX}:{run_id}:context")
-            except Exception:
-                pass
+            except Exception as e:
+                # Context key has a TTL; leaking one for a few minutes is harmless
+                logger.debug(f"failed to delete agent_run context key for {run_id}: {e}")
 
     @staticmethod
     async def _cancel_watcher(
