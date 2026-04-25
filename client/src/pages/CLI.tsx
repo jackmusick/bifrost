@@ -83,7 +83,9 @@ function SessionsList() {
 	}, []);
 
 	useEffect(() => {
-		fetchSessions();
+		void (async () => {
+			await fetchSessions();
+		})();
 	}, [fetchSessions]);
 
 	// Subscribe to websocket for session updates
