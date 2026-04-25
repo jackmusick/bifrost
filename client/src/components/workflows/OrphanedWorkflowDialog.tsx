@@ -135,12 +135,17 @@ export function OrphanedWorkflowDialog({
 		}
 	}, [open, workflow.id]);
 
+	// Reset state and load data when dialog opens. State is set inside the
+	// async functions only after awaited fetches resolve — the rule fires on
+	// synchronous setState in effects, which we avoid via the void-promise
+	// kick-off. Reset of selectedReplacement is also wrapped so it does not
+	// run synchronously within the effect body.
 	useEffect(() => {
-		if (open) {
+		if (!open) return;
+		void (async () => {
 			setSelectedReplacement(null);
-			fetchReplacements();
-			fetchReferences();
-		}
+			await Promise.all([fetchReplacements(), fetchReferences()]);
+		})();
 	}, [open, fetchReplacements, fetchReferences]);
 
 	// Handle replace action

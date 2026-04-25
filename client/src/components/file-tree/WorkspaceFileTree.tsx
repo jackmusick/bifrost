@@ -12,7 +12,7 @@
  * file tree functionality without the upload features for now.
  */
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { FileTree } from "./FileTree";
@@ -92,8 +92,20 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 	);
 	const [includeGlobal, setIncludeGlobal] = useState(true);
 
-	// Refresh trigger to force file tree reload after scope changes
-	const [refreshTrigger, setRefreshTrigger] = useState(0);
+	// Manual refresh counter — bumped whenever an action wants to force the
+	// file tree to drop its cached folder contents (e.g. after the user
+	// changes an entity's organization scope).
+	const [manualRefreshTick, setManualRefreshTick] = useState(0);
+
+	// Refresh trigger derived from current scope plus the manual counter.
+	// Whenever scope changes we want the FileTree to drop its cached folder
+	// contents; encoding scope directly as the trigger means "trigger value
+	// changed" iff scope changed (or someone bumped the manual tick).
+	const refreshTrigger = useMemo(
+		() =>
+			`${selectedOrgId ?? "__none__"}:${includeGlobal}:${manualRefreshTick}`,
+		[selectedOrgId, includeGlobal, manualRefreshTick],
+	);
 
 	// Create org-scoped file operations adapter with current filter settings
 	const operations = useMemo(
@@ -104,11 +116,6 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 			}),
 		[organizations, selectedOrgId, includeGlobal],
 	);
-
-	// Refresh tree when filter changes to clear cached data in expanded folders
-	useEffect(() => {
-		setRefreshTrigger((prev) => prev + 1);
-	}, [selectedOrgId, includeGlobal]);
 
 	// Get the currently open file path
 	const openFilePath = useMemo(() => {
@@ -171,7 +178,7 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 			toast.success(`Changed scope to ${newScopeOrgId === null ? "Global" : organizations.find((o) => o.id === newScopeOrgId)?.name ?? "organization"}`);
 			setChangeScopeFile(null);
 			// Trigger refresh
-			setRefreshTrigger((prev) => prev + 1);
+			setManualRefreshTick((prev) => prev + 1);
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "Failed to change scope",

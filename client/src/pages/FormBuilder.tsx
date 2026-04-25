@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Save, Eye, Pencil, Info, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,39 +69,44 @@ export function FormBuilder() {
 	> | null>(null);
 	const [isTestingWorkflow, setIsTestingWorkflow] = useState(false);
 
-	// Sync fields and formInfo when existingForm loads
-	useEffect(() => {
-		if (existingForm) {
-			// Sync fields from form_schema
-			if (
-				existingForm.form_schema &&
-				typeof existingForm.form_schema === "object" &&
-				"fields" in existingForm.form_schema
-			) {
-				const schema = existingForm.form_schema as {
-					fields: unknown[];
-				};
-				setFields(schema.fields as FormField[]);
-			}
-
-			// Sync formInfo from existingForm (only if not already overridden by dialog save)
-			if (!formInfo) {
-				setFormInfo({
-					name: existingForm.name || "",
-					description: existingForm.description || "",
-					workflow_id: existingForm.workflow_id || "",
-					launch_workflow_id: existingForm.launch_workflow_id || "",
-					default_launch_params:
-						(existingForm.default_launch_params as Record<string, unknown>) || {},
-					access_level:
-						(existingForm.access_level as "authenticated" | "role_based") || "role_based",
-					role_ids: [],
-					organization_id: existingForm.organization_id ?? defaultOrgId,
-				});
-			}
+	// Sync fields and formInfo when existingForm loads. Adjusting state
+	// during render with a "previous existingForm" sentinel is the React-
+	// recommended idiom for prop-driven resets and avoids an extra effect
+	// render cycle.
+	const [prevExistingFormId, setPrevExistingFormId] = useState<
+		string | null
+	>(null);
+	const currentExistingFormId = existingForm?.id ?? null;
+	if (existingForm && prevExistingFormId !== currentExistingFormId) {
+		setPrevExistingFormId(currentExistingFormId);
+		// Sync fields from form_schema
+		if (
+			existingForm.form_schema &&
+			typeof existingForm.form_schema === "object" &&
+			"fields" in existingForm.form_schema
+		) {
+			const schema = existingForm.form_schema as {
+				fields: unknown[];
+			};
+			setFields(schema.fields as FormField[]);
 		}
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [existingForm]);
+
+		// Sync formInfo from existingForm (only if not already overridden by dialog save)
+		if (!formInfo) {
+			setFormInfo({
+				name: existingForm.name || "",
+				description: existingForm.description || "",
+				workflow_id: existingForm.workflow_id || "",
+				launch_workflow_id: existingForm.launch_workflow_id || "",
+				default_launch_params:
+					(existingForm.default_launch_params as Record<string, unknown>) || {},
+				access_level:
+					(existingForm.access_level as "authenticated" | "role_based") || "role_based",
+				role_ids: [],
+				organization_id: existingForm.organization_id ?? defaultOrgId,
+			});
+		}
+	}
 
 	// Derive display values from formInfo (dialog-saved) or existingForm (server data)
 	const formName = formInfo?.name || existingForm?.name || "";
