@@ -141,8 +141,6 @@ class ConfigResolver:
         Raises:
             ValueError: If value cannot be parsed for the specified type
         """
-        import json
-
         try:
             if config_type == ConfigType.INT.value or config_type == "int":
                 return int(value)
