@@ -81,16 +81,15 @@ def install_requirements() -> None:
 
     except subprocess.TimeoutExpired:
         logger.warning("[pool] pip install timed out after 5 minutes")
+    except Exception as e:
+        logger.warning(f"[pool] Failed to install requirements: {e}")
 
     finally:
         try:
             os.unlink(temp_path)
-        except OSError:
-            pass
-
-        except Exception as e:
-            logger.warning(f"[pool] Failed to install requirements: {e}")
-            return
+        except OSError as e:
+            # Temp file may already be gone — best-effort cleanup
+            logger.debug(f"[pool] could not remove temp requirements file {temp_path}: {e}")
 
 
 def _clear_workspace_modules() -> None:
@@ -370,8 +369,9 @@ def _get_pss_bytes() -> int:
             for line in f:
                 if line.startswith("Pss:"):
                     return int(line.split()[1]) * 1024  # kB to bytes
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as e:
+        # /proc not available (macOS) or unexpected line format — caller treats 0 as unknown
+        logger.debug(f"could not read smaps_rollup PSS: {e}")
     return 0
 
 
@@ -386,8 +386,9 @@ def _get_process_rss() -> int:
             for line in f:
                 if line.startswith("VmRSS:"):
                     return int(line.split()[1]) * 1024  # kB to bytes
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as e:
+        # /proc not available (macOS) or unexpected line format — caller treats 0 as unknown
+        logger.debug(f"could not read /proc/self/status VmRSS: {e}")
     return 0
 
 
