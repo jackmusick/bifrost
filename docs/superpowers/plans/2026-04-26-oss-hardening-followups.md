@@ -2,6 +2,30 @@
 
 > **Status:** Most of the original follow-up plan was executed in the same session via parallel subagents. This doc is now mostly a record of what landed + what's still in flight, not a TODO list.
 
+## Active automation (running while you sleep)
+
+A remote scheduled agent is driving the auto-merge queue without a human Claude session attached.
+
+**Routine:** `bifrost: single-track auto-merge driver` (trigger ID `trig_01SwMJNAs2KNfAhRMu69xbGd`)
+**Schedule:** hourly at :23 UTC
+**Manage:** https://claude.ai/code/routines/trig_01SwMJNAs2KNfAhRMu69xbGd
+
+**What it does each tick:**
+1. Counts auto-merge-enabled PRs. If ≥1 is in flight, leaves it alone (no thrashing).
+2. If 0 in flight: picks the next PR by priority order (#85, #82, #81, #80, #79, #78, #27, #41–#51, #63, #64), pre-resolves GHAS review threads (which silently block merge via `required_conversation_resolution`), triggers `update-branch`, enables auto-merge.
+3. If #73 has merged, posts `@dependabot recreate` on #72 and #63 exactly once each.
+4. When all my PRs (numbers < #87) are closed, **disables itself**.
+
+**What it does NOT do:**
+- Resolve merge conflicts (those need human judgment per file). When a PR goes DIRTY, the routine skips it and the queue stalls on that PR.
+- Drive Thomas's PRs (#87+). Those need your review.
+
+**If the queue stalls** (e.g. you check back and see merge=DIRTY on a PR): open a fresh Claude session in the repo and say *"the auto-merge queue stalled, look at PR #N and resolve the conflict."* The session can read this doc + the PR, do the manual rebase per the conflict-pattern below, and re-prime the routine.
+
+**If you want to stop the routine early:** the management URL above lets you disable it. Or in a Claude session: `RemoteTrigger update trig_01SwMJNAs2KNfAhRMu69xbGd {"enabled": false}`.
+
+**Common conflict pattern observed this session:** PRs #84/#85/#82 all touched the same logger calls (different improvements — empty-except handling vs. log_safe wrapping). Resolution = combine both improvements (e.g. keep `log_safe(value)` from #82 AND add the debug log on `ImportError` from #84). Don't drop either side.
+
 ## ⚠️ POST-DRAIN CHECKLIST — DO THIS WHEN THE QUEUE IS EMPTY
 
 **When all my fix PRs (#27, #41-#85 range) have landed**, run this audit. It catches anything that slipped through the cracks of session-by-session work.
