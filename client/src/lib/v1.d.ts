@@ -3423,22 +3423,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4736,6 +4736,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-runs/metadata-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Metadata Keys
+         * @description Distinct top-level keys observed in metadata for this agent's runs.
+         *
+         *     The captured-data filter uses this to populate its key combobox so
+         *     users don't have to guess which fields the summarizer actually
+         *     extracts on this agent.
+         */
+        get: operations["get_metadata_keys_api_agent_runs_metadata_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/metadata-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Metadata Values
+         * @description Distinct values observed for ``key`` in metadata for this agent's runs.
+         *
+         *     Used by the filter UI when the user picks the 'eq' operator — lets
+         *     them pick from a known-value list instead of free-typing.
+         */
+        get: operations["get_metadata_values_api_agent_runs_metadata_values_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-runs/backfill-jobs": {
         parameters: {
             query?: never;
@@ -4772,6 +4819,11 @@ export interface paths {
          *     button at all. Returns 0/0.00 if nothing is eligible — caller can hide
          *     the affordance instead of surfacing a dead-end "Nothing to backfill"
          *     modal.
+         *
+         *     When ``prompt_version_below`` is set, also counts ``completed`` runs whose
+         *     ``summary_prompt_version`` is older than the given version (or NULL), so
+         *     admins can discover the existence of a roll-forward opportunity even when
+         *     there are no pending/failed runs.
          */
         get: operations["get_backfill_eligible_api_agent_runs_backfill_eligible_get"];
         put?: never;
@@ -8296,6 +8348,8 @@ export interface components {
             summary_status: string;
             /** Summary Error */
             summary_error?: string | null;
+            /** Summary Prompt Version */
+            summary_prompt_version?: string | null;
             /** Verdict */
             verdict?: string | null;
             /** Verdict Note */
@@ -8413,6 +8467,8 @@ export interface components {
             summary_status: string;
             /** Summary Error */
             summary_error?: string | null;
+            /** Summary Prompt Version */
+            summary_prompt_version?: string | null;
             /** Verdict */
             verdict?: string | null;
             /** Verdict Note */
@@ -9226,9 +9282,14 @@ export interface components {
             agent_id?: string | null;
             /**
              * Statuses
-             * @description Which summary_status values to re-run. Completed runs are skipped.
+             * @description Which summary_status values to re-run. Include 'completed' to re-summarize already-summarized runs (use with ``prompt_version_below`` to target old prompt versions).
              */
-            statuses?: ("pending" | "failed")[];
+            statuses?: ("pending" | "failed" | "completed")[];
+            /**
+             * Prompt Version Below
+             * @description Only re-summarize runs whose ``summary_prompt_version`` is less than this value (lexicographic), or NULL. Lets admins roll forward runs tagged with older prompt versions after a prompt change. NULL-versioned runs always match.
+             */
+            prompt_version_below?: string | null;
             /**
              * Limit
              * @description Max runs to enqueue in one backfill.
@@ -14847,6 +14908,26 @@ export interface components {
          * @enum {string}
          */
         MessageRole: "user" | "assistant" | "system" | "tool" | "tool_call";
+        /**
+         * MetadataKeysResponse
+         * @description Distinct top-level keys observed in agent-run metadata for an agent.
+         *
+         *     Powers the key combobox on the runs-list captured-data filter.
+         */
+        MetadataKeysResponse: {
+            /** Keys */
+            keys?: string[];
+        };
+        /**
+         * MetadataValuesResponse
+         * @description Distinct values observed for a given metadata key on an agent's runs.
+         *
+         *     Powers the value combobox when the user picks the 'eq' operator.
+         */
+        MetadataValuesResponse: {
+            /** Values */
+            values?: string[];
+        };
         /**
          * MicrosoftOAuthConfigRequest
          * @description Request model for configuring Microsoft OAuth SSO.
@@ -25501,7 +25582,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25534,7 +25615,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25567,7 +25648,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25600,7 +25681,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -27718,7 +27799,7 @@ export interface operations {
                 q?: string | null;
                 /** @description Filter by verdict: 'up', 'down', or 'unreviewed' */
                 verdict?: string | null;
-                /** @description JSON object of key-value pairs, e.g. {"customer":"Acme"} */
+                /** @description JSON array of conditions on run metadata, e.g. [{"key":"billing_status","op":"eq","value":"Billable"},{"key":"service_category","op":"contains","value":"security"}]. Supported ops: 'eq' (exact match) and 'contains' (case-insensitive substring). All conditions are AND-ed. */
                 metadata_filter?: string | null;
                 limit?: number;
                 offset?: number;
@@ -27736,6 +27817,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_metadata_keys_api_agent_runs_metadata_keys_get: {
+        parameters: {
+            query: {
+                /** @description Required. Scope keys to this agent. */
+                agent_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataKeysResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_metadata_values_api_agent_runs_metadata_values_get: {
+        parameters: {
+            query: {
+                /** @description Required. Scope values to this agent. */
+                agent_id: string;
+                /** @description Metadata key to aggregate. */
+                key: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataValuesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -27785,6 +27933,7 @@ export interface operations {
         parameters: {
             query?: {
                 agent_id?: string | null;
+                prompt_version_below?: string | null;
             };
             header?: never;
             path?: never;

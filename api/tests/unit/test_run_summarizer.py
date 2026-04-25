@@ -131,6 +131,11 @@ async def test_summarize_run_populates_asked_did_confidence(
         assert run.confidence_reason == "clear intent"
         assert run.summary_status == "completed"
         assert run.summary_generated_at is not None
+        # Prompt version stamped so backfill roll-forward can target old runs.
+        from src.services.execution.run_summarizer import (
+            SUMMARIZE_PROMPT_VERSION,
+        )
+        assert run.summary_prompt_version == SUMMARIZE_PROMPT_VERSION
         # Metadata merged (LLM-extracted intent)
         assert run.run_metadata.get("intent") == "password_reset"
         usages = (
@@ -143,6 +148,40 @@ async def test_summarize_run_populates_asked_did_confidence(
             .all()
         )
         assert any(u.model == "claude-haiku-4-5" for u in usages)
+
+
+@pytest.mark.asyncio
+async def test_summarize_run_includes_agent_context_in_prompt(
+    async_session_factory, seed_completed_run, seed_agent
+):
+    """The summarizer must pass the agent's name + system prompt to the LLM so
+    the model can describe *what this specific run did* instead of paraphrasing
+    the agent's role. This is the v2 prompt contract — regressing to a
+    context-free payload would bring back generic 'did' outputs.
+    """
+    from src.services.execution import run_summarizer as mod
+
+    mock_resp = _build_mock_llm_response(
+        '{"asked": "x", "did": "y", "confidence": 0.5, '
+        '"confidence_reason": "z", "metadata": {}}'
+    )
+    mock_client = _build_mock_client(mock_resp)
+
+    with patch.object(
+        mod,
+        "get_summarization_client",
+        new=AsyncMock(return_value=(mock_client, "claude-haiku-4-5")),
+    ):
+        await summarize_run(seed_completed_run.id, async_session_factory)
+
+    # Inspect what the LLM received. The user message is a JSON-serialized
+    # payload carrying agent_name + agent_system_prompt + input + output.
+    assert mock_client.complete.await_count >= 1
+    call_kwargs = mock_client.complete.await_args.kwargs
+    messages = call_kwargs["messages"]
+    user_msg = next(m for m in messages if m.role == "user")
+    assert seed_agent.name in user_msg.content
+    assert "You are a test agent." in user_msg.content
 
 
 @pytest.mark.asyncio

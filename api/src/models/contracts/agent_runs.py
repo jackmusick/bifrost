@@ -53,6 +53,7 @@ class AgentRunResponse(BaseModel):
     confidence_reason: str | None = None
     summary_status: str = "pending"
     summary_error: str | None = None
+    summary_prompt_version: str | None = None
     verdict: str | None = None
     verdict_note: str | None = None
     verdict_set_at: datetime | None = None
@@ -135,9 +136,22 @@ class BackfillSummariesRequest(BaseModel):
         default=None,
         description="Scope to a single agent. None means platform-wide.",
     )
-    statuses: list[Literal["pending", "failed"]] = Field(
+    statuses: list[Literal["pending", "failed", "completed"]] = Field(
         default_factory=lambda: ["pending", "failed"],
-        description="Which summary_status values to re-run. Completed runs are skipped.",
+        description=(
+            "Which summary_status values to re-run. Include 'completed' to "
+            "re-summarize already-summarized runs (use with "
+            "``prompt_version_below`` to target old prompt versions)."
+        ),
+    )
+    prompt_version_below: str | None = Field(
+        default=None,
+        description=(
+            "Only re-summarize runs whose ``summary_prompt_version`` is "
+            "less than this value (lexicographic), or NULL. Lets admins "
+            "roll forward runs tagged with older prompt versions after a "
+            "prompt change. NULL-versioned runs always match."
+        ),
     )
     limit: int = Field(
         default=500,
@@ -188,6 +202,22 @@ class SummaryBackfillJobResponse(BaseModel):
 
 class SummaryBackfillJobListResponse(BaseModel):
     items: list[SummaryBackfillJobResponse]
+
+
+class MetadataKeysResponse(BaseModel):
+    """Distinct top-level keys observed in agent-run metadata for an agent.
+
+    Powers the key combobox on the runs-list captured-data filter.
+    """
+    keys: list[str] = Field(default_factory=list)
+
+
+class MetadataValuesResponse(BaseModel):
+    """Distinct values observed for a given metadata key on an agent's runs.
+
+    Powers the value combobox when the user picks the 'eq' operator.
+    """
+    values: list[str] = Field(default_factory=list)
 
 
 class BackfillEligibleResponse(BaseModel):

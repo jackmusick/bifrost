@@ -323,6 +323,131 @@ class TestBackfillEligible:
         assert res.status_code == 403, res.text
 
 
+class TestBackfillPromptVersion:
+    """Roll-forward flow: re-summarize runs tagged with an older prompt version."""
+
+    @pytest_asyncio.fixture
+    async def versioned_runs(
+        self, backfill_agent, db_session: AsyncSession
+    ) -> AsyncGenerator[list[AgentRun], None]:
+        """4 completed-summary runs across prompt versions: v1, v1, v2, NULL."""
+        now = datetime.now(timezone.utc)
+        agent_uuid = UUID(backfill_agent["id"])
+        seed: list[tuple[str | None, str]] = [
+            ("v1", "old1"),
+            ("v1", "old2"),
+            ("v2", "current"),
+            (None, "legacy-unversioned"),
+        ]
+        runs: list[AgentRun] = []
+        for version, tag in seed:
+            r = AgentRun(
+                id=uuid4(),
+                agent_id=agent_uuid,
+                trigger_type="api",
+                status="completed",
+                iterations_used=1,
+                tokens_used=100,
+                completed_at=now,
+                summary_status="completed",
+                summary_prompt_version=version,
+                asked=tag,
+                did=tag,
+                created_at=now,
+            )
+            db_session.add(r)
+            runs.append(r)
+        await db_session.commit()
+        yield runs
+        for r in runs:
+            await db_session.execute(delete(AgentRun).where(AgentRun.id == r.id))
+        await db_session.execute(
+            delete(SummaryBackfillJob).where(
+                SummaryBackfillJob.agent_id == agent_uuid
+            )
+        )
+        await db_session.commit()
+
+    async def test_eligible_below_v2_matches_v1_and_null(
+        self,
+        e2e_client,
+        platform_admin,
+        backfill_agent,
+        versioned_runs,
+    ):
+        """GET /backfill-eligible with prompt_version_below=v2 counts v1 + NULL,
+        not the already-current v2 run."""
+        res = e2e_client.get(
+            f"/api/agent-runs/backfill-eligible?agent_id={backfill_agent['id']}"
+            f"&prompt_version_below=v2",
+            headers=platform_admin.headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["eligible"] == 3  # 2x v1 + 1x NULL
+        _ = versioned_runs
+
+    async def test_post_below_v2_reenqueues_old_versions(
+        self,
+        e2e_client,
+        platform_admin,
+        backfill_agent,
+        versioned_runs,
+        db_session: AsyncSession,
+    ):
+        """POST /backfill-summaries with prompt_version_below=v2 + statuses=[completed]
+        flips old-version runs out of completed and skips the v2 run."""
+        res = e2e_client.post(
+            "/api/agent-runs/backfill-summaries",
+            json={
+                "agent_id": backfill_agent["id"],
+                "statuses": ["completed"],
+                "prompt_version_below": "v2",
+                "limit": 500,
+                "dry_run": False,
+            },
+            headers=platform_admin.headers,
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["eligible"] == 3
+        assert body["queued"] == 3
+
+        for r in versioned_runs:
+            await db_session.refresh(r)
+        # Targeted runs are moved out of the 'completed' summary_status (they
+        # go to 'pending' on POST; the backfill worker may advance them to
+        # 'failed' before we observe — either is fine, we just need proof
+        # they were taken off the completed list for re-processing).
+        targeted = [r for r in versioned_runs if r.asked != "current"]
+        assert all(r.summary_status != "completed" for r in targeted)
+        # The v2 run (already current) must be untouched.
+        current = next(r for r in versioned_runs if r.asked == "current")
+        assert current.summary_status == "completed"
+        assert current.summary_prompt_version == "v2"
+
+    async def test_without_filter_ignores_completed_runs(
+        self,
+        e2e_client,
+        platform_admin,
+        backfill_agent,
+        versioned_runs,
+    ):
+        """Default statuses=[pending,failed] does NOT sweep completed runs even
+        if they have an old version — the version filter is opt-in."""
+        res = e2e_client.post(
+            "/api/agent-runs/backfill-summaries",
+            json={
+                "agent_id": backfill_agent["id"],
+                "limit": 500,
+                "dry_run": True,
+            },
+            headers=platform_admin.headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["eligible"] == 0
+        _ = versioned_runs
+
+
 class TestBackfillJobCancel:
     async def test_cancel_running_job_flips_status(
         self,

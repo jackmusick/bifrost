@@ -63,12 +63,8 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 
 	useAgentRunUpdates({ agentId });
 	const recentRuns = (runsList?.items ?? []) as unknown as AgentRun[];
-	const needsReview = recentRuns.filter(
-		(r) => r.verdict === "down" && r.status === "completed",
-	).length;
-	const unreviewed = recentRuns.filter(
-		(r) => r.verdict == null && r.status === "completed",
-	).length;
+	const needsReview = stats?.needs_review ?? 0;
+	const unreviewed = stats?.unreviewed ?? 0;
 
 	const successRate = stats?.success_rate ?? 0;
 	const sparkColor = successRateTone(successRate);

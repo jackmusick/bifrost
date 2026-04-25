@@ -26,6 +26,11 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	CapturedDataFilter,
+	conditionsToQueryParam,
+	type MetadataFilterCondition,
+} from "@/components/agents/CapturedDataFilter";
 import { QueueBanner } from "@/components/agents/QueueBanner";
 import { RunCard } from "@/components/agents/RunCard";
 import { RunReviewSheet } from "@/components/agents/RunReviewSheet";
@@ -54,9 +59,14 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 	const summaryFilter = searchParams.get("summary");
 	const [query, setQuery] = useState("");
 	const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
+	const [metadataConditions, setMetadataConditions] = useState<
+		MetadataFilterCondition[]
+	>([]);
 	const [openRunId, setOpenRunId] = useState<string | null>(null);
 
 	const queryClient = useQueryClient();
+
+	const metadataFilter = conditionsToQueryParam(metadataConditions);
 
 	const {
 		data: runsPages,
@@ -68,6 +78,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 		agentId,
 		q: query || undefined,
 		verdict: verdictFilter !== "all" ? verdictFilter : undefined,
+		metadataFilter,
 	});
 
 	const setVerdict = useSetVerdict();
@@ -197,6 +208,12 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 					</Badge>
 				) : null}
 			</div>
+
+			<CapturedDataFilter
+				agentId={agentId}
+				value={metadataConditions}
+				onChange={setMetadataConditions}
+			/>
 
 			{flaggedCount > 0 ? (
 				<QueueBanner

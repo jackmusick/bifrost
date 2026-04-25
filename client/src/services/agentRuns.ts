@@ -109,8 +109,9 @@ export function useAgentRuns(params?: {
 	/** Verdict filter: 'up', 'down', or 'unreviewed' (T9). */
 	verdict?: string;
 	/**
-	 * JSON object of key-value pairs for metadata filtering (T9).
-	 * Pass as a stringified JSON object, e.g. '{"customer":"Acme"}'.
+	 * JSON array of metadata conditions, e.g.
+	 * '[{"key":"customer","op":"eq","value":"Acme"}]'. Supported ops:
+	 * 'eq' (exact match) and 'contains' (case-insensitive substring).
 	 */
 	metadataFilter?: string;
 	limit?: number;
@@ -546,5 +547,36 @@ export function useBackfillEligible(agentId?: string) {
 		"get",
 		"/api/agent-runs/backfill-eligible",
 		{ params: { query: { agent_id: agentId } } },
+	);
+}
+
+/**
+ * Distinct top-level keys present in `run_metadata` for the given agent's
+ * runs. Powers the key combobox on the captured-data filter.
+ */
+export function useMetadataKeys(agentId: string | undefined) {
+	return $api.useQuery(
+		"get",
+		"/api/agent-runs/metadata-keys",
+		{ params: { query: { agent_id: agentId ?? "" } } },
+		{ enabled: !!agentId },
+	);
+}
+
+/**
+ * Distinct values observed for `key` in `run_metadata` for the given
+ * agent's runs. Powers the value combobox when the user picks 'eq'.
+ */
+export function useMetadataValues(
+	agentId: string | undefined,
+	key: string | undefined,
+) {
+	return $api.useQuery(
+		"get",
+		"/api/agent-runs/metadata-values",
+		{
+			params: { query: { agent_id: agentId ?? "", key: key ?? "" } },
+		},
+		{ enabled: !!agentId && !!key },
 	);
 }

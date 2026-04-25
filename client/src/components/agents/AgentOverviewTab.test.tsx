@@ -99,6 +99,10 @@ describe("AgentOverviewTab", () => {
 	});
 
 	it("hides the 'Needs attention' card when no flagged runs", async () => {
+		mockUseAgentStats.mockReturnValue({
+			data: { ...baseStats, needs_review: 0, unreviewed: 0 },
+			isLoading: false,
+		});
 		mockUseAgentRuns.mockReturnValue({
 			data: { items: [makeRun()], total: 1, next_cursor: null },
 			isLoading: false,
@@ -108,28 +112,45 @@ describe("AgentOverviewTab", () => {
 		expect(screen.queryByText(/needs attention/i)).not.toBeInTheDocument();
 	});
 
-	it("renders 'Needs attention' card with count when runs have verdict='down'", async () => {
-		mockUseAgentRuns.mockReturnValue({
-			data: {
-				items: [
-					makeRun({
-						id: "flagged-1",
-						verdict: "down",
-						verdict_note: "Wrong answer",
-					}),
-					makeRun({
-						id: "flagged-2",
-						verdict: "down",
-					}),
-				],
-				total: 2,
-				next_cursor: null,
-			},
+	it("renders 'Needs attention' card with count from stats.needs_review", async () => {
+		mockUseAgentStats.mockReturnValue({
+			data: { ...baseStats, needs_review: 2, unreviewed: 0 },
 			isLoading: false,
 		});
 		await renderTab();
 		expect(screen.getByText(/needs attention/i)).toBeInTheDocument();
 		expect(screen.getByText(/open review flipbook/i)).toBeInTheDocument();
+	});
+
+	it("shows the 'to review' card driven by stats.unreviewed, not the runs page", async () => {
+		// Stats report 47 unreviewed across the window; runs page only has 3
+		// completed items with no verdict. The card must reflect stats (47),
+		// NOT the runs-page count (3). This guards the bug where the count
+		// was frozen at the 10-run page size.
+		mockUseAgentStats.mockReturnValue({
+			data: { ...baseStats, needs_review: 0, unreviewed: 47 },
+			isLoading: false,
+		});
+		mockUseAgentRuns.mockReturnValue({
+			data: {
+				items: [makeRun(), makeRun({ id: "run-2" }), makeRun({ id: "run-3" })],
+				total: 3,
+				next_cursor: null,
+			},
+			isLoading: false,
+		});
+		await renderTab();
+		expect(screen.getByText(/47 to review/i)).toBeInTheDocument();
+	});
+
+	it("hides the to-review card when stats.unreviewed and needs_review are both zero", async () => {
+		mockUseAgentStats.mockReturnValue({
+			data: { ...baseStats, needs_review: 0, unreviewed: 0 },
+			isLoading: false,
+		});
+		await renderTab();
+		expect(screen.queryByText(/to review/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/needs attention/i)).not.toBeInTheDocument();
 	});
 
 	it("shows skeletons while loading stats", async () => {

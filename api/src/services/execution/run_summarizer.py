@@ -39,6 +39,13 @@ logger = logging.getLogger(__name__)
 SUMMARIZE_QUEUE = "agent-summarization"
 SUMMARIZE_BACKFILL_QUEUE = "agent-summarization-backfill"
 
+# Version tag written to AgentRun.summary_prompt_version on successful
+# summarization. Bump this string whenever ``SUMMARIZE_SYSTEM_PROMPT`` or the
+# user-message payload changes meaningfully, so admins can use the backfill
+# endpoint's ``prompt_version_below`` filter to re-summarize runs stamped
+# with an older version.
+SUMMARIZE_PROMPT_VERSION = "v2"
+
 # Transient LLM provider errors worth retrying in-handler. The consumer runs
 # with prefetch_count=1, so retrying here naturally backpressures the whole
 # pod — another pod's handler is free to service other messages meanwhile.
@@ -57,13 +64,26 @@ _MAX_RETRIES = 5
 _INITIAL_BACKOFF_S = 2.0
 _MAX_BACKOFF_S = 30.0
 
-SUMMARIZE_SYSTEM_PROMPT = """You summarize the behavior of an AI agent on a single run.
-Given the agent's input and output, produce a JSON object with:
-  - asked: one short sentence (<100 chars) describing what the user asked for, in the user's voice
-  - did: one short sentence (<100 chars) describing what the agent did, third person
-  - confidence: float 0.0-1.0 — how confident the agent's output appears to be
-  - confidence_reason: one sentence explaining the confidence assessment
-  - metadata: object of k/v pairs (string -> string) extracting notable entities (ticket IDs, customer names, severity, etc.) — max 8 entries
+SUMMARIZE_SYSTEM_PROMPT = """You summarize what an AI agent did on a single run.
+
+You receive the agent's name, the system prompt that defines its job, the
+run's input, and the run's output. Produce a JSON object with:
+
+  - asked: one short sentence (<100 chars) describing what the user or event
+    asked for, in the user's voice. Extract the specific ask, not a generic
+    restatement of the agent's purpose.
+  - did: one short sentence (<100 chars) describing the SPECIFIC OUTCOME of
+    THIS run — what was decided, which entities were touched, which values
+    were assigned. DO NOT restate the agent's role or purpose. "The agent
+    triaged the ticket" is useless (it's a triage agent — of course it
+    triaged). "Routed to Tier 2 as high-urgency billing dispute" is useful.
+    When you extract metadata below, reference its specifics in `did`.
+  - confidence: float 0.0-1.0 — how confident the agent's output appears to
+    be.
+  - confidence_reason: one sentence explaining the confidence assessment.
+  - metadata: object of k/v pairs (string -> string) extracting notable
+    entities from the run — the specific decisions, IDs, customer names,
+    categories, severity levels, billing status, and so on. Max 8 entries.
 
 Return a single JSON object and nothing else. Do not wrap it in markdown code
 fences. Do not add a preamble, trailing prose, or explanation. The first
@@ -254,9 +274,33 @@ async def summarize_run(
         run_input = run.input
         run_output = run.output
         org_id = run.org_id
+        agent_name = ""
+        agent_system_prompt = ""
+        agent_row = (
+            await db.execute(
+                select(Agent.name, Agent.system_prompt).where(
+                    Agent.id == run.agent_id
+                )
+            )
+        ).one_or_none()
+        if agent_row is not None:
+            agent_name = agent_row[0] or ""
+            # Cap the system prompt to avoid bloating the summarizer's input
+            # token budget on agents with long instructions. The summarizer
+            # only needs enough context to distinguish outcome from role.
+            agent_system_prompt = (agent_row[1] or "")[:2000]
 
-    # Build the prompt as a JSON-serialized payload of input/output.
-    user_content = json.dumps({"input": run_input, "output": run_output}, default=str)
+    # Build the prompt with agent context so the summarizer can describe
+    # *what changed on this run* instead of paraphrasing the agent's role.
+    user_content = json.dumps(
+        {
+            "agent_name": agent_name,
+            "agent_system_prompt": agent_system_prompt,
+            "input": run_input,
+            "output": run_output,
+        },
+        default=str,
+    )
     messages = [
         LLMMessage(role="system", content=SUMMARIZE_SYSTEM_PROMPT),
         LLMMessage(role="user", content=user_content),
@@ -403,6 +447,7 @@ async def summarize_run(
         run.summary_generated_at = datetime.now(timezone.utc)
         run.summary_status = "completed"
         run.summary_error = None
+        run.summary_prompt_version = SUMMARIZE_PROMPT_VERSION
 
         provider = getattr(llm_client, "provider_name", "unknown")
         model_name = getattr(response, "model", None) or resolved_model

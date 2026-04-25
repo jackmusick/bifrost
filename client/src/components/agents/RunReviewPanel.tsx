@@ -52,11 +52,19 @@ export interface RunReviewPanelProps {
 }
 
 interface ToolCallContent {
-	tool?: string;
-	args?: unknown;
+	// Shape emitted by autonomous_agent_executor.py _record_step(..., "tool_call", ...)
+	tool_name?: string;
+	arguments?: unknown;
 }
 
-/** Pull tool calls out of run.steps with light defensive parsing. */
+/** Pull tool calls out of run.steps.
+ *
+ * The executor records one `tool_call` step per invocation with
+ * `content = { tool_name, arguments }` (see
+ * api/src/services/execution/autonomous_agent_executor.py). Older code in
+ * this component read `content.tool` / `content.args` which don't exist —
+ * that's why every row rendered as `tool {}`.
+ */
 function extractToolCalls(steps: AgentRunStep[] | undefined): {
 	tool: string;
 	args: unknown;
@@ -68,8 +76,8 @@ function extractToolCalls(steps: AgentRunStep[] | undefined): {
 		.map((s) => {
 			const content = (s.content ?? {}) as ToolCallContent;
 			return {
-				tool: content.tool ?? "tool",
-				args: content.args ?? {},
+				tool: content.tool_name ?? "tool",
+				args: content.arguments ?? {},
 				duration_ms: s.duration_ms ?? null,
 			};
 		});

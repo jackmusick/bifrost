@@ -34,6 +34,12 @@ export function useAgentRunUpdates(options: UseAgentRunUpdatesOptions = {}) {
 			// Invalidate the list query (prefix match picks up both
 			// ["agent-runs"] and ["agent-runs", <runId>]).
 			queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
+			// Verdicts and new runs move the needs_review / unreviewed counts
+			// on per-agent stats. Prefix-invalidate the stats query so cards
+			// reading stats.unreviewed / stats.needs_review refresh live.
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/agents/{agent_id}/stats"],
+			});
 			// Also invalidate the openapi-react-query key shape used by
 			// $api.useQuery callers (e.g. agent stats or any future
 			// per-run hook wired through the generated client).

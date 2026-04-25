@@ -63,6 +63,14 @@ class AgentRun(Base):
         server_default=text("'pending'"),
     )
     summary_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Version of SUMMARIZE_SYSTEM_PROMPT that produced the current asked/did/
+    # metadata. NULL for unsummarized/failed runs. Bumped manually in
+    # src/services/execution/run_summarizer.py when the prompt changes; the
+    # backfill endpoint accepts ``prompt_version_below`` so admins can
+    # re-summarize runs tagged with an older version.
+    summary_prompt_version: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default=None
+    )
     # Reviewer verdict (thumbs up/down) — see migration 20260421b_verdicts.
     # ``verdict`` is constrained to ('up', 'down', NULL) at the DB layer.
     verdict: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)

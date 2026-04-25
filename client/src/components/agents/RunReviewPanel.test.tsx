@@ -149,6 +149,8 @@ describe("RunReviewPanel", () => {
 	});
 
 	it("renders tool call section when steps include tool calls", () => {
+		// The executor writes step.content as { tool_name, arguments } —
+		// see autonomous_agent_executor.py _record_step(..., "tool_call", ...)
 		const run: AgentRunDetail = {
 			...baseRun,
 			steps: [
@@ -157,7 +159,10 @@ describe("RunReviewPanel", () => {
 					run_id: baseRun.id,
 					step_number: 1,
 					type: "tool_call",
-					content: { tool: "send_email", args: { to: "user@x.com" } },
+					content: {
+						tool_name: "ai_ticketing_get_ticket_details",
+						arguments: { ticket_id: 423068 },
+					},
 					duration_ms: 120,
 					created_at: baseRun.created_at,
 				},
@@ -173,7 +178,41 @@ describe("RunReviewPanel", () => {
 			/>,
 		);
 		expect(screen.getByText(/what it did · 1 tool call/i)).toBeInTheDocument();
-		expect(screen.getByText("send_email")).toBeInTheDocument();
+		// Real tool name must render, not the generic "tool" placeholder.
+		expect(
+			screen.getByText("ai_ticketing_get_ticket_details"),
+		).toBeInTheDocument();
+		// And the args must render, not an empty `{}`.
+		expect(screen.getByText(/ticket_id.*423068/)).toBeInTheDocument();
+	});
+
+	it("renders tool call rows even when arguments object is empty", () => {
+		// Regression guard for the `tool {}` screenshot — zero-arg tool calls
+		// must still show the tool name as the row label.
+		const run: AgentRunDetail = {
+			...baseRun,
+			steps: [
+				{
+					id: "s1",
+					run_id: baseRun.id,
+					step_number: 1,
+					type: "tool_call",
+					content: { tool_name: "list_workflows", arguments: {} },
+					duration_ms: null,
+					created_at: baseRun.created_at,
+				},
+			],
+		};
+		renderWithProviders(
+			<RunReviewPanel
+				run={run}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		expect(screen.getByText("list_workflows")).toBeInTheDocument();
 	});
 
 	it("renders metadata chips when metadata present", () => {

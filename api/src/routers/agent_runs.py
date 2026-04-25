@@ -11,7 +11,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import desc, func, literal_column, select
+from sqlalchemy import desc, func, literal_column, or_, select
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser
@@ -34,6 +34,8 @@ from src.models.contracts.agent_runs import (
     BackfillSummariesResponse,
     DryRunRequest,
     DryRunResponse,
+    MetadataKeysResponse,
+    MetadataValuesResponse,
     SummaryBackfillJobListResponse,
     SummaryBackfillJobResponse,
     VerdictRequest,
@@ -124,7 +126,13 @@ async def list_agent_runs(
     ),
     metadata_filter: str | None = Query(
         None,
-        description='JSON object of key-value pairs, e.g. {"customer":"Acme"}',
+        description=(
+            "JSON array of conditions on run metadata, e.g. "
+            '[{"key":"billing_status","op":"eq","value":"Billable"},'
+            '{"key":"service_category","op":"contains","value":"security"}]. '
+            "Supported ops: 'eq' (exact match) and 'contains' "
+            "(case-insensitive substring). All conditions are AND-ed."
+        ),
     ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -183,15 +191,39 @@ async def list_agent_runs(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="metadata_filter must be valid JSON",
             )
-        if not isinstance(md, dict):
+        if not isinstance(md, list):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="metadata_filter must be a JSON object",
+                detail="metadata_filter must be a JSON array of {key,op,value} objects",
             )
-        for k, v in md.items():
+        for cond in md:
+            if (
+                not isinstance(cond, dict)
+                or "key" not in cond
+                or "value" not in cond
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="each metadata_filter entry needs 'key' and 'value'",
+                )
+            k = str(cond["key"])
+            v = str(cond["value"])
+            op = str(cond.get("op", "contains")).lower()
             # AgentRun.run_metadata is the Python attribute; the DB column is
             # ``metadata``. JSONB key access returns text via .astext.
-            query = query.where(AgentRun.run_metadata[k].astext == str(v))
+            col = AgentRun.run_metadata[k].astext
+            if op == "eq":
+                query = query.where(col == v)
+            elif op == "contains":
+                # Case-insensitive substring. % escaping isn't needed for the
+                # use case (metadata values are short tags from the agent);
+                # ilike's wildcards are fine here.
+                query = query.where(col.ilike(f"%{v}%"))
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Unsupported metadata_filter op: {op}",
+                )
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -207,6 +239,90 @@ async def list_agent_runs(
         items=[_run_to_response(run) for run in runs],
         total=total,
     )
+
+
+# -----------------------------------------------------------------------------
+# Metadata aggregation (powers the captured-data filter on the runs list)
+# -----------------------------------------------------------------------------
+
+
+def _enforce_agent_scope(agent_id: UUID, user) -> None:  # type: ignore[no-untyped-def]
+    """Caller must be able to see the agent to aggregate its metadata.
+
+    We keep the enforcement simple: any authenticated user can ask about
+    agents in their org; superusers can ask about any agent. The list
+    endpoint itself enforces org scoping on the result set, and these
+    aggregation endpoints only reveal keys/values that already appear in
+    a run the caller could have seen — so there's no separate info leak
+    vector beyond what ``GET /api/agent-runs?agent_id=...`` would expose.
+    """
+    _ = user  # kept in the signature for future per-agent ACL checks
+
+
+@router.get(
+    "/metadata-keys",
+    response_model=MetadataKeysResponse,
+)
+async def get_metadata_keys(
+    db: DbSession,
+    user: CurrentActiveUser,
+    agent_id: UUID = Query(..., description="Required. Scope keys to this agent."),
+) -> MetadataKeysResponse:
+    """Distinct top-level keys observed in metadata for this agent's runs.
+
+    The captured-data filter uses this to populate its key combobox so
+    users don't have to guess which fields the summarizer actually
+    extracts on this agent.
+    """
+    _enforce_agent_scope(agent_id, user)
+    conditions = [AgentRun.agent_id == agent_id]
+    if not user.is_superuser and user.organization_id:
+        conditions.append(AgentRun.org_id == user.organization_id)
+
+    # jsonb_object_keys explodes the top-level keys of each row's metadata;
+    # DISTINCT + ORDER BY gives the UI a stable, deduped list.
+    key_col = func.jsonb_object_keys(AgentRun.run_metadata).label("k")
+    stmt = (
+        select(key_col)
+        .where(*conditions)
+        .distinct()
+        .order_by(key_col)
+    )
+    result = await db.execute(stmt)
+    return MetadataKeysResponse(keys=[row[0] for row in result.all()])
+
+
+@router.get(
+    "/metadata-values",
+    response_model=MetadataValuesResponse,
+)
+async def get_metadata_values(
+    db: DbSession,
+    user: CurrentActiveUser,
+    agent_id: UUID = Query(..., description="Required. Scope values to this agent."),
+    key: str = Query(..., min_length=1, description="Metadata key to aggregate."),
+    limit: int = Query(500, ge=1, le=2000),
+) -> MetadataValuesResponse:
+    """Distinct values observed for ``key`` in metadata for this agent's runs.
+
+    Used by the filter UI when the user picks the 'eq' operator — lets
+    them pick from a known-value list instead of free-typing.
+    """
+    _enforce_agent_scope(agent_id, user)
+    conditions = [AgentRun.agent_id == agent_id]
+    if not user.is_superuser and user.organization_id:
+        conditions.append(AgentRun.org_id == user.organization_id)
+
+    value_col = AgentRun.run_metadata[key].astext
+    stmt = (
+        select(value_col)
+        .where(*conditions, value_col.isnot(None))
+        .distinct()
+        .order_by(value_col)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return MetadataValuesResponse(values=[row[0] for row in result.all() if row[0]])
 
 
 @router.get(
@@ -248,23 +364,39 @@ async def get_backfill_eligible(
     db: DbSession,
     user: CurrentActiveUser,
     agent_id: UUID | None = None,
+    prompt_version_below: str | None = None,
 ) -> BackfillEligibleResponse:
     """Lightweight preview the UI uses to decide whether to show the Backfill
     button at all. Returns 0/0.00 if nothing is eligible — caller can hide
     the affordance instead of surfacing a dead-end "Nothing to backfill"
     modal.
+
+    When ``prompt_version_below`` is set, also counts ``completed`` runs whose
+    ``summary_prompt_version`` is older than the given version (or NULL), so
+    admins can discover the existence of a roll-forward opportunity even when
+    there are no pending/failed runs.
     """
     if not _is_platform_admin(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only platform administrators can preview backfills",
         )
+    statuses = ["pending", "failed"]
+    if prompt_version_below is not None:
+        statuses.append("completed")
     conditions = [
         AgentRun.status == "completed",
-        AgentRun.summary_status.in_(["pending", "failed"]),
+        AgentRun.summary_status.in_(statuses),
     ]
     if agent_id is not None:
         conditions.append(AgentRun.agent_id == agent_id)
+    if prompt_version_below is not None:
+        conditions.append(
+            or_(
+                AgentRun.summary_prompt_version.is_(None),
+                AgentRun.summary_prompt_version < prompt_version_below,
+            )
+        )
 
     count = (
         await db.execute(
@@ -956,6 +1088,15 @@ async def backfill_summaries(
     ]
     if request.agent_id is not None:
         conditions.append(AgentRun.agent_id == request.agent_id)
+    if request.prompt_version_below is not None:
+        # NULL-versioned rows match (they pre-date versioning). Rows tagged
+        # with an older version also match; current-or-newer versions skip.
+        conditions.append(
+            or_(
+                AgentRun.summary_prompt_version.is_(None),
+                AgentRun.summary_prompt_version < request.prompt_version_below,
+            )
+        )
 
     id_query = (
         select(AgentRun.id)
