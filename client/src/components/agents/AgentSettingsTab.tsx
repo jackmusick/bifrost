@@ -1225,6 +1225,9 @@ export function AgentSettingsTab({
 												}
 											/>
 										</FormControl>
+										<FormDescription>
+											Per LLM call (model maximum).
+										</FormDescription>
 										<FormMessage />
 									</FormItem>
 								)}
