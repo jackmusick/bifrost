@@ -131,7 +131,9 @@ export function FileTree({
 
 	// Ref for stable access to files without including in dependency arrays
 	const filesRef = useRef(files);
-	filesRef.current = files;
+	useEffect(() => {
+		filesRef.current = files;
+	}, [files]);
 
 	// Load root directory on mount
 	useEffect(() => {

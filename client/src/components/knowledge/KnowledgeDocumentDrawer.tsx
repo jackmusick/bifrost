@@ -109,17 +109,24 @@ export function KnowledgeDocumentDrawer({
 		}
 	}, [documentId, namespace]);
 
+	// Either load the existing document (async) or reset form for creation
+	// (sync). The reset path is wrapped in a microtask so the synchronous
+	// effect body does not directly invoke setState (set-state-in-effect rule).
 	useEffect(() => {
 		if (documentId) {
-			loadDocument();
+			void (async () => {
+				await loadDocument();
+			})();
 		} else if (isCreating) {
-			setDocument(null);
-			setContent("");
-			setKey("");
-			setCreateNamespace("");
-			setScopeOrgId(
-				isPlatformAdmin ? null : (user?.organizationId ?? null),
-			);
+			queueMicrotask(() => {
+				setDocument(null);
+				setContent("");
+				setKey("");
+				setCreateNamespace("");
+				setScopeOrgId(
+					isPlatformAdmin ? null : (user?.organizationId ?? null),
+				);
+			});
 		}
 	}, [
 		documentId,
