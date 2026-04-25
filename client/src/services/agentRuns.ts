@@ -541,12 +541,18 @@ export function useCancelBackfillJob() {
  * scope. Used to decide whether to render the Backfill button at all
  * (hide when eligible=0 to avoid dead-end "Nothing to backfill" modals).
  *
- * When `promptVersionBelow` is set, also counts ``completed`` runs whose
- * ``summary_prompt_version`` is older (or NULL). Admin-only.
+ * Three orthogonal scopes:
+ *   - default: pending + failed summaries.
+ *   - `promptVersionBelow="vN"`: also counts completed runs on an older
+ *     prompt version (or NULL).
+ *   - `includeCompleted=true`: counts ALL completed summaries regardless
+ *     of version. Overrides the version filter.
+ * Admin-only.
  */
 export function useBackfillEligible(
 	agentId?: string,
 	promptVersionBelow?: string,
+	includeCompleted?: boolean,
 ) {
 	return $api.useQuery(
 		"get",
@@ -556,6 +562,7 @@ export function useBackfillEligible(
 				query: {
 					agent_id: agentId,
 					prompt_version_below: promptVersionBelow,
+					include_completed: includeCompleted,
 				},
 			},
 		},

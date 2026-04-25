@@ -322,6 +322,28 @@ class TestBackfillEligible:
         )
         assert res.status_code == 403, res.text
 
+    async def test_include_completed_counts_every_completed_summary(
+        self,
+        e2e_client,
+        platform_admin,
+        backfill_agent,
+        mixed_runs,
+        db_session: AsyncSession,
+    ):
+        """include_completed=true sweeps all completed-summary runs in
+        addition to pending/failed, regardless of prompt version. Drives the
+        "All completed runs" scope on the Resummarize dialog."""
+        # mixed_runs seeds 2 pending + 2 failed + 1 completed = 5 total.
+        res = e2e_client.get(
+            f"/api/agent-runs/backfill-eligible?agent_id={backfill_agent['id']}"
+            f"&include_completed=true",
+            headers=platform_admin.headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["eligible"] == 5
+        _ = mixed_runs
+        _ = db_session
+
 
 class TestBackfillPromptVersion:
     """Roll-forward flow: re-summarize runs tagged with an older prompt version."""

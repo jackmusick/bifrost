@@ -220,7 +220,10 @@ export function AgentRunDetailPage() {
 	// status banner with a regenerate button — hide the sidebar card so we
 	// don't render two competing affordances.
 	const showRegen = (isPlatformAdmin || summaryFailed) && !summaryInFlight;
-	const headerSummary = run.did || run.asked || "Agent run";
+	// Header title: `asked` is the user-facing TL;DR (capped ~100 chars by
+	// the summarizer prompt). `did` is a multi-sentence narrative under v3+
+	// and too long for a title; only fall back to it when `asked` is empty.
+	const headerSummary = run.asked || run.did || "Agent run";
 
 	return (
 		<div

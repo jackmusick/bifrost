@@ -366,16 +366,19 @@ async def get_backfill_eligible(
     user: CurrentActiveUser,
     agent_id: UUID | None = None,
     prompt_version_below: str | None = None,
+    include_completed: bool = False,
 ) -> BackfillEligibleResponse:
     """Lightweight preview the UI uses to decide whether to show the Backfill
     button at all. Returns 0/0.00 if nothing is eligible — caller can hide
     the affordance instead of surfacing a dead-end "Nothing to backfill"
     modal.
 
-    When ``prompt_version_below`` is set, also counts ``completed`` runs whose
-    ``summary_prompt_version`` is older than the given version (or NULL), so
-    admins can discover the existence of a roll-forward opportunity even when
-    there are no pending/failed runs.
+    Three orthogonal flags shape the count:
+      - default (no flags)                  → pending + failed summaries
+      - ``prompt_version_below="vN"``       → above + completed runs on an
+                                               older prompt version (or NULL)
+      - ``include_completed=true``          → above + ALL completed summaries
+                                               regardless of version
     """
     if not _is_platform_admin(user):
         raise HTTPException(
@@ -383,7 +386,7 @@ async def get_backfill_eligible(
             detail="Only platform administrators can preview backfills",
         )
     statuses = ["pending", "failed"]
-    if prompt_version_below is not None:
+    if prompt_version_below is not None or include_completed:
         statuses.append("completed")
     conditions = [
         AgentRun.status == "completed",
@@ -391,7 +394,10 @@ async def get_backfill_eligible(
     ]
     if agent_id is not None:
         conditions.append(AgentRun.agent_id == agent_id)
-    if prompt_version_below is not None:
+    if prompt_version_below is not None and not include_completed:
+        # Only constrain by version when the caller specifically asked for
+        # the version-below scope; ``include_completed=true`` overrides it
+        # because that scope is "everything completed, no version filter".
         conditions.append(
             or_(
                 AgentRun.summary_prompt_version.is_(None),

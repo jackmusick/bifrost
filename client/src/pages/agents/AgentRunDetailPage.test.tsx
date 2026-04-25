@@ -174,9 +174,11 @@ async function renderPage(path = "/agents/agent-1/runs/run-1") {
 
 describe("AgentRunDetailPage — header + summary", () => {
 	it("renders the run summary in the header", async () => {
+		// Header uses `asked` as the TL;DR title (not `did` — that's prose
+		// under v3+ and too long for a heading).
 		await renderPage();
 		expect(
-			screen.getByRole("heading", { name: /routed to support/i }),
+			screen.getByRole("heading", { name: /reset password please/i }),
 		).toBeInTheDocument();
 	});
 

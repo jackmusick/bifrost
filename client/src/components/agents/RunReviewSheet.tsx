@@ -67,10 +67,16 @@ export function RunReviewSheet({
 				aria-label="Run review"
 				className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
 			>
-				<SheetHeader className="border-b px-6 py-4">
+				{/* pr-12 leaves room for the absolutely-positioned X close
+				    button (top-4 right-4 in ui/sheet.tsx); without this, the
+				    "Open full run" link overlaps the X. */}
+				<SheetHeader className="border-b py-4 pl-6 pr-12">
 					<div className="flex items-center justify-between gap-3">
 						<SheetTitle className="truncate">
-							{run.did || run.asked || "Run review"}
+							{/* `asked` is the bounded TL;DR; `did` is
+							    multi-sentence prose under v3+ and too long
+							    for a title. */}
+							{run.asked || run.did || "Run review"}
 						</SheetTitle>
 						<Link
 							to={`/agents/${run.agent_id}/runs/${run.id}`}

@@ -161,13 +161,14 @@ export function SummaryBackfillButton({
 
 	const backfill = useBackfillSummaries();
 
-	// Eligibility for visibility — show the button if EITHER pending/failed
-	// runs exist OR there are completed runs on an older prompt version.
+	// Three eligibility queries — one per scope — drive both the button's
+	// visibility and the per-scope count rendered in the dialog.
 	const { data: eligiblePending, isLoading: eligibleLoadingPending } =
 		useBackfillEligible(agentId);
-	// Same endpoint, queried with prompt_version_below set.
 	const { data: eligibleOldVersions, isLoading: eligibleLoadingVersions } =
 		useBackfillEligible(agentId, CURRENT_PROMPT_VERSION);
+	const { data: eligibleAll, isLoading: eligibleLoadingAll } =
+		useBackfillEligible(agentId, undefined, true);
 
 	function openDialog() {
 		// Default scope: "pending" if there's anything to do there, otherwise
@@ -264,10 +265,17 @@ export function SummaryBackfillButton({
 	// Hide the button only when ALL scopes report zero eligible runs — that
 	// way a freshly-bumped prompt version still surfaces the affordance even
 	// though pending/failed is empty.
-	if (eligibleLoadingPending || eligibleLoadingVersions) return null;
+	if (
+		eligibleLoadingPending ||
+		eligibleLoadingVersions ||
+		eligibleLoadingAll
+	) {
+		return null;
+	}
 	const anyEligible =
 		(eligiblePending?.eligible ?? 0) > 0 ||
-		(eligibleOldVersions?.eligible ?? 0) > 0;
+		(eligibleOldVersions?.eligible ?? 0) > 0 ||
+		(eligibleAll?.eligible ?? 0) > 0;
 	if (!anyEligible) return null;
 
 	const showAction =
@@ -331,7 +339,7 @@ export function SummaryBackfillButton({
 							<ScopeOption
 								id="resum-scope-all"
 								value="all"
-								eligible={null}
+								eligible={eligibleAll?.eligible ?? 0}
 								scope={scope}
 								title="All completed runs"
 								description="Every completed run, regardless of summary state. Use sparingly."
@@ -369,7 +377,7 @@ export function SummaryBackfillButton({
 interface ScopeOptionProps {
 	id: string;
 	value: ResummarizeScope;
-	eligible: number | null;
+	eligible: number;
 	scope: ResummarizeScope;
 	title: string;
 	description: string;
@@ -401,11 +409,9 @@ function ScopeOption({
 			<div className="grid flex-1 gap-1 text-sm">
 				<div className="flex items-center justify-between gap-2">
 					<span className="font-medium">{title}</span>
-					{eligible != null ? (
-						<span className="text-xs text-muted-foreground tabular-nums">
-							{eligible} run{eligible === 1 ? "" : "s"}
-						</span>
-					) : null}
+					<span className="text-xs text-muted-foreground tabular-nums">
+						{eligible} run{eligible === 1 ? "" : "s"}
+					</span>
 				</div>
 				<span className="text-xs text-muted-foreground">{description}</span>
 			</div>
