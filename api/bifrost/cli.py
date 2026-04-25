@@ -16,6 +16,7 @@ import base64
 import hashlib
 import inspect
 import json
+import logging
 import os
 import pathlib
 import signal
@@ -44,6 +45,8 @@ from bifrost.client import BifrostClient
 # in step with the client's runtime `$` registry so new platform exports
 # can't ship without the classifier and bundler knowing about them.
 from bifrost.platform_names import PLATFORM_EXPORT_NAMES as _PLATFORM_EXPORT_NAMES
+
+logger = logging.getLogger(__name__)
 
 # Default ignore patterns applied even without a .gitignore file.
 # .bifrost/ is always force-included via negation so push/pull/sync round-trip
@@ -155,8 +158,10 @@ def _check_cli_version() -> None:
                 f"  pipx install {api_url}/api/cli/download\n\033[0m",
                 file=sys.stderr,
             )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort version check on every CLI invocation — no network, malformed config,
+        # or non-200 response should ever break the CLI flow
+        logger.debug(f"CLI version check skipped: {e}")
 
 
 async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool:
@@ -652,7 +657,7 @@ def _run_direct(
         if organization_id:
             print("Error: --org requires authentication. Run 'bifrost login' first.", file=sys.stderr)
             return 1
-        pass  # Standalone mode works without auth
+        # Standalone mode works without auth — fall through to local workflow execution.
 
     if verbose:
         print(f"Running in standalone mode: {selected_workflow}")
@@ -1318,8 +1323,9 @@ def _check_existing_watch() -> list[tuple[int, str]]:
                 continue
             if "bifrost" in cmdline and "watch" in cmdline and "grep" not in cmdline:
                 results.append((pid, cmdline))
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        # ps unavailable (Windows / restricted env) or timed out — skip the check
+        logger.debug(f"could not enumerate existing watch processes: {e}")
     return results
 
 
@@ -1444,8 +1450,9 @@ Examples:
             client.post_sync("/api/files/watch", json={
                 "action": "stop", "prefix": repo_prefix,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            # Server may already be unreachable — session expires server-side via TTL
+            logger.debug(f"could not notify server of watch stop: {e}")
         return 130
 
 
@@ -2129,8 +2136,9 @@ async def _process_incoming(
                             if local_file.read_bytes() == content:
                                 state.set_known_hash(repo_path, content_hash)
                                 continue
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            # Permission / I/O issue reading existing file — fall through to overwrite
+                            logger.debug(f"could not byte-compare {local_file}, will overwrite: {e}")
                     local_file.write_bytes(content)
                     state.set_known_hash(repo_path, content_hash)
                     if watch_app:
@@ -2252,19 +2260,25 @@ async def _watch_loop(
                     await client.post("/api/files/watch", json={
                         "action": "heartbeat", "prefix": repo_prefix, "session_id": state.session_id,
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Heartbeat is best-effort — server-side TTL keeps things consistent
+                    logger.debug(f"watch heartbeat failed: {e}")
                 last_heartbeat = now
 
     except (KeyboardInterrupt, asyncio.CancelledError):
+        # Expected on Ctrl-C / cancel — graceful exit
         pass
     finally:
         if ws_task and not ws_task.done():
             ws_task.cancel()
             try:
                 await ws_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                # Expected — we just cancelled the websocket task
                 pass
+            except Exception as e:
+                # Unexpected close error during cancel — log but continue cleanup
+                logger.debug(f"websocket task cleanup raised: {e}")
         observer.stop()
         observer.join()
 
@@ -2292,8 +2306,9 @@ async def _watch_and_push(
         await client.post("/api/files/watch", json={
             "action": "start", "prefix": repo_prefix, "session_id": state.session_id,
         })
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort start notification — server tolerates clients that didn't announce
+        logger.debug(f"watch start notification failed: {e}")
 
     # Initial full sync
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
@@ -2318,8 +2333,9 @@ async def _watch_and_push(
                 for item in seed_data.get("files_metadata", [])
                 if item.get("path") and item.get("etag")
             })
-    except Exception:
-        pass
+    except Exception as e:
+        # Hash cache seeding is an optimization — cold start just falls back to byte-compare
+        logger.debug(f"could not seed known-hash cache from server: {e}")
 
     # Set up file watcher
     handler = _WatchChangeHandler(state)
@@ -2467,8 +2483,9 @@ async def _sync_files(
                     "last_modified": item["last_modified"],
                     "updated_by": item.get("updated_by", ""),
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        # Without metadata we'll push everything — slower but still correct
+        logger.debug(f"could not fetch server file metadata, will push without diff: {e}")
 
     # Filter .git/ objects from server listing
     server_metadata = {

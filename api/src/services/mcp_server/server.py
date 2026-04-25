@@ -43,8 +43,9 @@ try:
     _FastMCP = _FastMCPClass
     _Icon = _IconClass
     HAS_FASTMCP = True
-except ImportError:
-    pass
+except ImportError as e:
+    # fastmcp / mcp packages are optional; HTTP MCP support stays disabled
+    logger.debug(f"fastmcp not available, MCP HTTP server disabled: {e}")
 
 # Bifrost branding
 BIFROST_ICON_URL = "https://bifrostintegrations.blob.core.windows.net/public/logo.svg"

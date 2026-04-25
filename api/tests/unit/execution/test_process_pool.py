@@ -262,6 +262,7 @@ class TestProcessPoolManagerStart:
                 try:
                     await task
                 except asyncio.CancelledError:
+                    # Expected — we just cancelled the task during cleanup
                     pass
 
 
