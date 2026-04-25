@@ -14,7 +14,10 @@ Secret protection in JSON serialization is handled by:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 REDACTED = "[REDACTED]"
 _MIN_SECRET_LENGTH = 4
@@ -76,7 +79,8 @@ def _redact_recursive(obj: Any, secrets: set[str]) -> Any:
         from pydantic import BaseModel
         if isinstance(obj, BaseModel):
             return _redact_recursive(obj.model_dump(), secrets)
-    except ImportError:
-        pass
+    except ImportError as e:
+        # Pydantic is a hard dep but guard for unusual envs (e.g. minimal CLI bundles)
+        logger.debug(f"pydantic unavailable for redact recursion: {e}")
     # int, float, bool, None — pass through
     return obj

@@ -9,6 +9,7 @@ Covers the T103/T104 bulk backfill endpoint and orchestration job rows:
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import AsyncGenerator
@@ -22,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
 
+
+logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.asyncio
 
@@ -46,8 +49,9 @@ async def backfill_agent(e2e_client, platform_admin) -> AsyncGenerator[dict, Non
         e2e_client.delete(
             f"/api/agents/{agent['id']}", headers=platform_admin.headers
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")
 
 
 @pytest_asyncio.fixture
