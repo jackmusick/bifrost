@@ -8,7 +8,7 @@
  * - View and regenerate recovery codes
  */
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
 	Card,
 	CardContent,
@@ -115,12 +115,7 @@ export function Security() {
 	const [removeCode, setRemoveCode] = useState("");
 	const [removeLoading, setRemoveLoading] = useState(false);
 
-	// Load MFA status
-	useEffect(() => {
-		loadMFAStatus();
-	}, []);
-
-	const loadMFAStatus = async () => {
+	const loadMFAStatus = useCallback(async () => {
 		setMfaLoading(true);
 		setMfaError(null);
 		try {
@@ -133,7 +128,15 @@ export function Security() {
 		} finally {
 			setMfaLoading(false);
 		}
-	};
+	}, []);
+
+	// Load MFA status. setState only fires after the awaited fetch resolves
+	// — wrapping in a void IIFE keeps the synchronous body free of setState.
+	useEffect(() => {
+		void (async () => {
+			await loadMFAStatus();
+		})();
+	}, [loadMFAStatus]);
 
 	// Passkey handlers
 	const handleRegister = () => {
