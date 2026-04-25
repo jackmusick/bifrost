@@ -301,13 +301,9 @@ class BifrostClient:
 
         # Check if we need a new client (no client, or different event loop)
         if self._http is None or (current_loop is not None and self._http_loop != current_loop):
-            # Close old client if it exists (best effort, ignore errors)
-            if self._http is not None:
-                try:
-                    # Can't await in sync method, but we can try to close transport
-                    pass  # httpx will handle cleanup when garbage collected
-                except Exception:
-                    pass
+            # Old client (if any) will be garbage-collected; httpx handles
+            # transport cleanup at GC time. Can't await aclose() from a sync
+            # method, so this is the best we can do.
 
             # Create new client bound to current event loop
             self._http = httpx.AsyncClient(
@@ -374,11 +370,9 @@ class BifrostClient:
             # No credentials - trigger login flow if required
             if require_auth:
                 try:
-                    # Try to get existing event loop
+                    # If a loop is already running we're in an async context
+                    # (e.g. tests). Don't trigger interactive login.
                     asyncio.get_running_loop()
-                    # We're in an async context, can't use asyncio.run()
-                    # This means we're probably in tests - don't trigger interactive login
-                    pass
                 except RuntimeError:
                     # No running loop, safe to use asyncio.run()
                     if asyncio.run(login_flow()):
