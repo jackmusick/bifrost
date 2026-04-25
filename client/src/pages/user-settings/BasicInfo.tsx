@@ -33,7 +33,6 @@ export function BasicInfo() {
 	// Profile form state
 	const [name, setName] = useState("");
 	const [savingName, setSavingName] = useState(false);
-	const [nameChanged, setNameChanged] = useState(false);
 
 	// Avatar state
 	const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -76,10 +75,8 @@ export function BasicInfo() {
 		loadProfile();
 	}, []);
 
-	// Track name changes
-	useEffect(() => {
-		setNameChanged(name !== (profile?.name || ""));
-	}, [name, profile?.name]);
+	// Derived: dirty when local name differs from server-loaded profile name.
+	const nameChanged = name !== (profile?.name || "");
 
 	// Handle name save
 	const handleSaveName = async () => {
