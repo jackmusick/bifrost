@@ -1,7 +1,7 @@
 """add hmac_scheme to embed secrets
 
 Revision ID: 20260420_hmac_scheme
-Revises: 20260406_audit_overhaul
+Revises: 20260424c_answered
 Create Date: 2026-04-20
 """
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20260420_hmac_scheme"
-down_revision = "20260406_audit_overhaul"
+down_revision = "20260424c_answered"
 branch_labels = None
 depends_on = None
 
