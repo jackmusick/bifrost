@@ -5,6 +5,7 @@ Tests the template process lifecycle: startup, fork requests, shutdown.
 Uses real multiprocessing (not mocks) since fork behavior can't be mocked.
 """
 
+import logging
 import os
 import signal
 import time
@@ -12,6 +13,8 @@ import time
 import pytest
 
 from src.services.execution.template_process import TemplateProcess
+
+logger = logging.getLogger(__name__)
 
 
 def _wait_for_pid_to_die(pid: int, timeout: float = 5.0) -> None:
@@ -117,8 +120,9 @@ class TestTemplateProcessFork:
                 try:
                     os.kill(pid, signal.SIGTERM)
                     _wait_for_pid_to_die(pid)
-                except OSError:
-                    pass
+                except OSError as e:
+                    # Child already gone (race with shutdown) — fine
+                    logger.debug(f"could not signal child {pid} during cleanup: {e}")
             template.shutdown()
 
     def test_forked_child_can_execute_and_return_result(self):
@@ -168,8 +172,9 @@ def _get_rss_kb(pid: int) -> int:
             for line in f:
                 if line.startswith("VmRSS:"):
                     return int(line.split()[1])
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as e:
+        # /proc not available (macOS) or process gone — caller treats -1 as unknown
+        logger.debug(f"could not read VmRSS for pid {pid}: {e}")
     return -1
 
 
@@ -180,8 +185,9 @@ def _get_private_dirty_kb(pid: int) -> int:
             for line in f:
                 if line.startswith("Private_Dirty:"):
                     return int(line.split()[1])
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as e:
+        # /proc not available (macOS) or process gone — caller treats -1 as unknown
+        logger.debug(f"could not read Private_Dirty for pid {pid}: {e}")
     return -1
 
 
@@ -255,8 +261,9 @@ class TestForkPerformance:
             for pid in children:
                 try:
                     os.kill(pid, signal.SIGTERM)
-                except OSError:
-                    pass
+                except OSError as e:
+                    # Child already gone — fine
+                    logger.debug(f"could not signal child {pid} during cleanup: {e}")
             time.sleep(0.3)
             template.shutdown()
 

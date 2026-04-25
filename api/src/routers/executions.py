@@ -97,8 +97,9 @@ class ExecutionRepository:
                 if start_dt.tzinfo is not None:
                     start_dt = start_dt.replace(tzinfo=None)
                 query = query.where(ExecutionModel.started_at >= start_dt)
-            except ValueError:
-                pass
+            except ValueError as e:
+                # Caller passed an invalid ISO date — silently ignore the filter
+                logger.debug(f"invalid start_date {start_date!r}, ignoring filter: {e}")
 
         if end_date:
             try:
@@ -107,8 +108,9 @@ class ExecutionRepository:
                 if end_dt.tzinfo is not None:
                     end_dt = end_dt.replace(tzinfo=None)
                 query = query.where(ExecutionModel.started_at <= end_dt)
-            except ValueError:
-                pass
+            except ValueError as e:
+                # Caller passed an invalid ISO date — silently ignore the filter
+                logger.debug(f"invalid end_date {end_date!r}, ignoring filter: {e}")
 
         # Exclude local runner executions by default
         if exclude_local:
@@ -580,8 +582,9 @@ async def list_executions(
     if continuationToken:
         try:
             offset = int(continuationToken)
-        except ValueError:
-            pass
+        except ValueError as e:
+            # Malformed continuation token — start from beginning
+            logger.debug(f"invalid continuationToken {continuationToken!r}, starting from offset 0: {e}")
 
     # Parse workflowId to UUID if provided
     parsed_workflow_id = UUID(workflowId) if workflowId else None
@@ -632,8 +635,9 @@ async def list_logs(
     if continuation_token:
         try:
             offset = int(continuation_token)
-        except ValueError:
-            pass
+        except ValueError as e:
+            # Malformed continuation token — start from beginning
+            logger.debug(f"invalid continuation_token {continuation_token!r}, starting from offset 0: {e}")
 
     # Parse levels
     level_list = None

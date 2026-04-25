@@ -26,8 +26,11 @@ def _get_agent_id_from_scope() -> UUID | None:
         agent_id_str = request.scope.get("mcp_agent_id")
         if agent_id_str:
             return UUID(agent_id_str)
-    except Exception:
-        pass
+    except (RuntimeError, ValueError, AttributeError) as e:
+        # RuntimeError: get_http_request() raises if not in HTTP context (stdio MCP)
+        # ValueError: malformed UUID string in scope
+        # AttributeError: scope structure differs
+        logger.debug(f"could not extract agent_id from scope: {e}")
     return None
 
 

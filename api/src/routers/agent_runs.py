@@ -699,8 +699,9 @@ async def cancel_agent_run(
     try:
         from src.core.pubsub import publish_agent_run_update
         await publish_agent_run_update(agent_run, agent_run.agent.name if agent_run.agent else "Unknown")
-    except Exception:
-        pass
+    except Exception as e:
+        # Cancel flag already set; pubsub notify is best-effort UI hint
+        logger.debug(f"failed to publish agent_run cancel update for {run_id}: {e}")
 
     return {"run_id": str(run_id), "status": "cancelling"}
 

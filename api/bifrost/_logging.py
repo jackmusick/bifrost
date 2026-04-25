@@ -416,8 +416,9 @@ def close_thread_redis() -> None:
     if hasattr(_local, "redis") and _local.redis is not None:
         try:
             _local.redis.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # Best-effort cleanup on thread teardown — connection may already be invalid
+            logger.debug(f"close_thread_redis ignoring close error: {e}")
         _local.redis = None
     if hasattr(_local, "sequence_counters"):
         _local.sequence_counters = {}
