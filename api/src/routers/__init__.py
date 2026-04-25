@@ -27,6 +27,7 @@ from src.routers.notifications import router as notifications_router
 from src.routers.profile import router as profile_router
 from src.routers.agents import router as agents_router
 from src.routers.agent_runs import router as agent_runs_router
+from src.routers.agent_tuning import router as agent_tuning_router
 from src.routers.chat import router as chat_router
 from src.routers.llm_config import router as llm_config_router
 from src.routers.integrations import router as integrations_router
@@ -91,6 +92,7 @@ __all__ = [
     "profile_router",
     "agents_router",
     "agent_runs_router",
+    "agent_tuning_router",
     "chat_router",
     "llm_config_router",
     "integrations_router",

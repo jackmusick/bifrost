@@ -37,6 +37,8 @@ class LLMProviderConfig:
     endpoint: str | None = None  # For custom OpenAI-compatible providers
     max_tokens: int = 16384
     default_system_prompt: str | None = None  # Default system prompt for agentless chat
+    summarization_model: str | None = None  # Override for post-run summarization
+    tuning_model: str | None = None  # Override for tuning chat + dry-run
     is_configured: bool = False
     api_key_set: bool = False  # Indicates if API key is configured (never return actual key)
 
@@ -113,6 +115,8 @@ class LLMConfigService:
             endpoint=config_data.get("endpoint"),
             max_tokens=config_data.get("max_tokens", 16384),
             default_system_prompt=config_data.get("default_system_prompt"),
+            summarization_model=config_data.get("summarization_model"),
+            tuning_model=config_data.get("tuning_model"),
             is_configured=True,
             api_key_set=bool(config_data.get("encrypted_api_key")),
         )
@@ -125,6 +129,8 @@ class LLMConfigService:
         endpoint: str | None = None,
         max_tokens: int = 16384,
         default_system_prompt: str | None = None,
+        summarization_model: str | None = None,
+        tuning_model: str | None = None,
         updated_by: str = "system",
     ) -> None:
         """
@@ -137,6 +143,10 @@ class LLMConfigService:
             endpoint: Custom endpoint URL (for custom providers)
             max_tokens: Maximum tokens for completion
             default_system_prompt: Default system prompt for agentless chat
+            summarization_model: Optional override for summarization calls.
+                ``None`` means use the primary model.
+            tuning_model: Optional override for tuning chat + dry-run calls.
+                ``None`` means use the primary model.
             updated_by: Email/ID of user making the change
         """
         fernet = self._get_fernet()
@@ -166,6 +176,8 @@ class LLMConfigService:
             "endpoint": endpoint,
             "max_tokens": max_tokens,
             "default_system_prompt": default_system_prompt,
+            "summarization_model": summarization_model,
+            "tuning_model": tuning_model,
         }
 
         if existing:
@@ -246,7 +258,14 @@ class LLMConfigService:
             return LLMTestResult(success=False, message=f"Connection test failed: {e}")
 
     async def _test_openai(self, api_key: str, model: str, endpoint: str | None = None) -> LLMTestResult:
-        """Test OpenAI-compatible connection and list models."""
+        """Test OpenAI-compatible connection and verify chat completions work.
+
+        List-models succeeds on many keys that can't actually complete chats
+        (e.g. OpenAI project-scoped keys without explicit model permissions,
+        which return "User not found" on ``/v1/chat/completions``). We run a
+        1-token completion here to catch that before an admin goes and runs
+        a backfill against a key that silently fails every real call.
+        """
         try:
             from openai import AsyncOpenAI
 
@@ -273,16 +292,37 @@ class LLMConfigService:
                     raise  # Re-raise to outer handler which returns success=False
                 logger.info(f"Model listing not supported at {endpoint_label}: {e}")
 
+            # Actually exercise the completions endpoint. A key may list models
+            # fine but be rejected on chat completions (scoped keys, missing
+            # model permissions). Without this, Test shows green but every
+            # summarizer/tuning call dies with "User not found".
+            try:
+                await client.chat.completions.create(
+                    model=model,
+                    max_tokens=1,
+                    messages=[{"role": "user", "content": "ping"}],
+                )
+            except Exception as e:
+                return LLMTestResult(
+                    success=False,
+                    message=(
+                        f"Connected to {endpoint_label} and listed models, but the "
+                        f"configured model '{model}' rejected a test completion: {e}. "
+                        "For OpenAI project keys, enable this model under Project Settings → Model Permissions."
+                    ),
+                    models=model_infos or None,
+                )
+
             if model_infos:
                 return LLMTestResult(
                     success=True,
-                    message=f"Connected to {endpoint_label}. Model '{model}' {'is' if model_available else 'may not be'} available.",
+                    message=f"Connected to {endpoint_label}. Model '{model}' {'is' if model_available else 'may not be'} available; test completion succeeded.",
                     models=model_infos,
                 )
             else:
                 return LLMTestResult(
                     success=True,
-                    message=f"Connected to {endpoint_label}. Model listing not available — enter model ID manually.",
+                    message=f"Connected to {endpoint_label}. Test completion succeeded — model listing not available.",
                     models=None,
                 )
 
@@ -290,7 +330,13 @@ class LLMConfigService:
             return LLMTestResult(success=False, message=f"OpenAI connection failed: {e}")
 
     async def _test_anthropic(self, api_key: str, model: str, endpoint: str | None = None) -> LLMTestResult:
-        """Test Anthropic connection and list models."""
+        """Test Anthropic connection and verify message completions work.
+
+        Symmetric with ``_test_openai``: list models, then issue a 1-token
+        ``messages.create`` so keys that can enumerate but can't actually
+        complete are caught here rather than silently failing every
+        summarizer/tuning call downstream.
+        """
         try:
             from anthropic import AsyncAnthropic
 
@@ -331,16 +377,33 @@ class LLMConfigService:
                     raise  # Re-raise to outer handler which returns success=False
                 logger.info(f"Model listing not supported at {endpoint_label}: {e}")
 
+            # Actually exercise the messages endpoint — see _test_openai for rationale.
+            try:
+                await client.messages.create(
+                    model=model,
+                    max_tokens=1,
+                    messages=[{"role": "user", "content": "ping"}],
+                )
+            except Exception as e:
+                return LLMTestResult(
+                    success=False,
+                    message=(
+                        f"Connected to {endpoint_label} and listed models, but the "
+                        f"configured model '{model}' rejected a test completion: {e}."
+                    ),
+                    models=model_infos or None,
+                )
+
             if model_infos:
                 return LLMTestResult(
                     success=True,
-                    message=f"Connected to {endpoint_label}. Model '{model}' {'is' if model_available else 'may not be'} available.",
+                    message=f"Connected to {endpoint_label}. Model '{model}' {'is' if model_available else 'may not be'} available; test completion succeeded.",
                     models=model_infos,
                 )
             else:
                 return LLMTestResult(
                     success=True,
-                    message=f"Connected to {endpoint_label}. Model listing not available — enter model ID manually.",
+                    message=f"Connected to {endpoint_label}. Test completion succeeded — model listing not available.",
                     models=None,
                 )
 

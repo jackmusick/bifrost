@@ -2,7 +2,7 @@
 Execution contract models for Bifrost.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -86,6 +86,7 @@ class WorkflowExecution(BaseModel):
     duration_ms: int | None = None
     started_at: datetime | None = None  # May be None if not started yet
     completed_at: datetime | None = None
+    scheduled_at: datetime | None = None  # For Scheduled rows, when the row is due to promote
     logs: list[dict[str, Any]] | None = None  # Structured logger output (replaces old ExecutionLog format)
     variables: dict[str, Any] | None = None  # Runtime variables captured from execution scope
     # CLI session tracking
@@ -117,12 +118,48 @@ class WorkflowExecutionRequest(BaseModel):
     script_name: str | None = Field(default=None, description="Optional: Name/identifier for the script (used for logging when code is provided)")
     org_id: str | None = Field(default=None, description="Override execution org context. Requires platform admin.")
     run_as: str | None = Field(default=None, description="Execute as this user UUID (impersonation). Requires platform admin.")
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Run at this tz-aware timestamp (ISO-8601). Must be strictly in the "
+            "future and within 1 year of now. Mutually exclusive with delay_seconds."
+        ),
+    )
+    delay_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        le=31_536_000,
+        description=(
+            "Run this many seconds from now (≤ 1 year). "
+            "Mutually exclusive with scheduled_at."
+        ),
+    )
 
-    @model_validator(mode='after')
-    def validate_workflow_or_code(self) -> 'WorkflowExecutionRequest':
-        """Ensure either workflow_id or code is provided"""
+    @model_validator(mode="after")
+    def validate_request(self) -> "WorkflowExecutionRequest":
         if not self.workflow_id and not self.code:
             raise ValueError("Either 'workflow_id' or 'code' must be provided")
+
+        if self.scheduled_at is not None and self.delay_seconds is not None:
+            raise ValueError(
+                "'scheduled_at' and 'delay_seconds' are mutually exclusive"
+            )
+
+        if self.scheduled_at is not None:
+            if self.scheduled_at.tzinfo is None:
+                raise ValueError("'scheduled_at' must be timezone-aware")
+            now = datetime.now(timezone.utc)
+            if self.scheduled_at <= now:
+                raise ValueError("'scheduled_at' must be in the future")
+            if self.scheduled_at > now + timedelta(days=365):
+                raise ValueError("'scheduled_at' must be within 1 year")
+
+        if (self.scheduled_at is not None or self.delay_seconds is not None):
+            if self.sync:
+                raise ValueError("'sync' cannot be combined with scheduling")
+            if self.code:
+                raise ValueError("'code' (inline) cannot be scheduled")
+
         return self
 
 
@@ -139,6 +176,10 @@ class WorkflowExecutionResponse(BaseModel):
     duration_ms: int | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description="For scheduled executions, the target run time.",
+    )
     # Enhanced debugging output for code editor
     logs: list[dict[str, Any]] | None = None  # Structured logger output
     variables: dict[str, Any] | None = None  # Runtime variables from execution scope

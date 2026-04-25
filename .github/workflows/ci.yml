@@ -6,6 +6,21 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+    # Skip CI for documentation/config-only changes. The companion workflow
+    # ci-noop.yml fires on these same paths and reports the same status-check
+    # names (Lint & Type Check, Unit Tests, E2E Tests) so branch protection
+    # still sees the required checks reported as green.
+    #
+    # IMPORTANT: do NOT add .github/workflows/** to this list — workflow
+    # changes must always run CI so we catch CI-breaking edits before merge.
+    paths-ignore:
+      - "**/*.md"
+      - ".claude/**"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/dependabot.yml"
   workflow_dispatch:
 
 env:
@@ -19,6 +34,56 @@ permissions:
 
 jobs:
   # =============================================================================
+  # Lint & Type Check - Fast, gates all builds alongside unit tests
+  # =============================================================================
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint & Type Check
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      # Create .venv at the repo root so pyrightconfig.json's
+      # `venvPath: ..` + `venv: .venv` resolves the same way locally and in CI.
+      - name: Install Python deps into .venv
+        run: |
+          python -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements.txt pyright
+
+      - name: Ruff
+        working-directory: api
+        run: ../.venv/bin/ruff check .
+
+      - name: Pyright
+        working-directory: api
+        run: ../.venv/bin/pyright
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
+
+      - name: TypeScript
+        working-directory: client
+        run: npm run tsc
+
+      - name: ESLint
+        working-directory: client
+        run: npm run lint
+
+  # =============================================================================
   # Unit Tests - Fast, gates all builds
   # =============================================================================
   test-unit:
@@ -26,10 +91,10 @@ jobs:
     name: Unit Tests
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
 
       - name: Run unit tests
         run: |
@@ -38,7 +103,7 @@ jobs:
           ./test.sh unit
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
         with:
           files: ./coverage.xml
           flags: api
@@ -53,10 +118,10 @@ jobs:
     name: E2E Tests
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
 
       - name: Run E2E tests
         run: |
@@ -69,7 +134,7 @@ jobs:
   # =============================================================================
   build-dev:
     if: github.ref == 'refs/heads/main'
-    needs: test-unit
+    needs: [test-unit, lint]
     runs-on: ubuntu-latest
     name: Build Dev Images
     permissions:
@@ -78,7 +143,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
@@ -90,17 +155,17 @@ jobs:
           echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push API dev image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -116,7 +181,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push client dev image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: ./client
           file: ./client/Dockerfile
@@ -133,11 +198,129 @@ jobs:
           cache-to: type=gha,mode=max
 
   # =============================================================================
+  # Deploy Dry Run - Manual trigger only (workflow_dispatch from any branch).
+  # Validates the DO auth chain (token, cluster name, RBAC, label selector)
+  # WITHOUT touching any deployment. Used once before merging this PR to
+  # confirm the deploy job will succeed when it fires for real.
+  # =============================================================================
+  deploy-dry-run:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: Deploy Dry Run
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Save kubeconfig
+        run: doctl kubernetes cluster kubeconfig save "${{ secrets.DO_CLUSTER_NAME }}"
+
+      - name: Probe cluster reach + RBAC + label selector
+        run: |
+          set -e
+          echo "::group::cluster info"
+          kubectl cluster-info
+          echo "::endgroup::"
+
+          echo "::group::RBAC — can I patch deployments in the bifrost namespace?"
+          kubectl auth can-i patch deployment -n bifrost
+          echo "::endgroup::"
+
+          echo "::group::Deployments the real job would restart"
+          kubectl -n bifrost get deployment \
+            -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
+            -o wide
+          echo "::endgroup::"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Bifrost deploy dry run"
+            echo ""
+            echo "If the step above passed, the real \`deploy-dev\` job will work when this PR merges."
+            echo ""
+            echo "### Deployments that would be restarted"
+            echo ""
+            echo '```'
+            kubectl -n bifrost get deployment \
+              -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
+              -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas \
+              || echo "kubectl unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # =============================================================================
+  # Deploy Dev - Push-to-main only. Rolls the DigitalOcean deployment once
+  # the :dev images are published. Targets anything labeled
+  # `app.kubernetes.io/part-of=bifrost` in the `bifrost` namespace so new
+  # services are picked up automatically. Failures page the maintainer via
+  # GitHub's built-in workflow-failure email (no extra wiring).
+  # =============================================================================
+  deploy-dev:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [build-dev]
+    runs-on: ubuntu-latest
+    name: Deploy Dev to DigitalOcean
+    # Allow only one deploy at a time; if a newer commit lands mid-rollout we
+    # cancel the older deploy so the cluster always converges on HEAD of main.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: true
+
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Save kubeconfig
+        run: doctl kubernetes cluster kubeconfig save "${{ secrets.DO_CLUSTER_NAME }}"
+
+      - name: Roll deployments
+        run: |
+          kubectl -n bifrost rollout restart deployment \
+            -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker
+
+      - name: Wait for rollouts
+        run: |
+          set -e
+          # Query the same label selector we restarted, so new services are
+          # picked up without editing this workflow.
+          DEPLOYMENTS=$(kubectl -n bifrost get deployment \
+            -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+          for d in $DEPLOYMENTS; do
+            echo "::group::rollout status $d"
+            kubectl -n bifrost rollout status "deployment/$d" --timeout=5m
+            echo "::endgroup::"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Bifrost deploy"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA::7}\`"
+            echo "- Cluster: \`${{ secrets.DO_CLUSTER_NAME }}\`"
+            echo "- Namespace: \`bifrost\`"
+            echo ""
+            echo "### Deployment status"
+            echo ""
+            kubectl -n bifrost get deployment \
+              -l app.kubernetes.io/part-of=bifrost,app.kubernetes.io/component!=message-broker \
+              -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas,UPDATED:.status.updatedReplicas \
+              || echo "kubectl unavailable"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # =============================================================================
   # Build API Image - Only on version tags, after tests pass
   # =============================================================================
   build-api:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-unit, test-e2e]
+    needs: [test-unit, test-e2e, lint]
     runs-on: ubuntu-latest
     name: Build API Image
     permissions:
@@ -146,7 +329,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
@@ -157,10 +340,10 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -168,7 +351,7 @@ jobs:
 
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # v5.9.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.API_IMAGE }}
           tags: |
@@ -182,7 +365,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push API image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -199,7 +382,7 @@ jobs:
   # =============================================================================
   build-client:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-unit, test-e2e]
+    needs: [test-unit, test-e2e, lint]
     runs-on: ubuntu-latest
     name: Build Client Image
     permissions:
@@ -208,7 +391,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
@@ -219,10 +402,10 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -230,7 +413,7 @@ jobs:
 
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # v5.9.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.CLIENT_IMAGE }}
           tags: |
@@ -244,7 +427,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push client image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: ./client
           file: ./client/Dockerfile
@@ -270,7 +453,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Get version from tag
         id: get_version
@@ -293,7 +476,7 @@ jobs:
           fi
 
       - name: Create release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Release ${{ steps.get_version.outputs.version }}

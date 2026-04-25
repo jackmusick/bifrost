@@ -77,6 +77,53 @@ describe("ExecutionStatusBadge — status labels", () => {
 	});
 });
 
+describe("ExecutionStatusBadge — Scheduled", () => {
+	it("renders the label without inline datetime", () => {
+		renderWithProviders(
+			<ExecutionStatusBadge
+				status="Scheduled"
+				scheduledAt="2026-04-25T13:00:00Z"
+			/>,
+		);
+		const badge = screen.getByText(/^scheduled$/i);
+		expect(badge).toBeInTheDocument();
+		// The badge's rendered text content is exactly "Scheduled", no date.
+		expect(badge.textContent?.trim()).toBe("Scheduled");
+	});
+
+	it("carries absolute datetime in title attribute on hover", () => {
+		const { container } = renderWithProviders(
+			<ExecutionStatusBadge
+				status="Scheduled"
+				scheduledAt="2026-04-25T13:00:00Z"
+			/>,
+		);
+		const withTitle = container.querySelector("[title]");
+		expect(withTitle).not.toBeNull();
+		expect(withTitle?.getAttribute("title")).toMatch(/2026/);
+	});
+
+	it("still renders without title when scheduledAt is undefined", () => {
+		const { container } = renderWithProviders(
+			<ExecutionStatusBadge status="Scheduled" scheduledAt={undefined} />,
+		);
+		expect(screen.getByText(/^scheduled$/i)).toBeInTheDocument();
+		const withTitle = container.querySelector("[title]");
+		expect(withTitle).toBeNull();
+	});
+
+	it("ignores scheduledAt for non-Scheduled statuses", () => {
+		const { container } = renderWithProviders(
+			<ExecutionStatusBadge
+				status="Pending"
+				scheduledAt="2026-04-25T13:00:00Z"
+			/>,
+		);
+		const withTitle = container.querySelector("[title]");
+		expect(withTitle).toBeNull();
+	});
+});
+
 describe("isExecutionComplete / isExecutionRunning helpers", () => {
 	it.each(["Success", "Failed", "CompletedWithErrors", "Timeout", "Cancelled"])(
 		"treats %s as complete",

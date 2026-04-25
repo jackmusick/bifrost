@@ -208,6 +208,20 @@ class AgentRunConsumer(BaseConsumer):
 
             await publish_agent_run_update(agent_run, agent.name)
 
+            # Enqueue post-run summarization for completed runs only.
+            # Failures/timeouts/cancellations don't get summarized; the UI
+            # exposes a regenerate button to retry from any state.
+            # Errors here MUST NOT crash the run — summary_status stays
+            # 'pending' and the UI offers a regenerate path.
+            if run_result.get("status") == "completed":
+                try:
+                    from src.services.execution.run_summarizer import enqueue_summarize
+                    await enqueue_summarize(UUID(run_id))
+                except Exception:
+                    logger.exception(
+                        f"Failed to enqueue summarizer for run {run_id}"
+                    )
+
             # Update event delivery status if triggered by event
             if context.get("event_delivery_id"):
                 async with self._session_factory() as db:

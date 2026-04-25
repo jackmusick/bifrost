@@ -5,10 +5,9 @@ steps are buffered in memory/Redis, and flush_to_db() batch-inserts everything.
 """
 
 import asyncio
-import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
-from uuid import UUID, uuid4
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 from src.services.execution.autonomous_agent_executor import AutonomousAgentExecutor
 
@@ -259,7 +258,7 @@ class TestDelegationUsesFactory:
             "run",
             new_callable=AsyncMock,
             return_value=child_run_result,
-        ) as mock_run:
+        ):
             executor = AutonomousAgentExecutor(factory, redis_client=mock_redis)
             executor._current_run_id = str(uuid4())
 

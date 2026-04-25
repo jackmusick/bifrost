@@ -9,6 +9,7 @@ from enum import Enum
 
 class ExecutionStatus(str, Enum):
     """Workflow execution status"""
+    SCHEDULED = "Scheduled"
     PENDING = "Pending"
     RUNNING = "Running"
     SUCCESS = "Success"
@@ -32,6 +33,7 @@ class FormFieldType(str, Enum):
     EMAIL = "email"
     NUMBER = "number"
     SELECT = "select"
+    MULTI_SELECT = "multi_select"
     CHECKBOX = "checkbox"
     TEXTAREA = "textarea"
     RADIO = "radio"

@@ -14,6 +14,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 import re
+from typing import Literal
+
+EmbedHmacScheme = Literal["shopify", "halopsa"]
 
 
 # ==================== APPLICATION MODELS ====================
@@ -331,6 +334,10 @@ class EmbedSecretCreate(BaseModel):
 
     name: str = Field(..., max_length=255, description="Label for this secret (e.g., 'Halo Production')")
     secret: str | None = Field(default=None, description="Shared secret. If omitted, one is auto-generated.")
+    hmac_scheme: EmbedHmacScheme = Field(
+        default="shopify",
+        description="HMAC signing scheme. 'shopify' signs all query params; 'halopsa' signs only agent_id.",
+    )
 
 
 class EmbedSecretResponse(BaseModel):
@@ -339,6 +346,7 @@ class EmbedSecretResponse(BaseModel):
     id: str
     name: str
     is_active: bool
+    hmac_scheme: EmbedHmacScheme
     created_at: datetime
 
     @field_serializer("created_at")
@@ -357,6 +365,7 @@ class EmbedSecretUpdate(BaseModel):
 
     is_active: bool | None = None
     name: str | None = Field(default=None, max_length=255)
+    hmac_scheme: EmbedHmacScheme | None = None
 
 
 # ==================== IMPORT MODELS ====================

@@ -405,7 +405,6 @@ class BundlerService:
 
         # --- 2. Scan user source for names imported from "bifrost" -------
         imported_names: set[str] = set()
-        import re as _re
         bifrost_import_re = _re.compile(
             r'import\s+\{([^}]+)\}\s+from\s+["\']bifrost["\']',
         )
@@ -665,7 +664,7 @@ def _msg_from_dict(d: dict) -> BundleMessage:
     )
 
 
-import re as _re
+import re as _re  # noqa: E402  -- scoped helper for _has_default_export below
 
 _DEFAULT_EXPORT_RE = _re.compile(
     r"^\s*export\s+default\b|^\s*export\s*\{\s*default\b",

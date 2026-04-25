@@ -485,12 +485,22 @@ function FieldConfigDialogContent({
 										value={type}
 										onValueChange={(v) => {
 											const newType = v as FormFieldType;
+											const prevType = type;
 											setType(newType);
 											// Reset default value when switching to/from checkbox
 											if (newType === "checkbox" && typeof defaultValue !== "boolean") {
 												setDefaultValue(false);
 											} else if (newType !== "checkbox" && typeof defaultValue === "boolean") {
 												setDefaultValue("");
+											}
+											// Reset default value when switching into or out of
+											// multi_select (comma-separated list won't map
+											// cleanly to/from a single-value string).
+											if (
+												(newType === "multi_select" || prevType === "multi_select") &&
+												newType !== prevType
+											) {
+												setDefaultValue(newType === "checkbox" ? false : "");
 											}
 										}}
 									>
@@ -509,6 +519,9 @@ function FieldConfigDialogContent({
 											</SelectItem>
 											<SelectItem value="select">
 												Select (Dropdown)
+											</SelectItem>
+											<SelectItem value="multi_select">
+												Multi-select (Dropdown)
 											</SelectItem>
 											<SelectItem value="checkbox">
 												Checkbox
@@ -607,6 +620,7 @@ function FieldConfigDialogContent({
 
 							{(isWorkflowInput ||
 								type === "select" ||
+								type === "multi_select" ||
 								dataProvider) && (
 								<div className="space-y-2">
 									<Label htmlFor="dataProvider">
@@ -819,16 +833,19 @@ function FieldConfigDialogContent({
 							</div>
 						)}
 
-						{/* Options for Radio and Select (dropdown) types */}
+						{/* Options for Radio, Select, and Multi-select (dropdown) types */}
 						{(type === "radio" ||
-							(type === "select" && !dataProvider)) && (
+							((type === "select" || type === "multi_select") &&
+								!dataProvider)) && (
 							<OptionsEditor
 								options={options}
 								onChange={setOptions}
 								label={
 									type === "radio"
 										? "Radio Options"
-										: "Dropdown Options"
+										: type === "multi_select"
+											? "Multi-select Options"
+											: "Dropdown Options"
 								}
 								helpText="Add options for users to choose from. Label is what users see, value is what gets stored."
 							/>

@@ -23,6 +23,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -44,10 +51,13 @@ import { toast } from "sonner";
 // Types
 // ============================================================================
 
+type HmacScheme = "shopify" | "halopsa";
+
 interface EmbedSecret {
   id: string;
   name: string;
   is_active: boolean;
+  hmac_scheme: HmacScheme;
   created_at: string;
 }
 
@@ -72,6 +82,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createSecret, setCreateSecret] = useState("");
+  const [createScheme, setCreateScheme] = useState<HmacScheme>("shopify");
   const [isCreating, setIsCreating] = useState(false);
 
   // Reveal state (shown once after creation)
@@ -99,10 +110,13 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
     }
   }, [formId]);
 
+  // Network fetches: setState happens after `await`, so wrapping in a void
+  // IIFE keeps the synchronous part of the effect free of setState calls.
   useEffect(() => {
-    if (isOpen) {
-      fetchSecrets();
-    }
+    if (!isOpen) return;
+    void (async () => {
+      await fetchSecrets();
+    })();
   }, [isOpen, fetchSecrets]);
 
   // ========================================================================
@@ -120,6 +134,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: createName.trim(),
+          hmac_scheme: createScheme,
           ...(createSecret.trim() && { secret: createSecret.trim() }),
         }),
       });
@@ -129,6 +144,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
       setIsCreateOpen(false);
       setCreateName("");
       setCreateSecret("");
+      setCreateScheme("shopify");
       fetchSecrets();
       toast.success("Embed secret created");
     } catch {
@@ -261,6 +277,11 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
                       >
                         {secret.is_active ? "Active" : "Inactive"}
                       </Badge>
+                      <Badge variant="outline">
+                        {secret.hmac_scheme === "halopsa"
+                          ? "HaloPSA"
+                          : "Standard"}
+                      </Badge>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
@@ -309,6 +330,26 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
                     className="font-mono text-sm"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="embed-secret-scheme">HMAC scheme</Label>
+                  <Select
+                    value={createScheme}
+                    onValueChange={(v) => setCreateScheme(v as HmacScheme)}
+                  >
+                    <SelectTrigger id="embed-secret-scheme">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="shopify">Standard</SelectItem>
+                      <SelectItem value="halopsa">HaloPSA</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {createScheme === "shopify"
+                      ? "Signs all query parameters (recommended for most integrations)."
+                      : "Signs only agent_id. Use for HaloPSA Custom Tab embeds."}
+                  </p>
+                </div>
                 <div className="flex gap-2 justify-end">
                   <Button
                     type="button"
@@ -318,6 +359,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
                       setIsCreateOpen(false);
                       setCreateName("");
                       setCreateSecret("");
+                      setCreateScheme("shopify");
                     }}
                   >
                     Cancel

@@ -206,4 +206,33 @@ describe("FieldConfigDialog — conditional rendering", () => {
 		expect(screen.getByLabelText(/allowed file types/i)).toBeInTheDocument();
 		expect(screen.getByLabelText(/max file size/i)).toBeInTheDocument();
 	});
+
+	it("shows the Options editor for multi_select fields", async () => {
+		const { user } = renderDialog();
+
+		await user.type(screen.getByLabelText(/field name/i), "tags");
+		const typeTrigger = screen.getByLabelText(/field type/i);
+		await user.click(typeTrigger);
+		await user.click(await screen.findByText(/multi-select \(dropdown\)/i));
+
+		expect(screen.getByText(/multi-select options/i)).toBeInTheDocument();
+	});
+
+	it("saves a multi_select field with type=multi_select", async () => {
+		const { user, onSave } = renderDialog();
+
+		await user.type(screen.getByLabelText(/field name/i), "tags");
+		const typeTrigger = screen.getByLabelText(/field type/i);
+		await user.click(typeTrigger);
+		await user.click(await screen.findByText(/multi-select \(dropdown\)/i));
+
+		await user.click(screen.getByRole("button", { name: /add field/i }));
+
+		expect(onSave).toHaveBeenCalledTimes(1);
+		const saved = onSave.mock.calls[0]![0];
+		expect(saved).toMatchObject({
+			name: "tags",
+			type: "multi_select",
+		});
+	});
 });

@@ -41,6 +41,7 @@ export type FormFieldType =
 	| "email"
 	| "number"
 	| "select"
+	| "multi_select"
 	| "checkbox"
 	| "textarea"
 	| "radio"

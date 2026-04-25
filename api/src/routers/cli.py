@@ -1187,6 +1187,10 @@ async def sdk_integrations_refresh_token(
             )
             db.add(new_token)
 
+        provider.status = "completed"
+        provider.status_message = None
+        provider.last_token_refresh = datetime.now(timezone.utc)
+
         await db.commit()
 
         logger.info(

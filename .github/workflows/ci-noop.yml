@@ -1,0 +1,50 @@
+# Branch-protection bypass for docs-only PRs.
+#
+# Background: ci.yml uses paths-ignore to skip Lint/Unit/E2E on docs-only
+# changes. But branch protection requires named status checks (e.g.
+# "Lint & Type Check") to report green before merge — and a job that
+# never runs reports nothing, blocking merge forever.
+#
+# This workflow has the INVERSE trigger (paths: matches the same set
+# that ci.yml's paths-ignore: skips) and reports the same status-check
+# names with always-green stub jobs. GitHub branch protection looks up
+# checks by name only, so it accepts these as satisfying the requirement.
+#
+# Keep the `name:` of each job below in EXACT sync with the corresponding
+# job's `name:` in ci.yml.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - ".claude/**"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/dependabot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint & Type Check
+    steps:
+      - run: echo "Skipped — docs/config-only PR."
+
+  test-unit:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    steps:
+      - run: echo "Skipped — docs/config-only PR."
+
+  test-e2e:
+    runs-on: ubuntu-latest
+    name: E2E Tests
+    steps:
+      - run: echo "Skipped — docs/config-only PR."

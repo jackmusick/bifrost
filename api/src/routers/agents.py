@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
 from src.core.org_filter import resolve_org_filter
+from src.models.contracts.agent_stats import AgentStatsResponse, FleetStatsResponse
 from src.models.contracts.agents import (
     AgentAccessLevel,
     AgentCreate,
@@ -32,6 +33,7 @@ from src.models.contracts.agents import (
 from src.models.orm import Agent, AgentDelegation, AgentRole, AgentTool, Role, Workflow
 from src.repositories.agents import AgentRepository
 from src.routers.tools import get_system_tool_ids
+from src.services.agent_stats import get_agent_stats, get_fleet_stats
 from src.services.workflow_role_service import sync_agent_roles_to_workflows
 
 logger = logging.getLogger(__name__)
@@ -490,6 +492,22 @@ async def get_accessible_knowledge(
     ]
 
 
+@router.get("/stats/fleet", response_model=FleetStatsResponse)
+async def get_fleet_stats_endpoint(
+    db: DbSession,
+    user: CurrentActiveUser,
+    window_days: int = Query(7, ge=1, le=90),
+) -> FleetStatsResponse:
+    """Fleet-wide agent run stats over the last ``window_days``.
+
+    Superusers see cross-org totals; org users are scoped to their org.
+    Route is registered before ``/{agent_id}`` so the literal ``stats``
+    prefix is not parsed as a UUID.
+    """
+    org_id = None if user.is_superuser else user.organization_id
+    return await get_fleet_stats(db, org_id=org_id, window_days=window_days)
+
+
 @router.get("/{agent_id}")
 async def get_agent(
     agent_id: UUID,
@@ -547,6 +565,24 @@ async def update_agent(
     is_admin = user.is_platform_admin
 
     if not is_admin:
+        # Budget fields gate: only platform admins can set per-agent budgets.
+        # Block before the ownership check so the response is the same whether
+        # the user owns the agent or not (no information leak about ownership).
+        budget_fields_set = [
+            f
+            for f in ("max_iterations", "max_token_budget", "llm_max_tokens")
+            if f in agent_data.model_fields_set
+        ]
+        if budget_fields_set:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Budget fields ("
+                    + ", ".join(budget_fields_set)
+                    + ") can only be set by platform administrators"
+                ),
+            )
+
         if agent.owner_user_id != user.user_id or agent.access_level != AgentAccessLevel.PRIVATE:
             raise HTTPException(403, "You can only edit your own private agents")
         if agent_data.access_level is not None and agent_data.access_level != AgentAccessLevel.PRIVATE:
@@ -801,6 +837,36 @@ async def promote_agent(
 # =============================================================================
 # Tool Assignment Endpoints
 # =============================================================================
+
+
+@router.get("/{agent_id}/stats", response_model=AgentStatsResponse)
+async def get_agent_stats_endpoint(
+    agent_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+    window_days: int = Query(7, ge=1, le=90),
+) -> AgentStatsResponse:
+    """Per-agent run stats. Reuses the same access check as ``GET /{agent_id}``."""
+    is_admin = user.is_superuser or any(
+        role in ["Platform Admin", "Platform Owner"]
+        for role in user.roles
+    )
+
+    repo = AgentRepository(
+        session=db,
+        org_id=user.organization_id,
+        user_id=user.user_id,
+        is_superuser=is_admin,
+    )
+
+    agent = await repo.get_agent_with_access_check(agent_id)
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    return await get_agent_stats(agent_id, db, window_days=window_days)
 
 
 @router.get("/{agent_id}/tools")

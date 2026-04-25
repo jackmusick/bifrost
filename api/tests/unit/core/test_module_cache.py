@@ -269,10 +269,16 @@ class TestModuleCacheSync:
             mock_sync_redis.smembers.assert_called_once_with("bifrost:module:index")
 
     def test_get_module_index_sync_empty(self, mock_sync_redis):
-        """Test getting empty module index."""
+        """Test getting empty module index.
+
+        When Redis returns an empty set, the function falls back to listing S3.
+        Patch the S3 helper to return empty too, otherwise this test would hit
+        the real S3 client (populated by other tests in the shared test stack).
+        """
         mock_sync_redis.smembers.return_value = set()
 
-        with patch("src.core.module_cache_sync._get_sync_redis", return_value=mock_sync_redis):
+        with patch("src.core.module_cache_sync._get_sync_redis", return_value=mock_sync_redis), \
+             patch("src.core.module_cache_sync._list_s3_modules", return_value=set()):
             from src.core.module_cache_sync import get_module_index_sync
 
             result = get_module_index_sync()

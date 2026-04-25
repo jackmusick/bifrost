@@ -41,7 +41,10 @@ function getErrorMessage(error: unknown, fallback: string): string {
  * - "global": show only global agents (org_id IS NULL)
  * - UUID string: show that org's agents + global agents
  */
-export function useAgents(filterScope?: string | null) {
+export function useAgents(
+	filterScope?: string | null,
+	options?: { includeInactive?: boolean },
+) {
 	// Build query params - scope is the new filter parameter
 	const queryParams: Record<string, string | boolean | undefined> = {};
 	if (filterScope === null) {
@@ -52,6 +55,10 @@ export function useAgents(filterScope?: string | null) {
 		queryParams.scope = filterScope;
 	}
 	// undefined = don't send scope (show all)
+	if (options?.includeInactive) {
+		// Default server-side is active_only=true; opt in to paused agents too.
+		queryParams.active_only = false;
+	}
 
 	return $api.useQuery("get", "/api/agents", {
 		params: {

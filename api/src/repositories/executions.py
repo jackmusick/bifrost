@@ -118,6 +118,31 @@ class ExecutionRepository(BaseRepository[Execution]):
         # Parse workflow_id if present
         parsed_workflow_id = UUID(workflow_id) if workflow_id else None
 
+        # A scheduled execution has a pre-existing row (inserted at schedule
+        # time as SCHEDULED, promoted to PENDING by the scheduler). In that
+        # case update-in-place instead of inserting a duplicate PK.
+        existing = await self.session.get(Execution, UUID(execution_id))
+        if existing is not None:
+            existing.workflow_name = workflow_name
+            existing.workflow_id = parsed_workflow_id
+            existing.status = status
+            existing.parameters = parameters
+            existing.executed_by = parsed_user_id
+            existing.executed_by_name = user_name
+            existing.organization_id = parsed_org_id
+            existing.form_id = parsed_form_id
+            existing.api_key_id = parsed_api_key_id
+            existing.is_local_execution = is_local_execution
+            existing.execution_model = execution_model
+            existing.started_at = datetime.now(timezone.utc)
+            await self.session.flush()
+            await self.session.refresh(existing)
+            logger.info(
+                f"Updated pre-existing execution record: {execution_id} "
+                f"(status={status.value})"
+            )
+            return existing
+
         execution = Execution(
             id=UUID(execution_id),
             workflow_name=workflow_name,

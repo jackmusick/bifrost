@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.services.mcp_server.tool_result import error_result, success_result

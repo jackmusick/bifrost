@@ -10,7 +10,7 @@ from datetime import datetime, timezone as _tz
 from typing import Any
 from uuid import UUID
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 

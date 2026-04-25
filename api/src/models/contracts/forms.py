@@ -2,7 +2,7 @@
 Form contract models for Bifrost.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
@@ -114,6 +114,14 @@ class FormField(BaseModel):
         if self.type in display_only_types and not self.content:
             raise ValueError(f"content is required for {self.type.value} fields")
 
+        # multi_select default_value is a comma-separated list of option values;
+        # trim whitespace around each entry and drop empty entries so that
+        # "a, b , ,c" normalizes to "a,b,c"
+        if self.type == FormFieldType.MULTI_SELECT and isinstance(self.default_value, str):
+            parts = [p.strip() for p in self.default_value.split(",")]
+            parts = [p for p in parts if p]
+            object.__setattr__(self, 'default_value', ",".join(parts) if parts else None)
+
         return self
 
 
@@ -207,6 +215,40 @@ class FormExecuteRequest(BaseModel):
     """Request model for executing a form"""
     form_data: dict[str, Any] = Field(default_factory=dict, description="Form field values")
     startup_data: dict[str, Any] | None = Field(default=None, description="Results from /startup call (launch workflow)")
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Run at this tz-aware timestamp (ISO-8601). Must be strictly in the "
+            "future and within 1 year of now. Mutually exclusive with delay_seconds."
+        ),
+    )
+    delay_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        le=31_536_000,
+        description=(
+            "Run this many seconds from now (≤ 1 year). "
+            "Mutually exclusive with scheduled_at."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_scheduling(self) -> "FormExecuteRequest":
+        if self.scheduled_at is not None and self.delay_seconds is not None:
+            raise ValueError(
+                "'scheduled_at' and 'delay_seconds' are mutually exclusive"
+            )
+
+        if self.scheduled_at is not None:
+            if self.scheduled_at.tzinfo is None:
+                raise ValueError("'scheduled_at' must be timezone-aware")
+            now = datetime.now(timezone.utc)
+            if self.scheduled_at <= now:
+                raise ValueError("'scheduled_at' must be in the future")
+            if self.scheduled_at > now + timedelta(days=365):
+                raise ValueError("'scheduled_at' must be within 1 year")
+
+        return self
 
 
 class FormStartupResponse(BaseModel):

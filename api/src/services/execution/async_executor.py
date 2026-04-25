@@ -19,11 +19,73 @@ import uuid
 from typing import Any
 
 from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
+from src.core.redis_client import get_redis_client
+from src.jobs.rabbitmq import publish_message
 from src.sdk.context import ExecutionContext
+from src.services.execution.queue_tracker import add_to_queue
 
 logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "workflow-executions"
+
+
+async def _publish_pending(
+    execution_id: str,
+    workflow_id: str | None,
+    parameters: dict[str, Any],
+    org_id: str | None,
+    user_id: str,
+    user_name: str,
+    user_email: str,
+    form_id: str | None,
+    startup: dict[str, Any] | None,
+    api_key_id: str | None,
+    sync: bool,
+    is_platform_admin: bool,
+    file_path: str | None,
+) -> None:
+    """
+    Write a pending-execution blob to Redis, register with the queue tracker,
+    and publish the minimal dispatch message to RabbitMQ.
+
+    Shared by the run-now path (enqueue_workflow_execution) and the deferred
+    execution promoter. Callers are responsible for generating execution_id
+    before calling this helper.
+    """
+    redis_client = get_redis_client()
+
+    # Store pending execution in Redis (worker needs this for execution context)
+    await redis_client.set_pending_execution(
+        execution_id=execution_id,
+        workflow_id=workflow_id,
+        parameters=parameters,
+        org_id=org_id,
+        user_id=user_id,
+        user_name=user_name,
+        user_email=user_email,
+        form_id=form_id,
+        startup=startup,
+        api_key_id=api_key_id,
+        sync=sync,
+        is_platform_admin=is_platform_admin,
+    )
+
+    # Add to queue tracking (publishes position updates to all queued executions)
+    await add_to_queue(execution_id)
+
+    # Prepare queue message (minimal - worker reads full context from Redis)
+    message: dict[str, Any] = {
+        "execution_id": execution_id,
+        "workflow_id": workflow_id,
+        "sync": sync,
+    }
+
+    # Include file_path for fast direct loading (avoids filesystem scan)
+    if file_path:
+        message["file_path"] = file_path
+
+    # Enqueue message via RabbitMQ
+    await publish_message(QUEUE_NAME, message)
 
 
 async def enqueue_workflow_execution(
@@ -55,18 +117,11 @@ async def enqueue_workflow_execution(
     Returns:
         execution_id: UUID of the queued execution
     """
-    from src.core.redis_client import get_redis_client
-    from src.jobs.rabbitmq import publish_message
-    from src.services.execution.queue_tracker import add_to_queue
-
-    redis_client = get_redis_client()
-
     # Generate or use provided execution ID
     if execution_id is None:
         execution_id = str(uuid.uuid4())
 
-    # Store pending execution in Redis (worker needs this for execution context)
-    await redis_client.set_pending_execution(
+    await _publish_pending(
         execution_id=execution_id,
         workflow_id=workflow_id,
         parameters=parameters,
@@ -75,28 +130,12 @@ async def enqueue_workflow_execution(
         user_name=context.name,
         user_email=context.email,
         form_id=form_id,
-        startup=context.startup,  # Pass launch workflow results to worker
+        startup=context.startup,
         api_key_id=api_key_id,
         sync=sync,
         is_platform_admin=context.is_platform_admin,
+        file_path=file_path,
     )
-
-    # Add to queue tracking (publishes position updates to all queued executions)
-    await add_to_queue(execution_id)
-
-    # Prepare queue message (minimal - worker reads full context from Redis)
-    message: dict[str, Any] = {
-        "execution_id": execution_id,
-        "workflow_id": workflow_id,
-        "sync": sync,
-    }
-
-    # Include file_path for fast direct loading (avoids filesystem scan)
-    if file_path:
-        message["file_path"] = file_path
-
-    # Enqueue message via RabbitMQ
-    await publish_message(QUEUE_NAME, message)
 
     logger.info(
         f"Enqueued async workflow execution: {workflow_id}",
@@ -135,10 +174,6 @@ async def enqueue_code_execution(
     Returns:
         execution_id: UUID of the queued execution
     """
-    from src.core.redis_client import get_redis_client
-    from src.jobs.rabbitmq import publish_message
-    from src.services.execution.queue_tracker import add_to_queue
-
     redis_client = get_redis_client()
 
     # Generate or use provided execution ID

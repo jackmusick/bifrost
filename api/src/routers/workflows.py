@@ -14,14 +14,17 @@ Organization Scoping:
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import delete, distinct, func, or_, select, union_all
+from sqlalchemy import delete, distinct, func, or_, select, union_all, update
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import existing Pydantic models for API compatibility
 from src.models.enums import ExecutionStatus
@@ -640,6 +643,50 @@ async def get_workflow_usage_stats(
         )
 
 
+async def _insert_scheduled_execution(
+    *,
+    db: "AsyncSession",
+    workflow_id: UUID,
+    workflow_name: str,
+    parameters: dict,
+    scheduled_at: datetime,
+    organization_id: UUID | None,
+    executed_by: UUID,
+    executed_by_name: str,
+    form_id: UUID | None,
+    api_key_id: UUID | None,
+    is_platform_admin: bool,
+) -> UUID:
+    """Insert a SCHEDULED execution row.
+
+    Skips Redis/RabbitMQ — the deferred_execution_promoter job will publish
+    the row when scheduled_at matures.
+    """
+    from uuid import uuid4
+
+    from src.models.orm.executions import Execution
+
+    exec_id = uuid4()
+    db.add(
+        Execution(
+            id=exec_id,
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            status=ExecutionStatus.SCHEDULED,
+            parameters=parameters,
+            scheduled_at=scheduled_at,
+            organization_id=organization_id,
+            executed_by=executed_by,
+            executed_by_name=executed_by_name,
+            form_id=form_id,
+            api_key_id=api_key_id,
+            execution_context={"is_platform_admin": is_platform_admin},
+        )
+    )
+    await db.commit()
+    return exec_id
+
+
 @router.post(
     "/execute",
     response_model=WorkflowExecutionResponse,
@@ -780,6 +827,36 @@ async def execute_workflow(
                 execution_org_id = dev_ctx.default_org_id
                 logger.info(f"Using developer context org: {execution_org_id}")
 
+    # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
+    # The deferred_execution_promoter job will publish this row when it matures.
+    scheduled_at: datetime | None = request.scheduled_at
+    if request.delay_seconds is not None:
+        scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=request.delay_seconds)
+
+    if scheduled_at is not None:
+        # Schedule-with-code is rejected by the contract validator; workflow must exist.
+        assert workflow is not None
+        exec_id = await _insert_scheduled_execution(
+            db=db,
+            workflow_id=workflow.id,
+            workflow_name=workflow.name,
+            parameters=request.input_data,
+            scheduled_at=scheduled_at,
+            organization_id=execution_org_id,
+            executed_by=UUID(exec_user_id),
+            executed_by_name=exec_user_name,
+            form_id=UUID(request.form_id) if request.form_id else None,
+            api_key_id=None,  # API-key-triggered scheduling not supported in v1
+            is_platform_admin=exec_is_admin,
+        )
+        return WorkflowExecutionResponse(
+            execution_id=str(exec_id),
+            workflow_id=str(workflow.id),
+            workflow_name=workflow.name,
+            status=ExecutionStatus.SCHEDULED,
+            scheduled_at=scheduled_at,
+        )
+
     # Build shared context for execution
     org = None
     if execution_org_id:
@@ -897,6 +974,89 @@ async def execute_workflow(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to execute workflow: {type(e).__name__}: {str(e)}",
         )
+
+
+@router.post(
+    "/executions/{execution_id}/cancel",
+    summary="Cancel a scheduled execution",
+    description=(
+        "Cancel a SCHEDULED execution (row not yet promoted to the queue). "
+        "Returns 409 if the row is in any other status (including already PENDING). "
+        "Cancelling a RUNNING execution is a separate feature and is not handled here."
+    ),
+)
+async def cancel_scheduled_execution(
+    execution_id: UUID,
+    ctx: Context,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> dict:
+    """Flip a SCHEDULED execution to CANCELLED via a status-guarded UPDATE.
+
+    Authorization:
+    - Row must be in the caller's org (unless platform admin).
+    - Only the original submitter or a platform admin may cancel.
+
+    Race handling: the UPDATE is guarded on ``status = SCHEDULED``. If another
+    caller (promoter, concurrent cancel) has already moved the row, we refetch
+    and return 409 with the current status.
+    """
+    from src.models.orm.executions import Execution
+
+    row = await db.get(Execution, execution_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found",
+        )
+
+    # Org-scoped access: row's org must match caller's org, unless admin.
+    if (
+        not ctx.user.is_superuser
+        and row.organization_id is not None
+        and row.organization_id != ctx.org_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    # Non-admin can only cancel their own scheduled rows.
+    if not ctx.user.is_superuser and row.executed_by != ctx.user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the submitter or an admin may cancel",
+        )
+
+    # Status-guarded UPDATE (wins or loses atomically vs. the promoter).
+    from sqlalchemy.engine import CursorResult
+
+    result = cast(
+        CursorResult,
+        await db.execute(
+            update(Execution)
+            .where(Execution.id == execution_id)
+            .where(Execution.status == ExecutionStatus.SCHEDULED)
+            .values(
+                status=ExecutionStatus.CANCELLED,
+                completed_at=datetime.now(timezone.utc),
+            )
+        ),
+    )
+    await db.commit()
+
+    if result.rowcount == 0:
+        # Another actor (promoter or concurrent cancel) changed status first.
+        await db.refresh(row)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Execution is not Scheduled (current status: {row.status.value})",
+        )
+
+    return {
+        "execution_id": str(execution_id),
+        "status": ExecutionStatus.CANCELLED.value,
+    }
 
 
 @router.post(

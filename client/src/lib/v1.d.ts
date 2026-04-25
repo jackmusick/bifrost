@@ -1744,6 +1744,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/executions/{execution_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a scheduled execution
+         * @description Cancel a SCHEDULED execution (row not yet promoted to the queue). Returns 409 if the row is in any other status (including already PENDING). Cancelling a RUNNING execution is a separate feature and is not handled here.
+         */
+        post: operations["cancel_scheduled_execution_api_workflows_executions__execution_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/validate": {
         parameters: {
             query?: never;
@@ -3403,22 +3423,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4561,6 +4581,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/stats/fleet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fleet Stats Endpoint
+         * @description Fleet-wide agent run stats over the last ``window_days``.
+         *
+         *     Superusers see cross-org totals; org users are scoped to their org.
+         *     Route is registered before ``/{agent_id}`` so the literal ``stats``
+         *     prefix is not parsed as a UUID.
+         */
+        get: operations["get_fleet_stats_endpoint_api_agents_stats_fleet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/{agent_id}": {
         parameters: {
             query?: never;
@@ -4606,6 +4650,26 @@ export interface paths {
          * @description Promote a private agent to organization scope.
          */
         post: operations["promote_agent_api_agents__agent_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Stats Endpoint
+         * @description Per-agent run stats. Reuses the same access check as ``GET /{agent_id}``.
+         */
+        get: operations["get_agent_stats_endpoint_api_agents__agent_id__stats_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4664,6 +4728,104 @@ export interface paths {
          * @description List agent runs with optional filters.
          */
         get: operations["list_agent_runs_api_agent_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/metadata-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Metadata Keys
+         * @description Distinct top-level keys observed in metadata for this agent's runs.
+         *
+         *     The captured-data filter uses this to populate its key combobox so
+         *     users don't have to guess which fields the summarizer actually
+         *     extracts on this agent.
+         */
+        get: operations["get_metadata_keys_api_agent_runs_metadata_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/metadata-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Metadata Values
+         * @description Distinct values observed for ``key`` in metadata for this agent's runs.
+         *
+         *     Used by the filter UI when the user picks the 'eq' operator — lets
+         *     them pick from a known-value list instead of free-typing.
+         */
+        get: operations["get_metadata_values_api_agent_runs_metadata_values_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Backfill Jobs
+         * @description Admin-only: list summary backfill jobs (optionally filtered to active).
+         *
+         *     Registered before ``/{run_id}`` so the literal path isn't swallowed by
+         *     the run-detail handler.
+         */
+        get: operations["list_backfill_jobs_api_agent_runs_backfill_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-eligible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Backfill Eligible
+         * @description Lightweight preview the UI uses to decide whether to show the Backfill
+         *     button at all. Returns 0/0.00 if nothing is eligible — caller can hide
+         *     the affordance instead of surfacing a dead-end "Nothing to backfill"
+         *     modal.
+         *
+         *     When ``prompt_version_below`` is set, also counts ``completed`` runs whose
+         *     ``summary_prompt_version`` is older than the given version (or NULL), so
+         *     admins can discover the existence of a roll-forward opportunity even when
+         *     there are no pending/failed runs.
+         */
+        get: operations["get_backfill_eligible_api_agent_runs_backfill_eligible_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4732,6 +4894,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent-runs/{run_id}/verdict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Verdict
+         * @description Set a verdict on a completed run. Records an audit row.
+         */
+        post: operations["set_verdict_api_agent_runs__run_id__verdict_post"];
+        /**
+         * Clear Verdict
+         * @description Clear the verdict on a run. Records an audit row.
+         */
+        delete: operations["clear_verdict_api_agent_runs__run_id__verdict_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{run_id}/flag-conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Flag Conversation
+         * @description Return the tuning conversation attached to a flagged run.
+         *
+         *     Creates an empty conversation row if none exists yet so the UI can
+         *     stream messages into a stable ``id``.
+         */
+        get: operations["get_flag_conversation_api_agent_runs__run_id__flag_conversation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{run_id}/flag-conversation/message": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Flag Message
+         * @description Append a user turn and synchronously get the tuning-model reply.
+         */
+        post: operations["send_flag_message_api_agent_runs__run_id__flag_conversation_message_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{run_id}/regenerate-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Summary
+         * @description Reset summary state and re-enqueue a summarization job. Admin-only.
+         */
+        post: operations["regenerate_summary_api_agent_runs__run_id__regenerate_summary_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{run_id}/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry Run Agent Run
+         * @description Evaluate a proposed system prompt against a past run's transcript.
+         *
+         *     Single LLM call — does not re-execute tools. Returns a structured
+         *     verdict indicating whether the new prompt would produce the same
+         *     decision. Records an ``AIUsage`` row on the original run for cost
+         *     tracking (``sequence=8000``).
+         */
+        post: operations["dry_run_agent_run_api_agent_runs__run_id__dry_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent-runs/execute": {
         parameters: {
             query?: never;
@@ -4746,6 +5020,146 @@ export interface paths {
          * @description Execute an agent synchronously via the SDK.
          */
         post: operations["execute_agent_run_api_agent_runs_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill Summaries
+         * @description Enqueue summarization for pending/failed runs. Admin-only.
+         *
+         *     If ``dry_run=true``, returns the eligible count and estimated cost
+         *     without enqueuing anything. Otherwise creates a ``SummaryBackfillJob``
+         *     orchestration row and publishes one ``agent-summarization`` message
+         *     per run tagged with the job_id; progress is broadcast on the
+         *     ``summary-backfill:{job_id}`` channel.
+         */
+        post: operations["backfill_summaries_api_agent_runs_backfill_summaries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Backfill Job
+         * @description Admin-only: current progress for a summary backfill job.
+         */
+        get: operations["get_backfill_job_api_agent_runs_backfill_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/backfill-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Backfill Job
+         * @description Mark a backfill job as cancelled so the UI unblocks.
+         *
+         *     This does NOT drain messages already on the ``agent-summarization``
+         *     queue — RabbitMQ will keep delivering them and the worker will keep
+         *     summarising individual runs. What it does do:
+         *
+         *     - flips ``status`` from ``running`` to ``cancelled``
+         *     - sets ``completed_at`` so the row stops appearing in "active" queries
+         *     - broadcasts final state so the progress card dismisses itself
+         *
+         *     Use this when progress has stalled (e.g. the worker was restarted
+         *     mid-job and prefetched messages went back on the queue but the counter
+         *     never advanced) — admins need a way out.
+         */
+        post: operations["cancel_backfill_job_api_agent_runs_backfill_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/tuning-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Tuning Session
+         * @description Generate a consolidated prompt proposal from this agent's flagged runs.
+         */
+        post: operations["create_tuning_session_api_agents__agent_id__tuning_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/tuning-session/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry Run Tuning Session
+         * @description Per-run dry-run of a proposed prompt across this agent's flagged runs.
+         *
+         *     Capped at 10 runs by the service layer to bound cost.
+         */
+        post: operations["dry_run_tuning_session_api_agents__agent_id__tuning_session_dry_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/tuning-session/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Tuning Session
+         * @description Apply a consolidated tuning proposal: update prompt, write history, clear verdicts.
+         */
+        post: operations["apply_tuning_session_api_agents__agent_id__tuning_session_apply_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7915,6 +8329,37 @@ export interface components {
             duration_ms?: number | null;
             /** Llm Model */
             llm_model?: string | null;
+            /** Asked */
+            asked?: string | null;
+            /** Did */
+            did?: string | null;
+            /** Answered */
+            answered?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: string;
+            };
+            /** Confidence */
+            confidence?: number | null;
+            /** Confidence Reason */
+            confidence_reason?: string | null;
+            /**
+             * Summary Status
+             * @default pending
+             */
+            summary_status: string;
+            /** Summary Error */
+            summary_error?: string | null;
+            /** Summary Prompt Version */
+            summary_prompt_version?: string | null;
+            /** Verdict */
+            verdict?: string | null;
+            /** Verdict Note */
+            verdict_note?: string | null;
+            /** Verdict Set At */
+            verdict_set_at?: string | null;
+            /** Verdict Set By */
+            verdict_set_by?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -8005,6 +8450,37 @@ export interface components {
             duration_ms?: number | null;
             /** Llm Model */
             llm_model?: string | null;
+            /** Asked */
+            asked?: string | null;
+            /** Did */
+            did?: string | null;
+            /** Answered */
+            answered?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: string;
+            };
+            /** Confidence */
+            confidence?: number | null;
+            /** Confidence Reason */
+            confidence_reason?: string | null;
+            /**
+             * Summary Status
+             * @default pending
+             */
+            summary_status: string;
+            /** Summary Error */
+            summary_error?: string | null;
+            /** Summary Prompt Version */
+            summary_prompt_version?: string | null;
+            /** Verdict */
+            verdict?: string | null;
+            /** Verdict Note */
+            verdict_note?: string | null;
+            /** Verdict Set At */
+            verdict_set_at?: string | null;
+            /** Verdict Set By */
+            verdict_set_by?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -8046,6 +8522,30 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** AgentStatsResponse */
+        AgentStatsResponse: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Runs 7D */
+            runs_7d: number;
+            /** Success Rate */
+            success_rate: number;
+            /** Avg Duration Ms */
+            avg_duration_ms: number;
+            /** Total Cost 7D */
+            total_cost_7d: string;
+            /** Last Run At */
+            last_run_at: string | null;
+            /** Runs By Day */
+            runs_by_day: number[];
+            /** Needs Review */
+            needs_review: number;
+            /** Unreviewed */
+            unreviewed: number;
         };
         /**
          * AgentSummary
@@ -8497,6 +8997,34 @@ export interface components {
             role_ids?: string[] | null;
         };
         /**
+         * ApplyTuningRequest
+         * @description Body for ``POST /api/agents/{id}/tuning-session/apply``.
+         */
+        ApplyTuningRequest: {
+            /** New Prompt */
+            new_prompt: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ApplyTuningResponse
+         * @description Result of applying a consolidated tuning proposal.
+         */
+        ApplyTuningResponse: {
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /**
+             * History Id
+             * Format: uuid
+             */
+            history_id: string;
+            /** Affected Run Ids */
+            affected_run_ids: string[];
+        };
+        /**
          * AssignAgentsToRoleRequest
          * @description Request for assigning agents to a role.
          */
@@ -8536,6 +9064,22 @@ export interface components {
              * @description List of user IDs to assign
              */
             user_ids: string[];
+        };
+        /** AssistantTurn */
+        AssistantTurn: {
+            /**
+             * Kind
+             * @default assistant
+             * @constant
+             */
+            kind: "assistant";
+            /** Content */
+            content: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at?: string;
         };
         /**
          * AuditLogActor
@@ -8705,6 +9249,95 @@ export interface components {
              * @description Similarity score to the deactivated workflow (0.0-1.0)
              */
             similarity_score: number;
+        };
+        /**
+         * BackfillEligibleResponse
+         * @description Lightweight count + estimate used by the UI to decide whether to
+         *     surface the Backfill button at all. Mirrors the shape of the dry-run
+         *     POST but cacheable and cheaper (no queue touch).
+         */
+        BackfillEligibleResponse: {
+            /**
+             * Eligible
+             * @description Number of runs that would be backfilled.
+             */
+            eligible: number;
+            /**
+             * Estimated Cost Usd
+             * @description Best-effort cost estimate for this scope.
+             */
+            estimated_cost_usd: string;
+            /**
+             * Cost Basis
+             * @description Whether the estimate is derived from past runs or a flat fallback.
+             * @enum {string}
+             */
+            cost_basis: "history" | "fallback";
+        };
+        /**
+         * BackfillSummariesRequest
+         * @description Admin-triggered bulk backfill of run summaries.
+         */
+        BackfillSummariesRequest: {
+            /**
+             * Agent Id
+             * @description Scope to a single agent. None means platform-wide.
+             */
+            agent_id?: string | null;
+            /**
+             * Statuses
+             * @description Which summary_status values to re-run. Include 'completed' to re-summarize already-summarized runs (use with ``prompt_version_below`` to target old prompt versions).
+             */
+            statuses?: ("pending" | "failed" | "completed")[];
+            /**
+             * Prompt Version Below
+             * @description Only re-summarize runs whose ``summary_prompt_version`` is less than this value (lexicographic), or NULL. Lets admins roll forward runs tagged with older prompt versions after a prompt change. NULL-versioned runs always match.
+             */
+            prompt_version_below?: string | null;
+            /**
+             * Limit
+             * @description Max runs to enqueue in one backfill.
+             * @default 500
+             */
+            limit: number;
+            /**
+             * Dry Run
+             * @description If true, return eligible count + cost estimate without enqueuing.
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /**
+         * BackfillSummariesResponse
+         * @description Result of a backfill request.
+         */
+        BackfillSummariesResponse: {
+            /**
+             * Job Id
+             * @description Orchestration row ID. None when dry_run=true.
+             */
+            job_id?: string | null;
+            /**
+             * Queued
+             * @description Number of runs enqueued (0 if dry_run).
+             */
+            queued: number;
+            /**
+             * Eligible
+             * @description Total matched by the filter.
+             */
+            eligible: number;
+            /**
+             * Estimated Cost Usd
+             * @description Best-effort cost prediction based on recent summarizer history.
+             */
+            estimated_cost_usd: string;
+            /**
+             * Cost Basis
+             * @description Whether the estimate is derived from past runs or a flat fallback.
+             * @enum {string}
+             */
+            cost_basis: "history" | "fallback";
         };
         /** Body_import_all_api_export_import_import_all_post */
         Body_import_all_api_export_import_import_all_post: {
@@ -9719,6 +10352,37 @@ export interface components {
             base_content?: string | null;
         };
         /**
+         * ConsolidatedDryRunRequest
+         * @description Body for ``POST /api/agents/{id}/tuning-session/dry-run``.
+         */
+        ConsolidatedDryRunRequest: {
+            /** Proposed Prompt */
+            proposed_prompt: string;
+        };
+        /**
+         * ConsolidatedDryRunResponse
+         * @description Aggregated per-run dry-run results.
+         */
+        ConsolidatedDryRunResponse: {
+            /** Results */
+            results: components["schemas"]["DryRunPerRun"][];
+        };
+        /**
+         * ConsolidatedProposalResponse
+         * @description Output of ``POST /api/agents/{id}/tuning-session``.
+         *
+         *     ``affected_run_ids`` is the list of flagged runs that informed the
+         *     proposal — this is what the dry-run/apply endpoints will operate on.
+         */
+        ConsolidatedProposalResponse: {
+            /** Summary */
+            summary: string;
+            /** Proposed Prompt */
+            proposed_prompt: string;
+            /** Affected Run Ids */
+            affected_run_ids: string[];
+        };
+        /**
          * ConversationCreate
          * @description Request model for creating a conversation.
          */
@@ -10350,6 +11014,16 @@ export interface components {
              */
             expires_in: number;
         };
+        /** DiffOperation */
+        DiffOperation: {
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "add" | "keep" | "remove";
+            /** Text */
+            text: string;
+        };
         /**
          * DiffRequest
          * @description Request to get a file diff.
@@ -10546,6 +11220,73 @@ export interface components {
             };
         };
         /**
+         * DryRunPerRun
+         * @description Per-run dry-run verdict in a consolidated dry-run response.
+         */
+        DryRunPerRun: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Would Still Decide Same */
+            would_still_decide_same: boolean;
+            /** Reasoning */
+            reasoning: string;
+            /** Confidence */
+            confidence: number;
+        };
+        /**
+         * DryRunRequest
+         * @description Evaluate a proposed system prompt against a single completed run.
+         */
+        DryRunRequest: {
+            /** Proposed Prompt */
+            proposed_prompt: string;
+        };
+        /**
+         * DryRunResponse
+         * @description Result of a single-run dry-run evaluation.
+         */
+        DryRunResponse: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Would Still Decide Same */
+            would_still_decide_same: boolean;
+            /** Reasoning */
+            reasoning: string;
+            /** Alternative Action */
+            alternative_action?: string | null;
+            /** Confidence */
+            confidence: number;
+        };
+        /** DryRunTurn */
+        DryRunTurn: {
+            /**
+             * Kind
+             * @default dryrun
+             * @constant
+             */
+            kind: "dryrun";
+            /** Before */
+            before: string;
+            /** After */
+            after: string;
+            /**
+             * Predicted
+             * @enum {string}
+             */
+            predicted: "up" | "down";
+            /**
+             * At
+             * Format: date-time
+             */
+            at?: string;
+        };
+        /**
          * DynamicValuesRequest
          * @description Request model for fetching dynamic values for adapter config fields.
          *     POST /api/events/adapters/{adapter_name}/dynamic-values
@@ -10687,6 +11428,13 @@ export interface components {
              * @description Shared secret. If omitted, one is auto-generated.
              */
             secret?: string | null;
+            /**
+             * Hmac Scheme
+             * @description HMAC signing scheme. 'shopify' signs all query params; 'halopsa' signs only agent_id.
+             * @default shopify
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
         };
         /**
          * EmbedSecretCreatedResponse
@@ -10699,6 +11447,11 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
             /** Created At */
             created_at: string;
             /** Raw Secret */
@@ -10715,6 +11468,11 @@ export interface components {
             name: string;
             /** Is Active */
             is_active: boolean;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme: "shopify" | "halopsa";
             /** Created At */
             created_at: string;
         };
@@ -10727,6 +11485,11 @@ export interface components {
             is_active?: boolean | null;
             /** Name */
             name?: string | null;
+            /**
+             * Hmac Scheme
+             * @enum {string}
+             */
+            hmac_scheme?: "shopify" | "halopsa" | null;
         };
         /**
          * EmbeddingConfigRequest
@@ -11431,7 +12194,7 @@ export interface components {
          * @description Workflow execution status
          * @enum {string}
          */
-        ExecutionStatus: "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "Stuck" | "CompletedWithErrors" | "Cancelling" | "Cancelled";
+        ExecutionStatus: "Scheduled" | "Pending" | "Running" | "Success" | "Failed" | "Timeout" | "Stuck" | "CompletedWithErrors" | "Cancelling" | "Cancelled";
         /**
          * ExecutionsListResponse
          * @description Response model for listing workflow executions with pagination
@@ -12001,6 +12764,44 @@ export interface components {
              */
             binary: boolean;
         };
+        /** FlagConversationResponse */
+        FlagConversationResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Messages */
+            messages: (components["schemas"]["UserTurn"] | components["schemas"]["AssistantTurn"] | components["schemas"]["ProposalTurn"] | components["schemas"]["DryRunTurn"])[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Last Updated At
+             * Format: date-time
+             */
+            last_updated_at: string;
+        };
+        /** FleetStatsResponse */
+        FleetStatsResponse: {
+            /** Total Runs */
+            total_runs: number;
+            /** Avg Success Rate */
+            avg_success_rate: number;
+            /** Total Cost 7D */
+            total_cost_7d: string;
+            /** Active Agents */
+            active_agents: number;
+            /** Needs Review */
+            needs_review: number;
+        };
         /**
          * FormAccessLevel
          * @description Form access control levels
@@ -12057,6 +12858,16 @@ export interface components {
             startup_data?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Scheduled At
+             * @description Run at this tz-aware timestamp (ISO-8601). Must be strictly in the future and within 1 year of now. Mutually exclusive with delay_seconds.
+             */
+            scheduled_at?: string | null;
+            /**
+             * Delay Seconds
+             * @description Run this many seconds from now (≤ 1 year). Mutually exclusive with scheduled_at.
+             */
+            delay_seconds?: number | null;
         };
         /**
          * FormField
@@ -12151,7 +12962,7 @@ export interface components {
          * @description Form field types
          * @enum {string}
          */
-        FormFieldType: "text" | "email" | "number" | "select" | "checkbox" | "textarea" | "radio" | "date" | "datetime" | "markdown" | "html" | "file";
+        FormFieldType: "text" | "email" | "number" | "select" | "multi_select" | "checkbox" | "textarea" | "radio" | "date" | "datetime" | "markdown" | "html" | "file";
         /**
          * FormPublic
          * @description Form output for API responses.
@@ -13590,6 +14401,16 @@ export interface components {
              * @description Default system prompt for agentless chat
              */
             default_system_prompt?: string | null;
+            /**
+             * Summarization Model
+             * @description Model override for post-run summarization. Falls back to primary model if unset.
+             */
+            summarization_model?: string | null;
+            /**
+             * Tuning Model
+             * @description Model override for tuning chat + dry-run. Falls back to primary model if unset.
+             */
+            tuning_model?: string | null;
         };
         /**
          * LLMConfigResponse
@@ -13612,6 +14433,10 @@ export interface components {
             max_tokens: number;
             /** Default System Prompt */
             default_system_prompt?: string | null;
+            /** Summarization Model */
+            summarization_model?: string | null;
+            /** Tuning Model */
+            tuning_model?: string | null;
             /**
              * Is Configured
              * @default true
@@ -14109,6 +14934,26 @@ export interface components {
          * @enum {string}
          */
         MessageRole: "user" | "assistant" | "system" | "tool" | "tool_call";
+        /**
+         * MetadataKeysResponse
+         * @description Distinct top-level keys observed in agent-run metadata for an agent.
+         *
+         *     Powers the key combobox on the runs-list captured-data filter.
+         */
+        MetadataKeysResponse: {
+            /** Keys */
+            keys?: string[];
+        };
+        /**
+         * MetadataValuesResponse
+         * @description Distinct values observed for a given metadata key on an agent's runs.
+         *
+         *     Powers the value combobox when the user picks the 'eq' operator.
+         */
+        MetadataValuesResponse: {
+            /** Values */
+            values?: string[];
+        };
         /**
          * MicrosoftOAuthConfigRequest
          * @description Request model for configuring Microsoft OAuth SSO.
@@ -15555,6 +16400,24 @@ export interface components {
              * @description Display name
              */
             name?: string | null;
+        };
+        /** ProposalTurn */
+        ProposalTurn: {
+            /**
+             * Kind
+             * @default proposal
+             * @constant
+             */
+            kind: "proposal";
+            /** Summary */
+            summary: string;
+            /** Diff */
+            diff: components["schemas"]["DiffOperation"][];
+            /**
+             * At
+             * Format: date-time
+             */
+            at?: string;
         };
         /**
          * QueueItem
@@ -17265,6 +18128,11 @@ export interface components {
              */
             context_after?: string | null;
         };
+        /** SendFlagMessageRequest */
+        SendFlagMessageRequest: {
+            /** Content */
+            content: string;
+        };
         /**
          * SetConfigRequest
          * @description Request model for setting config
@@ -17507,6 +18375,48 @@ export interface components {
              * Format: date-time
              */
             last_stuck_at: string;
+        };
+        /** SummaryBackfillJobListResponse */
+        SummaryBackfillJobListResponse: {
+            /** Items */
+            items: components["schemas"]["SummaryBackfillJobResponse"][];
+        };
+        /**
+         * SummaryBackfillJobResponse
+         * @description Snapshot of a SummaryBackfillJob orchestration row.
+         */
+        SummaryBackfillJobResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Agent Id */
+            agent_id?: string | null;
+            /**
+             * Requested By
+             * Format: uuid
+             */
+            requested_by: string;
+            /** Status */
+            status: string;
+            /** Total */
+            total: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Failed */
+            failed: number;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: string;
+            /** Actual Cost Usd */
+            actual_cost_usd: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Completed At */
+            completed_at?: string | null;
         };
         /**
          * SyncRequest
@@ -18140,6 +19050,22 @@ export interface components {
              */
             role_ids: string[];
         };
+        /** UserTurn */
+        UserTurn: {
+            /**
+             * Kind
+             * @default user
+             * @constant
+             */
+            kind: "user";
+            /** Content */
+            content: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at?: string;
+        };
         /**
          * UserUpdate
          * @description Input for updating a user.
@@ -18207,6 +19133,32 @@ export interface components {
              * @enum {string}
              */
             severity: "error" | "warning";
+        };
+        /** VerdictRequest */
+        VerdictRequest: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "up" | "down";
+            /** Note */
+            note?: string | null;
+        };
+        /** VerdictResponse */
+        VerdictResponse: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Verdict */
+            verdict?: string | null;
+            /** Verdict Note */
+            verdict_note?: string | null;
+            /** Verdict Set At */
+            verdict_set_at?: string | null;
+            /** Verdict Set By */
+            verdict_set_by?: string | null;
         };
         /** VersionResponse */
         VersionResponse: {
@@ -18442,6 +19394,8 @@ export interface components {
             started_at?: string | null;
             /** Completed At */
             completed_at?: string | null;
+            /** Scheduled At */
+            scheduled_at?: string | null;
             /** Logs */
             logs?: {
                 [key: string]: unknown;
@@ -18531,6 +19485,16 @@ export interface components {
              * @description Execute as this user UUID (impersonation). Requires platform admin.
              */
             run_as?: string | null;
+            /**
+             * Scheduled At
+             * @description Run at this tz-aware timestamp (ISO-8601). Must be strictly in the future and within 1 year of now. Mutually exclusive with delay_seconds.
+             */
+            scheduled_at?: string | null;
+            /**
+             * Delay Seconds
+             * @description Run this many seconds from now (≤ 1 year). Mutually exclusive with scheduled_at.
+             */
+            delay_seconds?: number | null;
         };
         /**
          * WorkflowExecutionResponse
@@ -18562,6 +19526,11 @@ export interface components {
             started_at?: string | null;
             /** Completed At */
             completed_at?: string | null;
+            /**
+             * Scheduled At
+             * @description For scheduled executions, the target run time.
+             */
+            scheduled_at?: string | null;
             /** Logs */
             logs?: {
                 [key: string]: unknown;
@@ -21692,6 +22661,39 @@ export interface operations {
             };
         };
     };
+    cancel_scheduled_execution_api_workflows_executions__execution_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_workflow_api_workflows_validate_post: {
         parameters: {
             query?: never;
@@ -24606,7 +25608,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24639,7 +25641,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24672,7 +25674,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -24705,7 +25707,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26552,6 +27554,37 @@ export interface operations {
             };
         };
     };
+    get_fleet_stats_endpoint_api_agents_stats_fleet_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_agent_api_agents__agent_id__get: {
         parameters: {
             query?: never;
@@ -26682,6 +27715,39 @@ export interface operations {
             };
         };
     };
+    get_agent_stats_endpoint_api_agents__agent_id__stats_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_agent_tools_api_agents__agent_id__tools_get: {
         parameters: {
             query?: never;
@@ -26755,6 +27821,12 @@ export interface operations {
                 org_id?: string | null;
                 start_date?: string | null;
                 end_date?: string | null;
+                /** @description Full-text search across asked/did/error/caller/metadata */
+                q?: string | null;
+                /** @description Filter by verdict: 'up', 'down', or 'unreviewed' */
+                verdict?: string | null;
+                /** @description JSON array of conditions on run metadata, e.g. [{"key":"billing_status","op":"eq","value":"Billable"},{"key":"service_category","op":"contains","value":"security"}]. Supported ops: 'eq' (exact match) and 'contains' (case-insensitive substring). All conditions are AND-ed. */
+                metadata_filter?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -26771,6 +27843,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_metadata_keys_api_agent_runs_metadata_keys_get: {
+        parameters: {
+            query: {
+                /** @description Required. Scope keys to this agent. */
+                agent_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataKeysResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_metadata_values_api_agent_runs_metadata_values_get: {
+        parameters: {
+            query: {
+                /** @description Required. Scope values to this agent. */
+                agent_id: string;
+                /** @description Metadata key to aggregate. */
+                key: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataValuesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_backfill_jobs_api_agent_runs_backfill_jobs_get: {
+        parameters: {
+            query?: {
+                /** @description If true, only return running jobs. */
+                active?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryBackfillJobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_backfill_eligible_api_agent_runs_backfill_eligible_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+                prompt_version_below?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackfillEligibleResponse"];
                 };
             };
             /** @description Validation Error */
@@ -26879,6 +28082,206 @@ export interface operations {
             };
         };
     };
+    set_verdict_api_agent_runs__run_id__verdict_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerdictRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerdictResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_verdict_api_agent_runs__run_id__verdict_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerdictResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_flag_conversation_api_agent_runs__run_id__flag_conversation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagConversationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_flag_message_api_agent_runs__run_id__flag_conversation_message_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendFlagMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagConversationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_summary_api_agent_runs__run_id__regenerate_summary_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dry_run_agent_run_api_agent_runs__run_id__dry_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DryRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DryRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     execute_agent_run_api_agent_runs_execute_post: {
         parameters: {
             query?: never;
@@ -26901,6 +28304,202 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_summaries_api_agent_runs_backfill_summaries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackfillSummariesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackfillSummariesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_backfill_job_api_agent_runs_backfill_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryBackfillJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_backfill_job_api_agent_runs_backfill_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryBackfillJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_tuning_session_api_agents__agent_id__tuning_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsolidatedProposalResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dry_run_tuning_session_api_agents__agent_id__tuning_session_dry_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsolidatedDryRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsolidatedDryRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_tuning_session_api_agents__agent_id__tuning_session_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyTuningRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyTuningResponse"];
                 };
             };
             /** @description Validation Error */

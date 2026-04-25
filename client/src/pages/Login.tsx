@@ -4,7 +4,7 @@
  * Handles email/password login with MFA flow, OAuth, and passkey options.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOAuthProviders, initOAuth } from "@/services/auth";
@@ -64,7 +64,10 @@ export function Login() {
 	const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [oauthProviders, setOAuthProviders] = useState<OAuthProvider[]>([]);
-	const [passkeySupported, setPasskeySupported] = useState(false);
+	// Derived synchronously — `supportsPasskeys()` is a pure feature check on
+	// `window` that returns the same value across renders for the lifetime of
+	// the page, so it does not need to live in state.
+	const passkeySupported = useMemo(() => supportsPasskeys(), []);
 
 	// Redirect path from URL query params (for MCP OAuth) or location state
 	const searchParams = new URLSearchParams(location.search);
@@ -135,12 +138,11 @@ export function Login() {
 			});
 	}, []);
 
-	// Check passkey support and auto-trigger passkey auth
+	// Auto-trigger passkey authentication if:
 	useEffect(() => {
-		const supported = supportsPasskeys();
-		setPasskeySupported(supported);
+		const supported = passkeySupported;
 
-		// Auto-trigger passkey authentication if:
+		// Conditions:
 		// - Browser supports passkeys
 		// - Not already authenticated
 		// - Haven't already attempted this session
@@ -161,7 +163,7 @@ export function Login() {
 			return () => clearTimeout(timer);
 		}
 		return undefined;
-	}, [authLoading, isAuthenticated, step, handlePasskeyLogin]);
+	}, [authLoading, isAuthenticated, step, handlePasskeyLogin, passkeySupported]);
 
 	// Clear the auto-attempt flag when user logs out and returns
 	useEffect(() => {
@@ -260,7 +262,7 @@ export function Login() {
 			sessionStorage.setItem("oauth_state", state);
 
 			// Redirect to OAuth provider
-			window.location.href = authorization_url;
+			window.location.assign(authorization_url);
 		} catch (err) {
 			setError(
 				err instanceof Error

@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useForm, type Resolver } from "react-hook-form";
+import {
+	useForm,
+	useWatch,
+	type Control,
+	type Resolver,
+	type UseFormSetValue,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { MultiCombobox } from "@/components/forms/MultiCombobox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Code2 } from "lucide-react";
@@ -34,6 +41,59 @@ import { FormContextProvider, useFormContext } from "@/contexts/FormContext";
 import { useLaunchWorkflow } from "@/hooks/useLaunchWorkflow";
 import { FormContextPanel } from "@/components/forms/FormContextPanel";
 import { FileUploadField } from "@/components/forms/FileUploadField";
+import {
+	ScheduleControls,
+	type Schedule,
+} from "@/components/execution/ScheduleControls";
+import { toast } from "sonner";
+
+/**
+ * Memo-safe checkbox bound to react-hook-form via `useWatch`. Using
+ * `useWatch` (rather than `watch(name)`) keeps the React Compiler from
+ * skipping memoization for the parent component.
+ */
+function CheckboxField({
+	field,
+	control,
+	setValue,
+	error,
+}: {
+	field: FormField;
+	control: Control<Record<string, unknown>>;
+	setValue: UseFormSetValue<Record<string, unknown>>;
+	error: ReturnType<typeof useForm>["formState"]["errors"][string];
+}) {
+	const value = useWatch({ control, name: field.name });
+	return (
+		<div className="space-y-2">
+			<div className="flex items-center space-x-2">
+				<Checkbox
+					id={field.name}
+					checked={value === true}
+					onCheckedChange={(checked) =>
+						setValue(field.name, checked, {
+							shouldValidate: true,
+						})
+					}
+				/>
+				<Label htmlFor={field.name} className="cursor-pointer">
+					{field.label}
+					{field.required && (
+						<span className="text-destructive ml-1">*</span>
+					)}
+				</Label>
+			</div>
+			{field.help_text && (
+				<p className="text-sm text-muted-foreground">{field.help_text}</p>
+			)}
+			{error && (
+				<p className="text-sm text-destructive">
+					{error.message as string}
+				</p>
+			)}
+		</div>
+	);
+}
 
 interface FormRendererProps {
 	form: Form;
@@ -124,6 +184,9 @@ function FormRendererInner({
 	const [uploadingFields, setUploadingFields] = useState<Set<string>>(
 		new Set(),
 	);
+
+	// Deferred execution: null = run now, non-null = scheduled.
+	const [schedule, setSchedule] = useState<Schedule | null>(null);
 
 	// Ref for setValue so loadDataProviders can call it for auto_fill
 	// (loadDataProviders is defined before useForm, so we use a ref bridge)
@@ -384,6 +447,9 @@ function FormRendererInner({
 				case "checkbox":
 					fieldSchema = z.boolean();
 					break;
+				case "multi_select":
+					fieldSchema = z.array(z.string());
+					break;
 				case "file":
 					// File fields store S3 paths as strings (or array of strings for multiple)
 					if (field.multiple) {
@@ -402,6 +468,10 @@ function FormRendererInner({
 					fieldSchema = z.boolean().refine((val) => val === true, {
 						message: "This field is required",
 					});
+				} else if (field.type === "multi_select") {
+					fieldSchema = z
+						.array(z.string())
+						.min(1, "Select at least one option");
 				} else if (field.type === "file") {
 					// File fields: check for non-null and non-empty
 					if (field.multiple) {
@@ -484,12 +554,25 @@ function FormRendererInner({
 		formState: { errors, isValid },
 		setValue,
 		watch,
+		control,
 	} = useForm({
 		resolver: customResolver,
 		mode: "onChange", // Validate on change to keep isValid up-to-date
 		defaultValues: fields.reduce(
 			(acc: Record<string, unknown>, field: FormField) => {
-				if (
+				if (field.type === "multi_select") {
+					// default_value is a comma-separated list of option values
+					if (typeof field.default_value === "string" && field.default_value.length > 0) {
+						acc[field.name] = field.default_value
+							.split(",")
+							.map((v) => v.trim())
+							.filter((v) => v.length > 0);
+					} else if (Array.isArray(field.default_value)) {
+						acc[field.name] = field.default_value;
+					} else {
+						acc[field.name] = [];
+					}
+				} else if (
 					field.default_value !== undefined &&
 					field.default_value !== null
 				) {
@@ -595,12 +678,29 @@ function FormRendererInner({
 				body: {
 					form_data: data,
 					startup_data: context.workflow,
+					...(schedule ?? {}),
 				},
 			});
 
 			// Call callback if provided (for embedded forms)
 			if (onExecutionStart) {
 				onExecutionStart(result.execution_id);
+			}
+
+			// Scheduled run: the workflow hasn't started yet. Send the user to
+			// /history (where the new row will show with the Scheduled badge)
+			// with a toast showing the scheduled time. Embedded forms opt out
+			// of this navigation via preventNavigation and surface the state
+			// through onExecutionStart instead.
+			if (result.status === "Scheduled") {
+				if (!preventNavigation) {
+					const when = result.scheduled_at
+						? new Date(result.scheduled_at).toLocaleString()
+						: "later";
+					toast.success(`Scheduled for ${when}`);
+					navigate("/history");
+				}
+				return;
 			}
 
 			// Only navigate if not prevented (embedded forms handle their own display)
@@ -780,8 +880,10 @@ function FormRendererInner({
 	const renderField = (field: FormField) => {
 		const error = errors[field.name];
 
-		// If field has a data provider, render it as a dropdown regardless of type
-		if (field.data_provider_id) {
+		// If field has a data provider, render it as a single-select dropdown regardless
+		// of type — EXCEPT for multi_select, which has its own render case below that
+		// uses the same provider-loaded options but with a multi-select UI.
+		if (field.data_provider_id && field.type !== "multi_select") {
 			const providerId =
 				typeof field.data_provider_id === "string"
 					? field.data_provider_id
@@ -849,40 +951,12 @@ function FormRendererInner({
 
 			case "checkbox":
 				return (
-					<div className="space-y-2">
-						<div className="flex items-center space-x-2">
-							<Checkbox
-								id={field.name}
-								checked={watch(field.name) === true}
-								onCheckedChange={(checked) =>
-									setValue(field.name, checked, {
-										shouldValidate: true,
-									})
-								}
-							/>
-							<Label
-								htmlFor={field.name}
-								className="cursor-pointer"
-							>
-								{field.label}
-								{field.required && (
-									<span className="text-destructive ml-1">
-										*
-									</span>
-								)}
-							</Label>
-						</div>
-						{field.help_text && (
-							<p className="text-sm text-muted-foreground">
-								{field.help_text}
-							</p>
-						)}
-						{error && (
-							<p className="text-sm text-destructive">
-								{error.message as string}
-							</p>
-						)}
-					</div>
+					<CheckboxField
+						field={field}
+						control={control}
+						setValue={setValue}
+						error={error}
+					/>
 				);
 
 			case "select": {
@@ -933,6 +1007,79 @@ function FormRendererInner({
 							placeholder={
 								field.placeholder || "Select an option..."
 							}
+							emptyText="No options available"
+							isLoading={!!isLoadingOptions}
+							disabled={
+								!!isLoadingOptions ||
+								(!!providerId && !hasSuccessfullyLoaded)
+							}
+						/>
+						{providerError && (
+							<p className="text-sm text-destructive">
+								{providerError}
+							</p>
+						)}
+						{!providerError && field.help_text && (
+							<p className="text-sm text-muted-foreground">
+								{field.help_text}
+							</p>
+						)}
+						{error && (
+							<p className="text-sm text-destructive">
+								{error.message as string}
+							</p>
+						)}
+					</div>
+				);
+			}
+
+			case "multi_select": {
+				const providerId =
+					typeof field.data_provider_id === "string"
+						? field.data_provider_id
+						: undefined;
+				const cacheKey = providerId
+					? `${providerId}_${field.name}`
+					: undefined;
+				const staticOptions = (field.options || []) as Array<{
+					label: string;
+					value: string;
+				}>;
+				const dynamicOptions = cacheKey
+					? toComboboxOptions(dataProviderState.options[cacheKey])
+					: [];
+				const options = providerId ? dynamicOptions : staticOptions;
+				const isLoadingOptions = cacheKey
+					? dataProviderState.loading[cacheKey]
+					: false;
+				const providerError = cacheKey
+					? dataProviderState.errors[cacheKey]
+					: undefined;
+				const hasSuccessfullyLoaded = cacheKey
+					? dataProviderState.successfullyLoaded.has(cacheKey)
+					: true;
+				const currentValue = Array.isArray(formValues[field.name])
+					? (formValues[field.name] as string[])
+					: [];
+
+				return (
+					<div className="space-y-2">
+						<Label htmlFor={field.name}>
+							{field.label}
+							{field.required && (
+								<span className="text-destructive ml-1">*</span>
+							)}
+						</Label>
+						<MultiCombobox
+							id={field.name}
+							options={options && options.length > 0 ? options : []}
+							value={currentValue}
+							onValueChange={(next) =>
+								setValue(field.name, next, {
+									shouldValidate: true,
+								})
+							}
+							placeholder={field.placeholder || "Select options..."}
 							emptyText="No options available"
 							isLoading={!!isLoadingOptions}
 							disabled={
@@ -1379,6 +1526,17 @@ function FormRendererInner({
 									</motion.div>
 								))}
 							</AnimatePresence>
+							<div className="pt-4">
+								<ScheduleControls
+									value={schedule}
+									onChange={setSchedule}
+									disabled={
+										submitForm.isPending ||
+										isNavigating ||
+										uploadingFields.size > 0
+									}
+								/>
+							</div>
 							<div className="pt-4">
 								<Button
 									type="submit"

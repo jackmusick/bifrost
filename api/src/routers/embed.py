@@ -55,11 +55,11 @@ async def embed_app(
     if not active_secrets:
         raise HTTPException(status_code=403, detail="No embed secrets configured")
 
-    # Try each active secret
+    # Try each active secret using its configured scheme
     verified = False
     for secret_record in active_secrets:
         raw_secret = decrypt_secret(secret_record.secret_encrypted)
-        if verify_embed_hmac(query_params, raw_secret):
+        if verify_embed_hmac(query_params, raw_secret, secret_record.hmac_scheme):
             verified = True
             break
 
@@ -135,11 +135,11 @@ async def embed_form(
     if not active_secrets:
         raise HTTPException(status_code=403, detail="No embed secrets configured")
 
-    # Try each active secret
+    # Try each active secret using its configured scheme
     verified = False
     for secret_record in active_secrets:
         raw_secret = decrypt_secret(secret_record.secret_encrypted)
-        if verify_embed_hmac(query_params, raw_secret):
+        if verify_embed_hmac(query_params, raw_secret, secret_record.hmac_scheme):
             verified = True
             break
 

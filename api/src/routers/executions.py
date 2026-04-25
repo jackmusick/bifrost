@@ -287,6 +287,7 @@ class ExecutionRepository:
             duration_ms=execution.duration_ms,
             started_at=execution.started_at,
             completed_at=execution.completed_at,
+            scheduled_at=execution.scheduled_at,
             logs=[log.model_dump() for log in logs],
             # Admin-only fields (null for non-admins)
             variables=execution.variables if user.is_superuser else None,
@@ -514,6 +515,7 @@ class ExecutionRepository:
             duration_ms=execution.duration_ms,
             started_at=execution.started_at,
             completed_at=execution.completed_at,
+            scheduled_at=execution.scheduled_at,
             logs=None,  # Fetched separately via /logs endpoint
             variables=execution.variables if is_admin else None,
             execution_context=execution.execution_context if is_admin else None,

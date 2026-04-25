@@ -28,6 +28,9 @@ class FormEmbedSecret(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    hmac_scheme: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="shopify", server_default="shopify"
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
