@@ -33,7 +33,7 @@ pyjwt[crypto]  # JWT tokens
 pwdlib[bcrypt]  # Modern password hashing
 cryptography  # Encryption utilities
 pyotp  # TOTP/HOTP for MFA
-webauthn>=2.0.0  # WebAuthn/Passkeys support
+webauthn>=2.7.1  # WebAuthn/Passkeys support
 
 # =============================================================================
 # Configuration
