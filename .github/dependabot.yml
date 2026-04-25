@@ -1,0 +1,85 @@
+# Dependabot configuration
+# Reference: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Auto-merge policy is enforced by .github/workflows/dependabot-auto-merge.yml
+# (security + patch + minor merge automatically when CI is green; major + Docker
+# stay open for human review).
+
+version: 2
+updates:
+  # Python deps (root requirements.txt)
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 10
+    groups:
+      python-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels:
+      - dependencies
+      - python
+
+  # JS/TS deps (client/)
+  - package-ecosystem: npm
+    directory: "/client"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels:
+      - dependencies
+      - javascript
+
+  # Docker base images — api/
+  - package-ecosystem: docker
+    directory: "/api"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+
+  # Docker base images — client/
+  - package-ecosystem: docker
+    directory: "/client"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+
+  # GitHub Actions — repo root
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 10
+    groups:
+      actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels:
+      - dependencies
+      - github-actions
