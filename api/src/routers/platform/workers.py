@@ -202,8 +202,9 @@ async def get_pool_stats(
                 total_processes += hb.get("pool_size", 0)
                 total_idle += hb.get("idle_count", 0)
                 total_busy += hb.get("busy_count", 0)
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as e:
+                # Corrupted heartbeat JSON for this worker — skip its contribution
+                logger.debug(f"invalid heartbeat JSON for worker {worker_id}: {e}")
 
     return PoolStatsResponse(
         total_pools=total_pools,
@@ -462,8 +463,9 @@ async def recycle_all_processes(
         try:
             hb = json.loads(heartbeat_data)
             processes_affected = hb.get("pool_size", 0)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            # Corrupted heartbeat JSON — processes_affected stays 0, recycle proceeds
+            logger.debug(f"invalid heartbeat JSON for worker {worker_id}: {e}")
 
     # Publish recycle_all command via Redis pub/sub
     command_channel = f"bifrost:pool:{worker_id}:commands"

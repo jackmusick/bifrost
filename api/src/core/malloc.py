@@ -24,7 +24,8 @@ def trim_malloc() -> None:
         if _libc is None:
             _libc = ctypes.CDLL("libc.so.6")
         _libc.malloc_trim(0)
-    except OSError:
-        pass
+    except OSError as e:
+        # Non-glibc platform (macOS, musl) — libc.so.6 not present
+        logger.debug(f"malloc_trim unavailable on this platform: {e}")
     except Exception as e:
         logger.debug(f"malloc_trim skipped: {e}")

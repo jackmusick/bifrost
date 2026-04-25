@@ -20,8 +20,10 @@ from src.services.llm import get_llm_client, LLMMessage
 logger = logging.getLogger(__name__)
 
 
-# Regex to match @[Agent Name] mentions (bracketed format)
-MENTION_PATTERN = re.compile(r"@\[([^\]]+)\]")
+# Regex to match @[Agent Name] mentions (bracketed format).
+# Length cap (1..256) prevents pathological backtracking on attacker-supplied
+# chat messages that omit the closing bracket.
+MENTION_PATTERN = re.compile(r"@\[([^\]]{1,256})\]")
 
 
 class AgentRouter:
