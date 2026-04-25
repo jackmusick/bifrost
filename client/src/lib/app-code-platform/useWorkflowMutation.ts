@@ -213,7 +213,7 @@ export function useWorkflowMutation<T = unknown>(
 					setError(errorMessage);
 					setIsLoading(false);
 				}
-				throw new Error(errorMessage);
+				throw new Error(errorMessage, { cause: err });
 			}
 
 			// Set up timeout

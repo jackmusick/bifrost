@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
 	CheckCircle,
@@ -448,31 +448,37 @@ export function ExecutionHistory() {
 		}
 	};
 
-	// Reset pagination when filters change
-	useEffect(() => {
+	// Reset pagination when filters change. Adjust during render with a
+	// previous-key sentinel rather than via setState-in-effect.
+	const filtersKey = `${statusFilter}|${dateRange?.from?.toISOString() ?? ""}|${dateRange?.to?.toISOString() ?? ""}|${showLocal}|${filterOrgId ?? ""}|${workflowIdFilter ?? ""}`;
+	const [prevFiltersKey, setPrevFiltersKey] = useState(filtersKey);
+	if (prevFiltersKey !== filtersKey) {
+		setPrevFiltersKey(filtersKey);
 		setPageStack([]);
 		setCurrentToken(undefined);
-	}, [statusFilter, dateRange, showLocal, filterOrgId, workflowIdFilter]);
+	}
 
-	// Drop optimistic-cancel entries once the server echoes the row as Cancelled
-	// (or it drops off the current page). Keeps the set from growing forever.
-	useEffect(() => {
-		setOptimisticCancelledIds((prev) => {
-			if (prev.size === 0) return prev;
-			const visibleIds = new Set(
-				executions.map((e) => e.execution_id),
-			);
+	// Drop optimistic-cancel entries once the server echoes the row as
+	// Cancelled (or it drops off the current page). Keeps the set from
+	// growing forever. Adjust during render with a previous-executions-ref
+	// sentinel rather than via setState-in-effect.
+	const [prevExecutionsRef, setPrevExecutionsRef] = useState(executions);
+	if (prevExecutionsRef !== executions) {
+		setPrevExecutionsRef(executions);
+		if (optimisticCancelledIds.size > 0) {
+			const visibleIds = new Set(executions.map((e) => e.execution_id));
 			const next = new Set<string>();
-			for (const id of prev) {
-				// Keep only IDs still visible AND not yet echoed as Cancelled.
+			for (const id of optimisticCancelledIds) {
 				const row = executions.find((e) => e.execution_id === id);
 				if (!row) continue; // dropped off page → forget
 				if (row.status === "Cancelled") continue; // server caught up
 				if (visibleIds.has(id)) next.add(id);
 			}
-			return next;
-		});
-	}, [executions]);
+			if (next.size !== optimisticCancelledIds.size) {
+				setOptimisticCancelledIds(next);
+			}
+		}
+	}
 
 	return (
 		<div className="h-full flex flex-col space-y-6">
