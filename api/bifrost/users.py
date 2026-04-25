@@ -5,6 +5,8 @@ Provides Python API for user operations from workflows.
 All operations go through HTTP API endpoints.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from .client import get_client, raise_for_status_with_detail
