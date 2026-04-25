@@ -5,6 +5,8 @@ Provides Python API for form operations (read-only).
 All operations go through HTTP API endpoints.
 """
 
+from __future__ import annotations
+
 from .client import get_client, raise_for_status_with_detail
 from .models import FormPublic
 
