@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import PlainTextResponse
 
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.services.events.processor import EventProcessor
 from src.services.webhooks.protocol import (
     Deliver,
@@ -126,7 +127,7 @@ async def receive_webhook(
     try:
         result = await processor.process_webhook(source_id, webhook_request)
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}", exc_info=True)
+        logger.error(f"Error processing webhook: {log_safe(e)}", exc_info=True)
         # Return 500 but don't expose internal error details
         return Response(
             content="Internal server error",
@@ -147,7 +148,7 @@ async def receive_webhook(
     if isinstance(result, Rejected):
         # Request was rejected by adapter
         logger.warning(
-            f"Webhook rejected: {source_id}",
+            f"Webhook rejected: {log_safe(source_id)}",
             extra={
                 "source_id": source_id,
                 "status_code": result.status_code,
@@ -191,7 +192,7 @@ async def receive_webhook(
                     await db.commit()
 
                     logger.info(
-                        f"Webhook accepted: {source_id}",
+                        f"Webhook accepted: {log_safe(source_id)}",
                         extra={
                             "source_id": source_id,
                             "event_id": str(event.id),
@@ -199,7 +200,7 @@ async def receive_webhook(
                         },
                     )
         except Exception as e:
-            logger.error(f"Error queueing deliveries: {e}", exc_info=True)
+            logger.error(f"Error queueing deliveries: {log_safe(e)}", exc_info=True)
             # Event was recorded, just couldn't queue - don't fail the webhook
 
         # Return 202 Accepted

@@ -8,6 +8,7 @@ This service implements Phase 3 of the workflow-role-access plan:
 auto-assignment of roles to workflows when entities are saved.
 """
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -19,6 +20,8 @@ from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.app_roles import AppRole
 from src.models.orm.forms import Form, FormField, FormRole
 from src.models.orm.workflow_roles import WorkflowRole
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -51,15 +54,17 @@ def extract_form_workflow_ids(
     if form.workflow_id:
         try:
             workflow_ids.add(UUID(form.workflow_id))
-        except ValueError:
-            pass
+        except ValueError as e:
+            # Non-UUID portable ref (e.g. "path::func") — not a real workflow ID
+            logger.debug(f"form.workflow_id not a UUID, skipping: {e}")
 
     # Launch workflow
     if form.launch_workflow_id:
         try:
             workflow_ids.add(UUID(form.launch_workflow_id))
-        except ValueError:
-            pass
+        except ValueError as e:
+            # Non-UUID portable ref — not a real workflow ID
+            logger.debug(f"form.launch_workflow_id not a UUID, skipping: {e}")
 
     # Data providers from fields
     form_fields = fields if fields is not None else form.fields

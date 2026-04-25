@@ -7,12 +7,15 @@ without treating it as an error.
 """
 from __future__ import annotations
 
+import logging
 from typing import AsyncGenerator
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 
+
+logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.asyncio
 
@@ -49,8 +52,9 @@ async def paused_agent(e2e_client, platform_admin) -> AsyncGenerator[dict, None]
         e2e_client.delete(
             f"/api/agents/{agent['id']}", headers=platform_admin.headers
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")
 
 
 class TestPauseSemantics:

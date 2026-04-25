@@ -319,8 +319,9 @@ class AutonomousAgentExecutor:
         if output_schema and final_content:
             try:
                 output = json.loads(final_content)
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as e:
+                # Agent didn't return valid JSON for the schema — return raw content
+                logger.debug(f"final agent output is not JSON, returning raw string: {e}")
 
         return {
             "output": output,
