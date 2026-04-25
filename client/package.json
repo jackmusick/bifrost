@@ -104,7 +104,7 @@
 	},
 	"devDependencies": {
 		"@azure/static-web-apps-cli": "^2.0.1",
-		"@eslint/js": "^9.13.0",
+		"@eslint/js": "^10.0.1",
 		"@playwright/test": "^1.56.0",
 		"@tailwindcss/typography": "^0.5.19",
 		"@testing-library/jest-dom": "^6.9.1",
