@@ -44,7 +44,7 @@ SUMMARIZE_BACKFILL_QUEUE = "agent-summarization-backfill"
 # user-message payload changes meaningfully, so admins can use the backfill
 # endpoint's ``prompt_version_below`` filter to re-summarize runs stamped
 # with an older version.
-SUMMARIZE_PROMPT_VERSION = "v3"
+SUMMARIZE_PROMPT_VERSION = "v4"
 
 # Transient LLM provider errors worth retrying in-handler. The consumer runs
 # with prefetch_count=1, so retrying here naturally backpressures the whole
@@ -75,17 +75,35 @@ run's input, and the run's output. Produce a JSON object with:
 
   - did: a short prose explanation of how the agent worked through the
     request — the way someone would describe their work to a coworker. 1-4
-    sentences (<800 chars total). Walk through the meaningful decisions and
-    the reason behind each one ("I needed X, so I called Y; that gave me Z,
-    which told me to..."). Skip filler tool calls (a couple of look-ups
-    aren't worth narrating). When you reference a tool, wrap its exact name
-    in square brackets, e.g. `I called [ai_ticketing_get_ticket_details] to
-    fetch the ticket, then delegated to [security_subagent] when it
-    confirmed the alert was an end-of-life issue.` These bracket markers
-    are rendered as inline chips by the UI, so use the tool's exact
-    machine-readable name (the same string visible in the run's tool_call
-    steps), not a friendly label. DO NOT restate the agent's role or
+    sentences (<800 chars total). Walk through the meaningful decisions
+    and the reason behind each one ("I needed X, so I called Y; that gave
+    me Z, which told me to..."). Skip filler tool calls (a couple of
+    look-ups aren't worth narrating). DO NOT restate the agent's role or
     purpose — describe THIS run.
+
+    *** TOOL MARKERS — STRICT RULE ***
+    If the run made any tool calls (visible in the input as
+    tool_call/tool_response entries, or implied by the agent's output),
+    EVERY tool name you mention in `did` MUST be wrapped in square
+    brackets. Use the exact machine-readable tool name from the run's
+    tool_call steps (e.g. `ai_ticketing_get_ticket_details`,
+    `delegate_to_security_subagent`), NOT a friendly paraphrase. The
+    brackets are required syntax — the UI renders them as clickable chips.
+
+    GOOD example (markers present, tool names exact):
+      "I pulled the ticket via [ai_ticketing_get_ticket_details], saw the
+      EOL alert came from a Windows 2012 R2 host, then delegated to
+      [delegate_to_security_subagent] which recommended an in-place
+      upgrade. Wrote the categorization back with
+      [ai_ticketing_update_ticket]."
+
+    BAD example (markers MISSING — do not do this):
+      "I pulled the ticket details, saw the alert came from a 2012 R2
+      host, then asked the security sub-agent for guidance and updated
+      the ticket."
+
+    If no tools were called on this run, write `did` as plain prose with
+    no brackets. Brackets are required ONLY when tools were actually used.
 
   - answered: one short sentence (<100 chars) capturing the agent's final
     answer or outcome — the user-facing result of the run. Different from

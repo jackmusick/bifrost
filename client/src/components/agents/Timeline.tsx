@@ -26,15 +26,21 @@ import { cn } from "@/lib/utils";
 import { formatDuration, formatNumber } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
+import { JsonTree, isEmptyJson } from "./JsonTree";
+
 type AgentRunStepResponse = components["schemas"]["AgentRunStepResponse"];
+
+type DetailRender =
+	| { kind: "json"; value: unknown }
+	| { kind: "text"; value: string };
 
 interface StepViewModel {
 	icon: typeof Wrench;
 	iconClass: string;
 	label: string;
 	summary: string | null;
-	primaryDetail: { kind: "json" | "text"; value: string } | null;
-	secondaryDetail: { kind: "json" | "text"; label: string; value: string } | null;
+	primaryDetail: DetailRender | null;
+	secondaryDetail: (DetailRender & { label: string }) | null;
 }
 
 function buildViewModel(step: AgentRunStepResponse): StepViewModel {
@@ -45,17 +51,14 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 		case "tool_call": {
 			const name = (c.tool_name as string) || "tool";
 			const args = c.arguments;
-			const argsString = stringifyMaybeJson(args);
-			const summary = argsString ? truncate(argsString, 80) : null;
 			return {
 				icon: Wrench,
 				iconClass: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
 				label: `Called ${name}`,
-				summary,
-				primaryDetail:
-					argsString === null || argsString === ""
-						? null
-						: { kind: "json", value: prettyJson(args) },
+				summary: null,
+				primaryDetail: isEmptyJson(args)
+					? null
+					: { kind: "json", value: args },
 				secondaryDetail: null,
 			};
 		}
@@ -100,7 +103,7 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 				iconClass: "bg-muted text-muted-foreground",
 				label: "LLM request",
 				summary: bits.length ? bits.join(" · ") : null,
-				primaryDetail: { kind: "json", value: prettyJson(c) },
+				primaryDetail: { kind: "json", value: c },
 				secondaryDetail: null,
 			};
 		}
@@ -109,30 +112,41 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 			const toolCalls = (c.tool_calls as Array<{
 				name?: string;
 			}> | undefined) ?? [];
-			const callList = toolCalls
+			const callNames = toolCalls
 				.map((tc) => tc.name)
-				.filter(Boolean)
-				.join(", ");
-			const summary = text
-				? truncate(text, 120)
-				: callList
-					? `→ ${callList}`
-					: null;
+				.filter(Boolean) as string[];
+			// Label: when the LLM picked tools, name them directly.
+			// "Decided to call get_ticket, send_email" beats the abstract
+			// "LLM decided to call tools" by one click of comprehension.
+			const label =
+				callNames.length > 0
+					? `Decided to call ${callNames.join(", ")}`
+					: text
+						? "Reasoned"
+						: "LLM response";
 			return {
 				icon: Bot,
 				iconClass: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
-				label: callList ? "LLM decided to call tools" : "LLM response",
-				summary,
+				label,
+				// If we put the names in the label, no summary needed; show the
+				// reasoning text as summary when it's the standalone case.
+				summary:
+					callNames.length > 0
+						? null
+						: text
+							? truncate(text, 120)
+							: null,
 				primaryDetail: text
 					? { kind: "text", value: text }
 					: null,
-				secondaryDetail: callList
-					? {
-							kind: "json",
-							label: "Tool calls",
-							value: prettyJson(toolCalls),
-						}
-					: null,
+				secondaryDetail:
+					callNames.length > 0
+						? {
+								kind: "json",
+								label: "Tool calls",
+								value: toolCalls,
+							}
+						: null,
 			};
 		}
 		case "error":
@@ -151,7 +165,7 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 							? "Budget warning"
 							: "Error",
 				summary: stringifyMaybeJson(c) ?? null,
-				primaryDetail: { kind: "json", value: prettyJson(c) },
+				primaryDetail: { kind: "json", value: c },
 				secondaryDetail: null,
 			};
 		}
@@ -161,7 +175,7 @@ function buildViewModel(step: AgentRunStepResponse): StepViewModel {
 				iconClass: "bg-muted text-muted-foreground",
 				label: type,
 				summary: stringifyMaybeJson(c) ?? null,
-				primaryDetail: { kind: "json", value: prettyJson(c) },
+				primaryDetail: { kind: "json", value: c },
 				secondaryDetail: null,
 			};
 		}
@@ -174,14 +188,6 @@ function stringifyMaybeJson(v: unknown): string | null {
 	try {
 		const s = JSON.stringify(v);
 		return s === "{}" ? null : s;
-	} catch {
-		return String(v);
-	}
-}
-
-function prettyJson(v: unknown): string {
-	try {
-		return JSON.stringify(v, null, 2);
 	} catch {
 		return String(v);
 	}
@@ -292,14 +298,45 @@ function TimelineRow({
 	);
 }
 
-function DetailBlock({
-	detail,
-}: {
-	detail: { kind: "json" | "text"; value: string };
-}) {
+function DetailBlock({ detail }: { detail: DetailRender }) {
+	if (detail.kind === "json") {
+		return (
+			<div className="max-h-[280px] overflow-y-auto rounded bg-muted/30 px-2 py-1.5">
+				<JsonTree value={detail.value} />
+			</div>
+		);
+	}
+	// Tool results / LLM response text are strings — but tool results often
+	// look like JSON. Best-effort parse so the tree view kicks in.
+	const parsed = tryParseJson(detail.value);
+	if (parsed !== UNPARSEABLE) {
+		return (
+			<div className="max-h-[280px] overflow-y-auto rounded bg-muted/30 px-2 py-1.5">
+				<JsonTree value={parsed} />
+			</div>
+		);
+	}
 	return (
 		<pre className="max-h-[280px] overflow-y-auto rounded bg-muted/30 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words">
 			{detail.value}
 		</pre>
 	);
+}
+
+const UNPARSEABLE = Symbol("unparseable");
+function tryParseJson(value: string): unknown {
+	const trimmed = value.trim();
+	if (
+		!(
+			(trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+			(trimmed.startsWith("[") && trimmed.endsWith("]"))
+		)
+	) {
+		return UNPARSEABLE;
+	}
+	try {
+		return JSON.parse(trimmed);
+	} catch {
+		return UNPARSEABLE;
+	}
 }

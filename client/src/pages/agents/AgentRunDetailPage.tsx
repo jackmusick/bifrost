@@ -211,10 +211,15 @@ export function AgentRunDetailPage() {
 		);
 	}
 
-	const summaryFailed =
-		(run as unknown as { summary_status?: string }).summary_status ===
-		"failed";
-	const showRegen = isPlatformAdmin || summaryFailed;
+	const summaryStatus =
+		(run as unknown as { summary_status?: string }).summary_status ?? null;
+	const summaryFailed = summaryStatus === "failed";
+	const summaryInFlight =
+		summaryStatus === "pending" || summaryStatus === "generating";
+	// While the summarizer is running, the RunReviewPanel already shows a
+	// status banner with a regenerate button — hide the sidebar card so we
+	// don't render two competing affordances.
+	const showRegen = (isPlatformAdmin || summaryFailed) && !summaryInFlight;
 	const headerSummary = run.did || run.asked || "Agent run";
 
 	return (
@@ -282,9 +287,11 @@ export function AgentRunDetailPage() {
 
 			{/* Two-column layout */}
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-				{/* Main column */}
-				<div className="lg:col-span-2 flex flex-col gap-4">
-					<Card className="overflow-hidden">
+				{/* Main column. ``min-w-0`` is essential — without it long
+				    JSON strings inside the panel push past the column width
+				    and into the sidebar. */}
+				<div className="lg:col-span-2 flex min-w-0 flex-col gap-4">
+					<Card className="min-w-0 overflow-hidden">
 						<RunReviewPanel
 							run={run}
 							variant="page"
@@ -351,7 +358,7 @@ export function AgentRunDetailPage() {
 				</div>
 
 				{/* Sidebar */}
-				<div className="flex flex-col gap-4">
+				<div className="flex min-w-0 flex-col gap-4">
 					<Card>
 						<CardHeader className="pb-2">
 							<CardTitle className="text-sm">

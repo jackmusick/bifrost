@@ -33,6 +33,7 @@ import { useRegenerateSummary } from "@/services/agentRuns";
 import type { components } from "@/lib/v1";
 
 import { DidNarrative } from "./DidNarrative";
+import { isEmptyJson, JsonTree } from "./JsonTree";
 import { SummaryPlaceholder } from "./SummaryPlaceholder";
 
 export type Verdict = "up" | "down" | null;
@@ -84,80 +85,61 @@ function extractToolCalls(steps: AgentRunStep[] | undefined): {
 		});
 }
 
-/** True when the tool's args object is effectively empty (no info to show). */
-function _argsAreEmpty(args: unknown): boolean {
-	if (args === null || args === undefined) return true;
-	if (typeof args === "string") return args.trim() === "";
-	if (typeof args === "object") {
-		try {
-			return Object.keys(args as Record<string, unknown>).length === 0;
-		} catch {
-			return false;
-		}
-	}
-	return false;
-}
-
 interface ToolCallRowProps {
 	tool: string;
 	args: unknown;
 	duration_ms: number | null;
-	compact?: boolean;
 }
 
-/** Tool-call row: tool name, optional expandable args, duration.
- *
- * Empty `{}`-shaped args render no second column — there's nothing useful
- * to show and the empty `{}` was visual clutter. Non-empty args collapse
- * to a single line with a chevron; expanded form is pretty-printed JSON
- * that wraps + scrolls vertically (no horizontal sheet overflow).
+/** Tool-call row: tool name + (when args non-empty) chevron-disclosure +
+ * duration. No inline args preview — that pushed long objects past the
+ * card's right edge. Expanded form uses the shared JsonTree viewer.
  */
-function ToolCallRow({ tool, args, duration_ms, compact }: ToolCallRowProps) {
+function ToolCallRow({ tool, args, duration_ms }: ToolCallRowProps) {
 	const [open, setOpen] = useState(false);
-	const empty = _argsAreEmpty(args);
-	const argsString =
-		typeof args === "string" ? args : JSON.stringify(args);
-	const argsPretty =
-		typeof args === "string" ? args : JSON.stringify(args, null, 2);
+	const empty = isEmptyJson(args);
+	const expandable = !empty;
 
 	return (
-		<div className="rounded border bg-card text-xs">
-			<div className="flex items-center gap-2 px-2 py-1.5">
-				<span className="font-mono font-medium shrink-0">{tool}</span>
-				{empty ? (
-					<span className="flex-1" />
-				) : (
-					<button
-						type="button"
-						onClick={() => setOpen((v) => !v)}
-						className="flex flex-1 min-w-0 items-center gap-1 text-left text-muted-foreground hover:text-foreground"
-						aria-expanded={open}
-						aria-label={
-							open ? "Hide arguments" : "Show arguments"
-						}
-					>
-						<ChevronRight
-							className={cn(
-								"h-3 w-3 shrink-0 transition-transform",
-								open && "rotate-90",
-							)}
-						/>
-						<span className="truncate font-mono">{argsString}</span>
-					</button>
+		<div className="overflow-hidden rounded border bg-card text-xs">
+			<button
+				type="button"
+				onClick={() => expandable && setOpen((v) => !v)}
+				disabled={!expandable}
+				aria-expanded={expandable ? open : undefined}
+				aria-label={
+					expandable
+						? open
+							? "Hide arguments"
+							: "Show arguments"
+						: undefined
+				}
+				className={cn(
+					"flex w-full items-center gap-2 px-2 py-1.5 text-left",
+					expandable && "hover:bg-accent/40",
 				)}
+			>
+				{expandable ? (
+					<ChevronRight
+						className={cn(
+							"h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+							open && "rotate-90",
+						)}
+					/>
+				) : (
+					<span className="h-3 w-3 shrink-0" />
+				)}
+				<span className="min-w-0 flex-1 truncate font-mono font-medium">
+					{tool}
+				</span>
 				<span className="shrink-0 text-[11px] text-muted-foreground">
 					{duration_ms != null ? formatDuration(duration_ms) : ""}
 				</span>
-			</div>
-			{!empty && open ? (
-				<pre
-					className={cn(
-						"max-h-[240px] overflow-y-auto border-t bg-muted/30 px-3 py-2 font-mono whitespace-pre-wrap break-words",
-						compact ? "text-[11px]" : "text-xs",
-					)}
-				>
-					{argsPretty}
-				</pre>
+			</button>
+			{expandable && open ? (
+				<div className="max-h-[240px] overflow-y-auto border-t bg-muted/30 px-3 py-2">
+					<JsonTree value={args} />
+				</div>
 			) : null}
 		</div>
 	);
@@ -185,10 +167,14 @@ export function RunReviewPanel({
 	hideVerdictBar = false,
 }: RunReviewPanelProps) {
 	const toolCalls = extractToolCalls(run.steps);
-	// v3 summarizer wraps tool names in [brackets]. Detect that to choose
-	// between the prose narrative (with chips) and the raw tool-call list
-	// (used for v1/v2 summaries that predate the marker convention).
-	const didHasMarkers = !!run.did && /\[[a-zA-Z_][a-zA-Z0-9_.-]*\]/.test(run.did);
+	// "What it did" rendering decision tree:
+	//   v3+ summary with prose `did`     → render DidNarrative (chips inline
+	//                                       when [tool_name] markers present;
+	//                                       graceful plain-prose otherwise).
+	//   no `did` but has tool_call steps → fall back to the raw tool-call
+	//                                       list (v1/v2 era, pre-summary).
+	//   neither                          → hide the section entirely.
+	const hasDidProse = !!run.did && run.did.trim().length > 0;
 	const canVerdict = run.status === "completed" && !hideVerdictBar;
 	const compact = variant === "drawer";
 	const maxToolCalls = compact ? 3 : 4;
@@ -222,17 +208,19 @@ export function RunReviewPanel({
 	}
 
 	return (
-		<div data-slot="run-review-panel">
+		<div data-slot="run-review-panel" className="min-w-0">
 			<div
 				className={cn(
-					"grid",
+					"grid min-w-0",
 					compact ? "gap-3.5 px-4 py-3.5" : "gap-4 px-5 py-4",
 				)}
 			>
 				{needsRegen ? (
 					<div
 						className={cn(
-							"flex items-center justify-between gap-3 rounded-md border px-3 py-2",
+							// fade-in so the banner doesn't pop when the
+							// websocket flips summary_status to generating.
+							"flex items-center justify-between gap-3 rounded-md border px-3 py-2 animate-in fade-in duration-200",
 							summaryStatus === "failed"
 								? "border-rose-500/30 bg-rose-500/10"
 								: "bg-muted/40",
@@ -240,7 +228,7 @@ export function RunReviewPanel({
 						)}
 					>
 						<div className="flex items-center gap-2">
-							{regenSummary.isPending ? (
+							{summaryStatus === "generating" || regenSummary.isPending ? (
 								<Loader2 className="h-3.5 w-3.5 animate-spin" />
 							) : (
 								<RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
@@ -253,25 +241,31 @@ export function RunReviewPanel({
 										: "Summary pending"}
 							</span>
 						</div>
-						<button
-							type="button"
-							disabled={!isPlatformAdmin || regenSummary.isPending}
-							title={
-								isPlatformAdmin
-									? "Re-run summarization"
-									: "Only platform admins can regenerate summaries"
-							}
-							onClick={handleRegenerate}
-							className={cn(
-								"inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs font-medium transition-colors",
-								isPlatformAdmin && !regenSummary.isPending
-									? "hover:bg-accent"
-									: "cursor-not-allowed opacity-60",
-							)}
-							data-testid="regen-summary-panel-button"
-						>
-							Regenerate
-						</button>
+						{/* Hide the Regenerate button while generation is
+						    in flight — it would just no-op (idempotent
+						    short-circuit on the backend) and looks like the
+						    user is being asked to act. */}
+						{summaryStatus !== "generating" ? (
+							<button
+								type="button"
+								disabled={!isPlatformAdmin || regenSummary.isPending}
+								title={
+									isPlatformAdmin
+										? "Re-run summarization"
+										: "Only platform admins can regenerate summaries"
+								}
+								onClick={handleRegenerate}
+								className={cn(
+									"inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs font-medium transition-colors",
+									isPlatformAdmin && !regenSummary.isPending
+										? "hover:bg-accent"
+										: "cursor-not-allowed opacity-60",
+								)}
+								data-testid="regen-summary-panel-button"
+							>
+								Regenerate
+							</button>
+						) : null}
 					</div>
 				) : null}
 				<Section
@@ -292,7 +286,7 @@ export function RunReviewPanel({
 					</div>
 				</Section>
 
-				{didHasMarkers ? (
+				{hasDidProse ? (
 					<Section
 						icon={<Wrench size={13} />}
 						iconClassName="bg-blue-500/15 text-blue-600 dark:text-blue-400"
@@ -313,8 +307,9 @@ export function RunReviewPanel({
 						</div>
 					</Section>
 				) : toolCalls.length > 0 ? (
-					// Fallback for runs summarized under prompt v1/v2 (no
-					// [tool] markers in `did`) — show the raw tool-call list.
+					// No `did` summary at all (pre-summary or summary failed)
+					// — fall back to the raw tool-call list so the user
+					// still sees what the agent did.
 					<Section
 						icon={<Wrench size={13} />}
 						iconClassName="bg-blue-500/15 text-blue-600 dark:text-blue-400"
@@ -328,7 +323,6 @@ export function RunReviewPanel({
 									tool={c.tool}
 									args={c.args}
 									duration_ms={c.duration_ms}
-									compact={compact}
 								/>
 							))}
 							{overflow > 0 ? (

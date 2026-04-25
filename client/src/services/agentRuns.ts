@@ -540,13 +540,25 @@ export function useCancelBackfillJob() {
  * Cheap preview — returns eligible count + cost estimate for the given
  * scope. Used to decide whether to render the Backfill button at all
  * (hide when eligible=0 to avoid dead-end "Nothing to backfill" modals).
- * Admin-only.
+ *
+ * When `promptVersionBelow` is set, also counts ``completed`` runs whose
+ * ``summary_prompt_version`` is older (or NULL). Admin-only.
  */
-export function useBackfillEligible(agentId?: string) {
+export function useBackfillEligible(
+	agentId?: string,
+	promptVersionBelow?: string,
+) {
 	return $api.useQuery(
 		"get",
 		"/api/agent-runs/backfill-eligible",
-		{ params: { query: { agent_id: agentId } } },
+		{
+			params: {
+				query: {
+					agent_id: agentId,
+					prompt_version_below: promptVersionBelow,
+				},
+			},
+		},
 	);
 }
 

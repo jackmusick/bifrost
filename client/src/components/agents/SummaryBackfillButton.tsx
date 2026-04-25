@@ -1,14 +1,21 @@
 /**
- * Admin-only affordance to trigger a bulk summary backfill.
+ * Admin-only affordance to (re-)summarize agent runs in bulk.
  *
- * Three states, all in one component:
- *   1. Idle: button. Click → fetch dry-run (eligible + est. cost).
- *   2. Confirm: modal with "N runs, ~$X.XX. Continue?"
- *   3. Progress: card that subscribes to summary-backfill:{jobId} WS channel.
+ * The button is labeled "Resummarize runs". Clicking opens a dialog that
+ * lets the admin pick a scope:
+ *   - "Pending or failed" — re-runs anything that hasn't yet been
+ *     summarized successfully. (default)
+ *   - "Older prompt versions" — sweeps completed runs whose
+ *     ``summary_prompt_version`` is older than the current version. Use
+ *     this after iterating on the summarizer prompt to roll all old
+ *     summaries forward.
+ *   - "All completed runs" — every completed run regardless of summary
+ *     state. Mostly an escape hatch.
  *
- * If a backfill is already running (`useSummaryBackfillJobs({ active: true })`
- * returns a hit on mount), the button is replaced with the progress card
- * attached to that existing job.
+ * The dialog shows a per-scope dry-run estimate (eligible count + cost)
+ * before the user confirms. The button hides only when ALL scopes report
+ * zero eligible runs — so it stays visible after a prompt bump even when
+ * pending/failed is empty.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -36,6 +43,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import {
+	RadioGroup,
+	RadioGroupItem,
+} from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import {
 	useBackfillEligible,
 	useBackfillSummaries,
 	useCancelBackfillJob,
@@ -43,6 +55,38 @@ import {
 	useSummaryBackfillJobs,
 } from "@/services/agentRuns";
 import { webSocketService } from "@/services/websocket";
+
+/** Mirrors api/src/services/execution/run_summarizer.SUMMARIZE_PROMPT_VERSION.
+ * When you bump that constant on the backend, bump this too — the client
+ * uses it to populate the "Older prompt versions" scope's
+ * ``prompt_version_below`` filter. (No type sync between the two surfaces;
+ * a wrong value here just means the scope sweeps fewer/more runs than
+ * intended.) */
+const CURRENT_PROMPT_VERSION = "v4";
+
+type ResummarizeScope = "pending" | "older-versions" | "all";
+
+interface ScopeRequestShape {
+	statuses: ("pending" | "failed" | "completed")[];
+	prompt_version_below: string | null;
+}
+
+function scopeToRequest(scope: ResummarizeScope): ScopeRequestShape {
+	switch (scope) {
+		case "pending":
+			return { statuses: ["pending", "failed"], prompt_version_below: null };
+		case "older-versions":
+			return {
+				statuses: ["pending", "failed", "completed"],
+				prompt_version_below: CURRENT_PROMPT_VERSION,
+			};
+		case "all":
+			return {
+				statuses: ["pending", "failed", "completed"],
+				prompt_version_below: null,
+			};
+	}
+}
 
 const DISMISSED_KEY = "bifrost:dismissed-backfills";
 
@@ -80,6 +124,7 @@ export function SummaryBackfillButton({
 	size = "sm",
 }: SummaryBackfillButtonProps) {
 	const [phase, setPhase] = useState<Phase>("idle");
+	const [scope, setScope] = useState<ResummarizeScope>("pending");
 	const [preview, setPreview] = useState<{
 		eligible: number;
 		estimated_cost_usd: string;
@@ -89,9 +134,6 @@ export function SummaryBackfillButton({
 	const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed());
 
 	// On mount, re-attach to an already-running job if one exists for this scope.
-	// Only "running" jobs surface here (server-side filter). Terminal jobs that
-	// the user hasn't dismissed this session stay on screen via the progress
-	// card's own mount state — they don't re-attach after full page reload.
 	const { data: activeJobs } = useSummaryBackfillJobs(true);
 	const existingJob = useMemo(
 		() =>
@@ -119,12 +161,40 @@ export function SummaryBackfillButton({
 
 	const backfill = useBackfillSummaries();
 
-	async function openConfirm() {
+	// Eligibility for visibility — show the button if EITHER pending/failed
+	// runs exist OR there are completed runs on an older prompt version.
+	const { data: eligiblePending, isLoading: eligibleLoadingPending } =
+		useBackfillEligible(agentId);
+	// Same endpoint, queried with prompt_version_below set.
+	const { data: eligibleOldVersions, isLoading: eligibleLoadingVersions } =
+		useBackfillEligible(agentId, CURRENT_PROMPT_VERSION);
+
+	function openDialog() {
+		// Default scope: "pending" if there's anything to do there, otherwise
+		// "older-versions" so the dialog opens with the relevant scope already
+		// pre-selected. Falls back to "pending" if both are empty (button
+		// would be hidden anyway, so this is just defensive).
+		const initialScope: ResummarizeScope =
+			eligiblePending && eligiblePending.eligible > 0
+				? "pending"
+				: eligibleOldVersions && eligibleOldVersions.eligible > 0
+					? "older-versions"
+					: "pending";
+		setScope(initialScope);
+		setPreview(null);
+		setPhase("confirm");
+		// Fire the dry-run for the initial scope.
+		runDryRun(initialScope);
+	}
+
+	function runDryRun(s: ResummarizeScope) {
+		const shape = scopeToRequest(s);
 		backfill.mutate(
 			{
 				body: {
 					agent_id: agentId,
-					statuses: ["pending", "failed"],
+					statuses: shape.statuses,
+					prompt_version_below: shape.prompt_version_below,
 					limit: 5000,
 					dry_run: true,
 				},
@@ -136,21 +206,29 @@ export function SummaryBackfillButton({
 						estimated_cost_usd: String(data.estimated_cost_usd),
 						cost_basis: data.cost_basis,
 					});
-					setPhase("confirm");
 				},
 				onError: () => {
-					toast.error("Failed to compute backfill estimate");
+					toast.error("Failed to compute estimate");
 				},
 			},
 		);
 	}
 
-	async function confirmAndSubmit() {
+	function onScopeChange(next: string) {
+		const s = next as ResummarizeScope;
+		setScope(s);
+		setPreview(null);
+		runDryRun(s);
+	}
+
+	function confirmAndSubmit() {
+		const shape = scopeToRequest(scope);
 		backfill.mutate(
 			{
 				body: {
 					agent_id: agentId,
-					statuses: ["pending", "failed"],
+					statuses: shape.statuses,
+					prompt_version_below: shape.prompt_version_below,
 					limit: 5000,
 					dry_run: false,
 				},
@@ -158,7 +236,7 @@ export function SummaryBackfillButton({
 			{
 				onSuccess: (data) => {
 					if (!data.job_id) {
-						toast.info("Nothing to backfill");
+						toast.info("Nothing to resummarize");
 						setPhase("idle");
 						return;
 					}
@@ -167,17 +245,11 @@ export function SummaryBackfillButton({
 					toast.success(`Queued ${data.queued} summaries`);
 				},
 				onError: () => {
-					toast.error("Failed to start backfill");
+					toast.error("Failed to start resummarization");
 				},
 			},
 		);
 	}
-
-	// Hide the button entirely when nothing is eligible. Avoids the dead-end
-	// "Nothing to backfill" modal — no affordance is better than a no-op one.
-	// Hook must live above the early returns below to satisfy the rules of hooks.
-	const { data: eligible, isLoading: eligibleLoading } =
-		useBackfillEligible(agentId);
 
 	if (effectivePhase === "progress" && effectiveJobId) {
 		return (
@@ -189,8 +261,17 @@ export function SummaryBackfillButton({
 		);
 	}
 
-	if (eligibleLoading) return null;
-	if (eligible && eligible.eligible === 0) return null;
+	// Hide the button only when ALL scopes report zero eligible runs — that
+	// way a freshly-bumped prompt version still surfaces the affordance even
+	// though pending/failed is empty.
+	if (eligibleLoadingPending || eligibleLoadingVersions) return null;
+	const anyEligible =
+		(eligiblePending?.eligible ?? 0) > 0 ||
+		(eligibleOldVersions?.eligible ?? 0) > 0;
+	if (!anyEligible) return null;
+
+	const showAction =
+		preview != null && preview.eligible > 0 && !backfill.isPending;
 
 	return (
 		<>
@@ -199,7 +280,7 @@ export function SummaryBackfillButton({
 				variant="outline"
 				size={size}
 				disabled={backfill.isPending}
-				onClick={openConfirm}
+				onClick={openDialog}
 				data-testid="summary-backfill-button"
 			>
 				{backfill.isPending && effectivePhase === "idle" ? (
@@ -207,7 +288,7 @@ export function SummaryBackfillButton({
 				) : (
 					<RefreshCw className="h-3.5 w-3.5" />
 				)}
-				{agentId ? "Backfill pending summaries" : "Backfill summaries"}
+				Resummarize runs
 			</Button>
 
 			<AlertDialog
@@ -218,38 +299,56 @@ export function SummaryBackfillButton({
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>
-							{preview?.eligible === 0
-								? "Nothing to backfill"
-								: `Regenerate ${preview?.eligible ?? 0} summaries?`}
-						</AlertDialogTitle>
+						<AlertDialogTitle>Resummarize runs</AlertDialogTitle>
 						<AlertDialogDescription>
-							{preview?.eligible === 0 ? (
-								"All eligible runs already have a completed summary."
-							) : (
-								<>
-									This will re-run the summarization model on{" "}
-									<strong>{preview?.eligible}</strong>{" "}
-									{agentId ? "runs for this agent." : "runs platform-wide."}{" "}
-									Estimated cost:{" "}
-									<strong>
-										${Number(preview?.estimated_cost_usd ?? 0).toFixed(2)}
-									</strong>{" "}
-									<span className="text-muted-foreground">
-										(
-										{preview?.cost_basis === "history"
-											? "from recent summaries"
-											: "flat estimate; no history"}
-										)
-									</span>
-									.
-								</>
-							)}
+							Pick which runs to re-run the summarizer on. Cost
+							estimate updates as you change the scope.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+
+					<div className="grid gap-3 py-2">
+						<RadioGroup
+							value={scope}
+							onValueChange={onScopeChange}
+							className="grid gap-2"
+						>
+							<ScopeOption
+								id="resum-scope-pending"
+								value="pending"
+								eligible={eligiblePending?.eligible ?? 0}
+								scope={scope}
+								title="Pending or failed"
+								description="Runs that don't yet have a completed summary."
+							/>
+							<ScopeOption
+								id="resum-scope-old"
+								value="older-versions"
+								eligible={eligibleOldVersions?.eligible ?? 0}
+								scope={scope}
+								title="Older prompt versions"
+								description={`Completed runs summarized under a prompt older than ${CURRENT_PROMPT_VERSION}, plus any unversioned legacy summaries.`}
+							/>
+							<ScopeOption
+								id="resum-scope-all"
+								value="all"
+								eligible={null}
+								scope={scope}
+								title="All completed runs"
+								description="Every completed run, regardless of summary state. Use sparingly."
+							/>
+						</RadioGroup>
+
+						<EstimateLine
+							preview={preview}
+							pending={backfill.isPending}
+							scope={scope}
+							agentId={agentId}
+						/>
+					</div>
+
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						{preview?.eligible && preview.eligible > 0 ? (
+						{showAction ? (
 							<AlertDialogAction
 								onClick={confirmAndSubmit}
 								disabled={backfill.isPending}
@@ -257,13 +356,111 @@ export function SummaryBackfillButton({
 								{backfill.isPending ? (
 									<Loader2 className="h-3.5 w-3.5 animate-spin" />
 								) : null}
-								Start backfill
+								Start
 							</AlertDialogAction>
 						) : null}
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 		</>
+	);
+}
+
+interface ScopeOptionProps {
+	id: string;
+	value: ResummarizeScope;
+	eligible: number | null;
+	scope: ResummarizeScope;
+	title: string;
+	description: string;
+}
+
+function ScopeOption({
+	id,
+	value,
+	eligible,
+	scope,
+	title,
+	description,
+}: ScopeOptionProps) {
+	const selected = scope === value;
+	const disabled = eligible === 0;
+	return (
+		<Label
+			htmlFor={id}
+			className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
+				selected ? "border-primary bg-primary/5" : "hover:bg-accent/40"
+			} ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+		>
+			<RadioGroupItem
+				id={id}
+				value={value}
+				disabled={disabled}
+				className="mt-1"
+			/>
+			<div className="grid flex-1 gap-1 text-sm">
+				<div className="flex items-center justify-between gap-2">
+					<span className="font-medium">{title}</span>
+					{eligible != null ? (
+						<span className="text-xs text-muted-foreground tabular-nums">
+							{eligible} run{eligible === 1 ? "" : "s"}
+						</span>
+					) : null}
+				</div>
+				<span className="text-xs text-muted-foreground">{description}</span>
+			</div>
+		</Label>
+	);
+}
+
+interface EstimateLineProps {
+	preview: {
+		eligible: number;
+		estimated_cost_usd: string;
+		cost_basis: "history" | "fallback";
+	} | null;
+	pending: boolean;
+	scope: ResummarizeScope;
+	agentId?: string;
+}
+
+function EstimateLine({ preview, pending, scope, agentId }: EstimateLineProps) {
+	if (pending && !preview) {
+		return (
+			<div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+				<Loader2 className="h-3 w-3 animate-spin" />
+				Computing estimate…
+			</div>
+		);
+	}
+	if (!preview) return null;
+	const _ = scope;  // kept for future per-scope copy
+	void _;
+	if (preview.eligible === 0) {
+		return (
+			<div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+				Nothing to do for this scope.
+			</div>
+		);
+	}
+	return (
+		<div className="rounded-md border bg-muted/40 px-3 py-2 text-xs">
+			Will resummarize{" "}
+			<strong className="font-medium">{preview.eligible}</strong>{" "}
+			{agentId ? "runs for this agent" : "runs platform-wide"}. Estimated
+			cost{" "}
+			<strong className="font-medium">
+				${Number(preview.estimated_cost_usd).toFixed(2)}
+			</strong>{" "}
+			<span className="text-muted-foreground">
+				(
+				{preview.cost_basis === "history"
+					? "from recent summaries"
+					: "flat estimate; no history"}
+				)
+			</span>
+			.
+		</div>
 	);
 }
 

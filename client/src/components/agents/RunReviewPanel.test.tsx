@@ -57,7 +57,10 @@ describe("RunReviewPanel", () => {
 		).toBeInTheDocument();
 	});
 
-	it("renders the agent answer when completed", () => {
+	it("renders the agent answer when completed (answered field, falls back to did)", () => {
+		// `did` is also rendered in the "What it did" prose section, so the
+		// text appears in both places; either is fine — we just need at
+		// least one match.
 		renderWithProviders(
 			<RunReviewPanel
 				run={baseRun}
@@ -67,7 +70,26 @@ describe("RunReviewPanel", () => {
 				onNote={() => {}}
 			/>,
 		);
-		expect(screen.getByText(/routed to support/i)).toBeInTheDocument();
+		expect(screen.getAllByText(/routed to support/i).length).toBeGreaterThan(0);
+	});
+
+	it("uses `answered` over `did` in the answer section when both present", () => {
+		renderWithProviders(
+			<RunReviewPanel
+				run={{
+					...baseRun,
+					did: "Looked up the user, then routed.",
+					answered: "Sent password-reset link",
+				}}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByText("Sent password-reset link"),
+		).toBeInTheDocument();
 	});
 
 	it("calls onVerdict('up') when good toggle clicked", async () => {
@@ -149,11 +171,42 @@ describe("RunReviewPanel", () => {
 		expect(screen.getByText(/boom/i)).toBeInTheDocument();
 	});
 
-	it("renders tool call section when steps include tool calls", () => {
-		// The executor writes step.content as { tool_name, arguments } —
-		// see autonomous_agent_executor.py _record_step(..., "tool_call", ...)
+	it("renders did prose even when there are zero [tool] markers", () => {
+		// Regression guard: the v3 LLM occasionally omits markers. Narrative
+		// must still render; markers are a bonus.
 		const run: AgentRunDetail = {
 			...baseRun,
+			did: "Looked up the ticket and routed to Tier 2 because the issue was network-related.",
+			steps: [],
+		};
+		renderWithProviders(
+			<RunReviewPanel
+				run={run}
+				verdict={null}
+				note=""
+				onVerdict={() => {}}
+				onNote={() => {}}
+			/>,
+		);
+		// `did` renders in both "What it did" prose AND falls back into
+		// "What the agent answered" when `answered` is null — both fine.
+		expect(
+			screen.getAllByText(/looked up the ticket and routed to tier 2/i)
+				.length,
+		).toBeGreaterThan(0);
+		// Tool-call list should NOT render — we have prose to show instead.
+		expect(
+			screen.queryByText(/what it did · 0 tool call/i),
+		).not.toBeInTheDocument();
+	});
+
+	it("renders tool call section when steps include tool calls", () => {
+		// Fallback path: when there's no `did` summary, fall back to the raw
+		// tool-call list. Step content is { tool_name, arguments } per
+		// autonomous_agent_executor.py _record_step(..., "tool_call", ...).
+		const run: AgentRunDetail = {
+			...baseRun,
+			did: null,
 			steps: [
 				{
 					id: "s1",
@@ -183,8 +236,13 @@ describe("RunReviewPanel", () => {
 		expect(
 			screen.getByText("ai_ticketing_get_ticket_details"),
 		).toBeInTheDocument();
-		// And the args must render, not an empty `{}`.
-		expect(screen.getByText(/ticket_id.*423068/)).toBeInTheDocument();
+		// Args are collapsed by default behind a chevron disclosure; expand
+		// them and confirm the args render via the JsonTree (key + value).
+		fireEvent.click(
+			screen.getByRole("button", { name: /show arguments/i }),
+		);
+		expect(screen.getByText(/"ticket_id"/)).toBeInTheDocument();
+		expect(screen.getByText("423068")).toBeInTheDocument();
 	});
 
 	it("renders tool call rows even when arguments object is empty", () => {
@@ -193,6 +251,7 @@ describe("RunReviewPanel", () => {
 		// renders nothing (no `{}` clutter) and there's no expand affordance.
 		const run: AgentRunDetail = {
 			...baseRun,
+			did: null,  // force the fallback tool-call list
 			steps: [
 				{
 					id: "s1",
@@ -225,6 +284,7 @@ describe("RunReviewPanel", () => {
 	it("collapses non-empty tool args behind a disclosure that expands inline", () => {
 		const run: AgentRunDetail = {
 			...baseRun,
+			did: null,  // force the fallback tool-call list
 			steps: [
 				{
 					id: "s1",

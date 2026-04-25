@@ -56,8 +56,10 @@ describe("Timeline", () => {
 		expect(
 			screen.getByText(/Result from send_email/i),
 		).toBeInTheDocument();
+		// Label names the called tool directly instead of saying "LLM
+		// decided to call tools" — saves a click of comprehension.
 		expect(
-			screen.getByText(/LLM decided to call tools/i),
+			screen.getByText(/Decided to call send_email/i),
 		).toBeInTheDocument();
 	});
 
@@ -75,10 +77,9 @@ describe("Timeline", () => {
 		expect(btn).toHaveAttribute("aria-expanded", "false");
 		fireEvent.click(btn);
 		expect(btn).toHaveAttribute("aria-expanded", "true");
-		// Args should be visible as JSON in the expanded body. Multiple
-		// matches expected: summary line shows the compact form, expanded
-		// <pre> shows the pretty-printed one.
-		expect(screen.getAllByText(/u@x.com/i).length).toBeGreaterThanOrEqual(2);
+		// Args should be visible as JSON in the expanded body via JsonTree —
+		// JsonTree wraps strings in quotes.
+		expect(screen.getByText(/"u@x.com"/i)).toBeInTheDocument();
 	});
 
 	it("does not render an expand affordance for steps with no detail", () => {

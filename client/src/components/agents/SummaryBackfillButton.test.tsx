@@ -34,8 +34,10 @@ const hoisted = vi.hoisted(() => {
 
 vi.mock("@/services/agentRuns", () => ({
 	useBackfillSummaries: () => ({ mutate: vi.fn(), isPending: false }),
-	useBackfillEligible: (agentId: string | undefined) =>
-		hoisted.mockUseBackfillEligible(agentId),
+	useBackfillEligible: (
+		agentId: string | undefined,
+		promptVersionBelow?: string,
+	) => hoisted.mockUseBackfillEligible(agentId, promptVersionBelow),
 	useCancelBackfillJob: () => ({
 		mutate: hoisted.mockCancelMutate,
 		isPending: false,
@@ -258,6 +260,57 @@ describe("SummaryBackfillButton — terminal state", () => {
 			<SummaryBackfillButton agentId="agent-1" />,
 		);
 		expect(container.firstChild).toBeNull();
+	});
+
+	it("hides the button only when ALL scopes report zero eligible", () => {
+		// Both pending/failed AND older-versions = 0 → button hides.
+		mockUseSummaryBackfillJobs.mockReturnValue({ data: { items: [] } });
+		mockUseBackfillEligible.mockImplementation(() => ({
+			data: { eligible: 0, estimated_cost_usd: "0", cost_basis: "fallback" },
+			isLoading: false,
+		}));
+		const { container } = renderWithProviders(
+			<SummaryBackfillButton agentId="agent-1" />,
+		);
+		expect(container.firstChild).toBeNull();
+	});
+
+	it("shows the button when only the older-versions scope has eligible runs", () => {
+		// Pending=0 but older-versions=12 → button still shows so the admin
+		// can roll old-version summaries forward after a prompt bump.
+		mockUseSummaryBackfillJobs.mockReturnValue({ data: { items: [] } });
+		mockUseBackfillEligible.mockImplementation(
+			(_agentId: string | undefined, version?: string) => ({
+				data: version
+					? {
+							eligible: 12,
+							estimated_cost_usd: "0.24",
+							cost_basis: "history",
+						}
+					: {
+							eligible: 0,
+							estimated_cost_usd: "0",
+							cost_basis: "fallback",
+						},
+				isLoading: false,
+			}),
+		);
+		renderWithProviders(<SummaryBackfillButton agentId="agent-1" />);
+		expect(
+			screen.getByTestId("summary-backfill-button"),
+		).toBeInTheDocument();
+	});
+
+	it("button label says 'Resummarize runs'", () => {
+		mockUseSummaryBackfillJobs.mockReturnValue({ data: { items: [] } });
+		mockUseBackfillEligible.mockReturnValue({
+			data: { eligible: 4, estimated_cost_usd: "0.10", cost_basis: "history" },
+			isLoading: false,
+		});
+		renderWithProviders(<SummaryBackfillButton agentId="agent-1" />);
+		expect(
+			screen.getByRole("button", { name: /resummarize runs/i }),
+		).toBeInTheDocument();
 	});
 
 	it("shows a cancelled header when the terminal status is 'cancelled'", async () => {

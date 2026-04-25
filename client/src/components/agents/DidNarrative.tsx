@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
+import { JsonTree, isEmptyJson } from "./JsonTree";
+
 type AgentRunStep = components["schemas"]["AgentRunStepResponse"];
 
 export interface DidNarrativeProps {
@@ -212,16 +214,16 @@ function ToolMentionChip({ name, call }: ToolMentionChipProps) {
 								<ChipSection
 									label={call!.is_error ? "Error" : "Result"}
 								>
-									<pre
+									<div
 										className={cn(
-											"max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words",
+											"max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 text-[11px] whitespace-pre-wrap break-words",
 											call!.is_error
 												? "border-rose-500/30 text-rose-700 dark:text-rose-300"
 												: "",
 										)}
 									>
-										{call!.result}
-									</pre>
+										<ResultBlock value={call!.result} isError={call!.is_error} />
+									</div>
 								</ChipSection>
 							) : null}
 						</>
@@ -250,20 +252,50 @@ function ChipSection({
 }
 
 function JsonBlock({ value }: { value: unknown }) {
-	const text =
-		typeof value === "string" ? value : JSON.stringify(value, null, 2);
-	const isEmpty =
-		typeof value === "object" &&
-		value !== null &&
-		Object.keys(value as Record<string, unknown>).length === 0;
-	if (isEmpty) {
+	if (isEmptyJson(value)) {
+		return <p className="text-muted-foreground">No arguments.</p>;
+	}
+	if (typeof value === "string") {
 		return (
-			<p className="text-muted-foreground">No arguments.</p>
+			<pre className="max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words">
+				{value}
+			</pre>
 		);
 	}
 	return (
-		<pre className="max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words">
-			{text}
-		</pre>
+		<div className="max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5">
+			<JsonTree value={value} />
+		</div>
 	);
+}
+
+/** Tool results come from `_record_step(..., "tool_result", { result: "..."})`
+ * — always a string, often a JSON-shaped one. Try to parse and pretty-print
+ * with the JsonTree; fall back to raw text for plain strings. */
+function ResultBlock({ value, isError }: { value: string; isError?: boolean }) {
+	const parsed = !isError ? tryParseJsonish(value) : UNPARSEABLE_RB;
+	if (parsed !== UNPARSEABLE_RB) {
+		return <JsonTree value={parsed} />;
+	}
+	return (
+		<pre className="font-mono whitespace-pre-wrap break-words">{value}</pre>
+	);
+}
+
+const UNPARSEABLE_RB = Symbol("unparseable");
+function tryParseJsonish(value: string): unknown {
+	const trimmed = value.trim();
+	if (
+		!(
+			(trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+			(trimmed.startsWith("[") && trimmed.endsWith("]"))
+		)
+	) {
+		return UNPARSEABLE_RB;
+	}
+	try {
+		return JSON.parse(trimmed);
+	} catch {
+		return UNPARSEABLE_RB;
+	}
 }
