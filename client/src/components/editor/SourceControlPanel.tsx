@@ -393,14 +393,16 @@ export function SourceControlPanel() {
 	const discardOp = useDiscard();
 	const cleanupOp = useCleanupOrphaned();
 
-	// Update commits state when data loads
-	useEffect(() => {
-		if (commitsData) {
-			setCommits(commitsData.commits || []);
-			setTotalCommits(commitsData.total_commits);
-			setHasMoreCommits(commitsData.has_more);
-		}
-	}, [commitsData]);
+	// Update commits state when data loads. Adjust during render with a
+	// previous-reference sentinel rather than via setState-in-effect.
+	const [prevCommitsDataRef, setPrevCommitsDataRef] =
+		useState<typeof commitsData>(undefined);
+	if (commitsData && prevCommitsDataRef !== commitsData) {
+		setPrevCommitsDataRef(commitsData);
+		setCommits(commitsData.commits || []);
+		setTotalCommits(commitsData.total_commits);
+		setHasMoreCommits(commitsData.has_more);
+	}
 
 	// Refresh helpers
 	const refreshStatus = useCallback(() => {

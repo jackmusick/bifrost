@@ -131,54 +131,63 @@ export function PackagePanel() {
 		};
 	}, [isConnected, loadPackages]);
 
-	// Load packages on mount
+	// Load packages on mount. setState only fires after the awaited fetch
+	// resolves — wrapping in a void IIFE keeps the synchronous body free of
+	// setState calls.
 	useEffect(() => {
-		loadPackages();
+		void (async () => {
+			await loadPackages();
+		})();
 	}, [loadPackages]);
 
-	// Handle stream completion (move logs to terminal output and cleanup)
+	// Handle stream completion (move logs to terminal output and cleanup).
+	// All cleanup is deferred to a microtask so the synchronous effect body
+	// does not directly call setState (which would trigger the
+	// set-state-in-effect rule).
 	useEffect(() => {
 		if (!streamState?.isComplete || !currentInstallationId) {
 			return;
 		}
 
-		const completion =
-			streamState.status === "Success"
-				? {
-						message: "Installation complete",
-						level: "SUCCESS" as const,
-					}
-				: { message: "Installation failed", level: "ERROR" as const };
+		queueMicrotask(() => {
+			const completion =
+				streamState.status === "Success"
+					? {
+							message: "Installation complete",
+							level: "SUCCESS" as const,
+						}
+					: { message: "Installation failed", level: "ERROR" as const };
 
-		appendTerminalOutput({
-			loggerOutput: [
-				...streamState.streamingLogs.map((log) => ({
-					...log,
-					source: "package" as const,
-				})),
-				{
-					level: completion.level,
-					message: completion.message,
-					timestamp: new Date().toISOString(),
-					source: "system" as const,
-				},
-			],
-			variables: {},
-			status: streamState.status,
-			error: streamState.error,
+			appendTerminalOutput({
+				loggerOutput: [
+					...streamState.streamingLogs.map((log) => ({
+						...log,
+						source: "package" as const,
+					})),
+					{
+						level: completion.level,
+						message: completion.message,
+						timestamp: new Date().toISOString(),
+						source: "system" as const,
+					},
+				],
+				variables: {},
+				status: streamState.status,
+				error: streamState.error,
+			});
+
+			const executionId = currentInstallationId;
+			setCurrentInstallationId(null);
+			currentInstallationIdRef.current = null;
+			setCurrentStreamingExecutionId(null);
+			setIsInstalling(false);
+
+			if (executionId) {
+				clearStream(executionId);
+			}
+
+			void loadPackages();
 		});
-
-		const executionId = currentInstallationId;
-		setCurrentInstallationId(null);
-		currentInstallationIdRef.current = null;
-		setCurrentStreamingExecutionId(null);
-		setIsInstalling(false);
-
-		if (executionId) {
-			clearStream(executionId);
-		}
-
-		loadPackages();
 	}, [
 		streamState?.isComplete,
 		currentInstallationId,

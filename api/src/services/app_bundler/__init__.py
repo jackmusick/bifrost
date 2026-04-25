@@ -405,7 +405,6 @@ class BundlerService:
 
         # --- 2. Scan user source for names imported from "bifrost" -------
         imported_names: set[str] = set()
-        import re as _re
         bifrost_import_re = _re.compile(
             r'import\s+\{([^}]+)\}\s+from\s+["\']bifrost["\']',
         )
