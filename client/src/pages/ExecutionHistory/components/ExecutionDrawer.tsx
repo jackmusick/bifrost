@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useState } from "react";
 import {
 	Sheet,
 	SheetContent,
@@ -23,7 +23,8 @@ export function ExecutionDrawer({
 	onOpenChange,
 	onExecutionChange,
 }: ExecutionDrawerProps) {
-	const actionsRef = useRef<HTMLDivElement>(null);
+	const [actionsContainer, setActionsContainer] =
+		useState<HTMLDivElement | null>(null);
 
 	const handleOpenInNewTab = () => {
 		if (executionId) {
@@ -44,7 +45,10 @@ export function ExecutionDrawer({
 								Execution Details
 							</SheetTitle>
 							<div className="flex items-center gap-1">
-								<div ref={actionsRef} className="flex items-center gap-1" />
+								<div
+									ref={setActionsContainer}
+									className="flex items-center gap-1"
+								/>
 								<Button
 									variant="ghost"
 									size="icon"
@@ -78,7 +82,7 @@ export function ExecutionDrawer({
 					<ExecutionDetails
 						executionId={executionId}
 						embedded
-						actionsContainerRef={actionsRef}
+						actionsContainer={actionsContainer}
 						onExecutionChange={onExecutionChange}
 					/>
 				)}

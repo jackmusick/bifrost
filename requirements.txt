@@ -33,7 +33,7 @@ pyjwt[crypto]  # JWT tokens
 pwdlib[bcrypt]  # Modern password hashing
 cryptography  # Encryption utilities
 pyotp  # TOTP/HOTP for MFA
-webauthn>=2.0.0  # WebAuthn/Passkeys support
+webauthn>=2.7.1  # WebAuthn/Passkeys support
 
 # =============================================================================
 # Configuration
@@ -112,8 +112,8 @@ anthropic  # Anthropic Claude API client
 # =============================================================================
 # MCP (Model Context Protocol)
 # =============================================================================
-mcp>=1.26.0  # Model Context Protocol SDK - structuredContent support requires 1.26+
-fastmcp>=3.2.0,<4  # FastMCP for MCP server (internal + external access)
+mcp>=1.27.0  # Model Context Protocol SDK - structuredContent support requires 1.26+
+fastmcp>=3.2.4,<4  # FastMCP for MCP server (internal + external access)
 
 # =============================================================================
 # Vector Store (Knowledge/RAG)

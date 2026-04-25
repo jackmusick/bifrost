@@ -54,10 +54,6 @@ interface RunPanelProps {
  * Shows detected file type and appropriate inputs
  */
 export function RunPanel({ executeRef }: RunPanelProps) {
-	// Track render count for debugging
-	const renderCountRef = useRef(0);
-	renderCountRef.current += 1;
-
 	const queryClient = useQueryClient();
 	const orgId = useScopeStore((state) => state.scope.orgId);
 
@@ -97,13 +93,80 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		Record<string, unknown>
 	>({});
 
-	const [detectedItem, setDetectedItem] = useState<{
+	type DetectedItem = {
 		type: "workflow" | "script" | null;
 		// For executables: can have multiple per file (workflows, tools, data providers)
 		workflows?: WorkflowMetadata[];
 		// First matching executable for convenience
 		metadata?: WorkflowMetadata;
-	}>({ type: null });
+	};
+
+	// Detect file type entirely from props/data — no state needed since the
+	// result is purely a function of `openFile` and `metadata`.
+	const detectedItem = useMemo<DetectedItem>(() => {
+		if (!openFile || !openFile.name.endsWith(".py")) {
+			return { type: null };
+		}
+
+		// Fast path: Check entity_type flag from file metadata
+		// entity_type="workflow" covers both workflows and data providers (consolidated)
+		if (openFile.entity_type === "workflow") {
+			// If we have entity_id, look up directly
+			if (openFile.entity_id && metadata?.workflows) {
+				const directMatch = metadata.workflows.find(
+					(w: WorkflowMetadata) => w.id === openFile.entity_id,
+				);
+				if (directMatch) {
+					const matchingWorkflows = metadata.workflows.filter(
+						(w: WorkflowMetadata) =>
+							w.relative_file_path === openFile.path ||
+							w.source_file_path?.endsWith(openFile.path),
+					);
+					return {
+						type: "workflow",
+						workflows: matchingWorkflows,
+						metadata: directMatch,
+					};
+				}
+			}
+
+			// Fallback: Look up ALL matching executables for this file
+			const matchingWorkflows =
+				metadata?.workflows?.filter(
+					(w: WorkflowMetadata) =>
+						w.relative_file_path === openFile.path ||
+						w.source_file_path?.endsWith(openFile.path),
+				) || [];
+
+			return {
+				type: "workflow",
+				workflows: matchingWorkflows,
+				metadata: matchingWorkflows[0],
+			};
+		}
+
+		// Slow path: File doesn't have entity_type set, check metadata (back-compat)
+		if (metadata) {
+			const matchingWorkflows =
+				metadata.workflows?.filter(
+					(w: WorkflowMetadata) =>
+						w.relative_file_path === openFile.path ||
+						w.source_file_path?.endsWith(openFile.path),
+				) || [];
+
+			if (matchingWorkflows.length > 0) {
+				return {
+					type: "workflow",
+					workflows: matchingWorkflows,
+					metadata: matchingWorkflows[0],
+				};
+			}
+		}
+
+		// Otherwise it's a regular script
+		return { type: "script" };
+	}, [openFile, metadata]);
+
 	const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
 		null,
 	);
@@ -141,9 +204,12 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		onComplete: handleStreamComplete,
 	});
 
-	// When execution completes, move streaming logs to terminal output
+	// When execution completes, move streaming logs to terminal output. The
+	// cleanup is deferred to a microtask so the synchronous body of the
+	// effect does not directly invoke setState (set-state-in-effect rule).
 	useEffect(() => {
-		if (streamState?.isComplete && currentExecutionId) {
+		if (!streamState?.isComplete || !currentExecutionId) return;
+		queueMicrotask(() => {
 			// Helper to get completion message and level based on status
 			const getCompletionMessage = (
 				status: string,
@@ -228,86 +294,11 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 			if (executionId) {
 				clearStream(executionId);
 			}
-		}
+		});
 		// Only depend on isComplete and currentExecutionId - we don't want to re-run when logs change
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [streamState?.isComplete, currentExecutionId]);
 
-	// Detect file type when file or metadata changes
-	// Check entity_type from file metadata for fast path (workflow files)
-	// Then fall back to matching against workflow metadata for full details
-	// For workflows: find ALL matching workflows (same file can have multiple @workflow functions)
-	useEffect(() => {
-		if (!openFile || !openFile.name.endsWith(".py")) {
-			setDetectedItem({ type: null });
-			setSelectedWorkflowId(null);
-			return;
-		}
-
-		// Fast path: Check entity_type flag from file metadata
-		// entity_type="workflow" covers both workflows and data providers (consolidated)
-		if (openFile.entity_type === "workflow") {
-			// If we have entity_id, we can look up directly
-			if (openFile.entity_id && metadata?.workflows) {
-				const directMatch = metadata.workflows.find(
-					(w: WorkflowMetadata) => w.id === openFile.entity_id,
-				);
-				if (directMatch) {
-					// Also find any other workflows in the same file
-					const matchingWorkflows = metadata.workflows.filter(
-						(w: WorkflowMetadata) =>
-							w.relative_file_path === openFile.path ||
-							w.source_file_path?.endsWith(openFile.path),
-					);
-					setDetectedItem({
-						type: "workflow",
-						workflows: matchingWorkflows,
-						metadata: directMatch,
-					});
-					return;
-				}
-			}
-
-			// Fallback: Look up ALL matching executables for this file
-			const matchingWorkflows =
-				metadata?.workflows?.filter(
-					(w: WorkflowMetadata) =>
-						w.relative_file_path === openFile.path ||
-						w.source_file_path?.endsWith(openFile.path),
-				) || [];
-
-			// Set as workflow (unified execution UI for all executable types)
-			setDetectedItem({
-				type: "workflow",
-				workflows: matchingWorkflows,
-				metadata: matchingWorkflows[0],
-			});
-			return;
-		}
-
-		// Slow path: File doesn't have entity_type set, check metadata (for backwards compat)
-		if (metadata) {
-			// Find ALL matching executables (workflows, tools, data providers)
-			const matchingWorkflows =
-				metadata.workflows?.filter(
-					(w: WorkflowMetadata) =>
-						w.relative_file_path === openFile.path ||
-						w.source_file_path?.endsWith(openFile.path),
-				) || [];
-
-			if (matchingWorkflows.length > 0) {
-				setDetectedItem({
-					type: "workflow",
-					workflows: matchingWorkflows,
-					metadata: matchingWorkflows[0],
-				});
-				return;
-			}
-		}
-
-		// Otherwise it's a regular script
-		setDetectedItem({ type: "script" });
-	}, [openFile, metadata]);
 
 	// Create a stable dependency for workflow changes based on IDs, not array reference
 	// This prevents infinite loops from array reference instability
@@ -315,8 +306,12 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		return (detectedItem.workflows || []).map((w) => w.id).join(",");
 	}, [detectedItem.workflows]);
 
-	// Auto-select workflow when there's only one, reset when file changes
-	useEffect(() => {
+	// Auto-select workflow when there's only one, reset when file changes.
+	// Adjust during render with a previous-IDs sentinel rather than via
+	// setState-in-effect.
+	const [prevWorkflowIds, setPrevWorkflowIds] = useState(workflowIds);
+	if (prevWorkflowIds !== workflowIds) {
+		setPrevWorkflowIds(workflowIds);
 		const workflows = detectedItem.workflows || [];
 		if (workflows.length === 1) {
 			// Single workflow: auto-select
@@ -326,8 +321,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 			setSelectedWorkflowId(null);
 		}
 		// For multiple workflows: don't auto-select, let user choose
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [workflowIds]);
+	}
 
 	// Get the currently selected workflow metadata
 	const selectedWorkflow = useMemo(() => {
