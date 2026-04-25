@@ -660,8 +660,6 @@ async def publish_git_op_completed(
         commit_sha: Commit SHA if created (for sync_execute ops)
         conflicts: List of merge conflict dicts (for sync ops with conflicts)
     """
-    import json
-
     completion_message: dict[str, Any] = {
         "type": "git_op_complete",
         "jobId": job_id,

@@ -682,7 +682,6 @@ async def cancel_agent_run(
         async with get_redis() as r:
             context_raw = await r.get(redis_key)
             if context_raw:
-                import json
                 ctx = json.loads(context_raw)
                 ctx["cancelled"] = True
                 ttl = await r.ttl(redis_key)
