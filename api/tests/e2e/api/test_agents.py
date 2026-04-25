@@ -280,8 +280,9 @@ class TestAgentScopeFiltering:
                     f"/api/agents/{agent['id']}",
                     headers=platform_admin.headers,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                # Best-effort fixture cleanup; teardown shouldn't fail the test
+                logger.debug(f"fixture cleanup error: {e}")
 
     def test_platform_admin_no_scope_sees_all(
         self, e2e_client, platform_admin, scoped_agents
@@ -421,5 +422,6 @@ def test_agent(e2e_client, platform_admin):
             f"/api/agents/{agent['id']}",
             headers=platform_admin.headers,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")

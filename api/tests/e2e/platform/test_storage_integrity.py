@@ -7,6 +7,7 @@ The reconciler is also tested for healing drift.
 """
 
 import hashlib
+import logging
 
 import pytest
 import pytest_asyncio
@@ -18,6 +19,8 @@ from src.models.orm.file_index import FileIndex
 from src.models.orm.workflows import Workflow
 from src.services.file_index_service import FileIndexService
 from src.services.repo_storage import RepoStorage
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -62,8 +65,9 @@ async def cleanup_repo(db_session: AsyncSession, repo_storage: RepoStorage):
         paths = await repo_storage.list("test_storage_")
         for path in paths:
             await repo_storage.delete(path)
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup — MinIO may be unreachable / list may fail
+        logger.debug(f"cleanup_repo S3 sweep skipped: {e}")
 
 
 # =============================================================================
