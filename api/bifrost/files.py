@@ -26,6 +26,8 @@ Usage:
     content = await files.read("form_id/uuid/filename.txt", location="uploads")
 """
 
+from __future__ import annotations
+
 from typing import Literal
 
 from .client import get_client, raise_for_status_with_detail
