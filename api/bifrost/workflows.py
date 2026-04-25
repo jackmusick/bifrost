@@ -5,6 +5,8 @@ Provides Python API for workflow operations (list, get status, execute).
 All operations go through HTTP API endpoints.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 
