@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useForm, type Resolver } from "react-hook-form";
+import {
+	useForm,
+	useWatch,
+	type Control,
+	type Resolver,
+	type UseFormSetValue,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
@@ -40,6 +46,54 @@ import {
 	type Schedule,
 } from "@/components/execution/ScheduleControls";
 import { toast } from "sonner";
+
+/**
+ * Memo-safe checkbox bound to react-hook-form via `useWatch`. Using
+ * `useWatch` (rather than `watch(name)`) keeps the React Compiler from
+ * skipping memoization for the parent component.
+ */
+function CheckboxField({
+	field,
+	control,
+	setValue,
+	error,
+}: {
+	field: FormField;
+	control: Control<Record<string, unknown>>;
+	setValue: UseFormSetValue<Record<string, unknown>>;
+	error: ReturnType<typeof useForm>["formState"]["errors"][string];
+}) {
+	const value = useWatch({ control, name: field.name });
+	return (
+		<div className="space-y-2">
+			<div className="flex items-center space-x-2">
+				<Checkbox
+					id={field.name}
+					checked={value === true}
+					onCheckedChange={(checked) =>
+						setValue(field.name, checked, {
+							shouldValidate: true,
+						})
+					}
+				/>
+				<Label htmlFor={field.name} className="cursor-pointer">
+					{field.label}
+					{field.required && (
+						<span className="text-destructive ml-1">*</span>
+					)}
+				</Label>
+			</div>
+			{field.help_text && (
+				<p className="text-sm text-muted-foreground">{field.help_text}</p>
+			)}
+			{error && (
+				<p className="text-sm text-destructive">
+					{error.message as string}
+				</p>
+			)}
+		</div>
+	);
+}
 
 interface FormRendererProps {
 	form: Form;
@@ -500,6 +554,7 @@ function FormRendererInner({
 		formState: { errors, isValid },
 		setValue,
 		watch,
+		control,
 	} = useForm({
 		resolver: customResolver,
 		mode: "onChange", // Validate on change to keep isValid up-to-date
@@ -896,40 +951,12 @@ function FormRendererInner({
 
 			case "checkbox":
 				return (
-					<div className="space-y-2">
-						<div className="flex items-center space-x-2">
-							<Checkbox
-								id={field.name}
-								checked={watch(field.name) === true}
-								onCheckedChange={(checked) =>
-									setValue(field.name, checked, {
-										shouldValidate: true,
-									})
-								}
-							/>
-							<Label
-								htmlFor={field.name}
-								className="cursor-pointer"
-							>
-								{field.label}
-								{field.required && (
-									<span className="text-destructive ml-1">
-										*
-									</span>
-								)}
-							</Label>
-						</div>
-						{field.help_text && (
-							<p className="text-sm text-muted-foreground">
-								{field.help_text}
-							</p>
-						)}
-						{error && (
-							<p className="text-sm text-destructive">
-								{error.message as string}
-							</p>
-						)}
-					</div>
+					<CheckboxField
+						field={field}
+						control={control}
+						setValue={setValue}
+						error={error}
+					/>
 				);
 
 			case "select": {

@@ -98,7 +98,9 @@ export function Workbench() {
 	}, [sessionId]);
 
 	useEffect(() => {
-		fetchSession();
+		void (async () => {
+			await fetchSession();
+		})();
 	}, [fetchSession]);
 
 	// Subscribe to websocket for session updates

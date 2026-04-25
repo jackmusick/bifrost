@@ -110,10 +110,13 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
     }
   }, [formId]);
 
+  // Network fetches: setState happens after `await`, so wrapping in a void
+  // IIFE keeps the synchronous part of the effect free of setState calls.
   useEffect(() => {
-    if (isOpen) {
-      fetchSecrets();
-    }
+    if (!isOpen) return;
+    void (async () => {
+      await fetchSecrets();
+    })();
   }, [isOpen, fetchSecrets]);
 
   // ========================================================================
