@@ -737,7 +737,7 @@ class TestCLIDownload:
         # Extract to temp directory
         tar_bytes = io.BytesIO(response.content)
         with tarfile.open(fileobj=tar_bytes, mode="r:gz") as tar:
-            tar.extractall(tmp_path)
+            tar.extractall(tmp_path, filter="data")
 
         # Try to import it using a subprocess
         # NOTE: We also exercise ``bifrost.commands`` here. That subpackage
@@ -803,7 +803,7 @@ print('SUCCESS')
         # Extract to temp directory
         tar_bytes = io.BytesIO(response.content)
         with tarfile.open(fileobj=tar_bytes, mode="r:gz") as tar:
-            tar.extractall(tmp_path)
+            tar.extractall(tmp_path, filter="data")
 
         # Create a simple test workflow
         workflow_file = tmp_path / "test_workflow.py"
