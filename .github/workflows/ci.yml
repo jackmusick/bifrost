@@ -6,6 +6,21 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+    # Skip CI for documentation/config-only changes. The companion workflow
+    # ci-noop.yml fires on these same paths and reports the same status-check
+    # names (Lint & Type Check, Unit Tests, E2E Tests) so branch protection
+    # still sees the required checks reported as green.
+    #
+    # IMPORTANT: do NOT add .github/workflows/** to this list — workflow
+    # changes must always run CI so we catch CI-breaking edits before merge.
+    paths-ignore:
+      - "**/*.md"
+      - ".claude/**"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/dependabot.yml"
   workflow_dispatch:
 
 env:
