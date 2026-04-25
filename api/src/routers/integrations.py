@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import and_, delete, select
 
 from src.core.auth import Context, CurrentSuperuser
+from src.core.log_safety import log_safe
 from sqlalchemy.orm import joinedload, selectinload
 
 from src.models import (
@@ -674,7 +675,7 @@ async def create_integration(
         )
 
     integration = await repo.create_integration(request)
-    logger.info(f"Created integration: {integration.name}")
+    logger.info(f"Created integration: {log_safe(integration.name)}")
 
     return IntegrationResponse.model_validate(integration)
 
@@ -833,7 +834,7 @@ async def update_integration(
             detail="Integration not found",
         )
 
-    logger.info(f"Updated integration: {integration.name}")
+    logger.info(f"Updated integration: {log_safe(integration.name)}")
     return IntegrationResponse.model_validate(integration)
 
 
@@ -1222,7 +1223,7 @@ async def batch_upsert_mappings(
                 created += 1
         except Exception as e:
             errors.append(f"org {item.organization_id}: {str(e)}")
-            logger.error(f"Batch mapping error for org {item.organization_id}: {e}")
+            logger.error(f"Batch mapping error for org {item.organization_id}: {log_safe(e)}")
 
     await ctx.db.commit()
 
@@ -1596,7 +1597,7 @@ async def test_integration_connection(
         duration_ms = int((time.time() - start_time) * 1000)
 
         if worker_result is None:
-            logger.error(f"Integration test for {integration.name} ({scope_label}): timeout")
+            logger.error(f"Integration test for {log_safe(integration.name)} ({log_safe(scope_label)}): timeout")
             return IntegrationTestResponse(
                 success=False,
                 message=f"Test timed out for {integration.name}",
@@ -1609,7 +1610,7 @@ async def test_integration_connection(
         if status_str == "Failed":
             error = worker_result.get("error", "Unknown error")
             logger.info(
-                f"Integration test for {integration.name} ({scope_label}): failed - {error}"
+                f"Integration test for {log_safe(integration.name)} ({log_safe(scope_label)}): failed - {log_safe(error)}"
             )
             return IntegrationTestResponse(
                 success=False,
@@ -1624,8 +1625,8 @@ async def test_integration_connection(
             success = result.get("success", False)
             if success:
                 logger.info(
-                    f"Integration test for {integration.name} ({scope_label}): success - "
-                    f"HTTP {result.get('status_code')} at {result.get('url')}"
+                    f"Integration test for {log_safe(integration.name)} ({log_safe(scope_label)}): success - "
+                    f"HTTP {result.get('status_code')} at {log_safe(result.get('url'))}"
                 )
                 return IntegrationTestResponse(
                     success=True,
@@ -1636,7 +1637,7 @@ async def test_integration_connection(
             else:
                 error = result.get("error", f"HTTP {result.get('status_code', 'unknown')}")
                 logger.info(
-                    f"Integration test for {integration.name} ({scope_label}): failed - {error}"
+                    f"Integration test for {log_safe(integration.name)} ({log_safe(scope_label)}): failed - {log_safe(error)}"
                 )
                 return IntegrationTestResponse(
                     success=False,
@@ -1647,7 +1648,7 @@ async def test_integration_connection(
                 )
 
         # Unexpected result format
-        logger.warning(f"Unexpected test result format: {result}")
+        logger.warning(f"Unexpected test result format: {log_safe(result)}")
         return IntegrationTestResponse(
             success=False,
             message=f"Unexpected test result for {integration.name}",

@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.models import Workflow
 
 logger = logging.getLogger(__name__)
@@ -117,7 +118,7 @@ class WorkflowIndexer:
             try:
                 tree = ast.parse(content_str, filename=path)
             except SyntaxError as e:
-                logger.warning(f"Syntax error parsing {path}: {e}")
+                logger.warning(f"Syntax error parsing {log_safe(path)}: {log_safe(e)}")
                 return
 
         now = datetime.now(timezone.utc)
@@ -214,7 +215,7 @@ class WorkflowIndexer:
                             update_values["tags"] = tags_from_decorator
 
                     if was_inactive:
-                        logger.info(f"Reactivating workflow: {workflow_name} ({function_name}) from {path}")
+                        logger.info(f"Reactivating workflow: {log_safe(workflow_name)} ({log_safe(function_name)}) from {log_safe(path)}")
 
                     # Enrich existing record with content-derived fields
                     stmt = (
@@ -223,7 +224,7 @@ class WorkflowIndexer:
                         .values(**update_values)
                     )
                     await self.db.execute(stmt)
-                    logger.debug(f"Enriched workflow: {workflow_name} ({function_name}) from {path}")
+                    logger.debug(f"Enriched workflow: {log_safe(workflow_name)} ({log_safe(function_name)}) from {log_safe(path)}")
 
                     # Re-fetch to get merged DB values (decorator + API settings)
                     result = await self.db.execute(
@@ -250,7 +251,7 @@ class WorkflowIndexer:
                             execution_mode=workflow.execution_mode,
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to update caches for workflow {workflow_name}: {e}")
+                        logger.warning(f"Failed to update caches for workflow {log_safe(workflow_name)}: {log_safe(e)}")
 
                 elif decorator_name == "data_provider":
                     provider_name = kwargs.get("name") or node.name
@@ -277,7 +278,7 @@ class WorkflowIndexer:
                     parameters_schema = self._extract_parameters_from_ast(node)
 
                     if not existing_dp.is_active:
-                        logger.info(f"Reactivating data provider: {provider_name} ({function_name}) from {path}")
+                        logger.info(f"Reactivating data provider: {log_safe(provider_name)} ({log_safe(function_name)}) from {log_safe(path)}")
 
                     # Only update code-derived fields and valid decorator params.
                     # Operational settings (timeout_seconds, cache_ttl_seconds)
@@ -317,7 +318,7 @@ class WorkflowIndexer:
                         .values(**dp_update_values)
                     )
                     await self.db.execute(stmt)
-                    logger.debug(f"Enriched data provider: {provider_name} ({function_name}) from {path}")
+                    logger.debug(f"Enriched data provider: {log_safe(provider_name)} ({log_safe(function_name)}) from {log_safe(path)}")
 
         # Note: workspace_files update removed — file_index is the sole search index.
         # Entity type/ID routing is handled by path conventions, not DB columns.
@@ -337,13 +338,13 @@ class WorkflowIndexer:
             from src.main import app
 
             refresh_workflow_endpoint(app, workflow)
-            logger.info(f"Refreshed endpoint for workflow: {workflow.name}")
+            logger.info(f"Refreshed endpoint for workflow: {log_safe(workflow.name)}")
         except ImportError:
             # App not fully initialized yet (during startup)
             pass
         except Exception as e:
             # Log but don't fail the file write
-            logger.warning(f"Failed to refresh endpoint for {workflow.name}: {e}")
+            logger.warning(f"Failed to refresh endpoint for {log_safe(workflow.name)}: {log_safe(e)}")
 
     # ==================== AST PARSING HELPERS ====================
 
@@ -626,6 +627,6 @@ class WorkflowIndexer:
         count = result.rowcount if result.rowcount else 0
 
         if count > 0:
-            logger.info(f"Soft-deleted {count} workflow(s) for deleted file: {path}")
+            logger.info(f"Soft-deleted {count} workflow(s) for deleted file: {log_safe(path)}")
 
         return count

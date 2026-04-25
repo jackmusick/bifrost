@@ -657,7 +657,7 @@ def _run_direct(
         if organization_id:
             print("Error: --org requires authentication. Run 'bifrost login' first.", file=sys.stderr)
             return 1
-        pass  # Standalone mode works without auth
+        # Standalone mode works without auth — fall through to local workflow execution.
 
     if verbose:
         print(f"Running in standalone mode: {selected_workflow}")

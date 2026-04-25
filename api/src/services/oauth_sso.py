@@ -23,6 +23,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.models import User, UserOAuthAccount
 from src.services.oauth_config_service import OAuthConfigService
 
@@ -269,7 +270,7 @@ class OAuthService:
             if response.status_code != 200:
                 error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
                 error_msg = error_data.get("error_description", error_data.get("error", response.text))
-                logger.error(f"Token exchange failed: {error_msg}")
+                logger.error(f"Token exchange failed: {log_safe(error_msg)}")
                 raise OAuthError(f"Token exchange failed: {error_msg}")
 
             token_data = response.json()

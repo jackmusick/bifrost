@@ -1319,7 +1319,7 @@ class GitHubSyncService:
             # Clone into a temp dir first (git clone requires clean dir)
             clone_dir = Path(tempfile.mkdtemp(prefix="bifrost-clone-"))
             try:
-                repo = GitRepo.clone_from(
+                GitRepo.clone_from(
                     self.repo_url,
                     str(clone_dir),
                     branch=self.branch,

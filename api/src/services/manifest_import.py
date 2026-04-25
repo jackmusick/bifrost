@@ -671,14 +671,14 @@ async def import_manifest_from_repo(
         except Exception as e:
             logger.warning(f"Failed to refresh MCP workflow tools after manifest import: {e}")
 
-    # 7. Regenerate manifest from DB (partial: only changed entities)
+    # 7. Regenerate manifest from DB (partial: only changed entities).
+    # NOTE: control reaches this point only when ``changed_ids`` is truthy —
+    # the empty-changes case returns at step 4c (around line 596) before
+    # entity resolution runs. The partial filter is therefore always applied.
     try:
         new_manifest = await generate_manifest(db)
-        if changed_ids:
-            partial = filter_manifest_by_ids(new_manifest, changed_ids)
-            result.manifest_files = serialize_manifest_dir(partial)
-        else:
-            result.manifest_files = serialize_manifest_dir(new_manifest)
+        partial = filter_manifest_by_ids(new_manifest, changed_ids)
+        result.manifest_files = serialize_manifest_dir(partial)
     except Exception as e:
         result.warnings.append(f"Manifest regeneration failed: {e}")
 
