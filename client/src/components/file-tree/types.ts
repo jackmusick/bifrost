@@ -200,7 +200,7 @@ export interface FileTreeProps {
 	/** Additional CSS classes */
 	className?: string;
 	/** Optional trigger to refresh the file tree - change this value to trigger a refresh */
-	refreshTrigger?: number;
+	refreshTrigger?: number | string;
 	/** Optional callback when user requests to change a file's organization scope */
 	onChangeScope?: (file: FileNode) => void;
 }

@@ -143,19 +143,20 @@ export function LLMConfig() {
 		"/api/admin/llm/test-saved",
 	);
 
-	// Update form when config loads
-	useEffect(() => {
-		if (config) {
-			const p = config.provider as Provider;
-			setProvider(p);
-			setModel(config.model);
-			setMaxTokens(config.max_tokens);
-			setDefaultSystemPrompt(config.default_system_prompt ?? "");
-			setEndpoint(config.endpoint || DEFAULT_ENDPOINTS[p] || DEFAULT_ENDPOINTS.openai);
-			setSummarizationModel(config.summarization_model ?? "");
-			setTuningModel(config.tuning_model ?? "");
-		}
-	}, [config]);
+	// Update form when config loads. Adjust during render with a previous-
+	// reference sentinel to avoid setState-in-effect.
+	const [prevConfigRef, setPrevConfigRef] = useState<typeof config>(undefined);
+	if (config && prevConfigRef !== config) {
+		setPrevConfigRef(config);
+		const p = config.provider as Provider;
+		setProvider(p);
+		setModel(config.model);
+		setMaxTokens(config.max_tokens);
+		setDefaultSystemPrompt(config.default_system_prompt ?? "");
+		setEndpoint(config.endpoint || DEFAULT_ENDPOINTS[p] || DEFAULT_ENDPOINTS.openai);
+		setSummarizationModel(config.summarization_model ?? "");
+		setTuningModel(config.tuning_model ?? "");
+	}
 
 	// Track if we've already fetched models for this config
 	const modelsFetchedRef = useRef(false);
@@ -1233,13 +1234,17 @@ function ModelPricingCard({ refreshKey = 0 }: { refreshKey?: number }) {
 	};
 
 	useEffect(() => {
-		loadPricing();
+		void (async () => {
+			await loadPricing();
+		})();
 	}, []);
 
 	// Refresh when parent signals (e.g., after config save)
 	useEffect(() => {
 		if (refreshKey > 0) {
-			refreshPricing();
+			void (async () => {
+				await refreshPricing();
+			})();
 		}
 	}, [refreshKey]);
 

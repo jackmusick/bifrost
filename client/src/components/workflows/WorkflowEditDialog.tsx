@@ -171,8 +171,15 @@ export function WorkflowEditDialog({
 	// Fetch current workflow roles
 	const workflowRolesQuery = useWorkflowRoles(workflow?.id);
 
-	// Load workflow data when dialog opens or workflow changes
-	useEffect(() => {
+	// Load workflow data when the dialog opens (or when the target workflow
+	// changes while open). Adjusting state during render is the React-
+	// recommended idiom for "reset state when an external value changes"
+	// (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+	// — avoids the extra effect+render cycle of useEffect+setState.
+	const [prevLoadKey, setPrevLoadKey] = useState<string | null>(null);
+	const loadKey = workflow && open ? `${workflow.id}:${initialTab ?? ""}` : null;
+	if (prevLoadKey !== loadKey) {
+		setPrevLoadKey(loadKey);
 		if (workflow && open) {
 			// Access control
 			setOrganizationId(workflow.organization_id ?? null);
@@ -207,14 +214,15 @@ export function WorkflowEditDialog({
 			setCopiedCurl(false);
 
 			// Set initial tab
-			if (initialTab) {
-				setActiveTab(initialTab);
-			} else {
-				setActiveTab("general");
-			}
+			setActiveTab(initialTab ?? "general");
+		}
+	}
 
-			// Fetch roles
-			workflowRolesQuery.refetch().then((result) => {
+	// Roles fetch is a side effect (network) and is the legitimate place for
+	// useEffect — the resulting setState happens after an awaited query.
+	useEffect(() => {
+		if (workflow && open) {
+			void workflowRolesQuery.refetch().then((result) => {
 				if (result.data) {
 					setSelectedRoleIds(result.data.role_ids || []);
 				}
