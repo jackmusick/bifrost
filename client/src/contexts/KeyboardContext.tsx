@@ -54,7 +54,7 @@ export function KeyboardProvider({ children }: { children: ReactNode }) {
 				// Special handling for Cmd/Ctrl shortcuts
 				const isCmdCtrlShortcut = shortcut.ctrl && shortcut.meta;
 
-				let modifiersMatch = false;
+				let modifiersMatch: boolean;
 				if (isCmdCtrlShortcut) {
 					// For Cmd/Ctrl shortcuts, accept either
 					const cmdCtrlPressed = event.ctrlKey || event.metaKey;

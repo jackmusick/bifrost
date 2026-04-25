@@ -174,17 +174,27 @@ export function Knowledge() {
 		}
 	}, [searchTerm, filterNamespace, filterOrgId, page]);
 
-	// Reset page when filters change
-	useEffect(() => {
+	// Reset page when filters change. Use the adjusting-state-on-prop-change
+	// idiom to avoid a setState-in-effect cycle.
+	const filtersKey = `${searchTerm}|${filterNamespace ?? ""}|${filterOrgId ?? ""}`;
+	const [prevFiltersKey, setPrevFiltersKey] = useState(filtersKey);
+	if (prevFiltersKey !== filtersKey) {
+		setPrevFiltersKey(filtersKey);
 		setPage(0);
-	}, [searchTerm, filterNamespace, filterOrgId]);
+	}
 
+	// Network fetches: setState happens after `await`, so wrapping in a void
+	// IIFE keeps the synchronous part of the effect free of setState calls.
 	useEffect(() => {
-		fetchNamespaces();
+		void (async () => {
+			await fetchNamespaces();
+		})();
 	}, [fetchNamespaces]);
 
 	useEffect(() => {
-		fetchDocuments();
+		void (async () => {
+			await fetchDocuments();
+		})();
 	}, [fetchDocuments]);
 
 	const handleDelete = async () => {
