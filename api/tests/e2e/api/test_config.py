@@ -4,8 +4,11 @@ E2E tests for configuration management.
 Tests CRUD operations for different config types (string, int, bool, json, secret).
 """
 
+import logging
 import pytest
 
+
+logger = logging.getLogger(__name__)
 
 def _create_config(e2e_client, headers, key, value, type_="string", **kwargs):
     """Create a config and return the response JSON with id."""
@@ -406,8 +409,9 @@ class TestConfigScopeFiltering:
         for cfg in configs.values():
             try:
                 _delete_config(e2e_client, platform_admin.headers, cfg["id"])
-            except Exception:
-                pass
+            except Exception as e:
+                # Best-effort fixture cleanup; teardown shouldn't fail the test
+                logger.debug(f"config fixture cleanup error: {e}")
 
     def test_platform_admin_no_scope_sees_all(
         self, e2e_client, platform_admin, scoped_configs
