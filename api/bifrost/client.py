@@ -8,6 +8,7 @@ Supports two modes:
 """
 
 import asyncio
+import logging
 import os
 import sys
 import threading
@@ -23,6 +24,8 @@ from .credentials import (
     is_token_expired,
     save_credentials,
 )
+
+logger = logging.getLogger(__name__)
 
 # Global client injection for platform mode
 _injected_client: Optional["BifrostClient"] = None
@@ -45,8 +48,9 @@ def raise_for_status_with_detail(response: httpx.Response) -> None:
     try:
         body = response.json()
         detail = body.get("detail") or body.get("message") or body.get("error") or ""
-    except Exception:
-        pass
+    except (ValueError, AttributeError) as e:
+        # Response wasn't JSON or didn't have dict-like .get — fall back to raise_for_status
+        logger.debug(f"could not extract error detail from response body: {e}")
 
     if detail:
         raise httpx.HTTPStatusError(

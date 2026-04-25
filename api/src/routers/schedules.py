@@ -41,8 +41,9 @@ def _validate_cron(expression: str) -> tuple[Literal["valid", "warning", "error"
 
         if interval < MIN_INTERVAL_SECONDS:
             return "warning", f"Schedule runs more frequently than {MIN_INTERVAL_SECONDS // 60} minutes"
-    except Exception:
-        pass
+    except (ImportError, ValueError) as e:
+        # croniter not installed or invalid expression — already validated above, treat as valid
+        logger.debug(f"could not compute cron interval for {expression!r}: {e}")
 
     return "valid", None
 
@@ -93,8 +94,9 @@ async def validate_cron_expression(
 
         if len(runs) >= 2:
             interval_seconds = int((runs[1] - runs[0]).total_seconds())
-    except Exception:
-        pass
+    except (ImportError, ValueError) as e:
+        # croniter not installed or expression rejected — return validation without preview
+        logger.debug(f"could not compute next runs for {expression!r}: {e}")
 
     return CronValidationResponse(
         valid=True,

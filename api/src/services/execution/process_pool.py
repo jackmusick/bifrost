@@ -207,8 +207,9 @@ def _get_private_dirty_kb(pid: int) -> int:
                     parts = line.split()
                     if len(parts) >= 2:
                         return int(parts[1])
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as e:
+        # /proc not available (macOS) or process gone — caller treats -1 as unknown
+        logger.debug(f"could not read smaps_rollup for pid {pid}: {e}")
     return -1
 
 
@@ -534,6 +535,7 @@ class ProcessPoolManager:
                 try:
                     await task
                 except asyncio.CancelledError:
+                    # Expected — we just cancelled the task; no log needed
                     pass
 
         # Terminate all processes
@@ -592,6 +594,7 @@ class ProcessPoolManager:
             try:
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
+                # Process died between is_alive() check and kill — that's fine
                 pass
             handle.process.join(timeout=1)
 
@@ -828,6 +831,7 @@ class ProcessPoolManager:
             try:
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
+                # Process died between is_alive() check and kill — that's fine
                 pass
             handle.process.join(timeout=1)
 
@@ -889,8 +893,9 @@ class ProcessPoolManager:
                     try:
                         await pubsub.unsubscribe("bifrost:cancel")
                         await pubsub.aclose()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Already-closed pubsub or Redis disconnect — best-effort cleanup
+                        logger.debug(f"cancel listener pubsub cleanup failed: {e}")
 
         logger.info("Cancel listener loop stopped")
 
@@ -933,8 +938,9 @@ class ProcessPoolManager:
                     try:
                         await pubsub.unsubscribe(channel)
                         await pubsub.aclose()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Already-closed pubsub or Redis disconnect — best-effort cleanup
+                        logger.debug(f"command listener pubsub cleanup failed: {e}")
 
         logger.info("Command listener loop stopped")
 
@@ -1202,6 +1208,8 @@ class ProcessPoolManager:
                         result = handle.result_queue.get_nowait()
                         await self._handle_result(handle, result)
                     except Empty:
+                        # Hot polling loop — Empty is the common case (no work ready).
+                        # Logging here would flood at 10Hz × N processes; intentionally silent.
                         pass
                     except Exception as e:
                         logger.exception(f"Result loop error for {handle.id}: {e}")

@@ -1419,7 +1419,8 @@ class ManifestResolver:
             if result.scalar_one_or_none():
                 return wf_id
         except ValueError:
-            pass
+            # Not a UUID — fall through to path::func / name resolution
+            logger.debug(f"workflow ref {ref!r} is not a UUID, trying alternate resolutions")
 
         # 2. Try as path::function_name
         if "::" in ref:
@@ -2247,8 +2248,9 @@ class ManifestResolver:
                 # Workflow-targeted subscription
                 try:
                     wf_id = UUID(msub.workflow_id) if msub.workflow_id else None
-                except (ValueError, AttributeError):
-                    pass
+                except (ValueError, AttributeError) as e:
+                    # Non-UUID workflow_id (portable ref) — falls through to path::func resolution below
+                    logger.debug(f"workflow_id {msub.workflow_id!r} is not a UUID, will resolve as portable ref: {e}")
 
                 # For UUID workflow refs: skip if that workflow wasn't imported
                 if wf_id is not None and imported_wf_ids is not None and msub.workflow_id not in imported_wf_ids:
