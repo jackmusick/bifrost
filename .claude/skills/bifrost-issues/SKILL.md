@@ -147,18 +147,41 @@ When opening the PR:
 2. Ensure the PR body includes `Fixes #N` (use `Closes #N` for non-bug issues; GitHub auto-closes the issue on merge either way).
 3. If multiple issues are addressed, one `Fixes #N` line per issue.
 
-### 7. Watch CI, then merge
+### 7. Hand off to merge (auto when safe, else watch CI)
 
-The PR isn't done at "opened." Carry it through to merged:
+The PR isn't done at "opened." Carry it through to merged. The path depends on whether `main` has branch protection with required status checks — `--auto` is only safe when GitHub will refuse to merge until checks pass.
 
-1. **Watch CI.** Snapshot status with `gh pr checks <N> --repo jackmusick/bifrost` once, then arm a session-length watcher so the user gets pinged the moment CI lands. Use the `loop` skill in dynamic mode (no interval, event-gated) — it knows how to set up a Monitor on `gh pr checks` plus a heartbeat fallback. Don't roll your own polling loop here.
+**Capability check (do this once, immediately after opening the PR):**
+
+```bash
+# Detect required-checks gating. ≥1 → protection exists; 0 / 404 → no protection.
+gh api repos/jackmusick/bifrost/branches/main/protection \
+  --jq '.required_status_checks.contexts // [] | length' 2>/dev/null
+```
+
+If the count is ≥1, `--auto` is safe. Otherwise it isn't (a `--auto` merge would fire the moment GitHub considers the PR mergeable, which without required checks is *immediately*).
+
+**Path A — protection exists (preferred):**
+
+1. Confirm with the user once ("Queue auto-merge so it ships when CI is green?").
+2. On approval: `gh pr merge <N> --auto --squash --delete-branch=false` (keep the remote branch; the worktree still references it, cleanup in step 8).
+3. **Stop here.** No CI watcher needed — GitHub merges automatically when checks pass. Tell the user they'll see the merge land in their notifications and can return for cleanup whenever.
+4. The contributor's value of this path is bigger than the admin's: contributors with no merge perms can still queue `--auto`, walk away, and the merge fires the moment approval + checks both arrive — they don't have to come back to click merge.
+5. If a review is required (`required_pull_request_reviews` is set) and the user isn't admin, surface that the merge is gated on approval and offer to request reviewers via `gh pr edit <N> --add-reviewer <login>`. Don't pick reviewers unprompted.
+
+**Path B — no protection (fallback):**
+
+1. **Watch CI.** Snapshot status with `gh pr checks <N> --repo jackmusick/bifrost` once, then arm a session-length watcher via the `loop` skill in dynamic mode (no interval, event-gated) — it knows how to set up a Monitor on `gh pr checks` plus a heartbeat fallback. Don't roll your own polling loop.
 2. **If CI fails:** stay in the existing worktree on the existing branch — fixes are additional commits to `<issue-num>-<slug>`, not a fresh worktree. The PR auto-updates on push. New worktree only if the branch is being abandoned entirely.
-3. **If CI passes:** check whether the user can self-merge.
-   - `gh pr view <N> --json viewerCanAdminister,reviewDecision,mergeStateStatus` — `viewerCanAdminister: true` (or repo-owner) means self-merge is available; otherwise the user is a contributor who needs review.
-   - **Self-merge path:** confirm with the user once ("CI's green — merge?"), then `gh pr merge <N> --squash --delete-branch=false` (don't delete the remote branch yet — the worktree still references it; cleanup in step 8).
-   - **Review path:** if reviewers aren't already requested, surface that and offer to request them via `gh pr edit <N> --add-reviewer <login>`. Don't pick reviewers unprompted.
-4. **Don't auto-merge unprompted.** Even with permissions, "merge?" is the user's decision — the skill confirms, never assumes.
-5. **Don't `gh pr merge --auto` on bifrost.** This repo doesn't enforce status checks via branch protection in a way that makes auto-merge safe; explicit human "yes" gates merges.
+3. **If CI passes:** check `gh pr view <N> --json viewerCanAdminister,reviewDecision,mergeStateStatus` to decide.
+   - `viewerCanAdminister: true` → self-merge: confirm once ("CI's green — merge?"), then `gh pr merge <N> --squash --delete-branch=false`.
+   - Otherwise → contributor needs review: surface reviewer-request as in Path A step 5.
+4. **Never `--auto` on Path B.** Without required checks, it would fire before CI completes.
+
+**Both paths:**
+
+- Don't merge unprompted. "Merge?" or "queue auto-merge?" is the user's decision — confirm, never assume.
+- If CI is already failing on the PR when you reach this step, surface the failure and don't offer merge until it's fixed.
 
 ### 8. Cleanup (after merge)
 
