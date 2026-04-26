@@ -21,7 +21,7 @@
  * Outputs (to stdout):
  *   JSON summary { committed, unchanged, errors, missing }
  */
-import { readFileSync, writeFileSync, existsSync, copyFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, renameSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import yaml from "js-yaml";
@@ -201,7 +201,11 @@ async function main() {
       }
 
       if (shouldCommit) {
-        writeFileSync(targetPath, finalBuf);
+        // Atomic write: write to temp file then rename, so a concurrent reader
+        // never sees a half-written PNG (closes CodeQL js/file-system-race).
+        const targetTmp = `${targetPath}.tmp-${process.pid}-${Date.now()}`;
+        writeFileSync(targetTmp, finalBuf);
+        renameSync(targetTmp, targetPath);
         entry.captured_at = { bifrost_sha: sha, timestamp: new Date().toISOString() };
       }
 
@@ -216,8 +220,10 @@ async function main() {
     }
   }
 
-  // Write back the manifest with updated captured_at fields.
-  writeFileSync(manifestPath, yaml.dump(manifest, { lineWidth: 120, noRefs: true }));
+  // Write back the manifest with updated captured_at fields (atomic).
+  const manifestTmp = `${manifestPath}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(manifestTmp, yaml.dump(manifest, { lineWidth: 120, noRefs: true }));
+  renameSync(manifestTmp, manifestPath);
 
   console.log(JSON.stringify(summary, null, 2));
 }
