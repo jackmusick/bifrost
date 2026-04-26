@@ -5,13 +5,13 @@
 # =============================================================================
 fastapi
 uvicorn[standard]
-python-multipart  # Form data handling
+python-multipart>=0.0.26  # Form data handling (CVE fixes through 0.0.26)
 
 # =============================================================================
 # Database (PostgreSQL)
 # =============================================================================
 sqlalchemy[asyncio]
-asyncpg  # Async PostgreSQL driver
+asyncpg>=0.30.0  # Async PostgreSQL driver (CVE-2024-25737 RCE fixed in 0.29.0)
 psycopg2-binary  # Sync PostgreSQL driver (for SDK/workflow threads)
 alembic  # Database migrations
 greenlet  # Required by SQLAlchemy async
@@ -47,7 +47,7 @@ email-validator  # Required by Pydantic for email validation
 # HTTP & Async
 # =============================================================================
 httpx  # Async HTTP client
-aiohttp
+aiohttp>=3.13.4  # Closes 20 CVEs incl. CVSS 9.1
 aiofiles
 
 # =============================================================================
@@ -73,7 +73,7 @@ jinja2
 # =============================================================================
 dulwich
 PyGithub
-GitPython
+GitPython>=3.1.41  # Closes 5 CVEs incl. CVSS 9.8 RCE
 
 # =============================================================================
 # Background Jobs
