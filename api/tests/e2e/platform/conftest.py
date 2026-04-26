@@ -19,10 +19,13 @@ live at the top of every ``test_cli_*.py``.
 from __future__ import annotations
 
 import asyncio
+import logging
 import pathlib
 import sys
 
 import pytest
+
+logger = logging.getLogger(__name__)
 
 # Standalone bifrost package import — mirrors the shim that used to live at
 # the top of every ``test_cli_*.py``. ``parents[3]`` resolves to ``api/``.
@@ -78,14 +81,16 @@ def _clear_s3_bifrost_sync() -> None:
         for path in paths:
             try:
                 await repo.delete(path)
-            except Exception:
-                pass
+            except Exception as e:
+                # Per-path delete is best-effort during cleanup
+                logger.debug(f"_clear_s3_bifrost_sync could not delete {path}: {e}")
 
     loop = asyncio.new_event_loop()
     try:
         loop.run_until_complete(_clear())
-    except Exception:
-        pass
+    except Exception as e:
+        # S3 not configured / unreachable — fixture is best-effort
+        logger.debug(f"_clear_s3_bifrost_sync skipped: {e}")
     finally:
         loop.close()
 

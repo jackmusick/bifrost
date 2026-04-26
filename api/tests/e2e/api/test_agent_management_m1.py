@@ -24,6 +24,7 @@ from the API server so we cannot patch it from here.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 from uuid import UUID, uuid4
@@ -38,6 +39,8 @@ from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
+
+logger = logging.getLogger(__name__)
 
 
 pytestmark = pytest.mark.asyncio
@@ -77,8 +80,9 @@ async def lifecycle_agent(
         e2e_client.delete(
             f"/api/agents/{agent['id']}", headers=platform_admin.headers
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Best-effort fixture cleanup; teardown shouldn't fail the test
+        logger.debug(f"fixture cleanup error: {e}")
 
 
 @pytest_asyncio.fixture

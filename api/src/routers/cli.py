@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import CurrentUser
 from src.core.database import get_db
+from src.core.log_safety import log_safe
 from src.models import DeveloperContext, Organization
 from src.models.contracts.cli import (
     CLIAICompleteRequest,
@@ -425,15 +426,17 @@ async def cli_get_config(
     elif config_type == "json" and isinstance(raw_value, str):
         try:
             raw_value = json.loads(raw_value)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            # Stored value is not valid JSON — return raw string as fallback
+            logger.debug(f"config {request.key} stored as json but failed to parse, returning raw: {e}")
     elif config_type == "bool":
         raw_value = str(raw_value).lower() == "true" if isinstance(raw_value, str) else bool(raw_value)
     elif config_type == "int":
         try:
             raw_value = int(raw_value)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            # Stored value isn't coercible to int — return raw value
+            logger.debug(f"config {request.key} stored as int but failed to coerce, returning raw: {e}")
 
     return CLIConfigValue(
         key=request.key,
@@ -509,10 +512,11 @@ async def cli_set_config(
         from src.core.cache import upsert_config
         config_type_str = config_type.value
         await upsert_config(org_id, request.key, stored_value, config_type_str)
-    except ImportError:
-        pass
+    except ImportError as e:
+        # cache module is optional in some deploys; DB write already committed
+        logger.debug(f"cache module unavailable, skipping config cache upsert: {e}")
 
-    logger.info(f"CLI set config {request.key} for user {current_user.email}")
+    logger.info(f"CLI set config {log_safe(request.key)} for user {current_user.email}")
 
 
 @router.post(
@@ -592,10 +596,11 @@ async def cli_delete_config(
     try:
         from src.core.cache import invalidate_config
         await invalidate_config(org_id, request.key)
-    except ImportError:
-        pass
+    except ImportError as e:
+        # cache module is optional; DB delete already committed
+        logger.debug(f"cache module unavailable, skipping config cache invalidate: {e}")
 
-    logger.info(f"CLI deleted config {request.key} for user {current_user.email}")
+    logger.info(f"CLI deleted config {log_safe(request.key)} for user {current_user.email}")
     return True
 
 
@@ -663,13 +668,13 @@ async def sdk_integrations_get(
                     oauth_scope=request.oauth_scope,
                 )
 
-            logger.info(f"SDK retrieved integration '{request.name}' (org mapping) for user {current_user.email}")
+            logger.info(f"SDK retrieved integration '{log_safe(request.name)}' (org mapping) for user {current_user.email}")
             return SDKIntegrationsGetResponse(**response_data)
 
         # Fall back to integration defaults
         integration = await repo.get_integration_by_name(request.name)
         if not integration:
-            logger.debug(f"SDK integrations.get('{request.name}'): integration not found")
+            logger.debug(f"SDK integrations.get('{log_safe(request.name)}'): integration not found")
             return None
 
         entity_id = integration.default_entity_id or integration.entity_id
@@ -693,11 +698,11 @@ async def sdk_integrations_get(
                 oauth_scope=request.oauth_scope,
             )
 
-        logger.info(f"SDK retrieved integration '{request.name}' (defaults) for user {current_user.email}")
+        logger.info(f"SDK retrieved integration '{log_safe(request.name)}' (defaults) for user {current_user.email}")
         return SDKIntegrationsGetResponse(**response_data)
 
     except Exception as e:
-        logger.error(f"SDK integrations.get failed: {e}")
+        logger.error(f"SDK integrations.get failed: {log_safe(e)}")
         return None
 
 
@@ -745,7 +750,7 @@ async def _build_oauth_data(
 
     # Check if we should auto-fetch a fresh token
     if should_auto_refresh_token(provider, entity_id, oauth_scope):
-        scope_info = f"oauth_scope={oauth_scope}" if oauth_scope else f"entity_id={entity_id}"
+        scope_info = f"oauth_scope={log_safe(oauth_scope)}" if oauth_scope else f"entity_id={entity_id}"
         logger.info(f"Auto-refreshing token ({scope_info})")
 
         if client_secret and resolved_token_url:
@@ -777,7 +782,7 @@ async def _build_oauth_data(
                 logger.info("Auto-refresh token successful")
             else:
                 error_msg = result.get("error_description", result.get("error", "Unknown error"))
-                logger.error(f"Auto-refresh token failed: {error_msg}")
+                logger.error(f"Auto-refresh token failed: {log_safe(error_msg)}")
         else:
             logger.warning("Cannot auto-refresh: missing client_secret or resolved_token_url")
     elif token:
@@ -834,12 +839,12 @@ async def sdk_integrations_list_mappings(
         integration = await repo.get_integration_by_name(request.name)
 
         if not integration:
-            logger.warning(f"SDK integrations.list_mappings: integration '{request.name}' not found")
+            logger.warning(f"SDK integrations.list_mappings: integration '{log_safe(request.name)}' not found")
             return None
 
         mappings = await repo.list_mappings(integration.id)
 
-        logger.info(f"SDK listed {len(mappings)} mappings for integration '{request.name}' for user {current_user.email}")
+        logger.info(f"SDK listed {len(mappings)} mappings for integration '{log_safe(request.name)}' for user {current_user.email}")
 
         items = []
         for mapping in mappings:
@@ -860,7 +865,7 @@ async def sdk_integrations_list_mappings(
         return SDKIntegrationsListMappingsResponse(items=items)
 
     except Exception as e:
-        logger.error(f"SDK integrations.list_mappings failed: {e}")
+        logger.error(f"SDK integrations.list_mappings failed: {log_safe(e)}")
         return None
 
 
@@ -882,7 +887,7 @@ async def sdk_integrations_get_mapping(
         integration = await repo.get_integration_by_name(request.name)
 
         if not integration:
-            logger.warning(f"SDK integrations.get_mapping: integration '{request.name}' not found")
+            logger.warning(f"SDK integrations.get_mapping: integration '{log_safe(request.name)}' not found")
             return None
 
         mapping = None
@@ -907,7 +912,7 @@ async def sdk_integrations_get_mapping(
         # Get merged config for the mapping
         config = await repo.get_config_for_mapping(integration.id, mapping.organization_id)
 
-        logger.info(f"SDK retrieved mapping for integration '{request.name}' for user {current_user.email}")
+        logger.info(f"SDK retrieved mapping for integration '{log_safe(request.name)}' for user {current_user.email}")
 
         return SDKIntegrationsMappingItem(
             id=str(mapping.id),
@@ -922,7 +927,7 @@ async def sdk_integrations_get_mapping(
         )
 
     except Exception as e:
-        logger.error(f"SDK integrations.get_mapping failed: {e}")
+        logger.error(f"SDK integrations.get_mapping failed: {log_safe(e)}")
         return None
 
 
@@ -972,7 +977,7 @@ async def sdk_integrations_upsert_mapping(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to update mapping",
                 )
-            logger.info(f"SDK updated mapping for integration '{request.name}', org '{request.scope}' by {current_user.email}")
+            logger.info(f"SDK updated mapping for integration '{log_safe(request.name)}', org '{log_safe(request.scope)}' by {current_user.email}")
         else:
             # Create new mapping
             create_data = IntegrationMappingCreate(
@@ -986,7 +991,7 @@ async def sdk_integrations_upsert_mapping(
                 create_data,
                 updated_by=current_user.email,
             )
-            logger.info(f"SDK created mapping for integration '{request.name}', org '{request.scope}' by {current_user.email}")
+            logger.info(f"SDK created mapping for integration '{log_safe(request.name)}', org '{log_safe(request.scope)}' by {current_user.email}")
 
         await db.commit()
 
@@ -1008,7 +1013,7 @@ async def sdk_integrations_upsert_mapping(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"SDK integrations.upsert_mapping failed: {e}")
+        logger.error(f"SDK integrations.upsert_mapping failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upsert mapping: {str(e)}",
@@ -1032,7 +1037,7 @@ async def sdk_integrations_delete_mapping(
         integration = await repo.get_integration_by_name(request.name)
 
         if not integration:
-            logger.warning(f"SDK integrations.delete_mapping: integration '{request.name}' not found")
+            logger.warning(f"SDK integrations.delete_mapping: integration '{log_safe(request.name)}' not found")
             return {"deleted": False}
 
         org_uuid = UUID(request.scope)
@@ -1041,19 +1046,19 @@ async def sdk_integrations_delete_mapping(
         mapping = await repo.get_mapping_by_org(integration.id, org_uuid)
 
         if not mapping:
-            logger.warning(f"SDK integrations.delete_mapping: mapping not found for org '{request.scope}'")
+            logger.warning(f"SDK integrations.delete_mapping: mapping not found for org '{log_safe(request.scope)}'")
             return {"deleted": False}
 
         # Delete the mapping
         deleted = await repo.delete_mapping(mapping.id)
         await db.commit()
 
-        logger.info(f"SDK deleted mapping for integration '{request.name}', org '{request.scope}' by {current_user.email}")
+        logger.info(f"SDK deleted mapping for integration '{log_safe(request.name)}', org '{log_safe(request.scope)}' by {current_user.email}")
 
         return {"deleted": deleted}
 
     except Exception as e:
-        logger.error(f"SDK integrations.delete_mapping failed: {e}")
+        logger.error(f"SDK integrations.delete_mapping failed: {log_safe(e)}")
         return {"deleted": False}
 
 
@@ -1206,7 +1211,7 @@ async def sdk_integrations_refresh_token(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"SDK integrations.refresh_token failed: {e}")
+        logger.error(f"SDK integrations.refresh_token failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Token refresh failed: {str(e)}",
@@ -1353,7 +1358,7 @@ async def delete_cli_session(
     await repo.delete(session)
     await db.commit()
 
-    logger.info(f"CLI session deleted: {session_id} for user {current_user.email}")
+    logger.info(f"CLI session deleted: {log_safe(session_id)} for user {current_user.email}")
 
 
 @router.post(
@@ -1541,7 +1546,7 @@ async def get_pending_execution(
         started_at=execution.started_at,
     )
 
-    logger.info(f"CLI session pending picked up: workflow={workflow_name}, execution_id={execution_id}, session_id={session_id}")
+    logger.info(f"CLI session pending picked up: workflow={log_safe(workflow_name)}, execution_id={execution_id}, session_id={log_safe(session_id)}")
 
     # Broadcast session state update
     updated_session = await repo.get_session_with_executions(session_uuid)
@@ -1645,7 +1650,7 @@ async def post_cli_log(
             timestamp=timestamp,
         )
     except ImportError:
-        logger.warning(f"Log streaming not available, log skipped: {request.message}")
+        logger.warning(f"Log streaming not available, log skipped: {log_safe(request.message)}")
 
 
 @router.post(
@@ -1737,13 +1742,13 @@ async def post_cli_result(
                     {"metadata": log.metadata, "timestamp": ts.isoformat()},
                 )
             except Exception as e:
-                logger.warning(f"Failed to process log entry: {e}")
+                logger.warning(f"Failed to process log entry: {log_safe(e)}")
                 continue
 
         if logs_to_insert:
             db.add_all(logs_to_insert)
             logs_persisted = len(logs_to_insert)
-            logger.debug(f"Persisted {logs_persisted} logs directly for CLI execution {execution_id}")
+            logger.debug(f"Persisted {logs_persisted} logs directly for CLI execution {log_safe(execution_id)}")
 
     await db.commit()
 
@@ -1754,11 +1759,12 @@ async def post_cli_result(
             from bifrost._logging import flush_logs_to_postgres
             logs_flushed = await flush_logs_to_postgres(execution_id)
             if logs_flushed > 0:
-                logger.debug(f"Flushed {logs_flushed} logs from stream for CLI execution {execution_id}")
-        except ImportError:
-            pass
+                logger.debug(f"Flushed {logs_flushed} logs from stream for CLI execution {log_safe(execution_id)}")
+        except ImportError as e:
+            # bifrost._logging optional (CLI bundle may not include it) — skip stream flush
+            logger.debug(f"bifrost._logging not available, skipping stream flush: {e}")
         except Exception as e:
-            logger.warning(f"Failed to flush logs from stream: {e}")
+            logger.warning(f"Failed to flush logs from stream: {log_safe(e)}")
 
     # Match workflow engine format exactly for unified UI handling
     update_data: dict[str, Any] = {
@@ -1839,7 +1845,7 @@ async def cli_ai_complete(
             model=request.model,
         )
 
-        logger.info(f"CLI AI complete: model={response.model}, tokens={response.input_tokens}/{response.output_tokens}")
+        logger.info(f"CLI AI complete: model={log_safe(response.model)}, tokens={response.input_tokens}/{response.output_tokens}")
 
         # Record AI usage
         try:
@@ -1860,7 +1866,7 @@ async def cli_ai_complete(
                 user_id=current_user.user_id,
             )
         except Exception as e:
-            logger.warning(f"Failed to record AI usage: {e}")
+            logger.warning(f"Failed to record AI usage: {log_safe(e)}")
 
         return CLIAICompleteResponse(
             content=response.content,
@@ -1884,10 +1890,10 @@ async def cli_ai_complete(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"{provider} API key is invalid or expired. Please update the API key in System Settings > AI Configuration.",
             )
-        logger.error(f"CLI AI complete failed: {e}")
+        logger.error(f"CLI AI complete failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI completion failed: {str(e)}",
+            detail="AI completion failed. See server logs for details.",
         )
 
 
@@ -1948,12 +1954,13 @@ async def cli_ai_stream(
                             user_id=user_id,
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to record AI usage: {e}")
+                        logger.warning(f"Failed to record AI usage: {log_safe(e)}")
                 elif chunk.type == "error":
                     yield f"data: {json.dumps({'error': chunk.error})}\n\n"
                     break
         except ValueError as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            logger.warning(f"CLI AI stream rejected: {e}")
+            yield f"data: {json.dumps({'error': 'AI stream is unavailable. See server logs for details.'})}\n\n"
         except Exception as e:
             # Check for authentication errors from LLM providers
             error_type = type(e).__name__
@@ -1963,8 +1970,8 @@ async def cli_ai_stream(
                 logger.error(f"CLI AI stream failed: {provider} authentication error - invalid API key")
                 yield f"data: {json.dumps({'error': f'{provider} API key is invalid or expired. Please update the API key in System Settings > AI Configuration.'})}\n\n"
             else:
-                logger.error(f"CLI AI stream failed: {e}")
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                logger.error(f"CLI AI stream failed: {log_safe(e)}")
+                yield f"data: {json.dumps({'error': 'AI stream failed. See server logs for details.'})}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -2043,7 +2050,7 @@ async def cli_knowledge_store(
 
         await db.commit()
 
-        logger.info(f"CLI knowledge store: namespace={request.namespace}, key={request.key}, doc_id={doc_id}")
+        logger.info(f"CLI knowledge store: namespace={log_safe(request.namespace)}, key={log_safe(request.key)}, doc_id={doc_id}")
 
         return {"id": doc_id}
     except ValueError as e:
@@ -2052,7 +2059,7 @@ async def cli_knowledge_store(
             detail=str(e),
         )
     except Exception as e:
-        logger.error(f"CLI knowledge store failed: {e}")
+        logger.error(f"CLI knowledge store failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Knowledge store failed: {str(e)}",
@@ -2099,7 +2106,7 @@ async def cli_knowledge_store_many(
 
         await db.commit()
 
-        logger.info(f"CLI knowledge store-many: namespace={request.namespace}, count={len(doc_ids)}")
+        logger.info(f"CLI knowledge store-many: namespace={log_safe(request.namespace)}, count={len(doc_ids)}")
 
         return {"ids": doc_ids}
     except ValueError as e:
@@ -2108,7 +2115,7 @@ async def cli_knowledge_store_many(
             detail=str(e),
         )
     except Exception as e:
-        logger.error(f"CLI knowledge store-many failed: {e}")
+        logger.error(f"CLI knowledge store-many failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Knowledge store failed: {str(e)}",
@@ -2148,7 +2155,7 @@ async def cli_knowledge_search(
             fallback=request.fallback,
         )
 
-        logger.info(f"CLI knowledge search: query={request.query[:50]}..., results={len(results)}")
+        logger.info(f"CLI knowledge search: query={log_safe(request.query[:50])}..., results={len(results)}")
 
         return [
             CLIKnowledgeDocumentResponse(
@@ -2169,7 +2176,7 @@ async def cli_knowledge_search(
             detail=str(e),
         )
     except Exception as e:
-        logger.error(f"CLI knowledge search failed: {e}")
+        logger.error(f"CLI knowledge search failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Knowledge search failed: {str(e)}",
@@ -2200,11 +2207,11 @@ async def cli_knowledge_delete(
 
         await db.commit()
 
-        logger.info(f"CLI knowledge delete: namespace={request.namespace}, key={request.key}, deleted={deleted}")
+        logger.info(f"CLI knowledge delete: namespace={log_safe(request.namespace)}, key={log_safe(request.key)}, deleted={deleted}")
 
         return {"deleted": deleted}
     except Exception as e:
-        logger.error(f"CLI knowledge delete failed: {e}")
+        logger.error(f"CLI knowledge delete failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Knowledge delete failed: {str(e)}",
@@ -2235,11 +2242,11 @@ async def cli_knowledge_delete_namespace(
 
         await db.commit()
 
-        logger.info(f"CLI knowledge delete namespace: namespace={namespace}, deleted_count={deleted_count}")
+        logger.info(f"CLI knowledge delete namespace: namespace={log_safe(namespace)}, deleted_count={deleted_count}")
 
         return {"deleted_count": deleted_count}
     except Exception as e:
-        logger.error(f"CLI knowledge delete namespace failed: {e}")
+        logger.error(f"CLI knowledge delete namespace failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Knowledge delete namespace failed: {str(e)}",
@@ -2277,7 +2284,7 @@ async def cli_knowledge_list_namespaces(
             for ns in results
         ]
     except Exception as e:
-        logger.error(f"CLI knowledge list namespaces failed: {e}")
+        logger.error(f"CLI knowledge list namespaces failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Knowledge list namespaces failed: {str(e)}",
@@ -2327,7 +2334,7 @@ async def cli_knowledge_get(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"CLI knowledge get failed: {e}")
+        logger.error(f"CLI knowledge get failed: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Knowledge get failed: {str(e)}",
@@ -2527,7 +2534,7 @@ async def cli_create_table(
     await db.commit()
     await db.refresh(table)
 
-    logger.info(f"CLI created table '{request.name}' for user {current_user.email}")
+    logger.info(f"CLI created table '{log_safe(request.name)}' for user {current_user.email}")
 
     return SDKTableInfo(
         id=str(table.id),
@@ -2678,7 +2685,7 @@ async def _find_or_create_table_for_sdk(
     )
     db.add(table)
     await db.flush()  # Get the ID without committing
-    logger.info(f"Auto-created table '{table_name}' for org={org_uuid}, app={app_uuid}")
+    logger.info(f"Auto-created table '{log_safe(table_name)}' for org={org_uuid}, app={app_uuid}")
 
     return table
 

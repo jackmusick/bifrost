@@ -186,15 +186,17 @@ async def _get_form_workflow_ids(db: DbSession, form_id: UUID) -> set[UUID]:
     if form.workflow_id:
         try:
             workflow_ids.add(UUID(form.workflow_id))
-        except ValueError:
-            pass
+        except ValueError as e:
+            # Non-UUID portable ref (e.g. "path::func") — not a real workflow ID
+            logger.debug(f"form.workflow_id not a UUID, skipping: {e}")
 
     # Launch workflow
     if form.launch_workflow_id:
         try:
             workflow_ids.add(UUID(form.launch_workflow_id))
-        except ValueError:
-            pass
+        except ValueError as e:
+            # Non-UUID portable ref — not a real workflow ID
+            logger.debug(f"form.launch_workflow_id not a UUID, skipping: {e}")
 
     # Data providers from fields
     for field in form.fields:

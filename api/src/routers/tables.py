@@ -438,7 +438,8 @@ async def get_table_or_404(
         )
         table = result.scalar_one_or_none()
     except ValueError:
-        pass
+        # Not a UUID — fall through to name-based lookup
+        logger.debug(f"table identifier {name_or_id!r} is not a UUID, falling back to name lookup")
 
     # Fall back to name lookup
     if not table:
@@ -476,7 +477,8 @@ async def get_or_create_table(
         )
         table = result.scalar_one_or_none()
     except ValueError:
-        pass
+        # Not a UUID — fall through to name-based lookup / auto-create
+        logger.debug(f"table identifier {name_or_id!r} is not a UUID, falling back to name lookup")
 
     # Fall back to name lookup
     if not table:

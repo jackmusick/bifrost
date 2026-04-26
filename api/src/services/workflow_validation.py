@@ -296,7 +296,8 @@ async def validate_workflow_file(path: str, content: str | None = None):
         if content is not None:
             try:
                 os.unlink(temp_file.name)
-            except Exception:
-                pass
+            except OSError as e:
+                # Temp file may already be gone or permissions changed — non-fatal
+                logger.debug(f"could not remove temp validation file {temp_file.name}: {e}")
 
     return WorkflowValidationResponse(valid=valid, issues=issues, metadata=metadata)
