@@ -35,6 +35,30 @@ wait_for_service() {
     return 1
 }
 
+# Wait for the API to respond 200 on /health/ready — a real readiness probe
+# that confirms the API is serving traffic AND its dependencies (DB, Redis,
+# RabbitMQ, S3) are reachable. This is the source-of-truth check used by both
+# `stack up` (block until ready) and `require_stack_up` (verify ready before
+# running tests). Closes the race where `docker ps` says "running" but uvicorn
+# is still booting / migrations are still applying.
+#
+# Args: <compose-file> [max-seconds]
+# Returns 0 if ready, 1 on timeout.
+wait_for_api_ready() {
+    local compose_file="$1"
+    local max_seconds="${2:-${API_READY_TIMEOUT:-90}}"
+    local i
+    for ((i=1; i<=max_seconds; i++)); do
+        if docker compose -f "$compose_file" exec -T api \
+            curl -sf -o /dev/null http://localhost:8000/health/ready 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    echo "ERROR: api did not become ready on /health/ready within ${max_seconds}s" >&2
+    return 1
+}
+
 # Is the stack for this worktree currently running?
 stack_is_up() {
     local project="$1"
