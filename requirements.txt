@@ -11,7 +11,7 @@ python-multipart>=0.0.26  # Form data handling (CVE fixes through 0.0.26)
 # Database (PostgreSQL)
 # =============================================================================
 sqlalchemy[asyncio]
-asyncpg>=0.30.0  # Async PostgreSQL driver (CVE-2024-25737 RCE fixed in 0.29.0)
+asyncpg>=0.31.0  # Async PostgreSQL driver (CVE-2024-25737 RCE fixed in 0.29.0)
 psycopg2-binary  # Sync PostgreSQL driver (for SDK/workflow threads)
 alembic  # Database migrations
 greenlet  # Required by SQLAlchemy async

@@ -49,11 +49,15 @@ jobs:
 
       # Create .venv at the repo root so pyrightconfig.json's
       # `venvPath: ..` + `venv: .venv` resolves the same way locally and in CI.
+      # Install runtime deps from the hash-pinned lock file (Scorecard
+      # Pinned-Dependencies); pyright is installed separately because
+      # --require-hashes forbids unpinned packages in the same invocation.
       - name: Install Python deps into .venv
         run: |
           python -m venv .venv
           ./.venv/bin/pip install --upgrade pip
-          ./.venv/bin/pip install -r requirements.txt pyright
+          ./.venv/bin/pip install --require-hashes -r requirements.lock
+          ./.venv/bin/pip install pyright
 
       - name: Ruff
         working-directory: api
