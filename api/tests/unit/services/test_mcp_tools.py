@@ -835,12 +835,11 @@ class TestMCPConfigService:
         """Should create new config when none exists."""
         from src.services.mcp_server.config_service import MCPConfigService
 
-        # Mock no existing config (empty list from .scalars().all())
+        # Mock no existing config
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
+        mock_result.scalars.return_value.first.return_value = None
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_session.add = MagicMock()
-        mock_session.commit = AsyncMock()
 
         service = MCPConfigService(mock_session)
         config = await service.save_config(
@@ -851,7 +850,6 @@ class TestMCPConfigService:
         )
 
         mock_session.add.assert_called_once()
-        mock_session.commit.assert_awaited_once()
         assert config.enabled is False
         assert config.blocked_tool_ids == ["search_knowledge"]
 
@@ -860,13 +858,12 @@ class TestMCPConfigService:
         """Should update existing config."""
         from src.services.mcp_server.config_service import MCPConfigService
 
-        # Mock existing config (single row from .scalars().all())
+        # Mock existing config
         mock_config = MagicMock()
         mock_config.value_json = {"enabled": True}
         mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_config]
+        mock_result.scalars.return_value.first.return_value = mock_config
         mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.commit = AsyncMock()
 
         service = MCPConfigService(mock_session)
         config = await service.save_config(
@@ -879,38 +876,6 @@ class TestMCPConfigService:
         assert config.enabled is False
         assert mock_config.value_json["enabled"] is False
         assert mock_config.updated_by == "admin@test.com"
-        mock_session.commit.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_save_config_collapses_duplicate_rows(self, mock_session):
-        """Should drop duplicate rows when more than one exists.
-
-        ``system_configs`` has no unique constraint on
-        ``(category, key, organization_id)``, so a prior race could leave
-        duplicates. ``save_config`` should collapse them down to one in the
-        same transaction so future GETs are deterministic.
-        """
-        from src.services.mcp_server.config_service import MCPConfigService
-
-        primary = MagicMock()
-        primary.value_json = {"enabled": True}
-        extra = MagicMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [primary, extra]
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.delete = AsyncMock()
-        mock_session.commit = AsyncMock()
-
-        service = MCPConfigService(mock_session)
-        await service.save_config(
-            enabled=False,
-            allowed_tool_ids=None,
-            blocked_tool_ids=[],
-            updated_by="admin@test.com",
-        )
-
-        mock_session.delete.assert_awaited_once_with(extra)
-        assert primary.value_json["enabled"] is False
 
     @pytest.mark.asyncio
     async def test_delete_config_removes_existing(self, mock_session):
@@ -921,14 +886,12 @@ class TestMCPConfigService:
         mock_result = MagicMock()
         mock_result.rowcount = 1
         mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.commit = AsyncMock()
 
         service = MCPConfigService(mock_session)
         deleted = await service.delete_config()
 
         assert deleted is True
         mock_session.execute.assert_awaited_once()
-        mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_delete_config_returns_false_when_none_exists(self, mock_session):
@@ -939,7 +902,6 @@ class TestMCPConfigService:
         mock_result = MagicMock()
         mock_result.rowcount = 0
         mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.commit = AsyncMock()
 
         service = MCPConfigService(mock_session)
         deleted = await service.delete_config()

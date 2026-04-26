@@ -30,6 +30,34 @@ TEST_API_URL = os.getenv("TEST_API_URL", "http://api:8000")
 class TestMCPConfigEndpoint:
     """Tests for /api/mcp/config endpoint access control."""
 
+    @pytest.fixture(autouse=True)
+    def reset_config(self):
+        """Reset MCP config before and after each test.
+
+        ``test_put_config_success_for_platform_admin`` PUTs ``enabled=True``
+        and never cleans up; without this fixture the leaked row persists
+        into ``TestMCPConfigToolFiltering`` (collected later in the same
+        file) and causes stale-read failures there. Asserting 200 on both
+        DELETEs ensures a teardown failure surfaces as a teardown failure
+        rather than as a flake two layers downstream.
+        """
+        token = create_test_jwt(is_superuser=True)
+        headers = auth_headers(token)
+
+        # Reset before test — must succeed; failure leaves stale state.
+        pre = requests.delete(f"{TEST_API_URL}/api/mcp/config", headers=headers)
+        assert pre.status_code == 200, (
+            f"reset_config pre-test DELETE failed: {pre.status_code} {pre.text}"
+        )
+
+        yield
+
+        # Reset after test — same contract.
+        post = requests.delete(f"{TEST_API_URL}/api/mcp/config", headers=headers)
+        assert post.status_code == 200, (
+            f"reset_config post-test DELETE failed: {post.status_code} {post.text}"
+        )
+
     @pytest.mark.e2e
     def test_get_config_requires_auth(self):
         """Should return 401 when no auth provided."""
