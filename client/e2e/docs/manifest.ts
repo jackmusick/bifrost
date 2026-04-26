@@ -23,12 +23,22 @@ export interface Callout extends Rect {
   label?: string;
 }
 
+export interface MockSpec {
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  status?: number;
+  body?: unknown;
+  fixture?: string;
+}
+
 export interface CaptureSpec {
   selector?: string;
   pad?: number;
   fullPage?: boolean;
   crop?: Rect;
   callouts?: Callout[];
+  mocks?: MockSpec[];
+  settle_ms?: number;
 }
 
 export interface Diataxis {
@@ -56,8 +66,38 @@ export interface Manifest {
     auth_as: string;
     viewport: { width: number; height: number };
     pad: number;
+    settle_ms?: number;
+    mocks?: MockSpec[];
   };
   entries: ManifestEntry[];
+}
+
+/**
+ * Merge entry-specific mocks on top of manifest defaults. An entry mock with
+ * the same `${method} ${url}` key overrides the default — useful when a
+ * multi-step page needs a different fixture for the same endpoint.
+ */
+export function effectiveMocks(
+  entry: ManifestEntry,
+  manifest: Manifest,
+): MockSpec[] {
+  const defaultMocks = manifest.defaults.mocks ?? [];
+  const entryMocks = entry.capture?.mocks ?? [];
+  const byKey = new Map<string, MockSpec>();
+  for (const m of defaultMocks) {
+    byKey.set(`${m.method ?? "GET"} ${m.url}`, m);
+  }
+  for (const m of entryMocks) {
+    byKey.set(`${m.method ?? "GET"} ${m.url}`, m);
+  }
+  return Array.from(byKey.values());
+}
+
+export function effectiveSettleMs(
+  entry: ManifestEntry,
+  manifest: Manifest,
+): number {
+  return entry.capture?.settle_ms ?? manifest.defaults.settle_ms ?? 500;
 }
 
 export function loadManifest(docsRepoPath: string): Manifest {

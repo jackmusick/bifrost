@@ -27,6 +27,9 @@ import {
   selectEntries,
   effectiveViewport,
   effectiveAuth,
+  effectiveMocks,
+  effectiveSettleMs,
+  type MockSpec,
 } from "./manifest";
 import { getSeeder } from "./seeders";
 
@@ -73,6 +76,45 @@ function targetIds(): string[] | null {
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+function loadFixture(fixturePath: string): unknown {
+  const abs = path.isAbsolute(fixturePath)
+    ? fixturePath
+    : path.join(DOCS_REPO_PATH, fixturePath);
+  if (!fs.existsSync(abs)) {
+    throw new Error(`fixture not found: ${abs}`);
+  }
+  return JSON.parse(fs.readFileSync(abs, "utf8"));
+}
+
+async function applyMocks(
+  page: import("@playwright/test").Page,
+  mocks: MockSpec[],
+) {
+  for (const mock of mocks) {
+    const method = (mock.method ?? "GET").toUpperCase();
+    let body: unknown;
+    if (mock.body !== undefined) {
+      body = mock.body;
+    } else if (mock.fixture) {
+      body = loadFixture(mock.fixture);
+    } else {
+      body = {};
+    }
+    const status = mock.status ?? 200;
+    await page.route(mock.url, async (route) => {
+      if (route.request().method().toUpperCase() !== method) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      });
+    });
+  }
 }
 
 const manifestPath = path.join(DOCS_REPO_PATH, "screenshots.yaml");
@@ -128,8 +170,25 @@ if (!fs.existsSync(manifestPath)) {
         const page = await ctx.newPage();
         await page.setViewportSize(viewport);
 
+        // Apply API mocks BEFORE navigation so initial fetches are
+        // intercepted. Per-entry mocks override manifest defaults with
+        // matching ${method} ${url}.
+        const mocks = effectiveMocks(entry, manifest);
+        if (mocks.length) {
+          try {
+            await applyMocks(page, mocks);
+          } catch (e) {
+            throw new Error(
+              `[docs-capture:${entry.id}] failed to apply mocks: ${
+                e instanceof Error ? e.message : String(e)
+              }`,
+            );
+          }
+        }
+
         // Run seeder (best-effort) before navigating so list/detail pages
-        // have content to render.
+        // have content to render. Seeders are useful when a page can't be
+        // mocked completely (e.g., needs a real auth/CSRF round-trip).
         if (entry.seed) {
           try {
             await getSeeder(entry.seed)(page);
@@ -145,7 +204,7 @@ if (!fs.existsSync(manifestPath)) {
         });
         // Settle: wait for network idle, then a brief beat for animations.
         await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => undefined);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(effectiveSettleMs(entry, manifest));
 
         const tempPath = path.join(TMP_DIR, `${entry.id}.png`);
         await page.screenshot({
