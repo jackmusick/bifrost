@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.config import SystemConfig
@@ -102,6 +102,15 @@ class MCPConfigService:
 
         Returns:
             Updated MCPConfig
+
+        Notes:
+            ``system_configs`` has no unique constraint on
+            ``(category, key, organization_id)``, so a SELECT-then-INSERT
+            pattern can leave duplicate rows behind under concurrency. We
+            collapse all matching rows down to one in a single transaction
+            (delete-extras-then-update-or-insert) and commit explicitly so
+            the next request observes the new state regardless of when the
+            FastAPI dependency cleanup runs.
         """
         config_data = {
             "enabled": enabled,
@@ -109,7 +118,8 @@ class MCPConfigService:
             "blocked_tool_ids": blocked_tool_ids or [],
         }
 
-        # Check if config exists
+        # Load all matching rows. Under steady-state there is exactly one;
+        # this path also self-heals if a prior race left duplicates.
         result = await self.session.execute(
             select(SystemConfig).where(
                 SystemConfig.category == MCP_CONFIG_CATEGORY,
@@ -117,18 +127,21 @@ class MCPConfigService:
                 SystemConfig.organization_id.is_(None),
             )
         )
-        existing = result.scalars().first()
+        existing_rows = list(result.scalars().all())
 
         now = datetime.now(timezone.utc)
 
-        if existing:
-            # Update existing
-            existing.value_json = config_data
-            existing.updated_by = updated_by
-            existing.updated_at = now
+        if existing_rows:
+            # Keep the first row, drop any duplicates so future GETs are
+            # deterministic.
+            primary = existing_rows[0]
+            for extra in existing_rows[1:]:
+                await self.session.delete(extra)
+            primary.value_json = config_data
+            primary.updated_by = updated_by
+            primary.updated_at = now
             logger.info(f"MCP config updated by {updated_by}")
         else:
-            # Create new
             new_config = SystemConfig(
                 category=MCP_CONFIG_CATEGORY,
                 key=MCP_CONFIG_KEY,
@@ -138,6 +151,13 @@ class MCPConfigService:
             )
             self.session.add(new_config)
             logger.info(f"MCP config created by {updated_by}")
+
+        # Commit before returning so the caller (and any racing reader on a
+        # different pgbouncer-routed connection) immediately sees the write.
+        # Relying solely on the FastAPI ``get_db`` dependency's post-yield
+        # commit is correct in principle but harder to reason about under a
+        # transaction-pooled pgbouncer; an explicit commit closes the gap.
+        await self.session.commit()
 
         return MCPConfig(
             enabled=enabled,
@@ -152,20 +172,28 @@ class MCPConfigService:
         Delete MCP configuration (revert to defaults).
 
         Returns:
-            True if config existed and was deleted, False otherwise
+            True if at least one config row was deleted, False otherwise
+
+        Notes:
+            Uses a bulk DELETE statement so any duplicate rows left by a
+            prior race are removed in a single round-trip. Commits
+            explicitly for the same reason as ``save_config``.
         """
         result = await self.session.execute(
-            select(SystemConfig).where(
+            sa_delete(SystemConfig).where(
                 SystemConfig.category == MCP_CONFIG_CATEGORY,
                 SystemConfig.key == MCP_CONFIG_KEY,
                 SystemConfig.organization_id.is_(None),
             )
         )
-        config = result.scalars().first()
+        await self.session.commit()
+        deleted = result.rowcount or 0
 
-        if config:
-            await self.session.delete(config)
-            logger.info("MCP config deleted (reverted to defaults)")
+        if deleted:
+            logger.info(
+                "MCP config deleted (reverted to defaults)",
+                extra={"rows_deleted": deleted},
+            )
             return True
 
         return False

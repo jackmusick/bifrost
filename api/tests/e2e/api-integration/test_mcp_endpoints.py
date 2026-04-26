@@ -354,17 +354,28 @@ class TestMCPConfigToolFiltering:
 
     @pytest.fixture(autouse=True)
     def reset_config(self):
-        """Reset MCP config before and after each test."""
+        """Reset MCP config before and after each test.
+
+        Asserts the teardown DELETE actually returned 200 so that a silent
+        teardown failure (e.g. transient API unavailability) cannot leak
+        state into the next test and present as a stale-read flake.
+        """
         token = create_test_jwt(is_superuser=True)
         headers = auth_headers(token)
 
-        # Reset before test
-        requests.delete(f"{TEST_API_URL}/api/mcp/config", headers=headers)
+        # Reset before test — must succeed; failure leaves stale state.
+        pre = requests.delete(f"{TEST_API_URL}/api/mcp/config", headers=headers)
+        assert pre.status_code == 200, (
+            f"reset_config pre-test DELETE failed: {pre.status_code} {pre.text}"
+        )
 
         yield
 
-        # Reset after test
-        requests.delete(f"{TEST_API_URL}/api/mcp/config", headers=headers)
+        # Reset after test — same contract.
+        post = requests.delete(f"{TEST_API_URL}/api/mcp/config", headers=headers)
+        assert post.status_code == 200, (
+            f"reset_config post-test DELETE failed: {post.status_code} {post.text}"
+        )
 
     @pytest.mark.e2e
     def test_config_saves_allowed_tool_ids(self):
