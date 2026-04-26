@@ -118,7 +118,7 @@ export async function setConfigImperative(
 	});
 	if (error) {
 		throw new Error(
-			typeof error === "object" && error && "message" in error
+			typeof error === "object" && "message" in error
 				? String((error as Record<string, unknown>)["message"])
 				: JSON.stringify(error),
 		);

@@ -690,7 +690,6 @@ def handle_run(args: list[str]) -> int:
         Exit code (0 for success, 1 for error)
     """
     import importlib.util
-    import logging
 
     if not args or args[0] in ("--help", "-h"):
         print_run_help()

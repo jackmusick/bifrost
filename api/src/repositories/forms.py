@@ -106,7 +106,7 @@ class FormRepository(OrgScopedRepository[FormORM]):
                 query = query.where(self.model.organization_id == self.org_id)
             else:
                 # Edge case: ORG_ONLY with no org_id - return nothing
-                query = query.where(self.model.id == None)  # noqa: E711
+                query = query.where(self.model.id.is_(None))
         elif filter_type == OrgFilterType.ORG_PLUS_GLOBAL:
             # Cascade scope: org + global
             query = self._apply_cascade_scope(query)
