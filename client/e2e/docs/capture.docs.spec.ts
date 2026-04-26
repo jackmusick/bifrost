@@ -109,6 +109,8 @@ async function runActions(
         await page.waitForTimeout(action.wait_ms);
       } else if ("scroll_into_view" in action) {
         await page.locator(action.scroll_into_view).scrollIntoViewIfNeeded();
+      } else if ("press_key" in action) {
+        await page.keyboard.press(action.press_key);
       } else {
         throw new Error(`unknown action shape: ${JSON.stringify(action)}`);
       }
@@ -210,6 +212,38 @@ if (!fs.existsSync(manifestPath)) {
 
         const page = await ctx.newPage();
         await page.setViewportSize(viewport);
+
+        // Stub WebAuthn (window.PublicKeyCredential + navigator.credentials)
+        // before any page script runs. Headless Chromium without WebAuthn
+        // flags doesn't expose these APIs, so the passkeys settings page
+        // shows a "not supported" warning instead of its real UI. The stub
+        // is additive — it only fills in the API surface when missing, so
+        // it's a no-op in environments where real WebAuthn is present and
+        // it never triggers actual credential creation (capture actions
+        // open dialogs but never call create()/get()).
+        await page.addInitScript(() => {
+          if (typeof window.PublicKeyCredential === "undefined") {
+            // @ts-expect-error stub for feature detection only
+            window.PublicKeyCredential = class PublicKeyCredential {
+              static isUserVerifyingPlatformAuthenticatorAvailable() {
+                return Promise.resolve(true);
+              }
+              static isConditionalMediationAvailable() {
+                return Promise.resolve(true);
+              }
+            };
+          }
+          if (!navigator.credentials) {
+            Object.defineProperty(navigator, "credentials", {
+              configurable: true,
+              value: {
+                create: () =>
+                  Promise.reject(new Error("docs capture stub")),
+                get: () => Promise.reject(new Error("docs capture stub")),
+              },
+            });
+          }
+        });
 
         // Apply API mocks BEFORE navigation so initial fetches are
         // intercepted. Per-entry mocks override manifest defaults with
