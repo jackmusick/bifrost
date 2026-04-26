@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.services.audit import emit_audit
 from src.models import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
@@ -233,7 +234,7 @@ async def update_user(
     await db.flush()
     await db.refresh(db_user)
 
-    logger.info(f"Updated user {user_id}")
+    logger.info(f"Updated user {log_safe(user_id)}")
     changed_fields = [
         k for k, v in request.model_dump(exclude_unset=True).items() if v is not None
     ]
@@ -291,7 +292,7 @@ async def delete_user(
     deleted_email = db_user.email
     await db.delete(db_user)
     await db.flush()
-    logger.info(f"Permanently deleted user {user_id}")
+    logger.info(f"Permanently deleted user {log_safe(user_id)}")
     await emit_audit(
         db,
         "user.delete",

@@ -448,7 +448,7 @@ class EventProcessor:
         # Get the event data (once, outside the loop)
         event_obj = await self._event_repo.get_by_id(event_id)
         if not event_obj:
-            logger.error(f"Event not found when queueing deliveries: {event_id}")
+            logger.error(f"Event not found when queueing deliveries: {log_safe(event_id)}")
             return 0
 
         queued = 0

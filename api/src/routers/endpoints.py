@@ -24,6 +24,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
 from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
+from src.core.log_safety import log_safe
 from src.sdk.context import ExecutionContext
 from src.core.database import get_db_context
 from src.core.redis_client import get_redis_client
@@ -117,7 +118,7 @@ async def execute_endpoint(
     workflow_metadata: CachedWorkflowMetadata | None = None
 
     if cached:
-        logger.debug(f"Cache hit for endpoint workflow: {workflow_id}")
+        logger.debug(f"Cache hit for endpoint workflow: {log_safe(workflow_id)}")
         workflow_metadata = CachedWorkflowMetadata(
             workflow_id=cached["workflow_id"],
             file_path=cached["file_path"],
@@ -131,17 +132,17 @@ async def execute_endpoint(
         is_valid, key_id = await validate_workflow_key(db, x_bifrost_key, workflow_id)
 
         if not is_valid:
-            logger.warning(f"Invalid API key for workflow endpoint: {workflow_id}")
+            logger.warning(f"Invalid API key for workflow endpoint: {log_safe(workflow_id)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired API key",
             )
 
-        logger.debug(f"API key validated for workflow: {workflow_id} (key_id: {key_id})")
+        logger.debug(f"API key validated for workflow: {log_safe(workflow_id)} (key_id: {key_id})")
 
         # If no cache hit, load from DB and module
         if workflow_metadata is None:
-            logger.debug(f"Cache miss for endpoint workflow: {workflow_id}")
+            logger.debug(f"Cache miss for endpoint workflow: {log_safe(workflow_id)}")
 
             # Get workflow from database
             # System-level access: org_id=None, is_superuser=True bypasses cascade scoping
@@ -149,7 +150,7 @@ async def execute_endpoint(
             workflow = await workflow_repo.get_endpoint_workflow_by_id(wf_uuid)
 
             if not workflow:
-                logger.warning(f"Endpoint workflow not found: {workflow_id}")
+                logger.warning(f"Endpoint workflow not found: {log_safe(workflow_id)}")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Endpoint workflow '{workflow_id}' not found or not enabled",
@@ -177,7 +178,7 @@ async def execute_endpoint(
     # Check HTTP method
     http_method = request.method
     if http_method not in workflow_metadata.allowed_methods:
-        logger.warning(f"Method {http_method} not allowed for {workflow_id}")
+        logger.warning(f"Method {log_safe(http_method)} not allowed for {log_safe(workflow_id)}")
         raise HTTPException(
             status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
             detail=f"Method {http_method} not allowed. Allowed: {', '.join(workflow_metadata.allowed_methods)}",
@@ -253,7 +254,7 @@ async def _execute_async(
         file_path=file_path,
     )
 
-    logger.info(f"Queued async workflow execution: {workflow_name} ({execution_id})")
+    logger.info(f"Queued async workflow execution: {log_safe(workflow_name)} ({execution_id})")
 
     return EndpointExecuteResponse(
         execution_id=execution_id,
@@ -316,7 +317,7 @@ async def _execute_sync(
         file_path=file_path,
     )
 
-    logger.info(f"Queued sync workflow execution: {workflow_name} ({execution_id})")
+    logger.info(f"Queued sync workflow execution: {log_safe(workflow_name)} ({execution_id})")
 
     # Wait for result from Redis
     result = await redis_client.wait_for_result(
@@ -326,7 +327,7 @@ async def _execute_sync(
 
     if result is None:
         # Timeout waiting for result
-        logger.error(f"Timeout waiting for workflow result: {workflow_name} ({execution_id})")
+        logger.error(f"Timeout waiting for workflow result: {log_safe(workflow_name)} ({execution_id})")
         return EndpointExecuteResponse(
             execution_id=execution_id,
             status="Timeout",

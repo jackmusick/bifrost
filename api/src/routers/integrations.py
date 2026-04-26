@@ -859,7 +859,7 @@ async def delete_integration(
             detail="Integration not found",
         )
 
-    logger.info(f"Deleted integration: {integration_id}")
+    logger.info(f"Deleted integration: {log_safe(integration_id)}")
 
 
 # =============================================================================
@@ -917,7 +917,7 @@ async def update_integration_config(
         updated_by=user.email,
     )
 
-    logger.info(f"Updated default config for integration {integration_id}")
+    logger.info(f"Updated default config for integration {log_safe(integration_id)}")
 
     # Return the saved config
     saved_config = await repo.get_integration_defaults(integration_id)
@@ -995,7 +995,7 @@ async def create_mapping(
 
     mapping = await repo.create_mapping(request, integration_id)
     logger.info(
-        f"Created mapping for integration {integration_id} in org {request.organization_id}"
+        f"Created mapping for integration {log_safe(integration_id)} in org {log_safe(request.organization_id)}"
     )
 
     # Get org-specific overrides only (not merged with defaults)
@@ -1156,7 +1156,7 @@ async def update_mapping(
             detail="Mapping not found",
         )
 
-    logger.info(f"Updated mapping {mapping_id} for integration {integration_id}")
+    logger.info(f"Updated mapping {log_safe(mapping_id)} for integration {log_safe(integration_id)}")
 
     # Get org-specific overrides only (not merged with defaults)
     org_config = await repo.get_org_config_overrides(integration_id, mapping.organization_id)
@@ -1228,7 +1228,7 @@ async def batch_upsert_mappings(
     await ctx.db.commit()
 
     logger.info(
-        f"Batch upsert for integration {integration_id}: "
+        f"Batch upsert for integration {log_safe(integration_id)}: "
         f"created={created}, updated={updated}, errors={len(errors)}"
     )
 
@@ -1261,7 +1261,7 @@ async def delete_mapping(
             detail="Mapping not found",
         )
 
-    logger.info(f"Deleted mapping {mapping_id} for integration {integration_id}")
+    logger.info(f"Deleted mapping {log_safe(mapping_id)} for integration {log_safe(integration_id)}")
 
 
 # =============================================================================
@@ -1355,8 +1355,8 @@ async def get_oauth_authorization_url(
     authorization_url = f"{oauth_provider.authorization_url}?{urlencode(params)}"
 
     logger.info(
-        f"Generated OAuth authorization URL for integration {integration_id}, "
-        f"provider {oauth_provider.provider_name}"
+        f"Generated OAuth authorization URL for integration {log_safe(integration_id)}, "
+        f"provider {log_safe(oauth_provider.provider_name)}"
     )
 
     return OAuthAuthorizeResponse(
@@ -1831,8 +1831,8 @@ async def generate_sdk(
         )
 
         logger.info(
-            f"Generated SDK for integration {integration.name}: "
-            f"{module_path} ({result.endpoint_count} endpoints)"
+            f"Generated SDK for integration {log_safe(integration.name)}: "
+            f"{log_safe(module_path)} ({result.endpoint_count} endpoints)"
         )
 
         # Build usage example
@@ -1853,7 +1853,7 @@ print(result)'''
         )
 
     except Exception as e:
-        logger.exception(f"SDK generation failed for integration {integration_id}")
+        logger.exception(f"SDK generation failed for integration {log_safe(integration_id)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"SDK generation failed: {str(e)}",

@@ -23,6 +23,7 @@ from bifrost.migrate_imports import (
     migrate_app,
 )
 from bifrost.platform_names import PLATFORM_EXPORT_NAMES
+from src.core.log_safety import log_safe
 from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ async def auto_migrate_repo_prefix(
         changed = [r for r in results if r.changed]
         if not changed:
             logger.info(
-                f"Auto-migrated app={app_id} files=0 changes=none (already migrated)"
+                f"Auto-migrated app={log_safe(app_id)} files=0 changes=none (already migrated)"
             )
             return False, results
 
@@ -100,7 +101,7 @@ async def auto_migrate_repo_prefix(
             summary_parts.append(f"{rel_path}({','.join(moves) or 'rewrite'})")
 
         logger.info(
-            f"Auto-migrated app={app_id} files={len(changed)} "
+            f"Auto-migrated app={log_safe(app_id)} files={len(changed)} "
             f"changes={'; '.join(summary_parts)}"
         )
         return True, results

@@ -9,6 +9,7 @@ Manages discovery and lookup of webhook adapters:
 import logging
 from typing import Any
 
+from src.core.log_safety import log_safe
 from src.services.webhooks.adapters import BUILTIN_ADAPTERS
 from src.services.webhooks.protocol import WebhookAdapter
 
@@ -78,7 +79,7 @@ class AdapterRegistry:
             self._instances[name] = instance
             return instance
         except Exception as e:
-            logger.error(f"Failed to instantiate adapter {name}: {e}")
+            logger.error(f"Failed to instantiate adapter {log_safe(name)}: {log_safe(e)}")
             return None
 
     def get_all(self) -> list[WebhookAdapter]:

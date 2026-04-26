@@ -14,6 +14,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.core.security import decrypt_secret, encrypt_secret
 from src.models.contracts.oauth_config import (
     OAUTH_CONFIG_CATEGORY,
@@ -286,7 +287,7 @@ class OAuthConfigService:
             return False
 
         await self._delete_config_keys(keys)
-        logger.info(f"OAuth config deleted for provider: {provider}")
+        logger.info(f"OAuth config deleted for provider: {log_safe(provider)}")
         return True
 
     # =========================================================================

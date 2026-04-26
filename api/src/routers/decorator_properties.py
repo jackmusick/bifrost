@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
+from src.core.log_safety import log_safe
 from src.models import (
     DecoratorInfo,
     DecoratorPropertiesResponse,
@@ -85,7 +86,7 @@ async def get_decorator_properties(
             detail=f"File not found: {path}",
         )
     except Exception as e:
-        logger.error(f"Error reading decorator properties from {path}: {e}", exc_info=True)
+        logger.error(f"Error reading decorator properties from {log_safe(path)}: {log_safe(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to read decorator properties",
@@ -176,8 +177,8 @@ async def update_decorator_properties(
 
         new_etag = hashlib.md5(write_result.final_content).hexdigest()
         logger.info(
-            f"Updated decorator properties in {request.path} "
-            f"for {request.function_name}: {result.changes}"
+            f"Updated decorator properties in {log_safe(request.path)} "
+            f"for {log_safe(request.function_name)}: {result.changes}"
         )
 
         return UpdatePropertiesResponse(
@@ -190,7 +191,7 @@ async def update_decorator_properties(
         raise
     except Exception as e:
         logger.error(
-            f"Error updating decorator properties in {request.path}: {e}",
+            f"Error updating decorator properties in {log_safe(request.path)}: {log_safe(e)}",
             exc_info=True,
         )
         raise HTTPException(

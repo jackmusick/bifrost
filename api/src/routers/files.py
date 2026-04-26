@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
+from src.core.log_safety import log_safe
 from src.models.contracts.files import (
     FilePullRequest,
     FilePullResponse,
@@ -199,7 +200,7 @@ async def write_file(
         updated_by = user.email if user else "system"
         await backend.write(request.path, content, request.location, updated_by)
 
-        logger.info(f"Wrote file: {request.path} ({len(content)} bytes, mode={request.mode}, location={request.location})")
+        logger.info(f"Wrote file: {log_safe(request.path)} ({len(content)} bytes, mode={log_safe(request.mode)}, location={log_safe(request.location)})")
 
     except ValueError as e:
         raise HTTPException(
@@ -220,7 +221,7 @@ async def delete_file(
         backend = get_backend(request.mode, db)
         await backend.delete(request.path, request.location)
 
-        logger.info(f"Deleted file: {request.path} (mode={request.mode}, location={request.location})")
+        logger.info(f"Deleted file: {log_safe(request.path)} (mode={log_safe(request.mode)}, location={log_safe(request.location)})")
 
     except FileNotFoundError:
         raise HTTPException(

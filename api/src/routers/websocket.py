@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from src.core.auth import UserPrincipal, get_current_user_ws
 from src.core.database import get_db_context
+from src.core.log_safety import log_safe
 from src.core.pubsub import manager
 from src.models import Conversation, Execution
 from src.models.orm import Agent
@@ -298,7 +299,7 @@ async def websocket_connect(
 
     try:
         await manager.connect(websocket, allowed_channels)
-        logger.info(f"WebSocket connected for user {user.user_id}, channels: {allowed_channels}")
+        logger.info(f"WebSocket connected for user {user.user_id}, channels: {log_safe(allowed_channels)}")
 
         # Send connection confirmation
         await websocket.send_json({
@@ -577,7 +578,7 @@ async def websocket_execution(
 
     try:
         await manager.connect(websocket, [channel])
-        logger.info(f"WebSocket connected to execution {execution_id}")
+        logger.info(f"WebSocket connected to execution {log_safe(execution_id)}")
 
         await websocket.send_json({
             "type": "connected",
@@ -723,7 +724,7 @@ async def _process_chat_message(
                 chunk_data["conversation_id"] = conversation_id
                 await websocket.send_json(chunk_data)
         except asyncio.CancelledError:
-            logger.info(f"Chat processing cancelled for conversation {conversation_id}")
+            logger.info(f"Chat processing cancelled for conversation {log_safe(conversation_id)}")
 
             # Save partial assistant response if we have streamed content
             # that hasn't been saved yet (no assistant_message_end was received)

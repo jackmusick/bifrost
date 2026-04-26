@@ -24,6 +24,8 @@ import redis.asyncio as redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
+
 logger = logging.getLogger(__name__)
 
 # Redis key prefixes
@@ -554,7 +556,7 @@ async def backfill_model_costs(
         if updated_count > 0:
             logger.info(
                 f"Backfilled costs for {updated_count} records: "
-                f"provider={provider}, model={model}"
+                f"provider={log_safe(provider)}, model={log_safe(model)}"
             )
 
             # Invalidate all usage totals caches for affected records
@@ -565,7 +567,7 @@ async def backfill_model_costs(
         return updated_count
 
     except Exception as e:
-        logger.error(f"Failed to backfill costs for {provider}/{model}: {e}", exc_info=True)
+        logger.error(f"Failed to backfill costs for {log_safe(provider)}/{log_safe(model)}: {log_safe(e)}", exc_info=True)
         raise
 
 

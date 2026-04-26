@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from src.core.log_safety import log_safe
 from src.models.orm import Agent
 from src.services.llm import get_llm_client, LLMMessage
 
@@ -158,7 +159,7 @@ User message: {message}
 
 Your response (agent name or DIRECT):"""
 
-        logger.debug(f"Router prompt:\n{router_prompt}")
+        logger.debug(f"Router prompt:\n{log_safe(router_prompt, max_len=2000)}")
 
         try:
             async with self._db() as session:

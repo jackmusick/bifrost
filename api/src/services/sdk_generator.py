@@ -26,6 +26,8 @@ import requests
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+from src.core.log_safety import log_safe
+
 logger = logging.getLogger(__name__)
 
 AuthType = Literal["bearer", "api_key", "basic", "oauth"]
@@ -657,7 +659,7 @@ def generate_sdk_from_url(
     Returns:
         SDKGeneratorResult with generated code and metadata
     """
-    logger.info(f"Loading OpenAPI spec from {spec_url}")
+    logger.info(f"Loading OpenAPI spec from {log_safe(spec_url)}")
     spec = load_spec_from_url(spec_url)
 
     return _generate_sdk_result(spec, integration_name, auth_type, module_name)
@@ -709,7 +711,7 @@ def _generate_sdk_result(
     schema_count = len(spec.get("components", {}).get("schemas", {}))
 
     logger.info(
-        f"Generated SDK: {final_module_name}.py with {endpoint_count} endpoints, {schema_count} schemas"
+        f"Generated SDK: {log_safe(final_module_name)}.py with {endpoint_count} endpoints, {schema_count} schemas"
     )
 
     return SDKGeneratorResult(

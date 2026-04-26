@@ -19,6 +19,8 @@ import logging
 import httpx
 import redis.asyncio as redis
 
+from src.core.log_safety import log_safe
+
 logger = logging.getLogger(__name__)
 
 # Redis key prefix and TTL
@@ -96,7 +98,7 @@ async def cache_model_mapping(
 
     try:
         await redis_client.setex(cache_key, MODEL_REGISTRY_TTL, json.dumps(mapping))
-        logger.info(f"Cached model mapping for {provider} with {len(mapping)} models")
+        logger.info(f"Cached model mapping for {log_safe(provider)} with {len(mapping)} models")
     except Exception as e:
         logger.warning(f"Redis cache write failed for model registry: {e}")
 

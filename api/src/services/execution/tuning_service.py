@@ -36,6 +36,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.core.log_safety import log_safe
 from src.jobs.rabbitmq import publish_message
 from src.models.orm.agent_prompt_history import AgentPromptHistory
 from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
@@ -294,7 +295,7 @@ async def propose_consolidated_tuning(
     except json.JSONDecodeError:
         logger.warning(
             "Consolidated tuning model returned invalid JSON for agent %s",
-            agent_id,
+            log_safe(agent_id),
         )
         parsed = {}
 

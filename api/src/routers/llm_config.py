@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.models.contracts.llm import (
     EmbeddingConfigRequest,
     EmbeddingConfigResponse,
@@ -99,7 +100,7 @@ async def set_llm_config(
 
     await db.commit()
 
-    logger.info(f"LLM config updated by {user.email}: provider={request.provider}, model={request.model}")
+    logger.info(f"LLM config updated by {user.email}: provider={log_safe(request.provider)}, model={log_safe(request.model)}")
 
     # Auto-sync pricing from provider if using a custom endpoint
     if request.endpoint:
@@ -115,7 +116,7 @@ async def set_llm_config(
             )
             await db.commit()
             if count:
-                logger.info(f"Synced pricing for {count} models from {request.endpoint}")
+                logger.info(f"Synced pricing for {count} models from {log_safe(request.endpoint)}")
         except Exception as e:
             await db.rollback()
             logger.warning(f"Failed to sync provider pricing: {e}")
@@ -399,7 +400,7 @@ async def set_embedding_config(
 
     await db.commit()
 
-    logger.info(f"Embedding config updated by {user.email}: model={request.model}")
+    logger.info(f"Embedding config updated by {user.email}: model={log_safe(request.model)}")
 
     return EmbeddingConfigResponse(
         model=request.model,
@@ -543,6 +544,6 @@ async def _cache_model_mapping_from_result(
         mapping = {m.id: m.display_name for m in models}
         await cache_model_mapping(redis_client, provider, mapping)
     except Exception as e:
-        logger.warning(f"Failed to cache model mapping for {provider}: {e}")
+        logger.warning(f"Failed to cache model mapping for {log_safe(provider)}: {log_safe(e)}")
 
 

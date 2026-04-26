@@ -22,6 +22,7 @@ from src.models import (
 )
 
 from src.core.auth import Context, CurrentSuperuser
+from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.models import Config as ConfigModel
 from src.models.enums import ConfigType as ConfigTypeEnum
@@ -194,7 +195,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
             await self.session.flush()
             await self.session.refresh(config)
 
-        logger.info(f"Set config {request.key} in org {self.org_id}")
+        logger.info(f"Set config {log_safe(request.key)} in org {self.org_id}")
 
         # Extract value from JSONB for response
         stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value
@@ -259,7 +260,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         await self.session.flush()
         await self.session.refresh(config)
 
-        logger.info(f"Updated config {config.key} (id={config_id}) org={config.organization_id}")
+        logger.info(f"Updated config {log_safe(config.key)} (id={log_safe(config_id)}) org={config.organization_id}")
 
         response_type = ConfigType(config.config_type.value) if config.config_type else ConfigType.STRING
         stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value
@@ -287,7 +288,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         await self.session.delete(config)
         await self.session.flush()
 
-        logger.info(f"Deleted config {key} (id={config_id})")
+        logger.info(f"Deleted config {log_safe(key)} (id={log_safe(config_id)})")
         return config
 
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from src.core.auth import CurrentActiveUser, CurrentSuperuser, RequirePlatformAdmin
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.models.contracts.email import (
     EmailWorkflowConfigRequest,
     EmailWorkflowConfigResponse,
@@ -80,7 +81,7 @@ async def set_email_config(
 
     await db.commit()
 
-    logger.info(f"Email workflow config set by {user.email}: {request.workflow_id}")
+    logger.info(f"Email workflow config set by {user.email}: {log_safe(request.workflow_id)}")
 
     return EmailWorkflowConfigResponse(
         workflow_id=config.workflow_id,
@@ -231,7 +232,7 @@ async def send_email_sdk(
             )
 
     except Exception as e:
-        logger.exception(f"Error sending email to {request.recipient}")
+        logger.exception(f"Error sending email to {log_safe(request.recipient)}")
         return EmailSendResponse(
             success=False,
             error=str(e),

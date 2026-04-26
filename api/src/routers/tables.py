@@ -18,6 +18,7 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
+from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType, resolve_org_filter, resolve_target_org
 from src.models.contracts.tables import (
     DocumentCountResponse,
@@ -126,7 +127,7 @@ class TableRepository(OrgScopedRepository[Table]):
         await self.session.flush()
         await self.session.refresh(table)
 
-        logger.info(f"Created table '{data.name}' in org {self.org_id}")
+        logger.info(f"Created table '{log_safe(data.name)}' in org {self.org_id}")
         return table
 
     async def update_table(
@@ -161,7 +162,7 @@ class TableRepository(OrgScopedRepository[Table]):
         await self.session.flush()
         await self.session.refresh(table)
 
-        logger.info(f"Updated table '{table.name}' (id={table_id})")
+        logger.info(f"Updated table '{log_safe(table.name)}' (id={log_safe(table_id)})")
         return table
 
     async def delete_table(self, table_id: UUID) -> bool:
@@ -175,7 +176,7 @@ class TableRepository(OrgScopedRepository[Table]):
         await self.session.delete(table)
         await self.session.flush()
 
-        logger.info(f"Deleted table '{table.name}' (id={table_id})")
+        logger.info(f"Deleted table '{log_safe(table.name)}' (id={log_safe(table_id)})")
         return True
 
 

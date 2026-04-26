@@ -19,6 +19,7 @@ from uuid import uuid4
 import redis.asyncio as redis
 
 from src.config import get_settings
+from src.core.log_safety import log_safe
 from src.core.pubsub import manager as pubsub_manager
 from src.models.contracts.notifications import (
     NotificationCategory,
@@ -272,7 +273,7 @@ class NotificationService:
         # Publish dismissal to owner's channel
         await self._publish_dismissal(owner_id, notification_id)
 
-        logger.info(f"Dismissed notification: {notification_id}")
+        logger.info(f"Dismissed notification: {log_safe(notification_id)}")
         return True
 
     async def find_admin_notification_by_title(

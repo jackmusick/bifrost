@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter
 from src.models.contracts.agent_stats import AgentStatsResponse, FleetStatsResponse
 from src.models.contracts.agents import (
@@ -367,7 +368,7 @@ async def create_agent(
                     tools.append(workflow)
                     db.add(AgentTool(agent_id=agent_id, workflow_id=workflow.id))
             except ValueError:
-                logger.warning(f"Invalid tool ID: {tool_id}")
+                logger.warning(f"Invalid tool ID: {log_safe(tool_id)}")
 
     # Add delegation relationships
     delegated_agents: list[Agent] = []
@@ -388,7 +389,7 @@ async def create_agent(
                         child_agent_id=delegate.id,
                     ))
             except ValueError:
-                logger.warning(f"Invalid delegate agent ID: {delegate_id}")
+                logger.warning(f"Invalid delegate agent ID: {log_safe(delegate_id)}")
 
     # Add role relationships
     if agent_data.role_ids:
@@ -406,7 +407,7 @@ async def create_agent(
                         assigned_by=user.email,
                     ))
             except ValueError:
-                logger.warning(f"Invalid role ID: {role_id}")
+                logger.warning(f"Invalid role ID: {log_safe(role_id)}")
 
     await db.flush()
 
@@ -653,7 +654,7 @@ async def update_agent(
                     tools.append(workflow)
                     db.add(AgentTool(agent_id=agent_id, workflow_id=workflow.id))
             except ValueError:
-                logger.warning(f"Invalid tool ID: {tool_id}")
+                logger.warning(f"Invalid tool ID: {log_safe(tool_id)}")
 
     # Update delegation relationships if provided
     delegated_agents: list[Agent] = []
@@ -677,7 +678,7 @@ async def update_agent(
                         child_agent_id=delegate.id,
                     ))
             except ValueError:
-                logger.warning(f"Invalid delegate agent ID: {delegate_id}")
+                logger.warning(f"Invalid delegate agent ID: {log_safe(delegate_id)}")
 
     # Clear all role assignments if requested
     if agent_data.clear_roles:
@@ -686,7 +687,7 @@ async def update_agent(
         )
         # Also set to role_based access level (effectively no access)
         agent.access_level = AgentAccessLevel.ROLE_BASED
-        logger.info(f"Cleared all role assignments for agent '{agent.name}'")
+        logger.info(f"Cleared all role assignments for agent '{log_safe(agent.name)}'")
 
     # Update role relationships if provided (and not clearing)
     elif agent_data.role_ids is not None:
@@ -707,7 +708,7 @@ async def update_agent(
                         assigned_by=user.email,
                     ))
             except ValueError:
-                logger.warning(f"Invalid role ID: {role_id}")
+                logger.warning(f"Invalid role ID: {log_safe(role_id)}")
 
     await db.flush()
 
@@ -816,7 +817,7 @@ async def promote_agent(
                     db.add(AgentRole(agent_id=agent_id, role_id=role.id, assigned_by=user.email))
             except ValueError as e:
                 # Non-UUID role_id (e.g. role name) — skip, only UUIDs supported here
-                logger.debug(f"role_id {role_id!r} is not a UUID, skipping: {e}")
+                logger.debug(f"role_id {log_safe(role_id)!r} is not a UUID, skipping: {log_safe(e)}")
 
     await db.flush()
 

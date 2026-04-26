@@ -16,6 +16,7 @@ from sqlalchemy import delete, or_, select, update
 
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType, resolve_org_filter
 from src.models.contracts.knowledge import (
     KnowledgeDocumentBulkScopeUpdate,
@@ -119,7 +120,7 @@ async def assign_namespace_roles(
         try:
             role_uuid = UUID(role_id_str)
         except ValueError:
-            logger.warning(f"Invalid role ID: {role_id_str}")
+            logger.warning(f"Invalid role ID: {log_safe(role_id_str)}")
             continue
 
         # Verify role exists

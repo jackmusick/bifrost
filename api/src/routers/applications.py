@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from src.core.auth import Context, CurrentUser
+from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType, resolve_org_filter
 from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.models.contracts.applications import (
@@ -204,7 +205,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
         await self.session.refresh(application)
 
-        logger.info(f"Created application '{data.slug}' in org {self.org_id} with access_level={data.access_level}")
+        logger.info(f"Created application '{log_safe(data.slug)}' in org {self.org_id} with access_level={data.access_level}")
         return application
 
     async def update_application(
@@ -267,7 +268,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         await self.session.flush()
         await self.session.refresh(application)
 
-        logger.info(f"Updated application '{app_id}'")
+        logger.info(f"Updated application '{log_safe(app_id)}'")
         return application
 
     async def replace_application(
@@ -352,7 +353,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         await self.session.flush()
         await self.session.refresh(app)
 
-        logger.info(f"Repointed application {app_id} to repo_path={normalized!r}")
+        logger.info(f"Repointed application {log_safe(app_id)} to repo_path={log_safe(normalized)!r}")
         return app
 
     async def delete_application(self, app_id: UUID) -> bool:
@@ -364,7 +365,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         await self.session.delete(application)
         await self.session.flush()
 
-        logger.info(f"Deleted application '{app_id}'")
+        logger.info(f"Deleted application '{log_safe(app_id)}'")
         return True
 
     async def publish(
@@ -423,8 +424,8 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         await self.session.refresh(application)
 
         logger.info(
-            f"Published application {app_id} "
-            f"({published_count} files) by user {published_by}"
+            f"Published application {log_safe(app_id)} "
+            f"({published_count} files) by user {log_safe(published_by)}"
         )
         return application
 
@@ -1280,7 +1281,7 @@ async def rollback_application(
         await repo.rollback_to_version(application, data.version_id)
         await ctx.db.flush()
         await ctx.db.refresh(application)
-        logger.info(f"Rolled back application {app_id} to version {data.version_id}")
+        logger.info(f"Rolled back application {log_safe(app_id)} to version {log_safe(data.version_id)}")
         return await application_to_public(application, repo)
     except ValueError as e:
         raise HTTPException(

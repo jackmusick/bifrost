@@ -26,6 +26,7 @@ from uuid import UUID
 import redis as redis_sync
 
 from src.core.cache.keys import execution_logs_stream_key
+from src.core.log_safety import log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -505,7 +506,7 @@ async def flush_logs_to_postgres(
             # Clear the stream after successful persistence
             await r.delete(stream_key)
 
-            logger.debug(f"Flushed {len(logs_to_insert)} logs to Postgres for {exec_id}")
+            logger.debug(f"Flushed {len(logs_to_insert)} logs to Postgres for {log_safe(exec_id)}")
             return len(logs_to_insert)
 
     except Exception as e:

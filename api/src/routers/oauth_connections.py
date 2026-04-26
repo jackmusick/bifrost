@@ -27,6 +27,7 @@ from src.models import (
     OAuthStatus,
 )
 from src.core.auth import Context, CurrentSuperuser
+from src.core.log_safety import log_safe
 from src.models import OAuthProvider, OAuthToken
 from src.services.oauth_provider import (
     build_token_refresh_context,
@@ -496,7 +497,7 @@ async def update_connection(
             detail=f"OAuth connection '{connection_name}' not found",
         )
 
-    logger.info(f"Updated OAuth connection: {connection_name}")
+    logger.info(f"Updated OAuth connection: {log_safe(connection_name)}")
 
     # Invalidate cache
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth:
@@ -529,7 +530,7 @@ async def delete_connection(
             detail=f"OAuth connection '{connection_name}' not found",
         )
 
-    logger.info(f"Deleted OAuth connection: {connection_name}")
+    logger.info(f"Deleted OAuth connection: {log_safe(connection_name)}")
 
     # Invalidate cache
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth:
@@ -735,7 +736,7 @@ async def refresh_token(
             scopes=provider.scopes,
         )
 
-        logger.info(f"Client credentials token acquired for {connection_name}")
+        logger.info(f"Client credentials token acquired for {log_safe(connection_name)}")
 
     else:
         # Update the token row we already loaded above.
@@ -751,7 +752,7 @@ async def refresh_token(
 
         await ctx.db.flush()
 
-        logger.info(f"Token refreshed successfully for {connection_name}")
+        logger.info(f"Token refreshed successfully for {log_safe(connection_name)}")
 
     # Invalidate cache (token was updated)
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:
@@ -889,7 +890,7 @@ async def oauth_callback(
         scopes=scopes,
     )
 
-    logger.info(f"OAuth callback completed for {connection_name}")
+    logger.info(f"OAuth callback completed for {log_safe(connection_name)}")
 
     # Invalidate cache (token was stored)
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:

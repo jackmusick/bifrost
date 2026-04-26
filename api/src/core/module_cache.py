@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 from typing import Awaitable, TypedDict, cast
 
+from src.core.log_safety import log_safe
 from src.core.redis_client import get_redis_client
 from src.services.repo_storage import RepoStorage
 
@@ -58,13 +59,13 @@ async def get_module(path: str) -> CachedModule | None:
         repo = RepoStorage()
         content_bytes = await repo.read(path)
     except Exception:
-        logger.debug(f"Module not in cache or S3: {path}")
+        logger.debug(f"Module not in cache or S3: {log_safe(path)}")
         return None
 
     try:
         content_str = content_bytes.decode("utf-8")
     except UnicodeDecodeError:
-        logger.warning(f"Could not decode {path} as UTF-8, skipping")
+        logger.warning(f"Could not decode {log_safe(path)} as UTF-8, skipping")
         return None
 
     content_hash = hashlib.sha256(content_bytes).hexdigest()

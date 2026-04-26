@@ -101,11 +101,11 @@ async def receive_webhook(
     source_ip = _get_client_ip(request)
 
     logger.debug(
-        f"Webhook received: {method} /api/hooks/{source_id}",
+        f"Webhook received: {log_safe(method)} /api/hooks/{log_safe(source_id)}",
         extra={
-            "source_id": source_id,
-            "method": method,
-            "source_ip": source_ip,
+            "source_id": log_safe(source_id),
+            "method": log_safe(method),
+            "source_ip": log_safe(source_ip),
             "content_length": len(body),
         },
     )
@@ -150,9 +150,9 @@ async def receive_webhook(
         logger.warning(
             f"Webhook rejected: {log_safe(source_id)}",
             extra={
-                "source_id": source_id,
+                "source_id": log_safe(source_id),
                 "status_code": result.status_code,
-                "reject_reason": result.message,
+                "reject_reason": log_safe(result.message),
             },
         )
         return Response(
@@ -194,7 +194,7 @@ async def receive_webhook(
                     logger.info(
                         f"Webhook accepted: {log_safe(source_id)}",
                         extra={
-                            "source_id": source_id,
+                            "source_id": log_safe(source_id),
                             "event_id": str(event.id),
                             "deliveries_queued": queued,
                         },

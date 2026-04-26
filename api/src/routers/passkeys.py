@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 from src.core.auth import CurrentActiveUser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.models.contracts.passkeys import (
     PasskeyAuthOptionsRequest,
     PasskeyAuthOptionsResponse,
@@ -268,7 +269,7 @@ async def delete_passkey(
 
         await db.commit()
 
-        logger.info(f"Passkey {passkey_id} deleted for user {user.user_id}")
+        logger.info(f"Passkey {log_safe(passkey_id)} deleted for user {user.user_id}")
 
         return PasskeyDeleteResponse(
             deleted=True,
@@ -283,7 +284,7 @@ async def delete_passkey(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete passkey {passkey_id} for user {user.user_id}: {e}")
+        logger.error(f"Failed to delete passkey {log_safe(passkey_id)} for user {user.user_id}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete passkey",

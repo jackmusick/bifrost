@@ -23,6 +23,7 @@ from typing import Literal
 from aiobotocore.session import get_session
 
 from src.config import Settings, get_settings
+from src.core.log_safety import log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +312,7 @@ class AppStorageService:
                     preview_relative.add(rel)
 
             if not preview_relative:
-                logger.warning(f"No preview files to publish for app {app_id}")
+                logger.warning(f"No preview files to publish for app {log_safe(app_id)}")
                 return 0
 
             # Copy preview → live
@@ -336,7 +337,7 @@ class AppStorageService:
 
             published = len(preview_relative)
             logger.info(
-                f"Published {published} files for app {app_id}"
+                f"Published {published} files for app {log_safe(app_id)}"
                 f" (removed {len(stale)} stale)"
             )
 
@@ -400,7 +401,7 @@ class AppStorageService:
                 self._render_cache_key(app_id, "live"),
             )
         except Exception as e:
-            logger.warning(f"Failed to invalidate render cache for app {app_id}: {e}")
+            logger.warning(f"Failed to invalidate render cache for app {log_safe(app_id)}: {log_safe(e)}")
 
     # -----------------------------------------------------------------
     # Helpers

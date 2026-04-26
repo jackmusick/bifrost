@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
+from src.core.log_safety import log_safe
 from src.models.orm import SystemConfig
 from src.models.orm.ai_usage import AIModelPricing
 
@@ -185,7 +186,7 @@ class LLMConfigService:
             existing.value_json = config_data
             existing.updated_at = datetime.now(timezone.utc)
             existing.updated_by = updated_by
-            logger.info(f"Updated LLM config: provider={provider}, model={model}")
+            logger.info(f"Updated LLM config: provider={log_safe(provider)}, model={log_safe(model)}")
         else:
             # Create new config
             new_config = SystemConfig(
@@ -199,7 +200,7 @@ class LLMConfigService:
                 updated_by=updated_by,
             )
             self.session.add(new_config)
-            logger.info(f"Created LLM config: provider={provider}, model={model}")
+            logger.info(f"Created LLM config: provider={log_safe(provider)}, model={log_safe(model)}")
 
         await self.session.flush()
 

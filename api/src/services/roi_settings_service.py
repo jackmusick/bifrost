@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.models.orm.config import SystemConfig
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,7 @@ class ROISettingsService:
             existing.updated_at = datetime.now(timezone.utc)
             existing.updated_by = updated_by
             logger.info(
-                f"Updated ROI settings: time_saved_unit={time_saved_unit}, value_unit={value_unit}"
+                f"Updated ROI settings: time_saved_unit={log_safe(time_saved_unit)}, value_unit={log_safe(value_unit)}"
             )
         else:
             # Create new config
@@ -112,7 +113,7 @@ class ROISettingsService:
             )
             self.session.add(new_config)
             logger.info(
-                f"Created ROI settings: time_saved_unit={time_saved_unit}, value_unit={value_unit}"
+                f"Created ROI settings: time_saved_unit={log_safe(time_saved_unit)}, value_unit={log_safe(value_unit)}"
             )
 
         await self.session.flush()

@@ -34,6 +34,7 @@ from src.models.orm.ai_usage import AIUsage
 
 from bifrost._logging import read_logs_from_stream
 from src.core.auth import Context, UserPrincipal
+from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.core.pubsub import publish_execution_update, publish_history_update
 from src.core.redis_client import get_redis_client
@@ -99,7 +100,7 @@ class ExecutionRepository:
                 query = query.where(ExecutionModel.started_at >= start_dt)
             except ValueError as e:
                 # Caller passed an invalid ISO date — silently ignore the filter
-                logger.debug(f"invalid start_date {start_date!r}, ignoring filter: {e}")
+                logger.debug(f"invalid start_date {log_safe(start_date)!r}, ignoring filter: {log_safe(e)}")
 
         if end_date:
             try:
@@ -110,7 +111,7 @@ class ExecutionRepository:
                 query = query.where(ExecutionModel.started_at <= end_dt)
             except ValueError as e:
                 # Caller passed an invalid ISO date — silently ignore the filter
-                logger.debug(f"invalid end_date {end_date!r}, ignoring filter: {e}")
+                logger.debug(f"invalid end_date {log_safe(end_date)!r}, ignoring filter: {log_safe(e)}")
 
         # Exclude local runner executions by default
         if exclude_local:
@@ -190,7 +191,7 @@ class ExecutionRepository:
                         sequence=seq,
                     ))
             except Exception:
-                logger.warning(f"Failed to read logs from Redis for execution {execution_id}, falling back to DB")
+                logger.warning(f"Failed to read logs from Redis for execution {log_safe(execution_id)}, falling back to DB")
                 is_in_progress = False  # Fall through to DB read below
 
         if not is_in_progress:
@@ -368,7 +369,7 @@ class ExecutionRepository:
                     ))
                 return logs, None
             except Exception:
-                logger.warning(f"Failed to read logs from Redis for execution {execution_id}, falling back to DB")
+                logger.warning(f"Failed to read logs from Redis for execution {log_safe(execution_id)}, falling back to DB")
 
         # Completed or Redis failed — read from Postgres
         logs_query = (
@@ -584,7 +585,7 @@ async def list_executions(
             offset = int(continuationToken)
         except ValueError as e:
             # Malformed continuation token — start from beginning
-            logger.debug(f"invalid continuationToken {continuationToken!r}, starting from offset 0: {e}")
+            logger.debug(f"invalid continuationToken {log_safe(continuationToken)!r}, starting from offset 0: {log_safe(e)}")
 
     # Parse workflowId to UUID if provided
     parsed_workflow_id = UUID(workflowId) if workflowId else None
@@ -637,7 +638,7 @@ async def list_logs(
             offset = int(continuation_token)
         except ValueError as e:
             # Malformed continuation token — start from beginning
-            logger.debug(f"invalid continuation_token {continuation_token!r}, starting from offset 0: {e}")
+            logger.debug(f"invalid continuation_token {log_safe(continuation_token)!r}, starting from offset 0: {log_safe(e)}")
 
     # Parse levels
     level_list = None
@@ -834,9 +835,9 @@ async def cancel_execution(
             await redis_client.set_cancel_flag(str(execution_id))
             # Publish cancel event via pub/sub for immediate process termination
             await redis_client.publish_cancel_event(str(execution_id))
-            logger.info(f"Set cancel flag and published event for execution: {execution_id}")
+            logger.info(f"Set cancel flag and published event for execution: {log_safe(execution_id)}")
         else:
-            logger.info(f"Execution {execution_id} was PENDING, cancelled directly in DB")
+            logger.info(f"Execution {log_safe(execution_id)} was PENDING, cancelled directly in DB")
         return execution
 
     # Not found in PostgreSQL - check if it's still pending in Redis
@@ -846,7 +847,7 @@ async def cancel_execution(
     if pending_cancelled:
         # Execution was in Redis pending, now marked as cancelled
         # Worker will see this flag and skip execution
-        logger.info(f"Cancelled pending execution in Redis: {execution_id}")
+        logger.info(f"Cancelled pending execution in Redis: {log_safe(execution_id)}")
         return {
             "execution_id": str(execution_id),
             "status": "Cancelled",
@@ -1042,7 +1043,7 @@ async def cleanup_redis_orphans(
     # Redis TTL (1 hour) provides automatic cleanup for truly orphaned entries
     # Manual cleanup via this endpoint is optional
 
-    logger.info(f"Redis orphan cleanup triggered (threshold: {minutes} minutes)")
+    logger.info(f"Redis orphan cleanup triggered (threshold: {log_safe(minutes)} minutes)")
 
     return {
         "message": "Redis pending entries auto-expire via TTL. Use /cleanup/trigger for PostgreSQL cleanup.",

@@ -34,6 +34,8 @@ from .keys import (
     role_users_key,
     roles_hash_key,
 )
+from src.core.log_safety import log_safe
+
 from .redis_client import get_shared_redis
 
 if TYPE_CHECKING:
@@ -79,7 +81,7 @@ async def upsert_config(
         if ttl < 0:  # -1 = no TTL, -2 = key doesn't exist
             await r.expire(hash_key, TTL_CONFIG)
 
-        logger.debug(f"Upserted config to cache: org={org_id}, key={key}")
+        logger.debug(f"Upserted config to cache: org={log_safe(org_id)}, key={log_safe(key)}")
     except Exception as e:
         # Log but don't fail - cache is best-effort
         logger.warning(f"Failed to upsert config cache: {e}")
@@ -103,7 +105,7 @@ async def invalidate_config(org_id: str | None, key: str | None = None) -> None:
         if key:
             await r.delete(config_key(org_id, key))
 
-        logger.debug(f"Invalidated config cache: org={org_id}, key={key}")
+        logger.debug(f"Invalidated config cache: org={log_safe(org_id)}, key={log_safe(key)}")
     except Exception as e:
         # Log but don't fail - cache invalidation is best-effort
         # TTL will eventually clear stale data
@@ -144,7 +146,7 @@ async def invalidate_form(org_id: str | None, form_id: str | None = None) -> Non
         async for key in r.scan_iter(pattern):
             await r.delete(key)
 
-        logger.debug(f"Invalidated form cache: org={org_id}, form_id={form_id}")
+        logger.debug(f"Invalidated form cache: org={log_safe(org_id)}, form_id={log_safe(form_id)}")
     except Exception as e:
         logger.warning(f"Failed to invalidate form cache: {e}")
 
@@ -186,7 +188,7 @@ async def invalidate_role(org_id: str | None, role_id: str | None = None) -> Non
             await r.delete(role_users_key(org_id, role_id))
             await r.delete(role_forms_key(org_id, role_id))
 
-        logger.debug(f"Invalidated role cache: org={org_id}, role_id={role_id}")
+        logger.debug(f"Invalidated role cache: org={log_safe(org_id)}, role_id={log_safe(role_id)}")
     except Exception as e:
         logger.warning(f"Failed to invalidate role cache: {e}")
 
@@ -200,7 +202,7 @@ async def invalidate_role_users(org_id: str | None, role_id: str) -> None:
         pattern = f"bifrost:{_get_scope(org_id)}:user_forms:*"
         async for key in r.scan_iter(pattern):
             await r.delete(key)
-        logger.debug(f"Invalidated role users cache: org={org_id}, role_id={role_id}")
+        logger.debug(f"Invalidated role users cache: org={log_safe(org_id)}, role_id={log_safe(role_id)}")
     except Exception as e:
         logger.warning(f"Failed to invalidate role users cache: {e}")
 
@@ -214,7 +216,7 @@ async def invalidate_role_forms(org_id: str | None, role_id: str) -> None:
         pattern = f"bifrost:{_get_scope(org_id)}:user_forms:*"
         async for key in r.scan_iter(pattern):
             await r.delete(key)
-        logger.debug(f"Invalidated role forms cache: org={org_id}, role_id={role_id}")
+        logger.debug(f"Invalidated role forms cache: org={log_safe(org_id)}, role_id={log_safe(role_id)}")
     except Exception as e:
         logger.warning(f"Failed to invalidate role forms cache: {e}")
 
@@ -275,7 +277,7 @@ async def invalidate_org(org_id: str) -> None:
         r = await get_shared_redis()
         await r.delete(org_key(org_id))
         await r.delete(orgs_list_key())
-        logger.debug(f"Invalidated org cache: org_id={org_id}")
+        logger.debug(f"Invalidated org cache: org_id={log_safe(org_id)}")
     except Exception as e:
         logger.warning(f"Failed to invalidate org cache: {e}")
 

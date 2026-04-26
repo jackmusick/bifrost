@@ -6,6 +6,7 @@ from fastapi import APIRouter, status
 
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.models.contracts.roi import (
     ROISettingsRequest,
     ROISettingsResponse,
@@ -64,7 +65,7 @@ async def update_roi_settings(
 
     logger.info(
         f"ROI settings updated by {user.email}: "
-        f"time_saved_unit={request.time_saved_unit}, value_unit={request.value_unit}"
+        f"time_saved_unit={log_safe(request.time_saved_unit)}, value_unit={log_safe(request.value_unit)}"
     )
 
     return ROISettingsResponse(

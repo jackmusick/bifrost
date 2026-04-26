@@ -20,6 +20,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.core.log_safety import log_safe
 from src.models.orm.agent_runs import AgentRun, AgentRunStep
 from src.models.orm.ai_usage import AIUsage
 from src.services.execution.model_selection import get_tuning_client
@@ -126,7 +127,7 @@ async def evaluate_against_prompt(
     try:
         parsed = json.loads(response.content or "")
     except json.JSONDecodeError:
-        logger.warning("Dry-run returned invalid JSON for run %s", run_id)
+        logger.warning("Dry-run returned invalid JSON for run %s", log_safe(run_id))
         parsed = {
             "would_still_decide_same": True,
             "reasoning": "Unable to evaluate (model returned invalid JSON)",

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import UserPrincipal
+from src.core.log_safety import log_safe
 from src.models import (
     AIUsage,
     AIUsagePublicSimple,
@@ -274,7 +275,7 @@ class ExecutionRepository(BaseRepository[Execution]):
                 self.session.add(log_record)
 
         await self.session.flush()
-        logger.debug(f"Updated execution {execution_id} to status {status_value}")
+        logger.debug(f"Updated execution {log_safe(execution_id)} to status {log_safe(status_value)}")
 
     # =========================================================================
     # Read Operations (used by API endpoints)

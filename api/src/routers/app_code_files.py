@@ -27,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Path, status
 
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
+from src.core.log_safety import log_safe
 from src.models.contracts.applications import (
     AppFileUpdate,
     AppRenderResponse,
@@ -351,7 +352,7 @@ async def read_app_file(
             compiled = compiled_str
     except FileNotFoundError:
         # No compiled artifact yet — return source only
-        logger.debug(f"no compiled artifact for app {app.id} {storage_mode} {file_path}")
+        logger.debug(f"no compiled artifact for app {app.id} {log_safe(storage_mode)} {log_safe(file_path)}")
 
     return SimpleFileResponse(path=file_path, source=source, compiled=compiled)
 
@@ -398,7 +399,7 @@ async def write_app_file(
         if result.success:
             compiled_js = result.compiled
 
-    logger.info(f"Wrote app file '{file_path}' for app {app_id} (slug={app.slug})")
+    logger.info(f"Wrote app file '{log_safe(file_path)}' for app {log_safe(app_id)} (slug={log_safe(app.slug)})")
     return SimpleFileResponse(path=file_path, source=source, compiled=compiled_js)
 
 
@@ -425,7 +426,7 @@ async def delete_app_file(
     storage = get_file_storage_service(ctx.db)
     await storage.delete_file(full_path)
 
-    logger.info(f"Deleted app file '{file_path}' from app {app_id} (slug={app.slug})")
+    logger.info(f"Deleted app file '{log_safe(file_path)}' from app {log_safe(app_id)} (slug={log_safe(app.slug)})")
 
 
 # =============================================================================

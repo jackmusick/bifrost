@@ -64,6 +64,7 @@ from src.services.workflow_validation import _extract_relative_path
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.pubsub import publish_execution_update, publish_history_update
 
 logger = logging.getLogger(__name__)
@@ -459,7 +460,7 @@ async def list_workflows(
             except Exception as e:
                 logger.error(f"Failed to convert workflow '{w.name}': {e}")
 
-        logger.info(f"Returning {len(workflow_list)} workflows (scope={scope or 'default'})")
+        logger.info(f"Returning {len(workflow_list)} workflows (scope={log_safe(scope) or 'default'})")
         return workflow_list
 
     except HTTPException:
@@ -1080,7 +1081,7 @@ async def validate_workflow(
             content=request.content,
         )
 
-        logger.info(f"Validation result for {request.path}: valid={result.valid}, issues={len(result.issues)}")
+        logger.info(f"Validation result for {log_safe(request.path)}: valid={result.valid}, issues={len(result.issues)}")
         return result
 
     except ValueError as e:
@@ -1419,7 +1420,7 @@ async def update_workflow(
         except Exception as e:
             logger.warning(f"Failed to refresh MCP workflow tools: {e}")
 
-        logger.info(f"Updated workflow '{workflow.name}' organization_id={workflow.organization_id}, access_level={workflow.access_level}")
+        logger.info(f"Updated workflow '{log_safe(workflow.name)}' organization_id={workflow.organization_id}, access_level={workflow.access_level}")
         return _convert_workflow_orm_to_schema(workflow)
 
     except HTTPException:
@@ -1588,8 +1589,8 @@ async def replace_workflow(
         )
 
         logger.info(
-            f"Replaced orphaned workflow {workflow_id} with "
-            f"{request.source_path}::{request.function_name}"
+            f"Replaced orphaned workflow {log_safe(workflow_id)} with "
+            f"{log_safe(request.source_path)}::{log_safe(request.function_name)}"
         )
 
         return ReplaceWorkflowResponse(
@@ -1661,7 +1662,7 @@ async def recreate_workflow_file(
             updated_by=user.email,
         )
 
-        logger.info(f"Recreated file for workflow {workflow_id} at {workflow.path}")
+        logger.info(f"Recreated file for workflow {log_safe(workflow_id)} at {log_safe(workflow.path)}")
 
         return RecreateFileResponse(
             success=True,
@@ -1716,7 +1717,7 @@ async def deactivate_workflow(
         if ref_count > 0:
             warning = f"{ref_count} {'form/app still references' if ref_count == 1 else 'forms/apps still reference'} this workflow"
 
-        logger.info(f"Deactivated workflow {workflow_id} (refs: {ref_count})")
+        logger.info(f"Deactivated workflow {log_safe(workflow_id)} (refs: {ref_count})")
 
         return DeactivateWorkflowResponse(
             success=True,
@@ -1846,7 +1847,7 @@ async def assign_roles_to_workflow(
         db.add(workflow_role)
 
     await db.flush()
-    logger.info(f"Assigned roles to workflow {workflow_id}")
+    logger.info(f"Assigned roles to workflow {log_safe(workflow_id)}")
 
 
 @router.delete(
@@ -1880,7 +1881,7 @@ async def remove_role_from_workflow(
             detail="Workflow-role assignment not found",
         )
 
-    logger.info(f"Removed role {role_id} from workflow {workflow_id}")
+    logger.info(f"Removed role {log_safe(role_id)} from workflow {log_safe(workflow_id)}")
 
 
 @router.delete(

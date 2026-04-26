@@ -23,6 +23,7 @@ from typing import Any, Awaitable, TypedDict, cast
 import redis.asyncio as redis
 
 from src.config import get_settings
+from src.core.log_safety import log_safe
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +242,7 @@ class RedisClient:
                     key, PENDING_EXECUTION_TTL_SECONDS, json.dumps(pending)
                 )
 
-            logger.info(f"Marked pending execution as cancelled: {execution_id}")
+            logger.info(f"Marked pending execution as cancelled: {log_safe(execution_id)}")
             return True
         except Exception as e:
             logger.error(f"Failed to cancel pending execution: {e}")
@@ -415,7 +416,7 @@ class RedisClient:
         key = f"bifrost:agent_run:{run_id}:cancel"
         try:
             await redis_client.setex(key, 3600, "1")
-            logger.debug(f"Set agent run cancel flag: {key}")
+            logger.debug(f"Set agent run cancel flag: {log_safe(key)}")
         except Exception as e:
             logger.error(f"Failed to set agent run cancel flag: {e}")
             raise
@@ -458,7 +459,7 @@ class RedisClient:
         try:
             # Set flag with 1 hour TTL (should be cleaned up much sooner)
             await redis_client.setex(key, 3600, "1")
-            logger.debug(f"Set cancel flag: {key}")
+            logger.debug(f"Set cancel flag: {log_safe(key)}")
         except Exception as e:
             logger.error(f"Failed to set cancel flag: {e}")
             raise
@@ -479,7 +480,7 @@ class RedisClient:
         message = json.dumps({"execution_id": execution_id})
         try:
             await redis_client.publish(channel, message)
-            logger.debug(f"Published cancel event for execution: {execution_id}")
+            logger.debug(f"Published cancel event for execution: {log_safe(execution_id)}")
         except Exception as e:
             logger.error(f"Failed to publish cancel event: {e}")
             # Don't raise - the cancel flag is set as a fallback
@@ -516,7 +517,7 @@ class RedisClient:
                 return None
             return json.loads(data)
         except Exception as e:
-            logger.warning(f"Failed to get endpoint workflow cache for {workflow_id}: {e}")
+            logger.warning(f"Failed to get endpoint workflow cache for {log_safe(workflow_id)}: {log_safe(e)}")
             return None
 
     async def set_endpoint_workflow_cache(
@@ -556,9 +557,9 @@ class RedisClient:
                 ENDPOINT_WORKFLOW_CACHE_TTL_SECONDS,
                 json.dumps(data),
             )
-            logger.debug(f"Cached endpoint workflow: {workflow_id}")
+            logger.debug(f"Cached endpoint workflow: {log_safe(workflow_id)}")
         except Exception as e:
-            logger.warning(f"Failed to cache endpoint workflow {workflow_id}: {e}")
+            logger.warning(f"Failed to cache endpoint workflow {log_safe(workflow_id)}: {log_safe(e)}")
             # Don't raise - cache failure shouldn't fail the request
 
     async def invalidate_endpoint_workflow_cache(self, workflow_id: str) -> None:

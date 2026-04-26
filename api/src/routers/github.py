@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.pubsub import publish_git_operation
 from src.models import (
     CommitHistoryResponse,
@@ -311,7 +312,7 @@ async def configure_github(
         if not repo_url.startswith("http"):
             repo_url = f"https://github.com/{repo_url}"
 
-        logger.info(f"Configuring GitHub for repo: {repo_url}")
+        logger.info(f"Configuring GitHub for repo: {log_safe(repo_url)}")
 
         # Get existing config to retrieve token
         existing_config = await get_github_config(db, ctx.org_id)
@@ -332,7 +333,7 @@ async def configure_github(
             updated_by=user.email,
         )
 
-        logger.info(f"GitHub configuration saved for repo: {repo_url}")
+        logger.info(f"GitHub configuration saved for repo: {log_safe(repo_url)}")
 
         return GitHubSetupResponse(
             job_id=None,

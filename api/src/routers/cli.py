@@ -428,7 +428,7 @@ async def cli_get_config(
             raw_value = json.loads(raw_value)
         except json.JSONDecodeError as e:
             # Stored value is not valid JSON — return raw string as fallback
-            logger.debug(f"config {request.key} stored as json but failed to parse, returning raw: {e}")
+            logger.debug(f"config {log_safe(request.key)} stored as json but failed to parse, returning raw: {log_safe(e)}")
     elif config_type == "bool":
         raw_value = str(raw_value).lower() == "true" if isinstance(raw_value, str) else bool(raw_value)
     elif config_type == "int":
@@ -436,7 +436,7 @@ async def cli_get_config(
             raw_value = int(raw_value)
         except (ValueError, TypeError) as e:
             # Stored value isn't coercible to int — return raw value
-            logger.debug(f"config {request.key} stored as int but failed to coerce, returning raw: {e}")
+            logger.debug(f"config {log_safe(request.key)} stored as int but failed to coerce, returning raw: {log_safe(e)}")
 
     return CLIConfigValue(
         key=request.key,
@@ -1199,7 +1199,7 @@ async def sdk_integrations_refresh_token(
         await db.commit()
 
         logger.info(
-            f"SDK refreshed OAuth token for '{request.connection_name}' "
+            f"SDK refreshed OAuth token for '{log_safe(request.connection_name)}' "
             f"by {current_user.email}"
         )
 
@@ -1261,8 +1261,8 @@ async def register_cli_session(
     await db.commit()
 
     logger.info(
-        f"CLI session registered: {len(request.workflows)} workflows from {request.file_path} "
-        f"for user {current_user.email}, session_id={request.session_id}"
+        f"CLI session registered: {len(request.workflows)} workflows from {log_safe(request.file_path)} "
+        f"for user {current_user.email}, session_id={log_safe(request.session_id)}"
     )
 
     response = _session_to_response(session, is_connected=True)
@@ -1450,8 +1450,8 @@ async def continue_cli_session(
     await db.commit()
 
     logger.info(
-        f"CLI session continue: workflow={request.workflow_name}, "
-        f"execution_id={execution_id}, session_id={session_id}, user={current_user.email}"
+        f"CLI session continue: workflow={log_safe(request.workflow_name)}, "
+        f"execution_id={execution_id}, session_id={log_safe(session_id)}, user={current_user.email}"
     )
 
     # Broadcast state update via websocket
@@ -1800,7 +1800,7 @@ async def post_cli_result(
 
     total_logs = logs_persisted + logs_flushed
     logger.info(
-        f"CLI result: execution_id={execution_id}, session_id={session_id}, status={status_enum.value}, "
+        f"CLI result: execution_id={log_safe(execution_id)}, session_id={log_safe(session_id)}, status={status_enum.value}, "
         f"logs_persisted={logs_persisted}, logs_flushed={logs_flushed}, user={current_user.email}"
     )
 

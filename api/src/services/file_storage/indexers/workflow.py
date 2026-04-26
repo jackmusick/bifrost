@@ -156,7 +156,7 @@ class WorkflowIndexer:
                     if not existing_workflow:
                         # Not registered — skip. Use register_workflow() to register.
                         logger.debug(
-                            f"Skipping unregistered function {function_name} in {path}"
+                            f"Skipping unregistered function {log_safe(function_name)} in {log_safe(path)}"
                         )
                         continue
 
@@ -271,7 +271,7 @@ class WorkflowIndexer:
 
                     if not existing_dp:
                         logger.debug(
-                            f"Skipping unregistered data_provider {function_name} in {path}"
+                            f"Skipping unregistered data_provider {log_safe(function_name)} in {log_safe(path)}"
                         )
                         continue
 

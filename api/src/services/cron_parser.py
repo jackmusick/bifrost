@@ -7,6 +7,8 @@ import logging
 
 from croniter import croniter
 
+from src.core.log_safety import log_safe
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,13 +29,13 @@ def validate_cron_expression(expression: str) -> bool:
         # First check field count - only accept 5-field CRON
         parts = expression.split()
         if len(parts) != 5:
-            logger.warning(f"Invalid CRON expression '{expression}': must have exactly 5 fields, got {len(parts)}")
+            logger.warning(f"Invalid CRON expression '{log_safe(expression)}': must have exactly 5 fields, got {len(parts)}")
             return False
 
         # Then check croniter validation
         return croniter.is_valid(expression)
     except Exception as e:
-        logger.warning(f"Error validating CRON expression '{expression}': {e}")
+        logger.warning(f"Error validating CRON expression '{log_safe(expression)}': {log_safe(e)}")
         return False
 
 

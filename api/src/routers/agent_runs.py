@@ -18,6 +18,7 @@ from src.core.auth import CurrentActiveUser
 from src.core.cache.keys import agent_run_steps_stream_key
 from src.core.cache.redis_client import get_redis
 from src.core.database import DbSession, get_session_factory
+from src.core.log_safety import log_safe
 from src.models.contracts.agent_run_flag_conversations import (
     FlagConversationResponse,
     SendFlagMessageRequest,
@@ -527,7 +528,7 @@ async def get_agent_run(
                         created_at=datetime.fromisoformat(data["created_at"]),
                     ))
         except Exception:
-            logger.warning(f"Failed to read steps from Redis for run {run_id}, falling back to DB")
+            logger.warning(f"Failed to read steps from Redis for run {log_safe(run_id)}, falling back to DB")
             # Fall back to DB steps (may be empty if uncommitted)
             steps_response = [
                 AgentRunStepResponse(
@@ -694,14 +695,14 @@ async def cancel_agent_run(
     await db.commit()
 
     await redis_client.set_agent_run_cancel_flag(str(run_id))
-    logger.info(f"Set cancel flag for agent run {run_id}")
+    logger.info(f"Set cancel flag for agent run {log_safe(run_id)}")
 
     try:
         from src.core.pubsub import publish_agent_run_update
         await publish_agent_run_update(agent_run, agent_run.agent.name if agent_run.agent else "Unknown")
     except Exception as e:
         # Cancel flag already set; pubsub notify is best-effort UI hint
-        logger.debug(f"failed to publish agent_run cancel update for {run_id}: {e}")
+        logger.debug(f"failed to publish agent_run cancel update for {log_safe(run_id)}: {log_safe(e)}")
 
     return {"run_id": str(run_id), "status": "cancelling"}
 

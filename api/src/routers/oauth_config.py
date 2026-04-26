@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
+from src.core.log_safety import log_safe
 from src.models.contracts.oauth_config import (
     GoogleOAuthConfigRequest,
     MicrosoftOAuthConfigRequest,
@@ -252,7 +253,7 @@ async def delete_oauth_config(
             detail=f"OAuth provider {provider} not found or already deleted",
         )
 
-    logger.info(f"OAuth config deleted for {provider} by {user.email}")
+    logger.info(f"OAuth config deleted for {log_safe(provider)} by {user.email}")
 
 
 @router.post(

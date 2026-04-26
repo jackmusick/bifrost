@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.models.orm.agents import Agent, AgentTool
 from src.models.orm.forms import Form, FormField
 from src.models.orm.workflows import Workflow
@@ -163,7 +164,7 @@ class WorkflowOrphanService:
 
         orphan_code = await self._get_code(wf.path)
         if not orphan_code:
-            logger.warning(f"Orphaned workflow {workflow_id} has no code in file_index")
+            logger.warning(f"Orphaned workflow {log_safe(workflow_id)} has no code in file_index")
             return []
 
         # Parse original signature
@@ -297,7 +298,7 @@ class WorkflowOrphanService:
         await self.db.refresh(wf)
 
         logger.info(
-            f"Replaced orphaned workflow {workflow_id} with {source_path}::{function_name}"
+            f"Replaced orphaned workflow {log_safe(workflow_id)} with {log_safe(source_path)}::{log_safe(function_name)}"
         )
 
         return wf
@@ -358,7 +359,7 @@ class WorkflowOrphanService:
         await self.db.commit()
         await self.db.refresh(wf)
 
-        logger.info(f"Marked workflow {workflow_id} for file recreation at {wf.path}")
+        logger.info(f"Marked workflow {log_safe(workflow_id)} for file recreation at {log_safe(wf.path)}")
 
         return wf
 
@@ -394,10 +395,10 @@ class WorkflowOrphanService:
 
         if ref_count > 0:
             logger.warning(
-                f"Deactivated workflow {workflow_id} with {ref_count} active references"
+                f"Deactivated workflow {log_safe(workflow_id)} with {ref_count} active references"
             )
         else:
-            logger.info(f"Deactivated workflow {workflow_id}")
+            logger.info(f"Deactivated workflow {log_safe(workflow_id)}")
 
         return wf, ref_count
 

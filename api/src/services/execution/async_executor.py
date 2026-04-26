@@ -19,6 +19,7 @@ import uuid
 from typing import Any
 
 from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
+from src.core.log_safety import log_safe
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import publish_message
 from src.sdk.context import ExecutionContext
@@ -208,10 +209,10 @@ async def enqueue_code_execution(
     await publish_message(QUEUE_NAME, message)
 
     logger.info(
-        f"Enqueued async code execution: {script_name}",
+        f"Enqueued async code execution: {log_safe(script_name)}",
         extra={
             "execution_id": execution_id,
-            "script_name": script_name,
+            "script_name": log_safe(script_name),
             "org_id": context.org_id
         }
     )

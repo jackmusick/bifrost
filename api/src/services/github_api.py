@@ -15,6 +15,8 @@ from dataclasses import dataclass
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.core.log_safety import log_safe
+
 logger = logging.getLogger(__name__)
 
 
@@ -844,7 +846,7 @@ class GitHubAPIClient:
         Raises:
             GitHubAPIError: On API errors
         """
-        logger.debug(f"Listing branches for {repo}")
+        logger.debug(f"Listing branches for {log_safe(repo)}")
 
         endpoint = f"/repos/{repo}/branches?per_page=100"
         data = await self._request("GET", endpoint)
@@ -859,7 +861,7 @@ class GitHubAPIClient:
                 }
             )
 
-        logger.debug(f"Found {len(branches)} branches in {repo}")
+        logger.debug(f"Found {len(branches)} branches in {log_safe(repo)}")
         return branches
 
     async def create_repository(
@@ -884,7 +886,7 @@ class GitHubAPIClient:
         Raises:
             GitHubAPIError: On API errors
         """
-        logger.debug(f"Creating repository: {name} (org: {organization})")
+        logger.debug(f"Creating repository: {log_safe(name)} (org: {log_safe(organization)})")
 
         request_data = {
             "name": name,

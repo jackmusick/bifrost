@@ -17,6 +17,7 @@ from src.core.cache import get_shared_redis
 from src.core.cache.keys import refresh_token_jti_key, TTL_REFRESH_TOKEN
 from src.core.auth import CurrentActiveUser, get_current_user_from_db
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.core.security import (
     create_access_token,
     create_refresh_token,
@@ -440,7 +441,7 @@ async def revoke_trusted_device(
         "Trusted device revoked for user",
         extra={
             "user_id": str(current_user.user_id),
-            "device_id": str(device_id),
+            "device_id": log_safe(str(device_id)),
         }
     )
 

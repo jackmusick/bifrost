@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Literal
 
 from bifrost.platform_names import PLATFORM_EXPORT_NAMES
+from src.core.log_safety import log_safe
 from src.core.malloc import trim_malloc
 from src.services.app_storage import AppStorageService
 from src.services.repo_storage import RepoStorage
@@ -203,8 +204,8 @@ class BundlerService:
                     # may be no structured errors — surface something useful.
                     errors = [BundleMessage(text="esbuild failed with no error output")]
                 logger.warning(
-                    f"Bundler: build failed app={app_id} mode={mode} "
-                    f"errors={len(errors)} first={errors[0].text!r}"
+                    f"Bundler: build failed app={log_safe(app_id)} mode={log_safe(mode)} "
+                    f"errors={len(errors)} first={log_safe(errors[0].text)!r}"
                 )
                 return BundleResult(
                     success=False,
@@ -242,7 +243,7 @@ class BundlerService:
                 await self._write_live(app_id, "manifest.json", manifest_bytes)
 
             logger.info(
-                f"Bundler: built app={app_id} mode={mode} "
+                f"Bundler: built app={log_safe(app_id)} mode={log_safe(mode)} "
                 f"outputs={len(uploaded)} time={duration_ms}ms"
             )
 

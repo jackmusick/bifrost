@@ -21,6 +21,7 @@ from sqlalchemy import select
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
 from src.core.cache import get_shared_redis
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.models import (
     AIModelPricingCreate,
     AIModelPricingListItem,
@@ -143,7 +144,7 @@ async def create_pricing(
     await db.flush()
     await db.refresh(pricing)
 
-    logger.info(f"Created pricing for {data.provider}/{data.model} by {user.email}")
+    logger.info(f"Created pricing for {log_safe(data.provider)}/{log_safe(data.model)} by {user.email}")
 
     # Backfill costs for historical usage records with NULL cost
     # This updates past executions/chats that used this model before pricing was configured
@@ -160,11 +161,11 @@ async def create_pricing(
         if backfilled_count > 0:
             logger.info(
                 f"Backfilled costs for {backfilled_count} historical records "
-                f"for {data.provider}/{data.model}"
+                f"for {log_safe(data.provider)}/{log_safe(data.model)}"
             )
     except Exception as e:
         # Log but don't fail the pricing creation if backfill fails
-        logger.warning(f"Failed to backfill costs for {data.provider}/{data.model}: {e}")
+        logger.warning(f"Failed to backfill costs for {log_safe(data.provider)}/{log_safe(data.model)}: {log_safe(e)}")
 
     return AIModelPricingPublic.model_validate(pricing)
 
@@ -207,7 +208,7 @@ async def update_pricing(
     await db.flush()
     await db.refresh(pricing)
 
-    logger.info(f"Updated pricing {pricing_id} for {pricing.provider}/{pricing.model} by {user.email}")
+    logger.info(f"Updated pricing {log_safe(pricing_id)} for {log_safe(pricing.provider)}/{log_safe(pricing.model)} by {user.email}")
 
     return AIModelPricingPublic.model_validate(pricing)
 
@@ -242,4 +243,4 @@ async def delete_pricing(
     await db.delete(pricing)
     await db.flush()
 
-    logger.info(f"Deleted pricing {pricing_id} for {provider}/{model} by {user.email}")
+    logger.info(f"Deleted pricing {log_safe(pricing_id)} for {log_safe(provider)}/{log_safe(model)} by {user.email}")

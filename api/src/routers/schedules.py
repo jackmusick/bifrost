@@ -12,6 +12,7 @@ from fastapi import APIRouter
 
 from src.models import CronValidationRequest, CronValidationResponse
 from src.core.auth import Context, CurrentSuperuser
+from src.core.log_safety import log_safe
 from src.services.cron_parser import (
     cron_to_human_readable,
     is_cron_expression_valid,
@@ -43,7 +44,7 @@ def _validate_cron(expression: str) -> tuple[Literal["valid", "warning", "error"
             return "warning", f"Schedule runs more frequently than {MIN_INTERVAL_SECONDS // 60} minutes"
     except (ImportError, ValueError) as e:
         # croniter not installed or invalid expression — already validated above, treat as valid
-        logger.debug(f"could not compute cron interval for {expression!r}: {e}")
+        logger.debug(f"could not compute cron interval for {log_safe(expression)!r}: {log_safe(e)}")
 
     return "valid", None
 
@@ -96,7 +97,7 @@ async def validate_cron_expression(
             interval_seconds = int((runs[1] - runs[0]).total_seconds())
     except (ImportError, ValueError) as e:
         # croniter not installed or expression rejected — return validation without preview
-        logger.debug(f"could not compute next runs for {expression!r}: {e}")
+        logger.debug(f"could not compute next runs for {log_safe(expression)!r}: {log_safe(e)}")
 
     return CronValidationResponse(
         valid=True,

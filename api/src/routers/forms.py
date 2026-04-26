@@ -386,7 +386,7 @@ async def get_form(
     form = await repo.get_form(form_id)
 
     if not form:
-        logger.warning(f"Form {form_id} not found in database")
+        logger.warning(f"Form {log_safe(form_id)} not found in database")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Form not found",
@@ -543,7 +543,7 @@ async def update_form(
     # Sync form roles to referenced workflows (additive)
     await sync_form_roles_to_workflows(db, form, form.fields, assigned_by=ctx.user.email)
 
-    logger.info(f"Updated form {form_id}")
+    logger.info(f"Updated form {log_safe(form_id)}")
 
     # Invalidate cache after successful update
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
@@ -623,13 +623,13 @@ async def delete_form(
         await db.execute(
             delete(FormORM).where(FormORM.id == form_id)
         )
-        logger.info(f"Purged form {form_id}")
+        logger.info(f"Purged form {log_safe(form_id)}")
 
     if not purge:
         form.is_active = False
         form.updated_at = datetime.now(timezone.utc)
         await db.flush()
-        logger.info(f"Soft deleted form {form_id}")
+        logger.info(f"Soft deleted form {log_safe(form_id)}")
 
     # Invalidate cache
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
@@ -793,7 +793,7 @@ async def execute_form(
             is_platform_admin=ctx.user.is_superuser,
         )
         logger.info(
-            f"Form {form_id} scheduled by user {ctx.user.email}, "
+            f"Form {log_safe(form_id)} scheduled by user {ctx.user.email}, "
             f"execution_id={exec_id}, scheduled_at={scheduled_at.isoformat()}"
         )
         return WorkflowExecutionResponse(
@@ -832,7 +832,7 @@ async def execute_form(
             form_id=str(form.id),
         )
 
-        logger.info(f"Form {form_id} executed by user {ctx.user.email}, execution_id={response.execution_id}")
+        logger.info(f"Form {log_safe(form_id)} executed by user {ctx.user.email}, execution_id={response.execution_id}")
 
         # Register execution in Redis for embed session scoping
         if ctx.user.embed and ctx.user.jti:
@@ -849,13 +849,13 @@ async def execute_form(
         return response
 
     except WorkflowNotFoundError as e:
-        logger.error(f"Workflow not found for form {form_id}: {log_safe(e)}")
+        logger.error(f"Workflow not found for form {log_safe(form_id)}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workflow not found: {form.workflow_id}",
         )
     except WorkflowLoadError as e:
-        logger.error(f"Workflow load error for form {form_id}: {log_safe(e)}")
+        logger.error(f"Workflow load error for form {log_safe(form_id)}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load workflow: {str(e)}",
@@ -863,7 +863,7 @@ async def execute_form(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error executing form {form_id}: {log_safe(e)}", exc_info=True)
+        logger.error(f"Error executing form {log_safe(form_id)}: {log_safe(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute form",
@@ -960,18 +960,18 @@ async def execute_startup_workflow(
             form_id=str(form.id),
         )
 
-        logger.info(f"Launch workflow executed for form {form_id} by user {ctx.user.email}")
+        logger.info(f"Launch workflow executed for form {log_safe(form_id)} by user {ctx.user.email}")
 
         return FormStartupResponse(result=response.result)
 
     except WorkflowNotFoundError as e:
-        logger.error(f"Launch workflow not found for form {form_id}: {log_safe(e)}")
+        logger.error(f"Launch workflow not found for form {log_safe(form_id)}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Launch workflow not found: {form.launch_workflow_id}",
         )
     except WorkflowLoadError as e:
-        logger.error(f"Launch workflow load error for form {form_id}: {log_safe(e)}")
+        logger.error(f"Launch workflow load error for form {log_safe(form_id)}: {log_safe(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load launch workflow: {str(e)}",
@@ -979,7 +979,7 @@ async def execute_startup_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error executing launch workflow for form {form_id}: {log_safe(e)}", exc_info=True)
+        logger.error(f"Error executing launch workflow for form {log_safe(form_id)}: {log_safe(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute launch workflow",
@@ -1140,7 +1140,7 @@ async def generate_upload_url(
             expires_in=600,  # 10 minutes
         )
     except Exception as e:
-        logger.error(f"Failed to generate presigned URL for form {form_id}: {log_safe(e)}", exc_info=True)
+        logger.error(f"Failed to generate presigned URL for form {log_safe(form_id)}: {log_safe(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate upload URL",

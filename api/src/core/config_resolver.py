@@ -14,6 +14,7 @@ from typing import Any, TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.models import ConfigType
 
 if TYPE_CHECKING:
@@ -323,11 +324,11 @@ class ConfigResolver:
         # Try Redis cache first
         cached = await self._get_config_from_cache(org_id_for_cache)
         if cached is not None:
-            logger.debug(f"Config cache hit for scope={scope}")
+            logger.debug(f"Config cache hit for scope={log_safe(scope)}")
             return cached
 
         # Cache miss - load from PostgreSQL
-        logger.debug(f"Config cache miss for scope={scope}, loading from DB")
+        logger.debug(f"Config cache miss for scope={log_safe(scope)}, loading from DB")
 
         from sqlalchemy import select
         from src.core.database import get_session_factory
@@ -356,7 +357,7 @@ class ConfigResolver:
                 try:
                     org_uuid_obj = UUID(org_id_for_cache) if org_id_for_cache else None
                 except ValueError:
-                    logger.warning(f"Invalid scope format: {scope}")
+                    logger.warning(f"Invalid scope format: {log_safe(scope)}")
                     return config_dict
 
                 # Get global configs first

@@ -12,6 +12,8 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from src.core.log_safety import log_safe
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
@@ -63,10 +65,10 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         if redis_client:
             result_key = f"bifrost:job:{job_id}"
             data = await redis_client.get(result_key)
-            logger.debug(f"Job {job_id} Redis data: {data[:100] if data else 'None'}...")
+            logger.debug(f"Job {log_safe(job_id)} Redis data: {log_safe(data[:100]) if data else 'None'}...")
             if data:
                 result = json.loads(data)
-                logger.info(f"Job {job_id} found with status: {result.get('status')}")
+                logger.info(f"Job {log_safe(job_id)} found with status: {log_safe(result.get('status'))}")
                 return JobStatusResponse(
                     status=result.get("status", "unknown"),
                     message=result.get("message"),
@@ -79,7 +81,7 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
                     conflicts=result.get("conflicts"),
                 )
         else:
-            logger.warning(f"Redis client is None for job {job_id}")
+            logger.warning(f"Redis client is None for job {log_safe(job_id)}")
     except Exception as e:
         logger.warning(f"Error fetching job status from Redis: {e}")
 
@@ -95,6 +97,6 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
                 phase_message = progress.get("phase")
     except Exception as e:
         # Best-effort progress lookup; phase_message stays None and we return "pending"
-        logger.debug(f"failed to fetch progress phase for job {job_id}: {e}")
+        logger.debug(f"failed to fetch progress phase for job {log_safe(job_id)}: {log_safe(e)}")
 
     return JobStatusResponse(status="pending", message=phase_message)

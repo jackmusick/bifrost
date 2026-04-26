@@ -15,6 +15,7 @@ from sqlalchemy.orm import joinedload
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.models.contracts.events import (
     CreateDeliveryRequest,
     DynamicValuesRequest,
@@ -252,7 +253,7 @@ async def get_dynamic_values(
         )
     except Exception as e:
         logger.error(
-            f"Failed to get dynamic values for {adapter_name}/{request.operation}: {e}",
+            f"Failed to get dynamic values for {log_safe(adapter_name)}/{log_safe(request.operation)}: {log_safe(e)}",
             exc_info=True,
         )
         raise HTTPException(
@@ -573,7 +574,7 @@ async def update_source(
     )
     source = result.unique().scalar_one()
 
-    logger.info(f"Updated event source {source_id}")
+    logger.info(f"Updated event source {log_safe(source_id)}")
 
     return await _build_event_source_response(source, db)
 
@@ -623,7 +624,7 @@ async def delete_source(
     await db.delete(source)
     await db.flush()
 
-    logger.info(f"Deleted event source {source_id}")
+    logger.info(f"Deleted event source {log_safe(source_id)}")
 
 
 # =============================================================================
@@ -730,7 +731,7 @@ async def create_subscription(
     )
     subscription = result.unique().scalar_one()
 
-    logger.info(f"Created subscription {subscription.id} for source {source_id}")
+    logger.info(f"Created subscription {subscription.id} for source {log_safe(source_id)}")
 
     return await _build_event_subscription_response(subscription, db)
 
@@ -791,7 +792,7 @@ async def update_subscription(
 
     await db.flush()
 
-    logger.info(f"Updated subscription {subscription_id}")
+    logger.info(f"Updated subscription {log_safe(subscription_id)}")
 
     return await _build_event_subscription_response(subscription, db)
 
@@ -838,7 +839,7 @@ async def delete_subscription(
     await db.delete(subscription)
     await db.flush()
 
-    logger.info(f"Deleted subscription {subscription_id}")
+    logger.info(f"Deleted subscription {log_safe(subscription_id)}")
 
 
 # =============================================================================
@@ -1212,7 +1213,7 @@ async def create_delivery(
         await db.flush()
 
     logger.info(
-        f"Created delivery {delivery.id} for event {event_id} subscription {subscription.id}"
+        f"Created delivery {delivery.id} for event {log_safe(event_id)} subscription {subscription.id}"
     )
 
     return EventDeliveryResponse(
@@ -1295,7 +1296,7 @@ async def retry_delivery(
         await db.flush()
         message = f"Failed to queue retry: {e}"
 
-    logger.info(f"Retried delivery {delivery_id}")
+    logger.info(f"Retried delivery {log_safe(delivery_id)}")
 
     return RetryDeliveryResponse(
         delivery_id=delivery_id,

@@ -23,6 +23,7 @@ import redis.asyncio as redis
 from fastapi import WebSocket
 
 from src.config import get_settings
+from src.core.log_safety import log_safe
 from src.core.redis_reconnect import ResilientPubSubListener
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ class ConnectionManager:
             if channel not in self.connections:
                 self.connections[channel] = set()
             self.connections[channel].add(websocket)
-            logger.debug(f"WebSocket connected to channel: {channel}")
+            logger.debug(f"WebSocket connected to channel: {log_safe(channel)}")
 
     def disconnect(self, websocket: WebSocket) -> None:
         """Remove WebSocket from all channels."""

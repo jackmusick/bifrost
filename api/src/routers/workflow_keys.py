@@ -18,6 +18,7 @@ from sqlalchemy import select, or_
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import DbSession
+from src.core.log_safety import log_safe
 from src.models import Workflow
 from src.models import WorkflowKeyCreateRequest, WorkflowKeyResponse
 from src.services.workflow_keys import generate_workflow_key
@@ -227,7 +228,7 @@ async def revoke_key(
     workflow.api_key_enabled = False
 
     await db.flush()
-    logger.info(f"Revoked API key for workflow '{workflow.name}' (ID: {workflow_id}) by {user.email}")
+    logger.info(f"Revoked API key for workflow '{log_safe(workflow.name)}' (ID: {log_safe(workflow_id)}) by {user.email}")
 
 
 # =============================================================================

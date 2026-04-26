@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import CurrentSuperuser, get_current_superuser
 from src.core.database import get_db
+from src.core.log_safety import log_safe
 from src.models import Execution, Workflow
 from src.models.contracts.platform import (
     PoolDetail,
@@ -204,7 +205,7 @@ async def get_pool_stats(
                 total_busy += hb.get("busy_count", 0)
             except json.JSONDecodeError as e:
                 # Corrupted heartbeat JSON for this worker — skip its contribution
-                logger.debug(f"invalid heartbeat JSON for worker {worker_id}: {e}")
+                logger.debug(f"invalid heartbeat JSON for worker {log_safe(worker_id)}: {log_safe(e)}")
 
     return PoolStatsResponse(
         total_pools=total_pools,
@@ -282,7 +283,7 @@ async def list_pools(
                 pool_info.memory_current_bytes = hb.get("memory_current_bytes")
                 pool_info.memory_max_bytes = hb.get("memory_max_bytes")
             except json.JSONDecodeError:
-                logger.warning(f"Invalid heartbeat JSON for pool {worker_id}")
+                logger.warning(f"Invalid heartbeat JSON for pool {log_safe(worker_id)}")
 
         pools.append(pool_info)
 
@@ -356,7 +357,7 @@ async def get_pool(
                     )
                 )
         except json.JSONDecodeError:
-            logger.warning(f"Invalid heartbeat JSON for pool {worker_id}")
+            logger.warning(f"Invalid heartbeat JSON for pool {log_safe(worker_id)}")
 
     return result
 
@@ -409,7 +410,7 @@ async def recycle_process(
     await r.publish(command_channel, json.dumps(command))
 
     logger.info(
-        f"Published recycle command for pool {worker_id} process PID={pid} "
+        f"Published recycle command for pool {log_safe(worker_id)} process PID={log_safe(pid)} "
         f"by user {admin.user_id}"
     )
 
@@ -465,7 +466,7 @@ async def recycle_all_processes(
             processes_affected = hb.get("pool_size", 0)
         except json.JSONDecodeError as e:
             # Corrupted heartbeat JSON — processes_affected stays 0, recycle proceeds
-            logger.debug(f"invalid heartbeat JSON for worker {worker_id}: {e}")
+            logger.debug(f"invalid heartbeat JSON for worker {log_safe(worker_id)}: {log_safe(e)}")
 
     # Publish recycle_all command via Redis pub/sub
     command_channel = f"bifrost:pool:{worker_id}:commands"
@@ -479,7 +480,7 @@ async def recycle_all_processes(
     await r.publish(command_channel, json.dumps(command))
 
     logger.info(
-        f"Published recycle_all command for pool {worker_id} "
+        f"Published recycle_all command for pool {log_safe(worker_id)} "
         f"({processes_affected} processes) by user {admin.user_id}"
     )
 

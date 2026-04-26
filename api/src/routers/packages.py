@@ -24,6 +24,7 @@ from src.models import (
     PackageUpdatesResponse,
 )
 from src.core.auth import Context, CurrentSuperuser
+from src.core.log_safety import log_safe
 from src.core.redis_client import get_redis_client
 from src.core.requirements_cache import (
     append_package_to_requirements,
@@ -324,7 +325,7 @@ async def install_package(
             )
             await save_requirements(updated_content)
 
-            logger.info(f"Updated requirements.txt with {package_spec}")
+            logger.info(f"Updated requirements.txt with {log_safe(package_spec)}")
         else:
             # "Install from requirements.txt" — warm cache from S3 so workers
             # pick up the latest file content
@@ -383,7 +384,7 @@ async def uninstall_package(
         Confirmation message
     """
     try:
-        logger.info(f"Uninstalling package: {package_name}")
+        logger.info(f"Uninstalling package: {log_safe(package_name)}")
 
         # In production, this would be queued as a job
         # For now, attempt direct uninstallation using async subprocess
@@ -398,7 +399,7 @@ async def uninstall_package(
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            logger.error(f"Package uninstallation timed out: {package_name}")
+            logger.error(f"Package uninstallation timed out: {log_safe(package_name)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Package uninstallation timed out",
@@ -411,7 +412,7 @@ async def uninstall_package(
                 detail=f"Package uninstallation failed: {stderr.decode()}",
             )
 
-        logger.info(f"Successfully uninstalled package: {package_name}")
+        logger.info(f"Successfully uninstalled package: {log_safe(package_name)}")
 
         return {
             "message": f"Package '{package_name}' uninstalled successfully",
