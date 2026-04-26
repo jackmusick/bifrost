@@ -519,7 +519,10 @@ jobs:
           push-to-registry: true
 
   # =============================================================================
-  # Create GitHub Release - Only on version tags, after images are built
+  # Create GitHub Release - Only on version tags, after images are built.
+  # Release assets are signed with Sigstore/cosign (keyless OIDC) and a SLSA
+  # build provenance attestation is generated via GitHub's native attestation
+  # action. Both feed Scorecard's Signed-Releases check.
   # =============================================================================
   create-release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -527,7 +530,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Release
     permissions:
-      contents: write
+      contents: write       # upload assets to the GitHub Release
+      id-token: write       # OIDC token for keyless cosign signing
+      attestations: write   # actions/attest-build-provenance writes attestations
 
     steps:
       - name: Checkout repository
@@ -553,14 +558,61 @@ jobs:
             echo "Warning: bifrost.pyi not found in stubs/, skipping"
           fi
 
+      # Produce a reproducible source tarball as a primary release artifact so
+      # Scorecard's Signed-Releases check has something concrete to verify
+      # against (it ignores tag-only releases).
+      - name: Build source tarball
+        id: source_tarball
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TARBALL="bifrost-${VERSION}-source.tar.gz"
+          git archive --format=tar.gz --prefix="bifrost-${VERSION}/" -o "${TARBALL}" HEAD
+          sha256sum "${TARBALL}" | tee "${TARBALL}.sha256"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        with:
+          cosign-release: v2.4.1
+
+      # Keyless OIDC signing: cosign exchanges the GitHub Actions OIDC token
+      # for a short-lived Fulcio cert, signs, and records the signature in
+      # Rekor. The .sigstore bundle is the format Scorecard's Signed-Releases
+      # check recognizes (alongside .sig, .asc, .minisig, .sign).
+      - name: Sign release artifacts with cosign
+        run: |
+          set -euo pipefail
+          ARTIFACTS=("${{ steps.source_tarball.outputs.tarball }}")
+          if [ -f "bifrost.pyi" ]; then
+            ARTIFACTS+=("bifrost.pyi")
+          fi
+          for f in "${ARTIFACTS[@]}"; do
+            cosign sign-blob --yes \
+              --bundle "${f}.sigstore" \
+              "${f}"
+          done
+
+      # SLSA build provenance — stored in GitHub's transparency log and
+      # discoverable via `gh attestation verify`. Independent signal from the
+      # cosign blob signatures above.
+      - name: Generate SLSA build provenance attestation
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: ${{ steps.source_tarball.outputs.tarball }}
+
       - name: Create release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Release ${{ steps.get_version.outputs.version }}
           files: |
+            ${{ steps.source_tarball.outputs.tarball }}
+            ${{ steps.source_tarball.outputs.tarball }}.sha256
+            ${{ steps.source_tarball.outputs.tarball }}.sigstore
             bifrost.pyi
+            bifrost.pyi.sigstore
             stubs/DISTRIBUTION.md
+          fail_on_unmatched_files: false
           body: |
             ## Bifrost ${{ steps.get_version.outputs.version }}
 
@@ -580,6 +632,29 @@ jobs:
             Download `bifrost.pyi` from the assets below and place it in your workspace directory for IDE autocomplete and type checking support.
 
             See `DISTRIBUTION.md` for instructions.
+
+            ### Signed artifacts (Sigstore / cosign — keyless)
+
+            Each release asset has a matching `.sigstore` bundle (Sigstore's
+            self-contained signature + certificate + Rekor inclusion proof,
+            produced via keyless OIDC — no maintainer-held keys involved).
+
+            Verify with cosign (>= v2.4):
+
+            ```bash
+            cosign verify-blob \
+              --bundle bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz.sigstore \
+              --certificate-identity-regexp 'https://github\.com/jackmusick/bifrost/.*' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz
+            ```
+
+            A SLSA build-provenance attestation is also published and verifiable via:
+
+            ```bash
+            gh attestation verify bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz \
+              --owner jackmusick
+            ```
 
           draft: false
           prerelease: ${{ steps.get_version.outputs.prerelease == 'true' }}
