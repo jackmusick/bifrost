@@ -28,7 +28,18 @@ The docs repo is at `~/GitHub/bifrost-integrations-docs` (or clone it from `git@
    - Verify bifrost test stack is up: `./test.sh stack status` in the bifrost worktree. If down, `./test.sh stack up`. The boot is ~2-5 minutes; warn the user up front.
    - Set `DOCS_REPO_PATH=<absolute path to docs repo>` for downstream tools.
 
-2. **Mode dispatch**
+2. **Release-aware gap check** (run before any mode that authors content)
+
+   Before authoring or running `full` mode, check what shipped recently that the docs may not cover yet. The bifrost product moves fast; new top-level features (Agents, Chat, MCP, Fleet, Events, etc.) regularly land without doc updates.
+
+   - `gh release list --repo jackmusick/bifrost --limit 30` — recent tagged releases.
+   - `cd $BIFROST && git log --since="6 months ago" --oneline -- client/src/pages/ api/src/handlers/` — feature surface changes since the last docs refresh.
+   - Walk `$BIFROST/client/src/pages/` and `$BIFROST/client/src/router.tsx`. For every top-level route, verify there's a corresponding `core-concepts/<feature>.mdx` or `how-to-guides/<feature>/` page.
+   - Cross-check sidebar order in `$DOCS_REPO/astro.config.mjs` against the bifrost client's actual sidebar/nav. Stale labels like "App Builder (Experimental)" should match the running product (`Apps`).
+
+   Output a short gap list before continuing. If running in `full` mode and gaps exist, surface them and ask the user whether to author the missing pages this run or open a follow-up. Do not silently skip them.
+
+3. **Mode dispatch**
 
    - **`bootstrap`**:
      ```bash
