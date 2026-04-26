@@ -47,7 +47,7 @@ email-validator  # Required by Pydantic for email validation
 # HTTP & Async
 # =============================================================================
 httpx  # Async HTTP client
-aiohttp>=3.13.4  # Closes 20 CVEs incl. CVSS 9.1
+aiohttp>=3.13.5  # Closes 20 CVEs incl. CVSS 9.1
 aiofiles
 
 # =============================================================================
