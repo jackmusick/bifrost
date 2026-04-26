@@ -83,7 +83,6 @@ def install_requirements() -> None:
         logger.warning("[pool] pip install timed out after 5 minutes")
     except Exception as e:
         logger.warning(f"[pool] Failed to install requirements: {e}")
-
     finally:
         try:
             os.unlink(temp_path)

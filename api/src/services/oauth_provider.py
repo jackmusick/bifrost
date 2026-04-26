@@ -276,7 +276,7 @@ class OAuthProviderClient:
                         # Success (2xx status codes)
                         if 200 <= response.status < 300:
                             logger.info(f"Token request successful (status={response.status})")
-                            logger.debug(f"Raw OAuth response: {response_data}")
+                            logger.debug(f"Raw OAuth response keys: {list(response_data.keys())}")
 
                             # Parse token response
                             result = self._parse_token_response(response_data)
