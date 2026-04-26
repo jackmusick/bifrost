@@ -40,6 +40,12 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Wipe stale tmp captures from prior runs. They are owned by root (containers
+# run as root), so use sudo if available, else just remove what we can.
+if [ -d "$DOCS_REPO/.tmp-captures" ]; then
+    rm -rf "$DOCS_REPO/.tmp-captures" 2>/dev/null || sudo rm -rf "$DOCS_REPO/.tmp-captures" 2>/dev/null || true
+fi
+
 echo "=== [1/3] decide-captures ==="
 DECIDE_ARGS=(--docs-repo "$DOCS_REPO" --bifrost-repo "$BIFROST_REPO")
 if [ -n "$IDS" ]; then

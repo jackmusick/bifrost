@@ -168,13 +168,17 @@ async function main() {
       summary.missing.push(r.id);
       continue;
     }
-    if (!existsSync(r.tempPath)) {
+    // results.json records the container-side path (/docs/.tmp-captures/...).
+    // Translate it to the host-side path so the post-processor can read it.
+    const tempBasename = r.tempPath.split("/").pop();
+    const hostTempPath = resolve(tmpDir, tempBasename);
+    if (!existsSync(hostTempPath)) {
       summary.missing.push(r.id);
       continue;
     }
 
     try {
-      const tempBuf = readFileSync(r.tempPath);
+      const tempBuf = readFileSync(hostTempPath);
       const finalBuf = await applyAnnotations(tempBuf, entry.capture);
       const targetPath = resolve(docsRepo, entry.image);
       mkdirSync(dirname(targetPath), { recursive: true });
@@ -198,7 +202,12 @@ async function main() {
         entry.captured_at = { bifrost_sha: sha, timestamp: new Date().toISOString() };
       }
 
-      unlinkSync(r.tempPath);
+      try {
+        unlinkSync(hostTempPath);
+      } catch {
+        // Containers run as root; the host user may not be able to unlink.
+        // Harmless — the next pipeline run wipes .tmp-captures/ anyway.
+      }
     } catch (e) {
       summary.errors.push({ id: r.id, message: e instanceof Error ? e.message : String(e) });
     }
