@@ -81,6 +81,9 @@ export function Login() {
 	// we route via SPA navigation so components like MCPCallback actually
 	// mount (and can issue the Accept: application/json XHR that keeps us on
 	// the success screen instead of following the server's 302).
+	//
+	// Cross-origin URLs are rejected and we fall back to "/" — never honor a
+	// foreign origin in `from`, since that's an open-redirect vector.
 	const redirectToFrom = useCallback(() => {
 		if (from.startsWith("http://") || from.startsWith("https://")) {
 			try {
@@ -92,9 +95,10 @@ export function Login() {
 					return;
 				}
 			} catch {
-				// Malformed URL — fall through to full navigation.
+				// Malformed URL — fall through to safe default.
 			}
-			window.location.href = from;
+			// Cross-origin or unparseable absolute URL — refuse to redirect there.
+			navigate("/", { replace: true });
 		} else {
 			navigate(from, { replace: true });
 		}
