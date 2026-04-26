@@ -18,6 +18,7 @@
 -   [Key Features](#key-features)
 -   [Quick Start](#quick-start)
 -   [Documentation](#documentation)
+-   [Security & Verification](#security--verification)
 -   [Contributing](#contributing)
 -   [License](#license)
 
@@ -224,6 +225,40 @@ For detailed documentation on architecture, development, deployment, and usage:
 
 -   **API Documentation**: http://localhost:8000/docs (when running)
 -   **Frontend Repository**: Included in `client/` directory
+
+---
+
+## Security & Verification
+
+Bifrost release artifacts are signed with [Sigstore](https://www.sigstore.dev/) using GitHub's keyless OIDC signing. You can verify any image or release pulled from this repo:
+
+**Verify a Docker image:**
+
+```bash
+cosign verify ghcr.io/jackmusick/bifrost-api:TAG \
+  --certificate-identity-regexp "https://github.com/jackmusick/bifrost/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+(Same form for `ghcr.io/jackmusick/bifrost-client`.)
+
+**Inspect SLSA build provenance:**
+
+```bash
+gh attestation verify ghcr.io/jackmusick/bifrost-api:TAG --owner jackmusick
+```
+
+**Verify a source tarball** (attached to GitHub Releases):
+
+```bash
+cosign verify-blob \
+  --bundle bifrost-VERSION-source.tar.gz.sigstore \
+  --certificate-identity-regexp "https://github.com/jackmusick/bifrost/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  bifrost-VERSION-source.tar.gz
+```
+
+Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
 
 ---
 
