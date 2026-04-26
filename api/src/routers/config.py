@@ -260,7 +260,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         await self.session.flush()
         await self.session.refresh(config)
 
-        logger.info(f"Updated config {log_safe(config.key)} (id={log_safe(config_id)}) org={config.organization_id}")
+        logger.info(f"Updated config {log_safe(config.key)} (id={log_safe(config_id)}) org={log_safe(config.organization_id)}")
 
         response_type = ConfigType(config.config_type.value) if config.config_type else ConfigType.STRING
         stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value

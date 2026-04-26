@@ -205,7 +205,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
 
         await self.session.refresh(application)
 
-        logger.info(f"Created application '{log_safe(data.slug)}' in org {self.org_id} with access_level={data.access_level}")
+        logger.info(f"Created application '{log_safe(data.slug)}' in org {self.org_id} with access_level={log_safe(data.access_level)}")
         return application
 
     async def update_application(
