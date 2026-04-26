@@ -225,8 +225,9 @@ cmd_client() {
     case "$sub" in
         unit) client_unit "$@" ;;
         e2e) client_e2e "$@" ;;
+        docs) client_docs "$@" ;;
         *)
-            echo "Usage: ./test.sh client {unit|e2e} [args]" >&2
+            echo "Usage: ./test.sh client {unit|e2e|docs} [args]" >&2
             exit 2
             ;;
     esac
@@ -261,6 +262,35 @@ client_e2e() {
         docker compose -f "$COMPOSE_FILE" --profile client run --rm "${env_args[@]}" \
             playwright-runner
     fi
+}
+
+client_docs() {
+    require_stack_up
+    if [ -z "${DOCS_REPO_PATH:-}" ]; then
+        echo "DOCS_REPO_PATH must be set to the absolute path of the bifrost-integrations-docs checkout." >&2
+        exit 2
+    fi
+    if [ ! -f "$DOCS_REPO_PATH/screenshots.yaml" ]; then
+        echo "No screenshots.yaml at $DOCS_REPO_PATH — run scripts/docs/bootstrap-manifest.mjs first." >&2
+        exit 2
+    fi
+
+    local capture_ids="${DOCS_CAPTURE_IDS:-}"
+    local passthrough=()
+    for a in "$@"; do
+        passthrough+=("$a")
+    done
+
+    reset_state
+
+    export DOCS_REPO_PATH
+    docker compose \
+        -f "$COMPOSE_FILE" \
+        -f docker-compose.docs.yml \
+        --profile client run --rm \
+        -e "DOCS_CAPTURE_IDS=$capture_ids" \
+        playwright-runner \
+        npx playwright test --project=docs "${passthrough[@]}"
 }
 
 cmd_ci() {

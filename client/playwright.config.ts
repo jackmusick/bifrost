@@ -104,8 +104,29 @@ export default defineConfig({
 				storageState: "e2e/.auth/platform_admin.json",
 			},
 			dependencies: ["setup"],
-			// Match all .spec.ts files EXCEPT .admin, .user, .unauth patterns
-			testMatch: /^(?!.*\.(admin|user|unauth)\.spec\.ts$).*\.spec\.ts$/,
+			// Match all .spec.ts files EXCEPT .admin, .user, .unauth, .docs patterns
+			testMatch:
+				/^(?!.*\.(admin|user|unauth|docs)\.spec\.ts$).*\.spec\.ts$/,
+		},
+
+		// =============================================================
+		// Docs screenshot pipeline (.docs.spec.ts files)
+		// Drives the screenshots.yaml manifest in bifrost-integrations-docs
+		// to capture full-page screenshots, with sharp-based crop/callout
+		// post-processing. Per-entry auth is handled inside the spec via
+		// ensureAuthenticated() so a single project can capture under
+		// platform_admin, org user, or unauthenticated states.
+		// =============================================================
+		{
+			name: "docs",
+			use: {
+				...devices["Desktop Chrome"],
+				viewport: { width: 1440, height: 900 },
+			},
+			dependencies: ["setup"],
+			testMatch: /.*\.docs\.spec\.ts$/,
+			retries: 0,
+			workers: 1,
 		},
 	],
 
