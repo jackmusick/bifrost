@@ -879,30 +879,28 @@ class TestMCPConfigService:
 
     @pytest.mark.asyncio
     async def test_delete_config_removes_existing(self, mock_session):
-        """Should delete existing config."""
+        """Should delete existing config via bulk DELETE."""
         from src.services.mcp_server.config_service import MCPConfigService
 
-        # Mock existing config
-        mock_config = MagicMock()
+        # Mock bulk DELETE returning rowcount=1
         mock_result = MagicMock()
-        mock_result.scalars.return_value.first.return_value = mock_config
+        mock_result.rowcount = 1
         mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.delete = AsyncMock()
 
         service = MCPConfigService(mock_session)
         deleted = await service.delete_config()
 
         assert deleted is True
-        mock_session.delete.assert_called_once_with(mock_config)
+        mock_session.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_delete_config_returns_false_when_none_exists(self, mock_session):
-        """Should return False when no config to delete."""
+        """Should return False when no config to delete (rowcount=0)."""
         from src.services.mcp_server.config_service import MCPConfigService
 
-        # Mock no config
+        # Mock bulk DELETE returning rowcount=0
         mock_result = MagicMock()
-        mock_result.scalars.return_value.first.return_value = None
+        mock_result.rowcount = 0
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         service = MCPConfigService(mock_session)

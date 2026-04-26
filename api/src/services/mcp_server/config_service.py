@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.config import SystemConfig
@@ -151,21 +151,27 @@ class MCPConfigService:
         """
         Delete MCP configuration (revert to defaults).
 
+        Uses a bulk DELETE so any duplicate rows left by an upstream polluter
+        (e.g. a test that PUT enabled=True without cleaning up) are wiped in
+        a single round-trip rather than just removing the first match.
+
         Returns:
-            True if config existed and was deleted, False otherwise
+            True if at least one config row was deleted, False otherwise
         """
         result = await self.session.execute(
-            select(SystemConfig).where(
+            sa_delete(SystemConfig).where(
                 SystemConfig.category == MCP_CONFIG_CATEGORY,
                 SystemConfig.key == MCP_CONFIG_KEY,
                 SystemConfig.organization_id.is_(None),
             )
         )
-        config = result.scalars().first()
+        deleted = result.rowcount or 0
 
-        if config:
-            await self.session.delete(config)
-            logger.info("MCP config deleted (reverted to defaults)")
+        if deleted:
+            logger.info(
+                "MCP config deleted (reverted to defaults)",
+                extra={"rows_deleted": deleted},
+            )
             return True
 
         return False
