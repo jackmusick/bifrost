@@ -17,14 +17,16 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write # required to upload SARIF results to code-scanning
+      actions: read # required by codeql-action to read workflow run metadata
     strategy:
       fail-fast: false
       matrix:
