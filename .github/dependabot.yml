@@ -7,7 +7,12 @@
 
 version: 2
 updates:
-  # Python deps (root requirements.txt)
+  # Python deps (root requirements.txt).
+  #
+  # Dependabot edits requirements.txt only. Builds install from
+  # requirements.lock with --require-hashes (Scorecard Pinned-Dependencies),
+  # so after every Dependabot merge the lock file MUST be regenerated.
+  # The regen command is documented at the top of requirements.lock.
   - package-ecosystem: pip
     directory: "/"
     schedule:
