@@ -34,13 +34,14 @@ export interface MockSpec {
 /**
  * One UI action to perform after the page settles, before the screenshot.
  * Mirrors the docs repo's Zod schema (scripts/manifest/schema.mjs). Each
- * action is exactly one of these six shapes:
+ * action is exactly one of these seven shapes:
  *   - { click: "<selector>" }              → page.locator(selector).click()
  *   - { fill: { selector, value } }        → page.locator(selector).fill(value)
  *   - { wait_for: "<selector>" }           → page.locator(selector).waitFor({ state: 'visible' })
  *   - { wait_for_hidden: "<selector>" }    → page.locator(selector).waitFor({ state: 'hidden' })
  *   - { wait_ms: <number> }                → page.waitForTimeout(ms)
  *   - { scroll_into_view: "<selector>" }   → page.locator(selector).scrollIntoViewIfNeeded()
+ *   - { press_key: "<key>" }               → page.keyboard.press(key)
  */
 export type ActionSpec =
   | { click: string }
@@ -48,7 +49,8 @@ export type ActionSpec =
   | { wait_for: string }
   | { wait_for_hidden: string }
   | { wait_ms: number }
-  | { scroll_into_view: string };
+  | { scroll_into_view: string }
+  | { press_key: string };
 
 export interface CaptureSpec {
   selector?: string;
