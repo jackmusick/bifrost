@@ -538,8 +538,8 @@ export function AgentSettingsTab({
 									</Popover>
 									{field.value?.length ? (
 										<div className="flex flex-wrap gap-1.5 rounded-md border bg-muted/40 p-2">
-											{field.value.map((roleId) => {
-												const role = roles?.find(
+											{roles && field.value.map((roleId) => {
+												const role = roles.find(
 													(r: RolePublic) => r.id === roleId,
 												);
 												return (
