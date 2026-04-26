@@ -249,9 +249,11 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 					if (manifest.migrated) {
 						setMigrateNotice(true);
 					}
-
-					ensureImportMap(dependencies);
 				}
+
+				// Apply (or refresh) the import map for this load — covers both
+				// initial loads and hot-reloads so dep changes are picked up.
+				ensureImportMap(dependencies);
 
 				if (controller.signal.aborted) return;
 				if (loadedEntry === entry) return;
