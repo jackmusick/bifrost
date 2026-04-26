@@ -45,7 +45,7 @@ async def test_health_is_liveness_and_does_not_check_dependencies(monkeypatch):
         raise AssertionError("dependency checks should not run")
 
     monkeypatch.setattr(health, "build_health_components", fail_if_called)
-    monkeypatch.setattr(health, "get_settings", lambda: _settings())
+    monkeypatch.setattr(health, "get_settings", _settings)
 
     result = await health.health_check()
 
@@ -59,7 +59,7 @@ async def test_live_is_liveness_and_does_not_check_dependencies(monkeypatch):
         raise AssertionError("dependency checks should not run")
 
     monkeypatch.setattr(health, "build_health_components", fail_if_called)
-    monkeypatch.setattr(health, "get_settings", lambda: _settings())
+    monkeypatch.setattr(health, "get_settings", _settings)
 
     result = await health.live_health_check()
 
@@ -69,7 +69,7 @@ async def test_live_is_liveness_and_does_not_check_dependencies(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ready_returns_healthy_when_core_dependencies_pass(monkeypatch):
-    monkeypatch.setattr(health, "get_settings", lambda: _settings())
+    monkeypatch.setattr(health, "get_settings", _settings)
     monkeypatch.setattr(health, "build_health_components", _build_components)
 
     response = Response()
@@ -83,7 +83,7 @@ async def test_ready_returns_healthy_when_core_dependencies_pass(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("component", ["database", "redis", "rabbitmq", "s3"])
 async def test_ready_returns_503_when_required_dependency_fails(monkeypatch, component):
-    monkeypatch.setattr(health, "get_settings", lambda: _settings())
+    monkeypatch.setattr(health, "get_settings", _settings)
 
     components = {
         "database": {"status": "healthy", "type": "postgresql"},
@@ -159,7 +159,7 @@ async def test_error_output_does_not_include_secret_values(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_detailed_uses_same_component_status_logic(monkeypatch):
-    monkeypatch.setattr(health, "get_settings", lambda: _settings())
+    monkeypatch.setattr(health, "get_settings", _settings)
     async def build_components(db, settings):
         return {
             "database": {"status": "healthy", "type": "postgresql"},

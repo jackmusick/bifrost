@@ -11,8 +11,8 @@
  *   screenshots.yaml      draft manifest covering every existing image reference
  *   bootstrap-report.md   gap list + low-confidence flags
  */
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { resolve, relative, dirname, join, basename } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, renameSync } from "node:fs";
+import { resolve, relative, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 
@@ -415,7 +415,11 @@ function main() {
     },
     entries,
   };
-  writeFileSync(manifestPath, yaml.dump(manifest, { lineWidth: 120, noRefs: true }));
+  // Atomic write: write to temp file then rename, so a concurrent reader
+  // never sees a half-written manifest (closes CodeQL js/file-system-race).
+  const manifestTmp = `${manifestPath}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(manifestTmp, yaml.dump(manifest, { lineWidth: 120, noRefs: true }));
+  renameSync(manifestTmp, manifestPath);
 
   const reportLines = [];
   reportLines.push(`# Bootstrap Report`);
