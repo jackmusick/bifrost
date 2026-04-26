@@ -219,6 +219,14 @@ async function main() {
       const targetPath = resolve(docsRepo, entry.image);
       mkdirSync(dirname(targetPath), { recursive: true });
 
+      // Per-entry diff threshold wins over the CLI default. Lets tight crops
+      // (e.g. small chips with text-only changes) promote on sub-default
+      // diffs without lowering the bar globally.
+      const entryThreshold =
+        typeof entry.capture?.diff_threshold === "number"
+          ? entry.capture.diff_threshold
+          : args.threshold;
+
       let shouldCommit = true;
       if (existsSync(targetPath)) {
         const existing = readFileSync(targetPath);
@@ -230,14 +238,14 @@ async function main() {
           // earlier failed capture). Treat as first-capture so we overwrite it.
           pct = 1;
         }
-        if (pct < args.threshold) {
+        if (pct < entryThreshold) {
           shouldCommit = false;
-          summary.unchanged.push({ id: r.id, diffPct: pct });
+          summary.unchanged.push({ id: r.id, diffPct: pct, threshold: entryThreshold });
         } else {
-          summary.committed.push({ id: r.id, diffPct: pct });
+          summary.committed.push({ id: r.id, diffPct: pct, threshold: entryThreshold });
         }
       } else {
-        summary.committed.push({ id: r.id, diffPct: 1, reason: "first-capture" });
+        summary.committed.push({ id: r.id, diffPct: 1, reason: "first-capture", threshold: entryThreshold });
       }
 
       if (shouldCommit) {

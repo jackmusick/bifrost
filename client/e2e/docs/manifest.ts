@@ -61,6 +61,13 @@ export interface CaptureSpec {
   mocks?: MockSpec[];
   settle_ms?: number;
   actions?: ActionSpec[];
+  /**
+   * Per-entry override of the post-process pixel-diff threshold (fraction
+   * of pixels that must differ for the captured PNG to be promoted over
+   * the committed one). Range 0..1. Falls back to post-process.mjs's
+   * `--threshold` CLI flag (default 0.001).
+   */
+  diff_threshold?: number;
 }
 
 export interface Diataxis {
