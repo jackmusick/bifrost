@@ -5,6 +5,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![CodeQL](https://github.com/jackmusick/bifrost/actions/workflows/codeql.yml/badge.svg)](https://github.com/jackmusick/bifrost/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jackmusick/bifrost/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jackmusick/bifrost)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12665/baseline)](https://www.bestpractices.dev/projects/12665)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://www.docker.com/)
