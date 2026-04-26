@@ -55,15 +55,18 @@ function bifrostHead(bifrostRepo) {
   return execSync("git rev-parse HEAD", { cwd: bifrostRepo, encoding: "utf8" }).trim();
 }
 
-async function applyAnnotations(imageBuf, capture) {
+async function applyAnnotations(imageBuf, capture, defaults) {
   let img = sharp(imageBuf);
   const meta = await img.metadata();
   let width = meta.width ?? 0;
   let height = meta.height ?? 0;
   let buf = imageBuf;
 
-  if (capture?.crop) {
-    const c = capture.crop;
+  // Per-entry crop wins; fall back to manifest-wide defaults.crop so a single
+  // value can strip sidebar/header chrome from every screenshot.
+  const effectiveCrop = capture?.crop ?? defaults?.crop;
+  if (effectiveCrop) {
+    const c = effectiveCrop;
     const left = Math.max(0, Math.min(c.x, width - 1));
     const top = Math.max(0, Math.min(c.y, height - 1));
     const w = Math.max(1, Math.min(c.width, width - left));
@@ -179,7 +182,7 @@ async function main() {
 
     try {
       const tempBuf = readFileSync(hostTempPath);
-      const finalBuf = await applyAnnotations(tempBuf, entry.capture);
+      const finalBuf = await applyAnnotations(tempBuf, entry.capture, manifest.defaults);
       const targetPath = resolve(docsRepo, entry.image);
       mkdirSync(dirname(targetPath), { recursive: true });
 

@@ -31,6 +31,21 @@ export interface MockSpec {
   fixture?: string;
 }
 
+/**
+ * One UI action to perform after the page settles, before the screenshot.
+ * Mirrors the docs repo's Zod schema (scripts/manifest/schema.mjs). Each
+ * action is exactly one of these four shapes:
+ *   - { click: "<selector>" }          → page.locator(selector).click()
+ *   - { fill: { selector, value } }    → page.locator(selector).fill(value)
+ *   - { wait_for: "<selector>" }       → page.locator(selector).waitFor()
+ *   - { wait_ms: <number> }            → page.waitForTimeout(ms)
+ */
+export type ActionSpec =
+  | { click: string }
+  | { fill: { selector: string; value: string } }
+  | { wait_for: string }
+  | { wait_ms: number };
+
 export interface CaptureSpec {
   selector?: string;
   pad?: number;
@@ -39,6 +54,7 @@ export interface CaptureSpec {
   callouts?: Callout[];
   mocks?: MockSpec[];
   settle_ms?: number;
+  actions?: ActionSpec[];
 }
 
 export interface Diataxis {
@@ -69,6 +85,7 @@ export interface Manifest {
     pad: number;
     settle_ms?: number;
     mocks?: MockSpec[];
+    crop?: Rect;
   };
   entries: ManifestEntry[];
 }
