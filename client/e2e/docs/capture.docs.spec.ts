@@ -107,6 +107,8 @@ async function runActions(
         await page.locator(action.wait_for_hidden).waitFor({ state: "hidden" });
       } else if ("wait_ms" in action) {
         await page.waitForTimeout(action.wait_ms);
+      } else if ("scroll_into_view" in action) {
+        await page.locator(action.scroll_into_view).scrollIntoViewIfNeeded();
       } else {
         throw new Error(`unknown action shape: ${JSON.stringify(action)}`);
       }
