@@ -30,6 +30,7 @@ import {
   effectiveMocks,
   effectiveSettleMs,
   type MockSpec,
+  type ActionSpec,
 } from "./manifest";
 import { getSeeder } from "./seeders";
 
@@ -86,6 +87,34 @@ function loadFixture(fixturePath: string): unknown {
     throw new Error(`fixture not found: ${abs}`);
   }
   return JSON.parse(fs.readFileSync(abs, "utf8"));
+}
+
+async function runActions(
+  page: import("@playwright/test").Page,
+  entryId: string,
+  actions: ActionSpec[],
+) {
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
+    try {
+      if ("click" in action) {
+        await page.locator(action.click).click();
+      } else if ("fill" in action) {
+        await page.locator(action.fill.selector).fill(action.fill.value);
+      } else if ("wait_for" in action) {
+        await page.locator(action.wait_for).waitFor();
+      } else if ("wait_ms" in action) {
+        await page.waitForTimeout(action.wait_ms);
+      } else {
+        throw new Error(`unknown action shape: ${JSON.stringify(action)}`);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `[docs-capture:${entryId}] action #${i} (${JSON.stringify(action)}) failed: ${msg}`,
+      );
+    }
+  }
 }
 
 async function applyMocks(
@@ -213,6 +242,14 @@ if (!fs.existsSync(manifestPath)) {
         // Settle: wait for network idle, then a brief beat for animations.
         await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => undefined);
         await page.waitForTimeout(effectiveSettleMs(entry, manifest));
+
+        // Per-entry actions: drive UI past what the route alone can render
+        // (open dialogs, fill fields, scroll into view). Failures bubble up
+        // with the entry id + action index for easy post-mortem.
+        const actions = entry.capture?.actions ?? [];
+        if (actions.length) {
+          await runActions(page, entry.id, actions);
+        }
 
         const tempPath = path.join(TMP_DIR, `${entry.id}.png`);
         await page.screenshot({
