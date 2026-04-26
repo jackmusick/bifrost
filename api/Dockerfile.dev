@@ -16,10 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
+# Copy requirements and install dependencies.
+# We install from requirements.lock with --require-hashes so every transitive
+# dep is pinned by sha256, satisfying Scorecard's Pinned-Dependencies check.
+# requirements.txt is the human-edited source; regen instructions are in
+# the header of requirements.lock.
+COPY requirements.txt requirements.lock ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # =============================================================================
 # Stage 2: Runtime
