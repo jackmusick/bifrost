@@ -103,6 +103,8 @@ async function runActions(
         await page.locator(action.fill.selector).fill(action.fill.value);
       } else if ("wait_for" in action) {
         await page.locator(action.wait_for).waitFor();
+      } else if ("wait_for_hidden" in action) {
+        await page.locator(action.wait_for_hidden).waitFor({ state: "hidden" });
       } else if ("wait_ms" in action) {
         await page.waitForTimeout(action.wait_ms);
       } else {
