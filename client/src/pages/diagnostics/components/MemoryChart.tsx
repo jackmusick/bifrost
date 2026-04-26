@@ -276,9 +276,9 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
                                     borderRadius: "6px",
                                     fontSize: "12px",
                                 }}
-                                formatter={(value: number, name: string) => [
-                                    formatBytes(value),
-                                    name,
+                                formatter={(value, name) => [
+                                    formatBytes(Number(value ?? 0)),
+                                    name as string,
                                 ]}
                                 labelFormatter={(label) => label}
                             />

@@ -121,12 +121,12 @@ export function ResourceTrendChart({
 								border: "1px solid hsl(var(--border))",
 								borderRadius: "6px",
 							}}
-							formatter={(value: number, name: string) => {
+							formatter={(value, name) => {
 								if (name === "memory_mb")
 									return [`${value} MB`, "Avg Memory"];
 								if (name === "cpu_seconds")
 									return [`${value}s`, "Avg CPU"];
-								return [value, name];
+								return [value as string | number, name as string];
 							}}
 							labelFormatter={(label) => `Date: ${label}`}
 						/>

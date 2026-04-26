@@ -4,7 +4,8 @@
 # Usage (via test.sh):
 #   ./test.sh client e2e      # Run Playwright E2E tests in the client container
 
-FROM mcr.microsoft.com/playwright:v1.56.0-jammy
+# mcr.microsoft.com/playwright:v1.56.0-jammy
+FROM mcr.microsoft.com/playwright:v1.59.1-jammy@sha256:8a0360d39d1973be506dd59002904a774f6d697d4946c94063b3fd006461c8ff
 
 WORKDIR /app
 
