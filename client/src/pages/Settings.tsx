@@ -9,7 +9,8 @@ import { GitHub } from "@/pages/settings/GitHub";
 import { LLMConfig } from "@/pages/settings/LLMConfig";
 import { MCP } from "@/pages/settings/MCP";
 import { Maintenance } from "@/pages/settings/Maintenance";
-import { Bot, Github, Key, Mail, Palette, Plug, Shield, Wrench } from "lucide-react";
+import { Bot, Key, Mail, Palette, Plug, Shield, Wrench } from "lucide-react";
+import { Github } from "@/components/icons/GithubIcon";
 
 export function Settings() {
 	const navigate = useNavigate();

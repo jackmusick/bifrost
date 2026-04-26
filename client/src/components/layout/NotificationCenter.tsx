@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, type ComponentType, type SVGProps } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	Bell,
@@ -9,13 +9,13 @@ import {
 	CheckCircle,
 	Trash2,
 	Loader2,
-	Github,
 	Upload,
 	Package,
 	Cog,
 	Play,
 	FileCode,
 } from "lucide-react";
+import { Github } from "@/components/icons/GithubIcon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -52,7 +52,8 @@ import { toast } from "sonner";
  */
 
 // Icon mapping for notification categories
-const categoryIcons: Record<NotificationCategory, typeof Github> = {
+type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
+const categoryIcons: Record<NotificationCategory, IconComponent> = {
 	github_setup: Github,
 	github_sync: Github,
 	file_upload: Upload,

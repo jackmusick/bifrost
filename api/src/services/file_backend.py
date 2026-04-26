@@ -81,9 +81,14 @@ class LocalBackend(FileBackend):
         except Exception as e:
             raise ValueError(f"Invalid path: {path}") from e
 
-        # Sandbox check - ensure path is within the base directory
-        if not str(p).startswith(str(base_dir.resolve())):
-            raise ValueError(f"Path must be within {location} directory: {path}")
+        # Sandbox check - ensure path is within the base directory.
+        # Use relative_to() rather than str.startswith() to avoid sibling-prefix
+        # confusion (e.g., base "/tmp/foo" would otherwise accept "/tmp/foo_evil/x").
+        base_resolved = base_dir.resolve()
+        try:
+            p.relative_to(base_resolved)
+        except ValueError as e:
+            raise ValueError(f"Path must be within {location} directory: {path}") from e
 
         return p
 
