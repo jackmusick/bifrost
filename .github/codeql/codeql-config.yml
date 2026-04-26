@@ -1,8 +1,11 @@
 name: "Bifrost CodeQL Config"
 paths-ignore:
   - "api/alembic/versions/**"  # generated migrations with required-by-framework module-level vars
+  - "api/src/services/templates/**"  # Jinja templates that emit Python SDK source, not HTML
   - "client/playwright-report/**"  # generated test report HTML
   - "client/dist/**"  # build output
   - "client/node_modules/**"
+  - "client/e2e/**"  # Playwright test fixtures and instrumentation; not shipped
+  - "scripts/docs/**"  # docs-pipeline tooling; not shipped
   - "**/__pycache__/**"
   - "**/.venv/**"

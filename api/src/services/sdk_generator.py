@@ -15,6 +15,7 @@ Supported auth types:
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 from dataclasses import dataclass, field
@@ -78,17 +79,42 @@ class MethodInfo:
 # =============================================================================
 
 
+# Optional defense-in-depth: operators can pin SDK fetches to a known set of
+# hostnames via the `SDK_GENERATOR_ALLOWED_HOSTS` env var (comma-separated).
+# When unset, the URL still has to be https + resolve to a public IP. When set,
+# the URL must additionally match one of the listed hostnames (case-insensitive,
+# exact match — no wildcards). This lets an operator say "we only fetch specs
+# from api.example.com and docs.example.com" without code changes.
+_SDK_ALLOWED_HOSTS_ENV = "SDK_GENERATOR_ALLOWED_HOSTS"
+
+
+def _allowed_hosts() -> set[str] | None:
+    raw = os.environ.get(_SDK_ALLOWED_HOSTS_ENV, "").strip()
+    if not raw:
+        return None
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
 def _validate_spec_url(url: str) -> None:
     """Validate a URL is safe to fetch (https only, public address).
 
     Prevents SSRF by rejecting non-https schemes and hostnames that resolve
     to private, loopback, link-local, reserved, or multicast addresses.
+    Optionally enforces a hostname allowlist from `SDK_GENERATOR_ALLOWED_HOSTS`.
     """
     parsed = urlparse(url)
     if parsed.scheme != "https":
         raise ValueError(f"Only https URLs are allowed, got {parsed.scheme!r}")
     if not parsed.hostname:
         raise ValueError("URL must have a hostname")
+
+    hostname = parsed.hostname.lower()
+    allowed = _allowed_hosts()
+    if allowed is not None and hostname not in allowed:
+        raise ValueError(
+            f"Hostname {hostname!r} is not in SDK_GENERATOR_ALLOWED_HOSTS"
+        )
+
     try:
         addr_info = socket.getaddrinfo(parsed.hostname, None)
     except socket.gaierror as e:
@@ -598,9 +624,12 @@ def generate_sdk(
     # Extract models and methods from spec
     models, methods = extract_models_and_methods(spec, class_name)
 
-    # Load and render Jinja template
+    # Load and render Jinja template.
+    # autoescape=False is intentional: we are generating Python SDK source code,
+    # not HTML — autoescape would mangle quotes/brackets and break the output.
     env = Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
+        autoescape=False,
         trim_blocks=True,
         lstrip_blocks=True,
     )

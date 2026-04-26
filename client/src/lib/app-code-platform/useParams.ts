@@ -33,12 +33,20 @@ export function useParams(): Record<string, string> {
 	const params = useRouterParams();
 
 	// Use a null-prototype object so attacker-controlled URL segments cannot
-	// reach Object.prototype via bracket-notation assignment.
+	// reach Object.prototype via bracket-notation assignment. We also use
+	// Object.defineProperty for the assignment so static analyzers can verify
+	// no prototype pollution sink — bracket-notation `result[key] = value`
+	// confuses CodeQL even though the null-prototype object makes it safe.
 	const result: Record<string, string> = Object.create(null);
 	for (const [key, value] of Object.entries(params)) {
 		if (value === undefined) continue;
 		if (FORBIDDEN_PARAM_KEYS.has(key)) continue;
-		result[key] = value;
+		Object.defineProperty(result, key, {
+			value,
+			enumerable: true,
+			writable: true,
+			configurable: true,
+		});
 	}
 
 	return result;
