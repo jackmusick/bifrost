@@ -13,6 +13,7 @@ on:
     # Weekly run catches CVEs in newly-published advisories that match
     # existing code patterns (CodeQL queries are updated by GitHub).
     - cron: "0 9 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
