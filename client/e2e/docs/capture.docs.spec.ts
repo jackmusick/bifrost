@@ -130,12 +130,20 @@ if (!fs.existsSync(manifestPath)) {
   if (fs.existsSync(RESULTS_PATH)) fs.unlinkSync(RESULTS_PATH);
 
   const manifest = loadManifest(DOCS_REPO_PATH);
-  const entries = selectEntries(manifest, targetIds());
+  // External entries (Azure portal, VS Code, etc.) are never captured by
+  // the pipeline — even if explicitly listed in DOCS_CAPTURE_IDS — because
+  // the bifrost client can't render them. Skip silently.
+  const allEntries = selectEntries(manifest, targetIds()).filter(
+    (e) => !e.external,
+  );
+  const skippedExternal = manifest.entries.filter(
+    (e) => e.external,
+  ).length;
   console.log(
-    `[docs-capture] manifest has ${manifest.entries.length} entries; capturing ${entries.length}`,
+    `[docs-capture] manifest has ${manifest.entries.length} entries (${skippedExternal} external skipped); capturing ${allEntries.length}`,
   );
 
-  for (const entry of entries) {
+  for (const entry of allEntries) {
     test(`capture ${entry.id}`, async ({ browser }) => {
       const viewport = effectiveViewport(entry, manifest);
       const authAs = effectiveAuth(entry, manifest) as

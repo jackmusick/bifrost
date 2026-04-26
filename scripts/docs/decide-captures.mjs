@@ -66,21 +66,24 @@ function main() {
   }
   const manifest = yaml.load(readFileSync(manifestPath, "utf8"));
 
+  // External entries (Azure portal, VSCode, etc.) are never candidates.
+  const captureable = manifest.entries.filter((e) => !e.external);
+
   if (args.ids) {
     const wanted = args.ids.split(",").map((s) => s.trim()).filter(Boolean);
-    const valid = new Set(manifest.entries.map((e) => e.id));
+    const valid = new Set(captureable.map((e) => e.id));
     const filtered = wanted.filter((id) => valid.has(id));
     process.stdout.write(filtered.join(","));
     return;
   }
 
   if (args.full) {
-    process.stdout.write(manifest.entries.map((e) => e.id).join(","));
+    process.stdout.write(captureable.map((e) => e.id).join(","));
     return;
   }
 
   const candidates = [];
-  for (const entry of manifest.entries) {
+  for (const entry of captureable) {
     const sinceSha = entry.captured_at?.bifrost_sha ?? null;
     const globs = entry.source_globs ?? [];
     if (pathChanged(args.bifrostRepo, sinceSha, globs)) {

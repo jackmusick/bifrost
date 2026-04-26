@@ -51,6 +51,7 @@ export interface ManifestEntry {
   id: string;
   image: string;
   route: string;
+  external?: boolean;
   auth_as?: "platform_admin" | "org1_user" | "org2_user" | "unauthenticated";
   seed?: string;
   viewport?: { width: number; height: number };
