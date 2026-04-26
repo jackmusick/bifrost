@@ -664,8 +664,8 @@ export function ExecutionDetails({
 
 	return (
 		<div className="h-full overflow-y-auto">
-			{/* Page Header - hidden in embedded mode */}
-			{!embedded && !isEmbed && (
+			{/* Page Header - hidden for embedded users (embedded prop short-circuits earlier) */}
+			{!isEmbed && (
 				<div className="sticky top-0 bg-background/80 backdrop-blur-sm border-b z-10">
 					<div className="px-6 lg:px-8 py-3 space-y-1">
 						{/* Row 1: Back + workflow name + status + action buttons */}
@@ -755,7 +755,7 @@ export function ExecutionDetails({
 			)}
 
 			{/* Two-column layout: Content on left, Sidebar on right */}
-			<div className={embedded ? "p-4" : "p-6 lg:p-8"}>
+			<div className="p-6 lg:p-8">
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 					{/* Left Column - Main Content (2/3 width) */}
 					<div className="lg:col-span-2 space-y-6">

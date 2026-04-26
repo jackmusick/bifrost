@@ -12,7 +12,6 @@ from typing import Any, Generator
 import pytest
 
 from tests.e2e.conftest import write_and_register
-from tests.helpers.polling import poll_until  # noqa: F401 — re-exported for dependents
 
 logger = logging.getLogger(__name__)
 
