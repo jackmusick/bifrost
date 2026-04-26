@@ -30,14 +30,15 @@ import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
 function parseArgs(argv) {
-  const out = { threshold: 0.001 };
+  const out = { threshold: 0.001, captureExitCode: 0 };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--docs-repo") out.docsRepo = argv[++i];
     else if (a === "--bifrost-repo") out.bifrostRepo = argv[++i];
     else if (a === "--threshold") out.threshold = parseFloat(argv[++i]);
+    else if (a === "--capture-exit-code") out.captureExitCode = parseInt(argv[++i], 10) || 0;
     else if (a === "-h" || a === "--help") {
-      console.log("usage: post-process.mjs --docs-repo <path> --bifrost-repo <path> [--threshold <0..1>]");
+      console.log("usage: post-process.mjs --docs-repo <path> --bifrost-repo <path> [--threshold <0..1>] [--capture-exit-code <n>]");
       process.exit(0);
     } else {
       console.error(`unknown arg: ${a}`);
@@ -159,7 +160,7 @@ async function main() {
   const byId = new Map(manifest.entries.map((e) => [e.id, e]));
   const sha = bifrostHead(bifrostRepo);
 
-  const summary = { committed: [], unchanged: [], errors: [], missing: [] };
+  const summary = { committed: [], unchanged: [], errors: [], missing: [], capture_exit_code: args.captureExitCode };
 
   for (const r of results) {
     if (r.status !== "captured") {

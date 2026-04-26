@@ -65,10 +65,15 @@ echo "Capturing: $CAPTURE_IDS"
 echo "=== [2/3] capture ==="
 export DOCS_REPO_PATH="$DOCS_REPO"
 export DOCS_CAPTURE_IDS="$CAPTURE_IDS"
-(cd "$BIFROST_REPO" && ./test.sh client docs)
+CAPTURE_EXIT=0
+(cd "$BIFROST_REPO" && ./test.sh client docs) || CAPTURE_EXIT=$?
+if [[ "$CAPTURE_EXIT" -ne 0 ]]; then
+    echo "[pipeline] capture step exited $CAPTURE_EXIT — continuing to post-process; some entries may be missing from .tmp-captures/"
+fi
 
 echo "=== [3/3] post-process ==="
 node "$SCRIPT_DIR/post-process.mjs" \
     --docs-repo "$DOCS_REPO" \
     --bifrost-repo "$BIFROST_REPO" \
-    --threshold "$THRESHOLD"
+    --threshold "$THRESHOLD" \
+    --capture-exit-code "$CAPTURE_EXIT"
