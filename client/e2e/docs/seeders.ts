@@ -15,7 +15,6 @@ import type { Page } from "@playwright/test";
 export type Seeder = (page: Page) => Promise<void>;
 
 const SAMPLE_FORM_NAME = "Docs Sample Form";
-const SAMPLE_WORKFLOW_NAME = "Docs Sample Workflow";
 
 async function apiGet(page: Page, path: string): Promise<Response> {
   return page.request.get(path);
