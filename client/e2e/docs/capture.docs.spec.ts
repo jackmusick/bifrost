@@ -236,32 +236,43 @@ if (!fs.existsSync(manifestPath)) {
         // flags doesn't expose these APIs, so the passkeys settings page
         // shows a "not supported" warning instead of its real UI. The stub
         // is additive — it only fills in the API surface when missing, so
-        // it's a no-op in environments where real WebAuthn is present and
-        // it never triggers actual credential creation (capture actions
-        // open dialogs but never call create()/get()).
-        await page.addInitScript(() => {
-          if (typeof window.PublicKeyCredential === "undefined") {
-            // @ts-expect-error stub for feature detection only
-            window.PublicKeyCredential = class PublicKeyCredential {
-              static isUserVerifyingPlatformAuthenticatorAvailable() {
-                return Promise.resolve(true);
-              }
-              static isConditionalMediationAvailable() {
-                return Promise.resolve(true);
-              }
-            };
-          }
-          if (!navigator.credentials) {
-            Object.defineProperty(navigator, "credentials", {
-              configurable: true,
-              value: {
-                create: () =>
-                  Promise.reject(new Error("docs capture stub")),
-                get: () => Promise.reject(new Error("docs capture stub")),
-              },
-            });
-          }
-        });
+        // it's a no-op in environments where real WebAuthn is present.
+        //
+        // Scope: only inject the stub on routes that actually surface
+        // passkey UI (user-settings/security, user-settings/passkeys). The
+        // login page auto-triggers passkey authentication on mount, and
+        // the stub's reject message ("docs capture stub") would surface as
+        // a red error banner on the captured login screenshot. Other
+        // routes don't need the stub at all.
+        const routePath = entry.route.split("?")[0];
+        const needsWebAuthnStub =
+          routePath.includes("/security") ||
+          routePath.includes("/passkeys");
+        if (needsWebAuthnStub) {
+          await page.addInitScript(() => {
+            if (typeof window.PublicKeyCredential === "undefined") {
+              // @ts-expect-error stub for feature detection only
+              window.PublicKeyCredential = class PublicKeyCredential {
+                static isUserVerifyingPlatformAuthenticatorAvailable() {
+                  return Promise.resolve(true);
+                }
+                static isConditionalMediationAvailable() {
+                  return Promise.resolve(true);
+                }
+              };
+            }
+            if (!navigator.credentials) {
+              Object.defineProperty(navigator, "credentials", {
+                configurable: true,
+                value: {
+                  create: () =>
+                    Promise.reject(new Error("docs capture stub")),
+                  get: () => Promise.reject(new Error("docs capture stub")),
+                },
+              });
+            }
+          });
+        }
 
         // Apply API mocks BEFORE navigation so initial fetches are
         // intercepted. Per-entry mocks override manifest defaults with
