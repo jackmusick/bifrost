@@ -1420,7 +1420,7 @@ async def update_workflow(
         except Exception as e:
             logger.warning(f"Failed to refresh MCP workflow tools: {e}")
 
-        logger.info(f"Updated workflow '{log_safe(workflow.name)}' organization_id={workflow.organization_id}, access_level={workflow.access_level}")
+        logger.info(f"Updated workflow '{log_safe(workflow.name)}' organization_id={log_safe(workflow.organization_id)}, access_level={log_safe(workflow.access_level)}")
         return _convert_workflow_orm_to_schema(workflow)
 
     except HTTPException:
@@ -1717,7 +1717,7 @@ async def deactivate_workflow(
         if ref_count > 0:
             warning = f"{ref_count} {'form/app still references' if ref_count == 1 else 'forms/apps still reference'} this workflow"
 
-        logger.info(f"Deactivated workflow {log_safe(workflow_id)} (refs: {ref_count})")
+        logger.info(f"Deactivated workflow {log_safe(workflow_id)} (refs: {log_safe(ref_count)})")
 
         return DeactivateWorkflowResponse(
             success=True,
