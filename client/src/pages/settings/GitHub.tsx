@@ -27,11 +27,11 @@ import {
 import { toast } from "sonner";
 import {
 	Loader2,
-	Github,
 	CheckCircle2,
 	AlertCircle,
 	Plus,
 } from "lucide-react";
+import { Github } from "@/components/icons/GithubIcon";
 import {
 	useGitHubConfig,
 	useGitHubRepositories,

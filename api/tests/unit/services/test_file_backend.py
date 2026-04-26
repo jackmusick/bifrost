@@ -1,9 +1,11 @@
 """Unit tests for S3Backend path handling."""
 
-import pytest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.services.file_backend import S3Backend
+import pytest
+
+from src.services.file_backend import LocalBackend, S3Backend
 
 
 class TestS3BackendPathHandling:
@@ -67,3 +69,48 @@ class TestS3BackendPathHandling:
         await backend.exists("workflows/test.py", "workspace")
 
         backend.storage.file_exists.assert_called_once_with("_repo/workflows/test.py")
+
+
+class TestLocalBackendSandbox:
+    """Verify LocalBackend._resolve_path enforces a real containment check.
+
+    Uses relative_to() rather than str.startswith() so a sibling-prefix path
+    (base "/tmp/foo" vs "/tmp/foo_evil/x") cannot bypass the sandbox.
+    """
+
+    def _make_backend(self, tmp_path: Path) -> LocalBackend:
+        """Build a LocalBackend rooted entirely under tmp_path."""
+        backend = LocalBackend.__new__(LocalBackend)
+        backend.workspace_root = tmp_path / "workspace"
+        backend.temp_root = tmp_path / "temp"
+        backend.uploads_root = tmp_path / "uploads"
+        for d in (backend.workspace_root, backend.temp_root, backend.uploads_root):
+            d.mkdir(parents=True, exist_ok=True)
+        return backend
+
+    def test_path_inside_sandbox_resolves(self, tmp_path: Path):
+        backend = self._make_backend(tmp_path)
+
+        resolved = backend._resolve_path("workflows/test.py", "workspace")
+
+        assert resolved == (backend.workspace_root / "workflows/test.py").resolve()
+
+    def test_parent_traversal_is_rejected(self, tmp_path: Path):
+        backend = self._make_backend(tmp_path)
+
+        with pytest.raises(ValueError, match="must be within workspace"):
+            backend._resolve_path("../escape.txt", "workspace")
+
+    def test_sibling_prefix_confusion_is_rejected(self, tmp_path: Path):
+        """A path that resolves to a sibling directory sharing a string prefix
+        with the sandbox base must be rejected — the old startswith() check
+        accepted these (e.g., base /tmp/foo vs /tmp/foo_evil/x)."""
+        backend = self._make_backend(tmp_path)
+        # Create a real sibling whose name starts with the temp root's name.
+        sibling = backend.temp_root.parent / (backend.temp_root.name + "_evil")
+        sibling.mkdir()
+        attack = sibling / "x"
+        attack.write_text("nope")
+
+        with pytest.raises(ValueError, match="must be within temp"):
+            backend._resolve_path(str(attack), "temp")
