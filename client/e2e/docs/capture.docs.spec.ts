@@ -5,8 +5,14 @@
  * Reads `screenshots.yaml` from the docs repo (mounted at
  * $DOCS_REPO_PATH inside the container, default `/docs`), captures a
  * full-page PNG for each entry into `<docs>/.tmp-captures/<id>.png`, and
- * writes a results JSON to `<docs>/.tmp-captures/results.json` for the
- * host-side post-processor to consume.
+ * writes a per-entry result JSON to `<docs>/.tmp-captures/results-<id>.json`
+ * for the host-side post-processor to consume.
+ *
+ * Why per-entry result files (not a single results.json):
+ * - Playwright runs tests in parallel workers. A single shared
+ *   results.json read-modify-write race let workers clobber each other,
+ *   silently dropping ~40% of captured entries from the consolidated list.
+ *   Per-entry files have no contention.
  *
  * Why captures land in a temp dir, not directly in src/assets/:
  * - Cropping and callout rendering use `sharp`, which we keep on the host
@@ -36,7 +42,6 @@ import { getSeeder } from "./seeders";
 
 const DOCS_REPO_PATH = process.env.DOCS_REPO_PATH || "/docs";
 const TMP_DIR = path.join(DOCS_REPO_PATH, ".tmp-captures");
-const RESULTS_PATH = path.join(TMP_DIR, "results.json");
 const BASE_URL = process.env.TEST_BASE_URL || "http://client:80";
 
 function ensureTmpDir() {
@@ -52,22 +57,15 @@ interface CaptureResult {
   message?: string;
 }
 
-function loadOrInitResults(): CaptureResult[] {
-  if (fs.existsSync(RESULTS_PATH)) {
-    try {
-      return JSON.parse(fs.readFileSync(RESULTS_PATH, "utf8")) as CaptureResult[];
-    } catch {
-      /* fall through */
-    }
-  }
-  return [];
+function resultPathFor(id: string): string {
+  // Per-entry result file. Each test writes exactly one file under a unique
+  // path, so parallel Playwright workers never contend on the same file.
+  return path.join(TMP_DIR, `results-${id}.json`);
 }
 
 function writeResult(result: CaptureResult) {
   ensureTmpDir();
-  const all = loadOrInitResults().filter((r) => r.id !== result.id);
-  all.push(result);
-  fs.writeFileSync(RESULTS_PATH, JSON.stringify(all, null, 2));
+  fs.writeFileSync(resultPathFor(result.id), JSON.stringify(result, null, 2));
 }
 
 function targetIds(): string[] | null {
@@ -161,8 +159,28 @@ if (!fs.existsSync(manifestPath)) {
   });
 } else {
   ensureTmpDir();
-  // Clear stale results from prior runs.
-  if (fs.existsSync(RESULTS_PATH)) fs.unlinkSync(RESULTS_PATH);
+  // Clear stale per-entry result files from prior runs. run-pipeline.sh
+  // already wipes .tmp-captures/ between runs, but be defensive when the
+  // spec is invoked directly (e.g. dev iterating on a single entry).
+  for (const f of fs.readdirSync(TMP_DIR)) {
+    if (f.startsWith("results-") && f.endsWith(".json")) {
+      try {
+        fs.unlinkSync(path.join(TMP_DIR, f));
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+  // Also drop the legacy aggregated file if it's still around from a
+  // previous pipeline version.
+  const legacy = path.join(TMP_DIR, "results.json");
+  if (fs.existsSync(legacy)) {
+    try {
+      fs.unlinkSync(legacy);
+    } catch {
+      /* best-effort */
+    }
+  }
 
   const manifest = loadManifest(DOCS_REPO_PATH);
   // External entries (Azure portal, VS Code, etc.) are never captured by

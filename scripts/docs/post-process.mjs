@@ -2,13 +2,16 @@
 /**
  * Host-side post-processor for the docs screenshot pipeline.
  *
- * After the capture spec finishes and `<docs>/.tmp-captures/results.json`
- * exists, this script:
+ * After the capture spec finishes, each parallel Playwright worker has
+ * dropped its own `<docs>/.tmp-captures/results-<id>.json` (per-entry
+ * files avoid the read-modify-write race that a single shared
+ * results.json had). This script:
  *
- *   1. Reads each captured PNG.
- *   2. Applies `capture.crop` (if defined) to extract a sub-region.
- *   3. Overlays `capture.callouts` rectangles + labels.
- *   4. Compares the result to the committed PNG at `<docs>/<entry.image>`.
+ *   1. Globs every `results-*.json` and merges them into a single list.
+ *   2. Reads each captured PNG.
+ *   3. Applies `capture.crop` (if defined) to extract a sub-region.
+ *   4. Overlays `capture.callouts` rectangles + labels.
+ *   5. Compares the result to the committed PNG at `<docs>/<entry.image>`.
  *      If pixel diff exceeds threshold, replaces the committed PNG and
  *      marks the entry's `captured_at` with the current bifrost SHA.
  *      Otherwise discards the temp file silently.
@@ -21,7 +24,7 @@
  * Outputs (to stdout):
  *   JSON summary { committed, unchanged, errors, missing }
  */
-import { readFileSync, writeFileSync, existsSync, copyFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, copyFileSync, unlinkSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import yaml from "js-yaml";
@@ -142,20 +145,49 @@ function diffPercent(aBuf, bBuf) {
   return numDiff / (a.width * a.height);
 }
 
+function loadResults(tmpDir) {
+  // Per-entry result files: each parallel worker drops one
+  // results-<id>.json. Merge them all into a single list. We do NOT fall
+  // back to a legacy aggregated results.json — the capture spec writes
+  // per-entry only, and any legacy file would be stale.
+  if (!existsSync(tmpDir)) return [];
+  const merged = [];
+  const seen = new Set();
+  for (const f of readdirSync(tmpDir)) {
+    if (!f.startsWith("results-") || !f.endsWith(".json")) continue;
+    const p = resolve(tmpDir, f);
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileSync(p, "utf8"));
+    } catch (e) {
+      console.error(`[post-process] skipping unreadable ${f}: ${e instanceof Error ? e.message : e}`);
+      continue;
+    }
+    // Defensive: if a worker somehow wrote an array, flatten it.
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    for (const r of entries) {
+      if (!r || typeof r.id !== "string") continue;
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      merged.push(r);
+    }
+  }
+  return merged;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const docsRepo = resolve(args.docsRepo);
   const bifrostRepo = resolve(args.bifrostRepo);
   const tmpDir = resolve(docsRepo, ".tmp-captures");
-  const resultsPath = resolve(tmpDir, "results.json");
   const manifestPath = resolve(docsRepo, "screenshots.yaml");
 
-  if (!existsSync(resultsPath)) {
-    console.error(`No capture results at ${resultsPath}`);
+  const results = loadResults(tmpDir);
+  if (results.length === 0) {
+    console.error(`No capture results found in ${tmpDir} (expected results-*.json files)`);
     process.exit(1);
   }
 
-  const results = JSON.parse(readFileSync(resultsPath, "utf8"));
   const manifest = yaml.load(readFileSync(manifestPath, "utf8"));
   const byId = new Map(manifest.entries.map((e) => [e.id, e]));
   const sha = bifrostHead(bifrostRepo);
@@ -190,7 +222,14 @@ async function main() {
       let shouldCommit = true;
       if (existsSync(targetPath)) {
         const existing = readFileSync(targetPath);
-        const pct = diffPercent(existing, finalBuf);
+        let pct;
+        try {
+          pct = diffPercent(existing, finalBuf);
+        } catch (diffErr) {
+          // Existing PNG is unreadable (e.g. placeholder stub written by an
+          // earlier failed capture). Treat as first-capture so we overwrite it.
+          pct = 1;
+        }
         if (pct < args.threshold) {
           shouldCommit = false;
           summary.unchanged.push({ id: r.id, diffPct: pct });
