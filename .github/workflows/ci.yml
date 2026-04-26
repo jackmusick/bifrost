@@ -139,6 +139,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # OIDC for keyless cosign signing
+      attestations: write # for actions/attest-build-provenance
 
     steps:
       - name: Checkout repository
@@ -163,7 +165,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+
       - name: Build and push API dev image
+        id: build-api
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
@@ -179,7 +185,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign API dev image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.API_IMAGE }}@${{ steps.build-api.outputs.digest }}
+
+      - name: Attest API dev image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.API_IMAGE }}
+          subject-digest: ${{ steps.build-api.outputs.digest }}
+          push-to-registry: true
+
       - name: Build and push client dev image
+        id: build-client
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: ./client
@@ -195,6 +216,20 @@ jobs:
             VITE_BIFROST_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Sign client dev image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.CLIENT_IMAGE }}@${{ steps.build-client.outputs.digest }}
+
+      - name: Attest client dev image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.CLIENT_IMAGE }}
+          subject-digest: ${{ steps.build-client.outputs.digest }}
+          push-to-registry: true
 
   # =============================================================================
   # Deploy Dry Run - Manual trigger only (workflow_dispatch from any branch).
@@ -325,6 +360,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # OIDC for keyless cosign signing
+      attestations: write # for actions/attest-build-provenance
 
     steps:
       - name: Checkout repository
@@ -347,6 +384,9 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
 
       - name: Extract metadata (tags, labels)
         id: meta
@@ -364,6 +404,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push API image
+        id: build-api
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
@@ -376,6 +417,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign API image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.API_IMAGE }}@${{ steps.build-api.outputs.digest }}
+
+      - name: Attest API image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.API_IMAGE }}
+          subject-digest: ${{ steps.build-api.outputs.digest }}
+          push-to-registry: true
+
   # =============================================================================
   # Build Client Image - Only on version tags, after tests pass
   # =============================================================================
@@ -387,6 +442,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # OIDC for keyless cosign signing
+      attestations: write # for actions/attest-build-provenance
 
     steps:
       - name: Checkout repository
@@ -410,6 +467,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
@@ -426,6 +486,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push client image
+        id: build-client
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: ./client
@@ -438,6 +499,20 @@ jobs:
           build-args: VITE_BIFROST_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Sign client image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.CLIENT_IMAGE }}@${{ steps.build-client.outputs.digest }}
+
+      - name: Attest client image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.CLIENT_IMAGE }}
+          subject-digest: ${{ steps.build-client.outputs.digest }}
+          push-to-registry: true
 
   # =============================================================================
   # Create GitHub Release - Only on version tags, after images are built
