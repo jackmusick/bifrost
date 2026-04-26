@@ -5,7 +5,8 @@
 # =============================================================================
 # Stage 1: Builder
 # =============================================================================
-FROM python:3.14-slim AS builder
+# python:3.14-slim
+FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033 AS builder
 
 WORKDIR /app
 
@@ -23,7 +24,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
-FROM python:3.14-slim
+# python:3.14-slim
+FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033
 
 WORKDIR /app
 
