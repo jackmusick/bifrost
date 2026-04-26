@@ -112,7 +112,7 @@ _TOKEN_SPLIT = re.compile(r"[\s,]+")
 # Tailwind classes contain hyphens, brackets, colons, or slashes.
 # Single-word utilities (flex, grid, hidden, etc.) also need to pass through.
 _LOOKS_LIKE_CLASS = re.compile(
-    r"^!?-?[a-z][a-z0-9]*(?:[:\-/\[.=][a-z0-9/.\[\]#%_\-=*>~&+]*)*\]?$",
+    r"^!?-?[a-z][a-z0-9:\-/\[.=#%_*>~&+\]]*$",
     re.IGNORECASE,
 )
 
