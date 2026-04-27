@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
@@ -248,10 +248,13 @@ export function AgentSettingsTab({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [agent?.id]);
 
-	const accessLevel = form.watch("access_level");
-	const systemTools = form.watch("system_tools");
-	const toolIds = form.watch("tool_ids");
-	const watchedOrgId = form.watch("organization_id");
+	// Use `useWatch` (rather than `form.watch(name)`) so the React Compiler
+	// can memoize this component — `watch()` returns a function reference
+	// that cannot be memoized safely (react-hooks/incompatible-library).
+	const accessLevel = useWatch({ control: form.control, name: "access_level" });
+	const systemTools = useWatch({ control: form.control, name: "system_tools" });
+	const toolIds = useWatch({ control: form.control, name: "tool_ids" });
+	const watchedOrgId = useWatch({ control: form.control, name: "organization_id" });
 
 	const { data: knowledgeNamespaces } = useKnowledgeNamespaces(watchedOrgId);
 
@@ -283,6 +286,9 @@ export function AgentSettingsTab({
 		[watchedOrgId],
 	);
 
+	// Dep is the parent object (`toolsGrouped`) rather than the property
+	// (`toolsGrouped?.workflow`) to match what React Compiler infers — keeps
+	// the manual memoization preservable (react-hooks/preserve-manual-memoization).
 	const mismatchedToolIds = useMemo(() => {
 		if (!toolsGrouped?.workflow || !toolIds) return [] as string[];
 		return toolIds.filter((id) => {
@@ -290,7 +296,7 @@ export function AgentSettingsTab({
 			if (!tool) return false;
 			return toolAudience(tool) === "mismatch";
 		});
-	}, [toolIds, toolsGrouped?.workflow, toolAudience]);
+	}, [toolIds, toolsGrouped, toolAudience]);
 
 	const infoToolIds = useMemo(() => {
 		if (watchedOrgId !== null) return [] as string[];
@@ -299,7 +305,7 @@ export function AgentSettingsTab({
 			const tool = toolsGrouped.workflow.find((t) => t.id === id);
 			return !!tool && tool.organization_id != null;
 		});
-	}, [toolIds, toolsGrouped?.workflow, watchedOrgId]);
+	}, [toolIds, toolsGrouped, watchedOrgId]);
 
 	const hasMismatchedTools = mismatchedToolIds.length > 0;
 
