@@ -13,14 +13,36 @@ on:
     #
     # IMPORTANT: do NOT add .github/workflows/** to this list — workflow
     # changes must always run CI so we catch CI-breaking edits before merge.
+    # Also do NOT add **/*.yml, **/*.yaml, **/*.json, or **/*.toml — these
+    # cover real config (docker-compose, package-lock, tsconfig, pyproject)
+    # that does affect runtime/tests and must run CI.
+    #
+    # The companion ci-noop.yml `paths:` list MUST stay byte-identical to
+    # this `paths-ignore:` list — branch protection relies on the inverse
+    # mapping to always report the required check names.
     paths-ignore:
       - "**/*.md"
+      - "**/*.txt"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.webp"
+      - "**/*.ico"
       - ".claude/**"
       - "docs/**"
       - "LICENSE"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/dependabot.yml"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".editorconfig"
+      - ".prettierrc*"
+      - ".prettierignore"
+      - ".vscode/**"
+      - ".idea/**"
   workflow_dispatch:
 
 env:
@@ -175,7 +197,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Build and push API dev image
         id: build-api
@@ -395,7 +417,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Extract metadata (tags, labels)
         id: meta
@@ -477,7 +499,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Extract metadata (tags, labels)
         id: meta
@@ -576,7 +598,7 @@ jobs:
           echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
         with:
           cosign-release: v2.4.1
 
