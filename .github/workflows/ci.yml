@@ -13,14 +13,36 @@ on:
     #
     # IMPORTANT: do NOT add .github/workflows/** to this list — workflow
     # changes must always run CI so we catch CI-breaking edits before merge.
+    # Also do NOT add **/*.yml, **/*.yaml, **/*.json, or **/*.toml — these
+    # cover real config (docker-compose, package-lock, tsconfig, pyproject)
+    # that does affect runtime/tests and must run CI.
+    #
+    # The companion ci-noop.yml `paths:` list MUST stay byte-identical to
+    # this `paths-ignore:` list — branch protection relies on the inverse
+    # mapping to always report the required check names.
     paths-ignore:
       - "**/*.md"
+      - "**/*.txt"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.webp"
+      - "**/*.ico"
       - ".claude/**"
       - "docs/**"
       - "LICENSE"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/dependabot.yml"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".editorconfig"
+      - ".prettierrc*"
+      - ".prettierignore"
+      - ".vscode/**"
+      - ".idea/**"
   workflow_dispatch:
 
 env:
