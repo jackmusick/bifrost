@@ -267,8 +267,9 @@ cd client && npm run lint                 # Lint TypeScript
 4. Restart API: `docker compose restart api`
 
 **After adding a Python dependency:**
-1. Add to `api/requirements.txt`
-2. Rebuild and restart: `docker compose -f docker-compose.dev.yml up --build api`
+1. Add to `pyproject.toml` (root)
+2. Regenerate the lock: `docker run --rm -v "$PWD":/repo -w /repo python:3.14-slim sh -c "pip install --quiet --require-hashes -r requirements-piptools.lock && pip-compile --generate-hashes --output-file=requirements.lock pyproject.toml"`
+3. Rebuild and restart: `docker compose -f docker-compose.dev.yml up --build api`
 
 ## Pre-Completion Verification (REQUIRED)
 

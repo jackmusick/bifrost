@@ -16,16 +16,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies.
+# Copy dependency manifests and install.
 # We install from requirements.lock with --require-hashes so every transitive
 # dep is pinned by sha256, satisfying Scorecard's Pinned-Dependencies check.
-# requirements.txt is the human-edited source; regen instructions are in
+# pyproject.toml is the human-edited source; regen instructions are in
 # the header of requirements.lock.
 #
 # We deliberately do NOT run `pip install --upgrade pip` first — Scorecard
 # flags unpinned `pip install <pkg>` invocations, and the pip shipped in
 # python:3.14-slim already supports --require-hashes (>= 8.0).
-COPY requirements.txt requirements.lock ./
+COPY pyproject.toml requirements.lock ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # =============================================================================

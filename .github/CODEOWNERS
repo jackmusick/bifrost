@@ -38,6 +38,6 @@
 /docker-compose*.yml            @jackmusick
 
 # Intentionally NOT covered (Dependabot owns these on the bump path):
-#   /api/Dockerfile*  /api/requirements.txt  /api/pyproject.toml
+#   /api/Dockerfile*  /pyproject.toml  /requirements.lock
 #   /client/package.json  /client/package-lock.json  /client/Dockerfile*
 #   /.github/workflows/*  (action version bumps)
