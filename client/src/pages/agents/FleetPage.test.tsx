@@ -6,8 +6,8 @@
  * scope so we can control loading / data states deterministically.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderWithProviders, screen, within } from "@/test-utils";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fireEvent, renderWithProviders, screen, within } from "@/test-utils";
 
 // -----------------------------------------------------------------------------
 // Mocks
@@ -31,6 +31,14 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 vi.mock("@/components/agents/SummaryBackfillButton", () => ({
 	SummaryBackfillButton: () => null,
+}));
+
+const mockToastSuccess = vi.fn();
+vi.mock("sonner", () => ({
+	toast: {
+		success: (...args: unknown[]) => mockToastSuccess(...args),
+		error: vi.fn(),
+	},
 }));
 
 // -----------------------------------------------------------------------------
@@ -167,6 +175,63 @@ describe("FleetPage — agent cards (grid)", () => {
 		await renderPage();
 		const link = screen.getByRole("link", { name: /alpha/i });
 		expect(link).toHaveAttribute("href", "/agents/alpha-id");
+	});
+});
+
+describe("FleetPage — agent MCP URL copy badge", () => {
+	let writeText: ReturnType<typeof vi.fn>;
+	let originalWriteText: typeof navigator.clipboard.writeText | undefined;
+
+	beforeEach(() => {
+		mockToastSuccess.mockClear();
+		writeText = vi.fn().mockResolvedValue(undefined);
+		// happy-dom's Clipboard is a real EventTarget on the Navigator prototype
+		// and resists `defineProperty(navigator, "clipboard", ...)`. Patch the
+		// method on the existing instance instead.
+		originalWriteText = navigator.clipboard?.writeText.bind(
+			navigator.clipboard,
+		);
+		(
+			navigator.clipboard as unknown as {
+				writeText: typeof writeText;
+			}
+		).writeText = writeText;
+	});
+
+	afterEach(() => {
+		if (originalWriteText) {
+			(
+				navigator.clipboard as unknown as {
+					writeText: typeof originalWriteText;
+				}
+			).writeText = originalWriteText;
+		}
+	});
+
+	it("copies the agent-scoped MCP URL when the badge is clicked", async () => {
+		mockUseAgents.mockReturnValue({
+			data: [makeAgent({ id: "agent-xyz", name: "Alpha" })],
+			isLoading: false,
+		});
+		await renderPage();
+		fireEvent.click(screen.getByTestId("agent-mcp-copy"));
+		expect(writeText).toHaveBeenCalledWith(
+			`${window.location.origin}/mcp/agent-xyz`,
+		);
+		expect(mockToastSuccess).toHaveBeenCalledWith("Agent MCP URL copied");
+	});
+
+	it("badge click prevents the default action so the card link doesn't navigate", async () => {
+		mockUseAgents.mockReturnValue({
+			data: [makeAgent({ id: "agent-xyz", name: "Alpha" })],
+			isLoading: false,
+		});
+		await renderPage();
+		const badge = screen.getByTestId("agent-mcp-copy");
+		const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+		badge.dispatchEvent(event);
+		expect(writeText).toHaveBeenCalledTimes(1);
+		expect(event.defaultPrevented).toBe(true);
 	});
 });
 

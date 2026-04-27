@@ -7,13 +7,14 @@
  * (N+1; acceptable v1, TODO for a denormalized list endpoint).
  */
 
-import { useMemo, useState } from "react";
+import { type MouseEvent, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
 	AlertTriangle,
 	Bot,
 	Building2,
 	Clock,
+	Copy,
 	Globe,
 	Hash,
 	History,
@@ -25,6 +26,7 @@ import {
 	Power,
 	Search,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -452,12 +454,38 @@ function AgentGridCard({
 					</p>
 				)}
 			</div>
-			{showOrg ? (
-				<div className="border-t px-4 py-2.5">
+			<div className="flex items-center justify-between gap-2 border-t px-4 py-2.5">
+				{showOrg ? (
 					<OrgBadge orgId={agent.organization_id} name={orgName} />
-				</div>
-			) : null}
+				) : (
+					<span />
+				)}
+				{agent.id ? <McpUrlBadge agentId={agent.id} /> : null}
+			</div>
 		</Link>
+	);
+}
+
+function McpUrlBadge({ agentId }: { agentId: string }) {
+	const url = `${window.location.origin}/mcp/${agentId}`;
+	const handleCopy = (e: MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		void navigator.clipboard.writeText(url);
+		toast.success("Agent MCP URL copied");
+	};
+	return (
+		<button
+			type="button"
+			onClick={handleCopy}
+			title={url}
+			aria-label="Copy agent MCP URL"
+			data-testid="agent-mcp-copy"
+			className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+		>
+			MCP
+			<Copy className="h-3 w-3" />
+		</button>
 	);
 }
 
