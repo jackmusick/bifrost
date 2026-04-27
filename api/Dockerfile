@@ -21,9 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # dep is pinned by sha256, satisfying Scorecard's Pinned-Dependencies check.
 # requirements.txt is the human-edited source; regen instructions are in
 # the header of requirements.lock.
+#
+# We deliberately do NOT run `pip install --upgrade pip` first — Scorecard
+# flags unpinned `pip install <pkg>` invocations, and the pip shipped in
+# python:3.14-slim already supports --require-hashes (>= 8.0).
 COPY requirements.txt requirements.lock ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --require-hashes -r requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # =============================================================================
 # Stage 2: Runtime

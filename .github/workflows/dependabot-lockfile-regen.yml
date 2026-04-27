@@ -49,9 +49,15 @@ jobs:
         # Hash sets are tied to the Python version that resolved them, so
         # regenerating with a different minor would produce a lock the
         # production build can't install with --require-hashes.
+        #
+        # pip-tools itself is bootstrapped from `requirements-piptools.lock`
+        # (a tiny hash-pinned lock that only contains pip-tools + transitive
+        # deps) so the install satisfies Scorecard's Pinned-Dependencies
+        # check. Regenerate that lock with the same `pip-compile` command
+        # documented at the top of the file.
         run: |
           docker run --rm -v "$PWD":/repo -w /repo python:3.14-slim sh -c "
-            pip install pip-tools --quiet
+            pip install --quiet --require-hashes -r requirements-piptools.lock
             pip-compile --generate-hashes --output-file=requirements.lock requirements.txt
           "
 
