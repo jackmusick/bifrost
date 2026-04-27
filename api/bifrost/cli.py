@@ -1221,6 +1221,14 @@ Examples:
     if parsed is None:
         return 1
 
+    resolved = pathlib.Path(parsed.local_path).resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
+        return 1
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("push")
+        return 1
+
     # Authenticate BEFORE entering asyncio.run() so token refresh works
     # (refresh_tokens() uses asyncio.run() internally, which fails inside a running loop)
     try:
@@ -1276,6 +1284,14 @@ Examples:
 
     parsed = _parse_push_watch_args(args)
     if parsed is None:
+        return 1
+
+    resolved = pathlib.Path(parsed.local_path).resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
+        return 1
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("sync")
         return 1
 
     # Authenticate BEFORE entering asyncio.run()
@@ -1421,11 +1437,8 @@ Examples:
         print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
         return 1
 
-    bifrost_dir = _find_bifrost_dir(resolved)
-    if not bifrost_dir.exists() or not bifrost_dir.is_dir():
-        print("Error: not a Bifrost workspace (no .bifrost/ directory found)", file=sys.stderr)
-        print("  Run 'bifrost watch' from a directory that contains .bifrost/,", file=sys.stderr)
-        print("  or run 'bifrost git commit' and 'bifrost git push' to initialize your workspace first.", file=sys.stderr)
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("watch")
         return 1
 
     # Authenticate
@@ -1519,6 +1532,14 @@ Examples:
             print(f"Unexpected argument: {arg}", file=sys.stderr)
             return 1
 
+    resolved = pathlib.Path(local_path).resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        print(f"Error: {local_path} is not a valid directory", file=sys.stderr)
+        return 1
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("pull")
+        return 1
+
     # Authenticate
     try:
         client = BifrostClient.get_instance(require_auth=True)
@@ -1537,57 +1558,107 @@ Examples:
 
 
 def _detect_repo_prefix(path: pathlib.Path) -> str:
-    """Detect the repo prefix from a local path by finding the .bifrost/ directory.
+    """Compute the repo prefix for ``path`` relative to the workspace root.
 
-    Anchors on the .bifrost/ directory — its parent is the workspace root.
-    Everything relative to that root is the repo prefix.
+    With walk-up gone, the workspace root is the current working directory:
+    the dir the user invoked the CLI from. The prefix is whatever sub-path
+    of that root the caller targeted (e.g. ``bifrost push apps/my-app``
+    yields ``apps/my-app``). The launch directory itself yields ``""``.
 
-    Examples:
-        /home/user/workspace/apps/my-app -> "apps/my-app"
-        /home/user/workspace/.bifrost     -> ".bifrost"
-        /home/user/workspace/             -> "" (workspace root, no prefix needed)
+    Paths that don't sit under the cwd (unusual: an absolute path outside
+    the workspace) fall through to ``""`` — the caller is expected to have
+    already validated the path via ``_ensure_workspace_marker``.
     """
-    # Find .bifrost/ directory — its parent is the workspace root
-    bifrost_dir = _find_bifrost_dir(path)
-    if bifrost_dir.exists():
-        workspace_root = bifrost_dir.parent
-        try:
-            relative = path.relative_to(workspace_root)
-            prefix = str(relative)
-            return "" if prefix == "." else prefix
-        except ValueError:
-            pass
+    try:
+        cwd = pathlib.Path.cwd().resolve()
+        relative = path.resolve().relative_to(cwd)
+    except (OSError, ValueError):
+        return ""
+    prefix = str(relative)
+    return "" if prefix == "." else prefix
 
-    # Workspace root — files already have correct relative paths
-    return ""
+
+_WORKSPACE_SENTINEL = ".workspace"
+
+
+def _is_workspace_bifrost_dir(d: pathlib.Path) -> bool:
+    """Distinguish a workspace ``.bifrost/`` from the CLI config ``~/.bifrost/``.
+
+    A workspace ``.bifrost/`` either contains manifest YAMLs (``tables.yaml``,
+    ``workflows.yaml``, etc., produced by sync/export) or the empty
+    ``.workspace`` sentinel file (created on first ``bifrost watch`` /
+    ``push`` / ``pull`` after the user confirms this is their workspace).
+
+    The CLI config directory at ``~/.bifrost/`` only contains
+    ``credentials.json`` and must NOT be treated as a workspace.
+    """
+    if not d.is_dir():
+        return False
+    try:
+        if (d / _WORKSPACE_SENTINEL).exists():
+            return True
+        return any(d.glob("*.yaml"))
+    except OSError:
+        return False
 
 
 def _find_bifrost_dir(local_root: pathlib.Path) -> pathlib.Path:
-    """Find the .bifrost/ manifest directory relative to a push root.
+    """Return the workspace ``.bifrost/`` for ``local_root``.
 
-    Resolution order:
-    1. If local_root IS the .bifrost/ directory, return it
-    2. Check local_root/.bifrost/
-    3. Walk up parent directories (max 10 levels) looking for .bifrost/
-    4. Fallback: return local_root/.bifrost/ (may not exist)
+    The launch directory IS the workspace root — no walk-up. Either:
+    1. ``local_root`` itself IS a workspace ``.bifrost/`` (e.g., user ran
+       ``bifrost watch .bifrost``); return it.
+    2. ``local_root/.bifrost/`` exists and looks like a workspace; return it.
+    3. Otherwise return ``local_root/.bifrost`` as the *expected* path. The
+       caller is responsible for verifying existence (and, in interactive
+       contexts, prompting the user to mark this directory as a workspace).
+
+    Removing the walk-up eliminates a class of "wrong workspace inferred"
+    bugs — most notably the credentials-only ``~/.bifrost/`` collision that
+    silently rooted every relative path at ``$HOME``.
     """
-    if local_root.name == ".bifrost":
+    if local_root.name == ".bifrost" and _is_workspace_bifrost_dir(local_root):
         return local_root
 
     candidate = local_root / ".bifrost"
-    if candidate.exists() and candidate.is_dir():
+    if _is_workspace_bifrost_dir(candidate):
         return candidate
 
-    search = local_root.parent
-    for _ in range(10):
-        candidate = search / ".bifrost"
-        if candidate.exists() and candidate.is_dir():
-            return candidate
-        if search.parent == search:
-            break  # Hit filesystem root
-        search = search.parent
+    return local_root / ".bifrost"  # Expected path; may not exist
 
-    return local_root / ".bifrost"  # Fallback (may not exist)
+
+def _ensure_workspace_marker(local_root: pathlib.Path, *, prompt: bool = True) -> bool:
+    """Confirm ``local_root`` is the user's workspace and create the marker.
+
+    If ``local_root/.bifrost/`` already looks like a workspace, returns True
+    immediately. Otherwise, asks the user (when ``prompt`` is True and stdin
+    is a tty) whether to mark this directory. On confirmation, creates
+    ``.bifrost/.workspace``. Returns True on success, False if the user
+    declined or stdin isn't a tty.
+    """
+    bifrost_dir = local_root / ".bifrost"
+    if _is_workspace_bifrost_dir(bifrost_dir):
+        return True
+
+    if not prompt or not sys.stdin.isatty():
+        return False
+
+    print(f"No .bifrost/ found in {local_root}.", file=sys.stderr)
+    answer = input("Is this your Bifrost workspace? Create a marker so future commands recognize it? [y/N] ").strip().lower()
+    if answer not in {"y", "yes"}:
+        return False
+
+    bifrost_dir.mkdir(parents=True, exist_ok=True)
+    (bifrost_dir / _WORKSPACE_SENTINEL).touch()
+    print(f"Marked {local_root} as a Bifrost workspace.", file=sys.stderr)
+    return True
+
+
+def _print_not_a_workspace_error(command: str) -> None:
+    """Print the standard 'not a workspace' error for a CLI command."""
+    print("Error: not a Bifrost workspace.", file=sys.stderr)
+    print(f"  Run 'bifrost {command}' from a directory that contains .bifrost/,", file=sys.stderr)
+    print("  or confirm the prompt above to mark this directory.", file=sys.stderr)
 
 
 async def _push_with_precheck(
