@@ -1,11 +1,11 @@
 # Auto-regenerate requirements.lock on Dependabot PRs.
 #
 # Why: PR #112 pinned every pip dep by sha256 in `requirements.lock`, installed
-# with `pip install --require-hashes`. Dependabot only edits `requirements.txt`
+# with `pip install --require-hashes`. Dependabot only edits `pyproject.toml`
 # — it does not regenerate the lock — so every Dependabot Python bump leaves
 # the lock stale and CI fails until a maintainer regenerates it by hand.
 #
-# This workflow detects Dependabot PRs that touch `requirements.txt`,
+# This workflow detects Dependabot PRs that touch `pyproject.toml`,
 # regenerates `requirements.lock` with the same `pip-compile --generate-hashes`
 # command documented at the top of the lock file, and pushes the regenerated
 # lock back onto the PR branch. The PR's existing CI re-runs against the
@@ -21,7 +21,7 @@ name: Regen requirements.lock for Dependabot
 on:
   pull_request:
     paths:
-      - "requirements.txt"
+      - "pyproject.toml"
 
 permissions:
   contents: read
@@ -58,7 +58,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/repo -w /repo python:3.14-slim sh -c "
             pip install --quiet --require-hashes -r requirements-piptools.lock
-            pip-compile --generate-hashes --output-file=requirements.lock requirements.txt
+            pip-compile --generate-hashes --output-file=requirements.lock pyproject.toml
           "
 
       - name: Commit and push if changed
