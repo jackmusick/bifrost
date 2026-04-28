@@ -187,7 +187,6 @@ async def test_webhook_rate_limit_disabled_per_source():
 @pytest.mark.asyncio
 async def test_rate_limit_hits_counter_incremented_on_429():
     """Each 429 increments bifrost:rate_limit_hits:{source_id} with 24h TTL."""
-    from unittest.mock import call
     from src.core.rate_limit import RateLimiter
 
     identifier = str(uuid4())
