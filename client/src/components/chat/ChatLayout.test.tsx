@@ -51,6 +51,15 @@ vi.mock("@/hooks/useUserPermissions", () => ({
 	useUserPermissions: () => ({ isPlatformAdmin: false }),
 }));
 
+// ChatLayout reads the auth user to gate workspace management; stub it so the
+// component doesn't require the real AuthProvider context.
+vi.mock("@/contexts/AuthContext", () => ({
+	useAuth: () => ({
+		isPlatformAdmin: false,
+		user: null,
+	}),
+}));
+
 import { ChatLayout } from "./ChatLayout";
 
 beforeEach(() => {

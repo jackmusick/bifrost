@@ -26,12 +26,14 @@ from src.models.contracts.agents import (
     ConversationCreate,
     ConversationPublic,
     ConversationSummary,
+    ConversationUpdate,
     MessagePublic,
     ToolCall,
 )
 from src.models.enums import AgentAccessLevel
-from src.models.orm import Agent, AgentRole, Conversation, Message
+from src.models.orm import Agent, AgentRole, Conversation, Message, Workspace
 from src.services.agent_executor import AgentExecutor
+from src.services.workspace_service import can_access_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,26 @@ async def create_conversation(
 
         agent_name = agent.name
 
+    # Resolve workspace: explicit if provided (must be accessible), else null
+    # (general pool — the unscoped default chat list).
+    workspace_id: UUID | None = None
+    if request.workspace_id is not None:
+        workspace_result = await db.execute(
+            select(Workspace).where(Workspace.id == request.workspace_id)
+        )
+        workspace = workspace_result.scalar_one_or_none()
+        if workspace is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workspace {request.workspace_id} not found",
+            )
+        if not await can_access_workspace(db, user, workspace):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this workspace",
+            )
+        workspace_id = workspace.id
+
     # Create conversation (agent_id can be None for agentless chat)
     conversation_id = uuid4()
     now = datetime.now(timezone.utc)
@@ -86,6 +108,7 @@ async def create_conversation(
         id=conversation_id,
         agent_id=agent.id if agent else None,
         user_id=user.user_id,
+        workspace_id=workspace_id,
         channel=request.channel.value,
         title=request.title,
         is_active=True,
@@ -99,6 +122,7 @@ async def create_conversation(
         id=conversation.id,
         agent_id=conversation.agent_id,
         user_id=conversation.user_id,
+        workspace_id=conversation.workspace_id,
         channel=conversation.channel,
         title=conversation.title,
         is_active=conversation.is_active,
@@ -114,11 +138,20 @@ async def list_conversations(
     db: DbSession,
     user: CurrentActiveUser,
     agent_id: UUID | None = None,
+    workspace_id: UUID | None = None,
+    pool: Literal["any", "general", "workspace"] | None = None,
     active_only: bool = True,
     limit: int = 50,
     offset: int = 0,
 ) -> list[ConversationSummary]:
-    """List user's conversations."""
+    """List the caller's conversations.
+
+    Filtering options for the sidebar:
+    - ``workspace_id={uuid}`` — only chats in that workspace.
+    - ``pool=general`` — only chats in the general pool (workspace_id IS NULL).
+    - ``pool=any`` (or omit both) — every chat the user has, regardless of
+      workspace. Used by search.
+    """
     stmt = (
         select(Conversation)
         .options(selectinload(Conversation.agent))
@@ -130,6 +163,12 @@ async def list_conversations(
 
     if agent_id:
         stmt = stmt.where(Conversation.agent_id == agent_id)
+
+    if workspace_id is not None:
+        stmt = stmt.where(Conversation.workspace_id == workspace_id)
+    elif pool == "general":
+        stmt = stmt.where(Conversation.workspace_id.is_(None))
+    # pool == "any" or None → no workspace filter.
 
     stmt = stmt.order_by(Conversation.updated_at.desc()).limit(limit).offset(offset)
 
@@ -151,6 +190,7 @@ async def list_conversations(
             id=conv.id,
             agent_id=conv.agent_id,
             agent_name=conv.agent.name if conv.agent else None,
+            workspace_id=conv.workspace_id,
             title=conv.title,
             updated_at=conv.updated_at,
             last_message_preview=last_msg.content[:100] if last_msg and last_msg.content else None,
@@ -200,6 +240,87 @@ async def get_conversation(
         id=conversation.id,
         agent_id=conversation.agent_id,
         user_id=conversation.user_id,
+        workspace_id=conversation.workspace_id,
+        channel=conversation.channel,
+        title=conversation.title,
+        is_active=conversation.is_active,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        message_count=message_count,
+        last_message_at=last_message_at,
+        agent_name=conversation.agent.name if conversation.agent else None,
+    )
+
+
+@router.patch("/conversations/{conversation_id}")
+async def update_conversation(
+    conversation_id: UUID,
+    payload: ConversationUpdate,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> ConversationPublic:
+    """Update mutable fields on a conversation.
+
+    Today the only editable field is ``workspace_id``: this powers the
+    "Move to workspace" affordance. Set ``workspace_id`` to ``null`` to move
+    the chat back to the general pool.
+    """
+    result = await db.execute(
+        select(Conversation)
+        .options(selectinload(Conversation.agent))
+        .where(Conversation.id == conversation_id)
+        .where(Conversation.user_id == user.user_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation {conversation_id} not found",
+        )
+
+    update_fields = payload.model_dump(exclude_unset=True)
+    if "workspace_id" in update_fields:
+        new_workspace_id = update_fields["workspace_id"]
+        if new_workspace_id is not None:
+            ws_result = await db.execute(
+                select(Workspace).where(Workspace.id == new_workspace_id)
+            )
+            target = ws_result.scalar_one_or_none()
+            if target is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Workspace {new_workspace_id} not found",
+                )
+            if not await can_access_workspace(db, user, target):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have access to this workspace",
+                )
+        conversation.workspace_id = new_workspace_id
+
+    conversation.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    # Compute counts for response shape parity with GET.
+    count_result = await db.execute(
+        select(func.count(Message.id)).where(
+            Message.conversation_id == conversation_id
+        )
+    )
+    message_count = count_result.scalar() or 0
+    last_msg_result = await db.execute(
+        select(Message.created_at)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.sequence.desc())
+        .limit(1)
+    )
+    last_message_at = last_msg_result.scalar_one_or_none()
+
+    return ConversationPublic(
+        id=conversation.id,
+        agent_id=conversation.agent_id,
+        user_id=conversation.user_id,
+        workspace_id=conversation.workspace_id,
         channel=conversation.channel,
         title=conversation.title,
         is_active=conversation.is_active,

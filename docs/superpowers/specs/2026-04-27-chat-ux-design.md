@@ -55,7 +55,7 @@ UI: refresh icon on the assistant message. Default click → retry with current 
 ## 2. Workspaces
 
 ### 2.1 What a workspace is
-A workspace is a folder for conversations plus optional shared configuration. **Every conversation belongs to exactly one workspace.** A synthetic "Personal" workspace is auto-created per user as the default for unfiled chats.
+A workspace is a folder for chats plus optional shared configuration (instructions, tools, knowledge sources, default agent, default model). **Workspaces are explicit and optional.** A chat may belong to a workspace OR live in the **general pool** — the unscoped default chat list reachable from `/chat`. There is no synthetic "Personal" workspace; users create private workspaces explicitly when they want one.
 
 ### 2.2 Workspace fields
 | Field | Type | Required | Notes |
@@ -63,39 +63,43 @@ A workspace is a folder for conversations plus optional shared configuration. **
 | `id` | UUID | yes | |
 | `name` | str | yes | |
 | `description` | str | no | |
-| `scope` | enum: `personal` / `org` / `role` | yes | |
+| `scope` | enum: `personal` / `org` / `role` | yes | UI labels these as **Private** / **Shared (org)** / **Shared (role)** |
 | `role_id` | UUID | yes if scope=role | |
-| `org_id` | UUID | yes if scope=org/role | |
-| `user_id` | UUID | yes if scope=personal | |
+| `organization_id` | UUID | yes if scope=org/role | |
+| `user_id` | UUID | yes if scope=personal | Owner of the private workspace |
 | `default_agent_id` | UUID | no | Workspace's default agent for new chats |
 | `enabled_tool_ids` | list[UUID] | no | If set, tools available in this workspace are intersected with agent's tools (see §2.4) |
 | `enabled_knowledge_source_ids` | list[UUID] | no | Knowledge sources added to model context for chats in this workspace |
 | `instructions` | text | no | Free-text appended to system prompt for chats in this workspace |
 | `default_model` | str | no | See §5 |
 | `allowed_models` | list[str] | no | See §5 |
-| `created_by` | UUID | yes | |
+| `created_by` | str | yes | Email of the creator |
 | `created_at` / `updated_at` | datetime | yes | |
 | `is_active` | bool | yes | Soft-delete |
 
 ### 2.3 Scope semantics
-- **personal**: visible only to `user_id`. The synthetic "Personal" workspace per user.
-- **org**: visible to anyone in `org_id`, subject to role gating.
-- **role**: visible to members of `role_id`.
+- **personal** (UI: "Private"): visible only to `user_id`. Users may create as many private workspaces as they like.
+- **org** (UI: "Shared with my organization"): visible to anyone in `organization_id`. The default Shared option.
+- **role** (UI: "Shared with a role"): visible to members of `role_id`. Always also belongs to an organization.
 
-Mirrors the existing scoping model used by forms, agents, workflows, tools.
+Mirrors the existing scoping model used by forms, agents, workflows, tools. Permissions match agents: org users can create/manage workspaces in their own org; platform admins can target any org.
 
 ### 2.4 Tool intersection rule
 When a chat runs in a workspace, the **effective tool set** for an agent is `agent.tool_ids ∩ workspace.enabled_tool_ids` (if `enabled_tool_ids` is set; otherwise just `agent.tool_ids`). Workspaces can restrict but **never expand** an agent's tool set. This gives admins predictable safety guarantees: if a workspace says "no code execution," that's true regardless of which agent the user picks.
 
 ### 2.5 Workspace UI
-- Sidebar shows workspaces as collapsible folders, each containing its conversations.
-- "+ New workspace" button creates a workspace (modal: name, scope, optional fields).
-- Workspace settings page (gear icon) for editing fields.
-- Conversations can be moved between workspaces the user has access to (drag, or right-click → Move).
-- The synthetic "Personal" workspace cannot be deleted or have its scope changed.
+- A `Workspaces` destination in the sidebar's primary nav opens `/workspaces` — a directory of every workspace the user can see.
+- Clicking a workspace enters **workspace mode**: the URL becomes `/chat?workspace=<id>`, the sidebar's `Workspaces` row swaps for a workspace-identity row (gear + `×` exit), the chat list filters to that workspace, and a right-rail context view shows the workspace's defaults (default agent, instructions, knowledge, tools).
+- Workspace settings open in a Sheet from either the sidebar identity row's gear or the right-rail's edit affordance.
+- Chats are movable between workspaces via the chat row's overflow menu ("Move to" → workspace, or → "General chats" to remove from any workspace).
+- Soft-delete is available for any workspace the user can manage (admins for org/role; owner for private). Deleted workspaces don't move their chats — chats keep their `workspace_id` until moved.
 
-### 2.6 Conversation default workspace
-When the user starts a new chat without picking a workspace, it goes into their Personal workspace. The chat URL (`/chat/:conversationId`) is unaffected — workspace is metadata on the conversation, not part of the URL structure.
+### 2.6 Conversation default
+When the user starts a new chat from the unscoped sidebar (no workspace active), it lands in the **general pool** (`workspace_id = null`). When the user starts a new chat from inside a workspace, it lands in that workspace. The chat URL (`/chat/:conversationId`) is unaffected — workspace membership is metadata, not URL structure. Sidebar filters:
+
+- Unscoped sidebar Recent: `workspace_id IS NULL` only.
+- Workspace mode Recent: `workspace_id = <active>`.
+- Search (a future M7 polish item) is the only surface that crosses both.
 
 ## 3. Attachments
 
@@ -412,7 +416,7 @@ The existing `context_warning` chunk stays but its semantics are now "compaction
 ### 11.2 Modified tables
 
 **conversations**:
-- ADD `workspace_id UUID NOT NULL FK workspaces.id` (default: user's Personal workspace)
+- ADD `workspace_id UUID NULL FK workspaces.id ON DELETE SET NULL` — null = general pool (unscoped chat list).
 - ADD `instructions TEXT NULL` (per §6)
 - ADD `current_model VARCHAR NULL` (per §5)
 
@@ -430,20 +434,21 @@ The existing `context_warning` chunk stays but its semantics are now "compaction
 - ADD `default_chat_model VARCHAR NULL`
 
 ### 11.3 Migration plan
-Single Alembic migration adds all the new tables and columns. Default values backfill cleanly:
-- Existing conversations get assigned to the owning user's auto-created Personal workspace.
-- Existing messages have no `cost_tier`; populated lazily on next access via the model registry lookup.
-- No existing data is destroyed.
+Single Alembic migration adds all the new tables and columns. No backfill needed for `conversations.workspace_id` — it's nullable, and existing chats land in the general pool (NULL). Existing messages have no `cost_tier`; populated lazily on next access via the model registry lookup. No existing data is destroyed.
 
 ## 12. Implementation phases (within this sub-project)
 
 The Chat UX sub-project is itself sizable. To make it tractable in a worktree, split into shippable milestones:
 
 ### M1 — Foundations (~1.5 weeks)
-- Workspace ORM + API + migration.
-- Synthetic "Personal" workspace auto-creation per user on first chat access.
-- Sidebar shows workspaces as folders.
-- Conversations always live in a workspace.
+- Workspace ORM + API + migration (`workspaces` table; `conversations.workspace_id` nullable FK).
+- `/api/workspaces` CRUD with personal/org/role scopes; org-user permissions matching Agents.
+- `/api/chat/conversations` PATCH for `workspace_id` (move-to-workspace).
+- Sidebar primary nav: New chat / Workspaces destination / Toolbox + Artifacts placeholders.
+- Workspace mode (sidebar identity row swap, right-rail context view, settings Sheet).
+- `/workspaces` directory with search and inline edit/delete.
+- Move-to-workspace affordance on every chat row.
+- Chats default to the **general pool** (workspace_id IS NULL); workspaces are explicit.
 
 ### M2 — Model resolver + curation (~1 week)
 - `api/shared/model_resolver.py` shared utility.

@@ -14,15 +14,28 @@ import { useChatStore } from "@/stores/chatStore";
 import { useConversation, useConversationStats } from "@/hooks/useChat";
 import { useUserPermissions } from "@/hooks/useUserPermissions";
 import { cn } from "@/lib/utils";
+import type { Workspace } from "@/services/workspaceService";
+import { WorkspaceContextRail } from "@/components/workspaces/WorkspaceContextRail";
+import { WorkspaceSettingsSheet } from "@/components/workspaces/WorkspaceSettingsSheet";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ChatLayoutProps {
 	initialConversationId?: string;
+	activeWorkspace?: Workspace | null;
 }
 
 export function ChatLayout({
 	initialConversationId,
+	activeWorkspace,
 }: ChatLayoutProps) {
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	const { isPlatformAdmin: isAdminAuth, user } = useAuth();
+	const canManageWorkspace = !!activeWorkspace && (
+		isAdminAuth ||
+		(activeWorkspace.scope === "personal" &&
+			activeWorkspace.user_id === user?.id)
+	);
 
 	// Get active conversation from store
 	const activeConversationId = useChatStore(
@@ -97,7 +110,15 @@ export function ChatLayout({
 				)}
 			>
 				<div className="relative h-full">
-					<ChatSidebar className="w-80" />
+					<ChatSidebar
+						className="w-80"
+						activeWorkspace={activeWorkspace ?? null}
+						onOpenWorkspaceSettings={
+							activeWorkspace
+								? () => setSettingsOpen(true)
+								: undefined
+						}
+					/>
 					{/* Close button (Desktop) */}
 					<Button
 						variant="ghost"
@@ -209,6 +230,28 @@ export function ChatLayout({
 					agentName={conversation?.agent_name}
 				/>
 			</div>
+
+			{/* Workspace right-rail context (§16.2) */}
+			{activeWorkspace && (
+				<WorkspaceContextRail
+					workspace={activeWorkspace}
+					onEdit={
+						canManageWorkspace
+							? () => setSettingsOpen(true)
+							: undefined
+					}
+				/>
+			)}
+
+			{/* Workspace settings Sheet (§16.3) */}
+			{activeWorkspace && (
+				<WorkspaceSettingsSheet
+					workspace={activeWorkspace}
+					open={settingsOpen}
+					onOpenChange={setSettingsOpen}
+					canManage={canManageWorkspace}
+				/>
+			)}
 		</div>
 	);
 }

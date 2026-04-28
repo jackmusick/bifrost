@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from src.models.orm.organizations import Organization
     from src.models.orm.users import Role, User
     from src.models.orm.workflows import Workflow
+    from src.models.orm.workspaces import Workspace
 
 
 class Agent(Base):
@@ -171,6 +172,11 @@ class Conversation(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     agent_id: Mapped[UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL", onupdate="CASCADE"), nullable=True)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    workspace_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
     channel: Mapped[str] = mapped_column(String(50), default="chat")
     title: Mapped[str | None] = mapped_column(String(500), default=None)
     extra_data: Mapped[dict] = mapped_column(JSONB, default={})  # Channel-specific metadata
@@ -188,6 +194,7 @@ class Conversation(Base):
     # Relationships
     agent: Mapped["Agent | None"] = relationship(back_populates="conversations")
     user: Mapped["User"] = relationship()
+    workspace: Mapped["Workspace | None"] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
@@ -198,6 +205,7 @@ class Conversation(Base):
     __table_args__ = (
         Index("ix_conversations_user_id", "user_id"),
         Index("ix_conversations_agent_id", "agent_id"),
+        Index("ix_conversations_workspace_id", "workspace_id"),
         Index("ix_conversations_created_at", "created_at"),
     )
 

@@ -40,6 +40,7 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { safeRandomUUID } from "@/lib/uuid";
 import { toast } from "sonner";
 import {
 	useGitStatus,
@@ -249,7 +250,7 @@ async function runGitOp<T>(
 	// Generate job_id client-side and subscribe BEFORE queueing to avoid
 	// race condition where fast operations (e.g. diff) complete before
 	// the WebSocket subscription is active.
-	const job_id = crypto.randomUUID();
+	const job_id = safeRandomUUID();
 
 	await webSocketService.connectToGitSync(job_id);
 

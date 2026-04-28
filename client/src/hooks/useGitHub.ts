@@ -8,6 +8,7 @@
 import { $api, apiClient, authFetch } from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import type { components } from "@/lib/v1";
+import { safeRandomUUID } from "@/lib/uuid";
 
 // =============================================================================
 // Types - Auto-generated from OpenAPI spec
@@ -333,7 +334,7 @@ export function useFetch() {
 export function useCommit() {
 	return {
 		mutateAsync: async (message: string, jobId?: string): Promise<GitJobResponse> =>
-			gitPost("/api/github/commit", jobId ?? crypto.randomUUID(), { message }, "Failed to queue commit"),
+			gitPost("/api/github/commit", jobId ?? safeRandomUUID(), { message }, "Failed to queue commit"),
 		isPending: false,
 	};
 }
@@ -344,7 +345,7 @@ export function useCommit() {
 export function usePull() {
 	return {
 		mutateAsync: async (jobId?: string): Promise<GitJobResponse> =>
-			gitPost("/api/github/pull", jobId ?? crypto.randomUUID(), undefined, "Failed to queue pull"),
+			gitPost("/api/github/pull", jobId ?? safeRandomUUID(), undefined, "Failed to queue pull"),
 		isPending: false,
 	};
 }
@@ -355,7 +356,7 @@ export function usePull() {
 export function usePush() {
 	return {
 		mutateAsync: async (jobId?: string): Promise<GitJobResponse> =>
-			gitPost("/api/github/push", jobId ?? crypto.randomUUID(), undefined, "Failed to queue push"),
+			gitPost("/api/github/push", jobId ?? safeRandomUUID(), undefined, "Failed to queue push"),
 		isPending: false,
 	};
 }
@@ -366,7 +367,7 @@ export function usePush() {
 export function useWorkingTreeChanges() {
 	return {
 		mutateAsync: async (jobId?: string): Promise<GitJobResponse> =>
-			gitPost("/api/github/changes", jobId ?? crypto.randomUUID(), undefined, "Failed to queue status check"),
+			gitPost("/api/github/changes", jobId ?? safeRandomUUID(), undefined, "Failed to queue status check"),
 		isPending: false,
 	};
 }
@@ -380,7 +381,7 @@ export function useResolveConflicts() {
 			resolutions: Record<string, "ours" | "theirs">,
 			jobId?: string,
 		): Promise<GitJobResponse> =>
-			gitPost("/api/github/resolve", jobId ?? crypto.randomUUID(), { resolutions }, "Failed to queue conflict resolution"),
+			gitPost("/api/github/resolve", jobId ?? safeRandomUUID(), { resolutions }, "Failed to queue conflict resolution"),
 		isPending: false,
 	};
 }
@@ -391,7 +392,7 @@ export function useResolveConflicts() {
 export function useDiscard() {
 	return {
 		mutateAsync: async (paths: string[], jobId?: string): Promise<GitJobResponse> =>
-			gitPost("/api/github/discard", jobId ?? crypto.randomUUID(), { paths }, "Failed to queue discard"),
+			gitPost("/api/github/discard", jobId ?? safeRandomUUID(), { paths }, "Failed to queue discard"),
 		isPending: false,
 	};
 }
@@ -402,7 +403,7 @@ export function useDiscard() {
 export function useFileDiff() {
 	return {
 		mutateAsync: async (path: string, jobId?: string): Promise<GitJobResponse> =>
-			gitPost("/api/github/diff", jobId ?? crypto.randomUUID(), { path }, "Failed to queue diff"),
+			gitPost("/api/github/diff", jobId ?? safeRandomUUID(), { path }, "Failed to queue diff"),
 		isPending: false,
 	};
 }
@@ -413,7 +414,7 @@ export function useFileDiff() {
 export function useSync() {
 	return {
 		mutateAsync: async (jobId?: string, opts?: { confirm_deletes?: boolean }): Promise<GitJobResponse> =>
-			gitPost("/api/github/sync", jobId ?? crypto.randomUUID(), opts ? { confirm_deletes: opts.confirm_deletes } : undefined, "Failed to queue sync"),
+			gitPost("/api/github/sync", jobId ?? safeRandomUUID(), opts ? { confirm_deletes: opts.confirm_deletes } : undefined, "Failed to queue sync"),
 		isPending: false,
 	};
 }
@@ -424,7 +425,7 @@ export function useSync() {
 export function useAbortMerge() {
 	return {
 		mutateAsync: async (jobId?: string): Promise<GitJobResponse> =>
-			gitPost("/api/github/abort-merge", jobId ?? crypto.randomUUID(), undefined, "Failed to queue abort merge"),
+			gitPost("/api/github/abort-merge", jobId ?? safeRandomUUID(), undefined, "Failed to queue abort merge"),
 		isPending: false,
 	};
 }
