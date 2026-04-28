@@ -367,9 +367,16 @@ async def login(
             detail="Account is inactive",
         )
 
-    # Check MFA status - MFA is REQUIRED for password login
+    # Check MFA status. MFA is required for password login when the global
+    # BIFROST_MFA_ENABLED setting is true (default). When it's disabled (dev
+    # environments), password login skips MFA setup and verification entirely.
+    settings = get_settings()
     mfa_service = MFAService(db)
     mfa_status = await mfa_service.get_mfa_status(user)
+
+    if not settings.mfa_enabled:
+        # MFA disabled globally — issue tokens directly.
+        return await _generate_login_tokens(user, db, response)
 
     if not user.mfa_enabled or not mfa_status["enrolled_methods"]:
         # User has no MFA enrolled - require setup

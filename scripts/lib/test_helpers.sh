@@ -5,6 +5,13 @@
 # Derive a Docker Compose project name scoped to this worktree.
 # Two worktrees with the same repo name get distinct stacks because the
 # hash is taken over the absolute repo root path.
+#
+# Args:
+#   $1 (optional): path to compute name from (default: current dir)
+#
+# Env:
+#   BIFROST_PROJECT_PREFIX: prefix to use (default: "bifrost-test")
+#                           debug.sh sets this to "bifrost-debug"
 compute_project_name() {
     local repo_root
     repo_root="$(git -C "${1:-.}" rev-parse --show-toplevel 2>/dev/null)"
@@ -14,7 +21,7 @@ compute_project_name() {
     fi
     local hash
     hash="$(printf '%s' "$repo_root" | sha256sum | cut -c1-8)"
-    printf 'bifrost-test-%s' "$hash"
+    printf '%s-%s' "${BIFROST_PROJECT_PREFIX:-bifrost-test}" "$hash"
 }
 
 # Wait for a compose service to be healthy (or responding on a probe command).

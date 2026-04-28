@@ -15,18 +15,19 @@ MSP automation platform built with FastAPI and React.
 
 **Development happens inside Docker containers, not on the host machine.**
 
-Start the development stack:
+Start the development stack (per-worktree isolated):
 ```bash
-./debug.sh  # Starts all services with hot reload enabled
+./debug.sh             # Boot stack, print URL + login
+./debug.sh status      # Show URL, login, mode (port or netbird)
+./debug.sh down        # Tear down + remove volumes for THIS worktree
+./debug.sh logs api    # Follow logs for one service
 ```
 
-This uses `docker-compose.dev.yml` and launches containers prefixed with `bifrost-dev-` or `bifrost-`:
-- PostgreSQL, RabbitMQ, Redis, MinIO (infrastructure)
-- API (internal port 8000, accessed via Vite proxy)
-- Client (port 3000 - **this is your entry point**)
-- Scheduler, Workers
+`./debug.sh` derives its Compose project name from the worktree path, so multiple worktrees can run debug stacks in parallel. URL and login are printed at the end of `up` (default: `dev@gobifrost.com` / `password`, MFA off).
 
-**Access the app at http://localhost:3000** - Vite proxies API requests to the backend.
+The default mode allocates a free local port for the client (deterministic per worktree, in 30000-39999). If `NETBIRD_SETUP_KEY` is set in `~/.config/bifrost/debug.env`, the stack boots with a Netbird sidecar instead and is reachable at `http://<bifrost-debug-WORKTREE>` over the Netbird mesh — no host ports.
+
+Stack contains: API (port 8000 internal), Client (port 80 internal), Scheduler, Worker, Postgres, RabbitMQ, Redis, MinIO. All Bifrost services build from `api/Dockerfile.dev` / `client/Dockerfile.dev` (source build, not public images).
 
 ### Hot Reload is Automatic
 
@@ -215,8 +216,11 @@ export async function getDataProviders() {
 ### Commands
 
 ```bash
-# Dev stack
-./debug.sh                                         # Start dev stack (hot reload)
+# Dev stack (per-worktree)
+./debug.sh                                         # Boot dev stack (hot reload)
+./debug.sh status                                  # URL + login
+./debug.sh down                                    # Tear down + wipe volumes
+./debug.sh logs api                                # Follow one service's logs
 
 # Test stack lifecycle (per worktree, long-lived)
 ./test.sh stack up                                 # Boot the test stack for this worktree
@@ -276,8 +280,8 @@ cd client && npm run lint                 # Lint TypeScript
 Before marking any significant work complete, run this verification sequence:
 
 ```bash
-# 1. Ensure dev stack is running
-docker ps --filter "name=bifrost" | grep -q "bifrost-dev-api" || ./debug.sh
+# 1. Ensure debug stack is running for THIS worktree
+./debug.sh status | grep -q "Status:   UP" || ./debug.sh up
 
 # 2. Backend checks (from api/ directory)
 cd api
@@ -286,7 +290,8 @@ ruff check .               # Linting - must pass
 
 # 3. Regenerate frontend types (from client/ directory)
 cd ../client
-npm run generate:types     # Requires API to be running at localhost:3000
+npm run generate:types     # Requires debug stack up. If client is bound to a non-default port,
+                           # set OPENAPI_URL=http://localhost:<port>/openapi.json (see ./debug.sh status).
 
 # 4. Frontend checks
 npm run tsc                # Type checking - must pass
