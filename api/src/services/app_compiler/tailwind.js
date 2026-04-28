@@ -24,7 +24,6 @@
  * The mode is determined by presence of "user_css" in the input.
  */
 const { compile } = require("@tailwindcss/node");
-const path = require("path");
 
 const BASELINE_IMPORTS =
   "@import 'tailwindcss/theme' layer(theme);\n" +
