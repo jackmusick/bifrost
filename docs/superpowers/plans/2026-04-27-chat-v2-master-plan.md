@@ -16,7 +16,7 @@ Bring Bifrost's chat experience to feature parity with Claude.ai, ChatGPT, and C
 
 | # | Sub-project | Status | Spec | Plan | Worktree | PR |
 |---|---|---|---|---|---|---|
-| 1 | Chat UX overhaul | Brainstorming starting | TBD | TBD | TBD | — |
+| 1 | Chat UX overhaul | Spec written | [chat-ux-design](../specs/2026-04-27-chat-ux-design.md) | TBD | TBD | — |
 | 2 | Code Execution | Not started | TBD (uses sandbox findings doc) | TBD | TBD | — |
 | 3 | Skills | Not started | TBD | TBD | TBD | — |
 | 4 | Artifacts | Not started | TBD | TBD | TBD | — |
@@ -90,6 +90,14 @@ Key cross-phase decisions, with the commit that recorded them. The committed pro
 | 2026-04-27 | Anthropic docx/pdf/pptx/xlsx skills are source-available NOT OSS — cannot ship as global skills | 3fc616ca |
 | 2026-04-27 | Code Execution ships as a built-in agent tool first (option A), Skills loader generalizes it later | (this doc) |
 | 2026-04-27 | Admin error UX: preflight check + auto-detected per-platform fix instructions banner | (this doc) |
+| 2026-04-27 | Chat UX sub-project: linear-only, no branching | 4a1f0356 |
+| 2026-04-27 | Workspaces as first-class concept with personal/org/role scoping; synthetic Personal workspace per user | 4a1f0356 |
+| 2026-04-27 | Tool layering = intersection of agent + workspace | 4a1f0356 |
+| 2026-04-27 | Attachments = files only (images/PDFs/CSVs/text); Bifrost entities go through knowledge sources | 4a1f0356 |
+| 2026-04-27 | Compaction is lossless (DB unchanged, only model context summarized); per-model-aware threshold | 4a1f0356 |
+| 2026-04-27 | Model resolver as shared infrastructure; allowlist chain platform→org→role→workspace→conversation→message with provenance tooltips | 4a1f0356 |
+| 2026-04-27 | Cost surfaced as 3-tier symbolic glyphs (⚡/⚖/💎); dollars only in admin dashboard | 4a1f0356 |
+| 2026-04-27 | Logical model aliases (bifrost-fast/balanced/premium) + deprecation remap table to insulate from provider churn; Message.model is immutable history | 4a1f0356 |
 
 ## How a future session resumes this work
 
