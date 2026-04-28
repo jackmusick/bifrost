@@ -15,6 +15,7 @@ import { ToolExecutionGroup } from "./ToolExecutionGroup";
 import { ChatSystemEvent, type SystemEvent } from "./ChatSystemEvent";
 import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import { TodoList } from "./TodoList";
+import { TypingIndicator } from "./TypingIndicator";
 import { useChatStore, useTodos } from "@/stores/chatStore";
 import { useMessages } from "@/hooks/useChat";
 import { useChatStream } from "@/hooks/useChatStream";
@@ -422,6 +423,28 @@ export function ChatWindow({
 					{todos.length > 0 && (
 						<TodoList todos={todos} className="my-4" />
 					)}
+
+					{/* Typing indicator: assistant is processing but hasn't
+					    streamed content yet. The last item in the timeline
+					    will be the user's message until the first assistant
+					    token arrives. We don't render the indicator while a
+					    pending question is awaiting user input either, since
+					    the AskUserQuestionCard already conveys that state. */}
+					{(() => {
+						if (!isStreaming || pendingQuestion) return null;
+						const lastItem = timeline[timeline.length - 1];
+						const lastIsUser =
+							lastItem?.type === "message" &&
+							lastItem.data.role === "user";
+						const lastAssistantHasNoContent =
+							lastItem?.type === "message" &&
+							lastItem.data.role === "assistant" &&
+							!lastItem.data.content;
+						if (lastIsUser || lastAssistantHasNoContent) {
+							return <TypingIndicator />;
+						}
+						return null;
+					})()}
 
 					{/* AskUserQuestion Card - inline at end of stream */}
 					{pendingQuestion && (

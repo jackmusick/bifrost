@@ -16,7 +16,7 @@ Bring Bifrost's chat experience to feature parity with Claude.ai, ChatGPT, and C
 
 | # | Sub-project | Status | Spec | Plan | Worktree | PR |
 |---|---|---|---|---|---|---|
-| 1 | Chat UX overhaul | Spec written | [chat-ux-design](../specs/2026-04-27-chat-ux-design.md) | TBD | TBD | — |
+| 1 | Chat UX overhaul (M1 Workspaces) | In progress | [chat-ux-design](../specs/2026-04-27-chat-ux-design.md) | (this file) | `.worktrees/140-workspaces-foundations` | TBD into `feature/chat-v2` |
 | 2 | Code Execution | Not started | TBD (uses sandbox findings doc) | TBD | TBD | — |
 | 3 | Skills | Not started | TBD | TBD | TBD | — |
 | 4 | Artifacts | Not started | TBD | TBD | TBD | — |
@@ -113,3 +113,25 @@ Key cross-phase decisions, with the commit that recorded them. The committed pro
 - **Where each sub-project's plan + spec lives.** Specs go in `docs/superpowers/specs/`. Plans go in `docs/superpowers/plans/`. Naming convention: `YYYY-MM-DD-<sub-project>-{design,plan}.md`.
 - **Whether Web Search (5) gets dragged forward.** It has no real dependencies after Phase 1 and is small. If there's developer bandwidth during Phase 2 or Phase 3, it can ship in parallel. Decision deferred to when that bandwidth question is real.
 - **Cost accounting design** is folded into each sub-project's spec but the cumulative dashboard ("show me what Chat V2 costs this org per month") may need a small dedicated piece of work after all sub-projects ship. Not currently tracked as a sub-project; revisit.
+
+## Branching strategy
+
+Chat V2 is a long-lived, multi-PR program. Rather than merge each milestone (M1, M2, …) directly to `main`, all sub-project work targets a long-lived integration branch — `feature/chat-v2`. Individual milestones merge into that branch via small PRs; the integration branch merges to `main` once the program is shippable end-to-end.
+
+- `feature/chat-v2` is the integration branch, branched from `main` at program start.
+- Each milestone gets its own short-lived branch (e.g. `140-workspaces-foundations`) that PRs **into** `feature/chat-v2`, not main.
+- Re-base or merge `main` into `feature/chat-v2` periodically to keep drift small.
+- The final `feature/chat-v2 → main` merge is a single big PR at program end.
+
+## Cross-program follow-ups (gaps surfaced during M1)
+
+These are tracked as separate issues, **scheduled into existing milestones where possible**. They aren't lost.
+
+| Concern | Where it lands |
+|---|---|
+| Image OUT (model-returned image content blocks) + per-provider capability matrix (`supports_images_in/out`, `supports_pdf`, `supports_audio`) with a graceful fallback when user picks an incompatible model | Extends M2 model registry + M4 attachments rendering |
+| Live context-budget indicator on the composer (filling-circle dot that opens a flyout containing the manual Compact button) — promote from M7 polish to be co-located with M5 Compaction since they share the same UI surface | M5 |
+| Per-user default model (the most personal layer in the resolver chain — platform → org → role → workspace → **user** → conversation → message) | M2 |
+| Memory (cross-conversation persistent memory; distinct from compaction which only summarizes within a chat) | New sub-project candidate, post Phase 4 — to be added to the program design |
+| Floating composer (§16.4) — currently described as M1 but in practice ships in M7. Move formally to M7 | M7 |
+| Conversation rename UI (today rename is implicit-on-first-message) | M7 |

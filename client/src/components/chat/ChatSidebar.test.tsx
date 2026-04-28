@@ -100,9 +100,9 @@ describe("ChatSidebar — loading & empty states", () => {
 		);
 	});
 
-	it("shows the 'No conversations yet' empty state", () => {
+	it("shows the 'No chats yet' empty state", () => {
 		renderWithProviders(<ChatSidebar />);
-		expect(screen.getByText(/no conversations yet/i)).toBeInTheDocument();
+		expect(screen.getByText(/no chats yet/i)).toBeInTheDocument();
 	});
 });
 
@@ -128,7 +128,7 @@ describe("ChatSidebar — conversation list", () => {
 		renderWithProviders(<ChatSidebar />);
 
 		fireEvent.change(
-			screen.getByPlaceholderText(/search conversations/i),
+			screen.getByPlaceholderText(/search chats/i),
 			{ target: { value: "alp" } },
 		);
 
@@ -162,29 +162,29 @@ describe("ChatSidebar — new chat", () => {
 });
 
 describe("ChatSidebar — delete flow", () => {
-	it("opens the confirm dialog and triggers delete on confirm", async () => {
+	it("opens the overflow menu and triggers delete on confirm", async () => {
 		conversationsRef.data = [conv({ id: "c-1", title: "Alpha" })];
 		const { user, container } = renderWithProviders(<ChatSidebar />);
 
-		// The trash icon button sits inside the row and is only visible on hover
-		// (opacity-0 group-hover:opacity-100). It's still in the DOM and clickable.
+		// The overflow icon button (MoreHorizontal) is the only button inside
+		// the row and is only visible on hover (opacity-0 group-hover:opacity-100)
+		// — still in the DOM and clickable.
 		const row = screen.getByText("Alpha").closest("div.group")!;
-		const deleteButton = row.querySelector("button");
-		expect(deleteButton).not.toBeNull();
-		await user.click(deleteButton!);
+		const overflowButton = row.querySelector("button");
+		expect(overflowButton).not.toBeNull();
+		await user.click(overflowButton!);
 
-		// Confirm dialog surfaces the conversation title.
-		expect(
-			await screen.findByText(/delete conversation/i),
-		).toBeInTheDocument();
+		// Overflow menu shows a "Delete chat" item.
+		const deleteItem = await screen.findByText(/delete chat/i);
+		await user.click(deleteItem);
 
+		// AlertDialog confirms.
 		await user.click(screen.getByRole("button", { name: /^delete$/i }));
 
 		expect(mockDeleteMutate).toHaveBeenCalledWith({
 			params: { path: { conversation_id: "c-1" } },
 		});
 
-		// Avoid an unused-variable warning from the test harness.
 		void container;
 	});
 });

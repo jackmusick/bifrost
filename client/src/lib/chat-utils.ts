@@ -4,6 +4,7 @@
  */
 
 import type { components } from "@/lib/v1";
+import { safeRandomUUID } from "@/lib/uuid";
 
 type MessagePublic = components["schemas"]["MessagePublic"];
 
@@ -25,7 +26,7 @@ export interface UnifiedMessage extends MessagePublic {
  * Generate a stable UUID for client-side messages
  */
 export function generateMessageId(): string {
-  return crypto.randomUUID();
+  return safeRandomUUID();
 }
 
 /**
@@ -33,7 +34,7 @@ export function generateMessageId(): string {
  * This is sent to the server and echoed back to match optimistic messages
  */
 export function generateLocalId(): string {
-  return `local-${crypto.randomUUID()}`;
+  return `local-${safeRandomUUID()}`;
 }
 
 /**

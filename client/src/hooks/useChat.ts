@@ -159,9 +159,25 @@ export function useAgent(agentId: string | undefined) {
 	);
 }
 
-/** Hook to fetch all conversations */
-export function useConversations() {
-	return $api.useQuery("get", "/api/chat/conversations", {});
+/** Hook to fetch conversations.
+ *
+ * - `{ workspaceId }`     → only chats in that workspace.
+ * - `{ pool: "general" }` → only chats in the general pool (workspace_id IS NULL).
+ * - `{}` or no args        → every chat the user has, regardless of workspace.
+ */
+export function useConversations(
+	opts: {
+		workspaceId?: string;
+		pool?: "general" | "any";
+	} = {},
+) {
+	const query: Record<string, string> = {};
+	if (opts.workspaceId) query.workspace_id = opts.workspaceId;
+	else if (opts.pool) query.pool = opts.pool;
+
+	return $api.useQuery("get", "/api/chat/conversations", {
+		params: { query },
+	});
 }
 
 /** Hook to fetch a specific conversation */
@@ -198,6 +214,7 @@ export function useCreateConversation() {
 				id: data.id,
 				agent_id: data.agent_id,
 				agent_name: data.agent_name ?? null,
+				workspace_id: data.workspace_id,
 				title: data.title ?? null,
 				updated_at: data.updated_at ?? new Date().toISOString(),
 				last_message_preview: null,

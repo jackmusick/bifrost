@@ -2,20 +2,28 @@
  * Chat Page
  *
  * Main chat interface for interacting with AI agents.
- * Supports conversation management and real-time streaming.
+ * Supports conversation management, real-time streaming, and Chat V2 workspace
+ * mode (re-scoped sidebar + right rail) when `?workspace=<id>` is present.
+ *
+ * If no LLM provider is configured, the entire route is replaced with a setup
+ * prompt — chat is unusable without one, so we don't try to render the shell.
  */
 
 import { useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { Bot, Settings } from "lucide-react";
+
 import { ChatLayout } from "@/components/chat";
+import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/stores/chatStore";
 import { useLLMConfig } from "@/hooks/useLLMConfig";
-import { Button } from "@/components/ui/button";
 import { PageLoader } from "@/components/PageLoader";
+import { useWorkspace } from "@/services/workspaceService";
 
 export function Chat() {
 	const { conversationId } = useParams<{ conversationId?: string }>();
+	const [searchParams] = useSearchParams();
+	const workspaceId = searchParams.get("workspace") ?? undefined;
 	const { setActiveConversation, reset } = useChatStore();
 	const {
 		isConfigured,
@@ -23,27 +31,26 @@ export function Chat() {
 		isLoading: configLoading,
 	} = useLLMConfig();
 
-	// Set active conversation from URL param
+	const { data: activeWorkspace } = useWorkspace(workspaceId);
+
 	useEffect(() => {
 		if (conversationId) {
 			setActiveConversation(conversationId);
 		}
 	}, [conversationId, setActiveConversation]);
 
-	// Reset store on unmount
 	useEffect(() => {
 		return () => {
 			reset();
 		};
 	}, [reset]);
 
-	// Show loading while checking config
 	if (configLoading) {
 		return <PageLoader message="Loading chat..." />;
 	}
 
-	// LLM not configured - show setup prompt
-	if (isPlatformAdmin && isConfigured === false) {
+	// Gate the entire route until an LLM provider is configured.
+	if (isConfigured === false) {
 		return (
 			<div className="h-full flex items-center justify-center">
 				<div className="max-w-md text-center space-y-6 p-8">
@@ -55,27 +62,30 @@ export function Chat() {
 							AI Chat Not Configured
 						</h1>
 						<p className="text-muted-foreground">
-							To enable AI chat, you need to configure an LLM
-							provider (OpenAI or Anthropic) with a valid API key.
+							{isPlatformAdmin
+								? "To enable AI chat, you need to configure an LLM provider (OpenAI or Anthropic) with a valid API key."
+								: "Your platform admin needs to configure an LLM provider before chat is available."}
 						</p>
 					</div>
-					<Button asChild>
-						<Link to="/settings/ai">
-							<Settings className="h-4 w-4 mr-2" />
-							Configure AI Provider
-						</Link>
-					</Button>
+					{isPlatformAdmin && (
+						<Button asChild>
+							<Link to="/settings/ai">
+								<Settings className="h-4 w-4 mr-2" />
+								Configure AI Provider
+							</Link>
+						</Button>
+					)}
 				</div>
 			</div>
 		);
 	}
 
-	// Non-admin and chat might not work - they'll see errors when trying
-	// For now, we let them through and errors will be handled by the chat components
-
 	return (
 		<div className="h-full">
-			<ChatLayout initialConversationId={conversationId} />
+			<ChatLayout
+				initialConversationId={conversationId}
+				activeWorkspace={activeWorkspace ?? null}
+			/>
 		</div>
 	);
 }

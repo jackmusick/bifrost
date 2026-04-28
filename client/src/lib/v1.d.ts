@@ -3468,22 +3468,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5222,7 +5222,13 @@ export interface paths {
         };
         /**
          * List Conversations
-         * @description List user's conversations.
+         * @description List the caller's conversations.
+         *
+         *     Filtering options for the sidebar:
+         *     - ``workspace_id={uuid}`` — only chats in that workspace.
+         *     - ``pool=general`` — only chats in the general pool (workspace_id IS NULL).
+         *     - ``pool=any`` (or omit both) — every chat the user has, regardless of
+         *       workspace. Used by search.
          */
         get: operations["list_conversations_api_chat_conversations_get"];
         put?: never;
@@ -5258,7 +5264,15 @@ export interface paths {
         delete: operations["delete_conversation_api_chat_conversations__conversation_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Conversation
+         * @description Update mutable fields on a conversation.
+         *
+         *     Today the only editable field is ``workspace_id``: this powers the
+         *     "Move to workspace" affordance. Set ``workspace_id`` to ``null`` to move
+         *     the chat back to the general pool.
+         */
+        patch: operations["update_conversation_api_chat_conversations__conversation_id__patch"];
         trace?: never;
     };
     "/api/chat/conversations/{conversation_id}/messages": {
@@ -7884,6 +7898,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workspaces
+         * @description List workspaces visible to the current user.
+         */
+        get: operations["list_workspaces_api_workspaces_get"];
+        put?: never;
+        /**
+         * Create Workspace
+         * @description Create a workspace at any scope.
+         *
+         *     - ``personal`` — owned by the caller, ignores any org/role hints.
+         *     - ``org`` — organization-scoped. Admins can target any org; org users are
+         *       pinned to their own.
+         *     - ``role`` — role-scoped within an org. Same org rules as above.
+         */
+        post: operations["create_workspace_api_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workspace
+         * @description Get a workspace by ID.
+         */
+        get: operations["get_workspace_api_workspaces__workspace_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Soft Delete Workspace
+         * @description Soft-delete (deactivate) a workspace.
+         *
+         *     Conversations inside the workspace stay around — they revert to the general
+         *     pool because of the ``ondelete=SET NULL`` FK. (Soft-delete sets is_active
+         *     rather than deleting; the FK only kicks in on hard delete. We mirror the
+         *     same effect here by leaving conversations alone — they keep their
+         *     workspace_id pointing at the inactive workspace; the UI filters by is_active.)
+         */
+        delete: operations["soft_delete_workspace_api_workspaces__workspace_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Workspace
+         * @description Update mutable fields of a workspace.
+         *
+         *     Scope and ownership (organization_id, role_id, user_id) are immutable.
+         */
+        patch: operations["update_workspace_api_workspaces__workspace_id__patch"];
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -10439,6 +10518,11 @@ export interface components {
              * @description ID of the agent to chat with (optional for agentless chat)
              */
             agent_id?: string | null;
+            /**
+             * Workspace Id
+             * @description Workspace to file this conversation in. Null = general pool (unscoped chat list).
+             */
+            workspace_id?: string | null;
             /** @default chat */
             channel: components["schemas"]["AgentChannel"];
             /** Title */
@@ -10455,6 +10539,8 @@ export interface components {
             agent_id?: string | null;
             /** User Id */
             user_id: string;
+            /** Workspace Id */
+            workspace_id?: string | null;
             /** Channel */
             channel: string;
             /** Title */
@@ -10483,12 +10569,26 @@ export interface components {
             agent_id?: string | null;
             /** Agent Name */
             agent_name?: string | null;
+            /** Workspace Id */
+            workspace_id?: string | null;
             /** Title */
             title?: string | null;
             /** Updated At */
             updated_at: string;
             /** Last Message Preview */
             last_message_preview?: string | null;
+        };
+        /**
+         * ConversationUpdate
+         * @description Patch model for updating a conversation. Today only `workspace_id` is
+         *     mutable — used by the 'Move to workspace' affordance.
+         */
+        ConversationUpdate: {
+            /**
+             * Workspace Id
+             * @description New workspace id (or null to move to the general pool).
+             */
+            workspace_id?: string | null;
         };
         /**
          * ConversationUsage
@@ -20247,6 +20347,131 @@ export interface components {
             metadata?: components["schemas"]["WorkflowMetadata"] | null;
         };
         /**
+         * WorkspaceCreate
+         * @description Request model for creating a workspace.
+         */
+        WorkspaceCreate: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            scope: components["schemas"]["WorkspaceScope"];
+            /**
+             * Organization Id
+             * @description Organization ID (required for scope=org/role; ignored otherwise)
+             */
+            organization_id?: string | null;
+            /**
+             * Role Id
+             * @description Role ID (required for scope=role; ignored otherwise)
+             */
+            role_id?: string | null;
+            /** Default Agent Id */
+            default_agent_id?: string | null;
+            /**
+             * Enabled Tool Ids
+             * @description If set, restricts the agent's effective tools to this intersection
+             */
+            enabled_tool_ids?: string[] | null;
+            /** Enabled Knowledge Source Ids */
+            enabled_knowledge_source_ids?: string[] | null;
+            /** Instructions */
+            instructions?: string | null;
+        };
+        /**
+         * WorkspacePublic
+         * @description Workspace output for API responses.
+         */
+        WorkspacePublic: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            scope: components["schemas"]["WorkspaceScope"];
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Role Id */
+            role_id?: string | null;
+            /** User Id */
+            user_id?: string | null;
+            /** Default Agent Id */
+            default_agent_id?: string | null;
+            /** Enabled Tool Ids */
+            enabled_tool_ids?: string[] | null;
+            /** Enabled Knowledge Source Ids */
+            enabled_knowledge_source_ids?: string[] | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Created By */
+            created_by: string;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * WorkspaceScope
+         * @description Workspace scope, mirroring the org/role/personal model used elsewhere.
+         * @enum {string}
+         */
+        WorkspaceScope: "personal" | "org" | "role";
+        /**
+         * WorkspaceSummary
+         * @description Lightweight workspace summary for listings.
+         */
+        WorkspaceSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            scope: components["schemas"]["WorkspaceScope"];
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Role Id */
+            role_id?: string | null;
+            /** User Id */
+            user_id?: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Created At */
+            created_at: string;
+            /**
+             * Conversation Count
+             * @description Active conversations in this workspace
+             * @default 0
+             */
+            conversation_count: number;
+        };
+        /**
+         * WorkspaceUpdate
+         * @description Request model for updating a workspace.
+         *
+         *     Note: `scope`, `organization_id`, `role_id`, and `user_id` are immutable after
+         *     creation (the chat-ux-design §16.3 General tab marks scope read-only).
+         */
+        WorkspaceUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Default Agent Id */
+            default_agent_id?: string | null;
+            /** Enabled Tool Ids */
+            enabled_tool_ids?: string[] | null;
+            /** Enabled Knowledge Source Ids */
+            enabled_knowledge_source_ids?: string[] | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /**
          * OAuthProviderInfo
          * @description OAuth provider information for login page
          */
@@ -25750,7 +25975,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25783,7 +26008,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25816,7 +26041,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -25849,7 +26074,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -28660,6 +28885,8 @@ export interface operations {
         parameters: {
             query?: {
                 agent_id?: string | null;
+                workspace_id?: string | null;
+                pool?: ("any" | "general" | "workspace") | null;
                 active_only?: boolean;
                 limit?: number;
                 offset?: number;
@@ -28771,6 +28998,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_conversation_api_chat_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationPublic"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -33770,6 +34032,165 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StuckHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workspaces_api_workspaces_get: {
+        parameters: {
+            query?: {
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workspace_api_workspaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_api_workspaces__workspace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    soft_delete_workspace_api_workspaces__workspace_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workspace_api_workspaces__workspace_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspacePublic"];
                 };
             };
             /** @description Validation Error */

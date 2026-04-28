@@ -181,8 +181,21 @@ class AgentSummary(BaseModel):
 class ConversationCreate(BaseModel):
     """Request model for creating a conversation."""
     agent_id: UUID | None = Field(default=None, description="ID of the agent to chat with (optional for agentless chat)")
+    workspace_id: UUID | None = Field(
+        default=None,
+        description="Workspace to file this conversation in. Null = general pool (unscoped chat list).",
+    )
     channel: AgentChannel = Field(default=AgentChannel.CHAT)
     title: str | None = Field(default=None, max_length=500)
+
+
+class ConversationUpdate(BaseModel):
+    """Patch model for updating a conversation. Today only `workspace_id` is
+    mutable — used by the 'Move to workspace' affordance."""
+    workspace_id: UUID | None = Field(
+        default=None,
+        description="New workspace id (or null to move to the general pool).",
+    )
 
 
 class ConversationPublic(BaseModel):
@@ -192,6 +205,7 @@ class ConversationPublic(BaseModel):
     id: UUID
     agent_id: UUID | None = None
     user_id: UUID
+    workspace_id: UUID | None = None
     channel: str
     title: str | None = None
     is_active: bool
@@ -206,8 +220,8 @@ class ConversationPublic(BaseModel):
     def serialize_uuid(self, v: UUID) -> str:
         return str(v)
 
-    @field_serializer("agent_id")
-    def serialize_agent_id(self, v: UUID | None) -> str | None:
+    @field_serializer("agent_id", "workspace_id")
+    def serialize_optional_uuid(self, v: UUID | None) -> str | None:
         return str(v) if v else None
 
     @field_serializer("created_at", "updated_at", "last_message_at")
@@ -222,6 +236,7 @@ class ConversationSummary(BaseModel):
     id: UUID
     agent_id: UUID | None = None
     agent_name: str | None = None
+    workspace_id: UUID | None = None
     title: str | None = None
     updated_at: datetime
     last_message_preview: str | None = None
@@ -230,8 +245,8 @@ class ConversationSummary(BaseModel):
     def serialize_uuid(self, v: UUID) -> str:
         return str(v)
 
-    @field_serializer("agent_id")
-    def serialize_agent_id(self, v: UUID | None) -> str | None:
+    @field_serializer("agent_id", "workspace_id")
+    def serialize_optional_uuid(self, v: UUID | None) -> str | None:
         return str(v) if v else None
 
     @field_serializer("updated_at")

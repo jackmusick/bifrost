@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { safeRandomUUID } from "@/lib/uuid";
+
 /**
  * Notification Center store using Zustand
  *
@@ -116,7 +118,7 @@ export const useNotificationStore = create<NotificationState>()((set) => ({
 
 	// One-off alert handlers
 	addAlert: (alert) => {
-		const id = crypto.randomUUID();
+		const id = safeRandomUUID();
 		const newAlert: OneOffNotification = {
 			...alert,
 			id,

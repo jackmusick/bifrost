@@ -145,3 +145,10 @@ class ScheduleOverlapPolicy(str, Enum):
     SKIP = "skip"
     QUEUE = "queue"
     REPLACE = "replace"
+
+
+class WorkspaceScope(str, Enum):
+    """Workspace scope, mirroring the org/role/personal model used elsewhere."""
+    PERSONAL = "personal"
+    ORG = "org"
+    ROLE = "role"

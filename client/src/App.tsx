@@ -139,6 +139,7 @@ const Workbench = lazyWithReload(() =>
 const Chat = lazyWithReload(() =>
 	import("@/pages/Chat").then((m) => ({ default: m.Chat })),
 );
+const Workspaces = lazyWithReload(() => import("@/pages/Workspaces"));
 const ROIReports = lazyWithReload(() =>
 	import("@/pages/ROIReports").then((m) => ({
 		default: m.ROIReports,
@@ -625,6 +626,15 @@ function AppRoutes() {
 
 					{/* ContentLayout - Pages without default padding */}
 					<Route path="/" element={<ContentLayout />}>
+						{/* Workspaces directory - All authenticated users */}
+						<Route
+							path="workspaces"
+							element={
+								<ProtectedRoute>
+									<Workspaces />
+								</ProtectedRoute>
+							}
+						/>
 						{/* Chat - All authenticated users */}
 						<Route
 							path="chat"
