@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -123,11 +124,10 @@ class ScheduleSource(Base):
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     overlap_policy: Mapped[ScheduleOverlapPolicy] = mapped_column(
-        PgEnum(
-            "skip",
-            "queue",
-            "replace",
+        Enum(
+            ScheduleOverlapPolicy,
             name="schedule_overlap_policy",
+            values_callable=lambda enum: [member.value for member in enum],
             create_type=False,
         ),
         default=ScheduleOverlapPolicy.SKIP,
