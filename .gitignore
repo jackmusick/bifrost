@@ -210,3 +210,6 @@ AzuriteConfig
 home/
 system//home/
 .worktrees/
+
+# Local UX prototypes — not part of the product, never committed
+client/preview/
