@@ -93,6 +93,9 @@ function CreateEventSourceDialogContent({
 	// Schedule state
 	const [cronExpression, setCronExpression] = useState("");
 	const [timezone, setTimezone] = useState("UTC");
+	const [overlapPolicy, setOverlapPolicy] = useState<
+		"skip" | "queue" | "replace"
+	>("skip");
 	const [cronValidation, setCronValidation] =
 		useState<CronValidationResult | null>(null);
 
@@ -224,6 +227,7 @@ function CreateEventSourceDialogContent({
 									cron_expression: cronExpression.trim(),
 									timezone,
 									enabled: true,
+									overlap_policy: overlapPolicy,
 								}
 							: undefined,
 				},
@@ -540,6 +544,37 @@ function CreateEventSourceDialogContent({
 							<p className="text-xs text-muted-foreground">
 								The timezone used to evaluate the cron
 								expression.
+							</p>
+						</div>
+
+						{/* Overlap Policy */}
+						<div className="space-y-2">
+							<Label htmlFor="overlap-policy">
+								Overlap policy
+							</Label>
+							<Select
+								value={overlapPolicy}
+								onValueChange={(v) =>
+									setOverlapPolicy(
+										v as "skip" | "queue" | "replace",
+									)
+								}
+							>
+								<SelectTrigger id="overlap-policy">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="skip">Skip</SelectItem>
+									<SelectItem value="queue">Queue</SelectItem>
+									<SelectItem value="replace">
+										Replace
+									</SelectItem>
+								</SelectContent>
+							</Select>
+							<p className="text-xs text-muted-foreground">
+								Skip (default) drops the new run if a previous
+								run is still active. Queue and replace are
+								reserved for future use.
 							</p>
 						</div>
 					</>

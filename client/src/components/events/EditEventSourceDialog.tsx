@@ -107,6 +107,9 @@ function EditEventSourceDialogContent({
 	const [scheduleEnabled, setScheduleEnabled] = useState<boolean>(
 		source.schedule?.enabled ?? true,
 	);
+	const [overlapPolicy, setOverlapPolicy] = useState<
+		"skip" | "queue" | "replace"
+	>(source.schedule?.overlap_policy ?? "skip");
 
 	// Cron validation state
 	const [cronValidation, setCronValidation] =
@@ -195,6 +198,7 @@ function EditEventSourceDialogContent({
 							cron_expression: cronExpression.trim(),
 							timezone,
 							enabled: scheduleEnabled,
+							overlap_policy: overlapPolicy,
 						}
 					: undefined,
 			};
@@ -392,6 +396,37 @@ function EditEventSourceDialogContent({
 								checked={scheduleEnabled}
 								onCheckedChange={setScheduleEnabled}
 							/>
+						</div>
+
+						{/* Overlap Policy */}
+						<div className="space-y-2">
+							<Label htmlFor="overlap-policy">
+								Overlap policy
+							</Label>
+							<Select
+								value={overlapPolicy}
+								onValueChange={(v) =>
+									setOverlapPolicy(
+										v as "skip" | "queue" | "replace",
+									)
+								}
+							>
+								<SelectTrigger id="overlap-policy">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="skip">Skip</SelectItem>
+									<SelectItem value="queue">Queue</SelectItem>
+									<SelectItem value="replace">
+										Replace
+									</SelectItem>
+								</SelectContent>
+							</Select>
+							<p className="text-xs text-muted-foreground">
+								Skip (default) drops the new run if a previous
+								run is still active. Queue and replace are
+								reserved for future use.
+							</p>
 						</div>
 					</>
 				)}

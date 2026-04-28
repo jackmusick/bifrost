@@ -111,6 +111,54 @@ describe("EditEventSourceDialog — schedule", () => {
 		expect(body.schedule.cron_expression).toBe("0 9 * * *");
 	});
 
+	it("renders the overlap policy select with three options and defaults to skip", async () => {
+		const { user } = renderWithProviders(
+			<EditEventSourceDialog
+				source={makeScheduleSource()}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		const trigger = screen.getByRole("combobox", { name: /overlap policy/i });
+		expect(trigger).toBeInTheDocument();
+		// Default value shown in trigger
+		expect(trigger).toHaveTextContent(/skip/i);
+
+		// Open the dropdown and verify all three options are present
+		await user.click(trigger);
+		expect(
+			await screen.findByRole("option", { name: /^skip$/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("option", { name: /^queue$/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("option", { name: /^replace$/i }),
+		).toBeInTheDocument();
+	});
+
+	it("includes overlap_policy in the update payload", async () => {
+		const { user } = renderWithProviders(
+			<EditEventSourceDialog
+				source={makeScheduleSource()}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		// Change overlap policy to "queue"
+		const trigger = screen.getByRole("combobox", { name: /overlap policy/i });
+		await user.click(trigger);
+		await user.click(await screen.findByRole("option", { name: /^queue$/i }));
+
+		await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+		await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+		const body = mockUpdate.mock.calls[0]![0].body;
+		expect(body.schedule.overlap_policy).toBe("queue");
+	});
+
 	it("surfaces a validation error when cron is cleared on submit", async () => {
 		const { user } = renderWithProviders(
 			<EditEventSourceDialog
