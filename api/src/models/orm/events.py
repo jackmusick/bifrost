@@ -21,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus
+from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ScheduleOverlapPolicy
 from src.models.orm.base import Base
 
 if TYPE_CHECKING:
@@ -122,6 +122,18 @@ class ScheduleSource(Base):
     cron_expression: Mapped[str] = mapped_column(String(100), nullable=False)
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    overlap_policy: Mapped[ScheduleOverlapPolicy] = mapped_column(
+        PgEnum(
+            "skip",
+            "queue",
+            "replace",
+            name="schedule_overlap_policy",
+            create_type=False,
+        ),
+        default=ScheduleOverlapPolicy.SKIP,
+        server_default="skip",
+        nullable=False,
+    )
 
     # Audit
     created_at: Mapped[datetime] = mapped_column(
