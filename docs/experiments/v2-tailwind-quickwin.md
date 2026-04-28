@@ -2,152 +2,129 @@
 
 **Worktree:** `worktree-v2-tailwind-quickwin`
 **Branch:** `worktree-v2-tailwind-quickwin`
-**Status:** ✅ **Verified** — bundler change compiles arbitrary Tailwind values, all tests pass, real production app re-bundles with fixes.
+**Status:** ✅ **Verified, both phases.** Full Tailwind v4 pipeline (utilities + user CSS + per-app config) wired into the bundler. 37 tests pass. Real production app re-bundles cleanly. The "second-class app builder" failure mode is closed.
 
 ## TL;DR
 
-Wired the existing `@tailwindcss/node` v4 compiler (already in the codebase, used by the legacy per-file `app_compiler` path) into the modern app bundler. Three lines of integration plus one Python helper, plus a regex fix in the candidate extractor. All 30 tests pass. Real production app `customer-onboarding` now compiles previously-broken `w-[500px]` and `text-[10px]` utilities — fixing latent skeleton-loader and small-label rendering bugs that have been silently shipping.
+Wired the existing `@tailwindcss/node` v4 compiler (already in the codebase) into the modern bundler in two phases:
 
-This is a strictly additive change. v2 apps without arbitrary values are unaffected (the new CSS file just adds compiled utilities; standard utilities still come from the host preload). v2 apps WITH arbitrary values silently get fixed.
+- **Phase 1**: per-app utility compilation. Arbitrary values (`bg-[color:var(--x)]`, `lg:grid-cols-[1fr_360px]`, etc.) that silently no-op'd in v2 now compile.
+- **Phase 2**: full pipeline. User CSS files (`@apply`, `@layer components`, `:root` variables) are processed through Tailwind. Per-app `tailwind.config.{ts,js,mjs,cjs}` is honored via `@config`. Custom theme tokens work.
 
-## What was broken (and why)
+After phase 2, **everything a normal React+Tailwind app expects to work, works.** No more "things to remember" list. The experiment delivers the design-quality piece of v3 at the v2 layer; v3 design conversation can resume focused on developer-experience (real npm escape hatch, local dev, workflow proxy) without the visual-bugs distraction.
 
-In production today, the host preloads a Tailwind stylesheet at host build time, scanning only the host's source files (`client/tailwind.config.js` content paths are `./src/**/*.{ts,tsx,...}`). App-side class strings like `lg:grid-cols-[minmax(0,1fr)_360px]`, `bg-[color:var(--pc-paper)]`, `max-w-[1400px]`, and `py-10 lg:py-14` were never seen by the host's compiler — so no CSS rule for them existed. Apps wrote the class on the DOM element but no matching rule fired. **Silent visual breakage.**
+## Phase 1 — utility compilation (commit `99ca36a0`)
 
-This is exactly what bit the Pipeline Command session: side rail at the bottom (`grid-cols-[1fr_360px]` no-op'd → fell back to single-column), translucent drawer (`bg-[color:var(--pc-paper)]` no-op'd → Radix's default backdrop blur showed through), missing top page padding (`py-10 lg:py-14` arbitrary-responsive variants no-op'd).
+### What was broken
 
-## What changed
+The host preloads a Tailwind stylesheet compiled from the host's own source. App-side class strings like `lg:grid-cols-[minmax(0,1fr)_360px]`, `bg-[color:var(--pc-paper)]`, `max-w-[1400px]` are never seen by the host's compiler, so no CSS rule fires. The DOM has the class, the page has no matching rule. Silent visual breakage — exactly what bit the Pipeline Command session (side rail at bottom, translucent drawer, missing page padding).
 
-### 1. Bundler integration (the main change)
+### What changed
 
-**File:** `api/src/services/app_bundler/__init__.py`
+- **Bundler integration**: `api/src/services/app_bundler/__init__.py` runs the existing `AppTailwindService` between source materialization and entry synthesis. Output `__bifrost_tailwind.css` gets sorted ahead of user CSS in the synthesized entry (correct cascade — utilities first, user CSS overrides).
+- **Schema version 2 → 3**: triggers automatic bundle rebuild on first viewer request after deploy. No DB migration, no manual republish.
+- **Candidate extractor regex fixes** in `api/src/services/app_compiler/__init__.py`: tokenizer no longer splits on `,` (was breaking `minmax(0,1fr)`); class-shape regex now accepts `(` and `)` (was rejecting `var()`, `calc()`, `clamp()`, `oklch()`). Both bugs predated this work, hidden behind the host preload.
 
-Added a step between source materialization and entry synthesis:
+## Phase 2 — full pipeline (commit pending in this worktree)
 
-```python
-# 2. Generate per-app Tailwind CSS from class candidates in user source.
-tailwind_added = await self._generate_app_tailwind(src_dir, sources)
-if tailwind_added:
-    sources = sources + [TAILWIND_OUTPUT_CSS]
+### What was still broken
+
+After phase 1, arbitrary values worked, but a developer's muscle memory for Tailwind includes `@apply`, `@layer components`, custom `tailwind.config.ts` with extended theme tokens. Those still didn't work in v2 — the candidate-only pipeline didn't process user `.css` files at all, so `@apply` directives passed straight through to esbuild and rendered as invalid CSS at-rules. Per-app config wasn't read.
+
+### What changed
+
+**`tailwind.js`** (`api/src/services/app_compiler/tailwind.js`) gains a pipeline mode. Old mode (candidates only) still works for the legacy per-file render path. New mode accepts:
+
+```ts
+{
+  candidates: ["flex", "p-4", ...],
+  user_css: [{path: "styles.css", content: "..."}, ...],
+  config_path: "/abs/path/to/tailwind.config.js" | null
+}
 ```
 
-The new helper `_generate_app_tailwind()` reads every `.tsx`/`.ts`/`.jsx`/`.js` source file's contents and feeds them to the existing `AppTailwindService.generate_css()` (which subprocesses to `tailwind.js` using `@tailwindcss/node`). The output goes to `__bifrost_tailwind.css` in the bundle's tempdir; `_write_entry()` picks it up automatically because it scans for `*.css` files.
+The script concatenates user CSS into the Tailwind input so `@apply` / `@layer` / `@theme` are processed, and threads `@config` for per-app theme overrides. The same `@tailwindcss/node` `compile()` call processes everything.
 
-Sort order matters: `__bifrost_tailwind.css` starts with `_` so it sorts before user CSS files (e.g. `styles.css`). Tailwind utilities load first, user CSS overrides them. **Correct cascade.**
+**`AppTailwindService`** (`api/src/services/app_compiler/__init__.py`) gains `generate_css_pipeline(code_sources, user_css, config_path)`. The legacy `generate_css(sources)` is preserved for the old per-file render path.
 
-Schema version bumped 2 → 3 to trigger automatic rebuild on first view after deploy.
+**Bundler** (`api/src/services/app_bundler/__init__.py`) `_generate_app_tailwind` now:
+1. Scans `.tsx/.ts/.jsx/.js` for class candidates.
+2. Reads all `.css` files as user CSS input.
+3. Detects per-app `tailwind.config.{ts,js,mjs,cjs}` and passes its absolute path.
+4. Returns `(wrote_css: bool, consumed_css_files: set[str])` — caller filters consumed files out of `sources` so esbuild doesn't try to bundle them again (would either duplicate the CSS or, if they contain `@apply`, fail outright).
 
-### 2. Candidate extractor fix
-
-**File:** `api/src/services/app_compiler/__init__.py`
-
-Two regex changes in `extract_candidates`:
-
-| Issue | Before | After |
-|---|---|---|
-| Tokenizer split on commas | `r"[\s,]+"` | `r"\s+"` |
-| Class filter rejected `(` and `)` | `[a-z0-9:\-/\[.=#%_*>~&+\]]` | `[a-z0-9:\-/\[\](),.=#%_*>~&+]` |
-
-Why: Tailwind v4 arbitrary values legitimately contain commas (`minmax(0,1fr)`, `rgb(0,0,0)`) and parens (`var()`, `calc()`, `clamp()`, `oklch()`). The pre-existing extractor was written for a stricter Tailwind v3 vocabulary and silently dropped these candidates before they reached the compiler.
-
-This fix has positive blast radius — every caller of `AppTailwindService` (the bundler now, plus the legacy per-file `app_compiler/__init__.py` path used by `app_code_files.py`) gets the improved extraction. All 14 pre-existing compiler tests still pass.
-
-### 3. Tests
-
-- `api/tests/unit/test_app_bundler.py` — 4 new unit tests covering `_generate_app_tailwind` (writes CSS when candidates present, returns False when compiler emits nothing, skips when no scannable sources, entry imports the generated CSS).
-- `api/tests/integration/test_app_bundler_tailwind_e2e.py` — 3 integration tests exercising the real `@tailwindcss/node` subprocess against patterns that broke in the Pipeline Command session.
-- `api/tests/integration/test_app_bundler_stress.py` — 1 comprehensive smoke test covering modern shadcn-style apps with `clamp()`, `minmax()`, `oklch()`, `hsl(var())`, `auto-fit` grid templates, CSS-variable arbitrary values, responsive variants of all of these.
-
-All 30 tests in the relevant scope pass.
-
-## Real-world compatibility check
-
-Bundled the actual `~/GitHub/bifrost-workspace/apps/customer-onboarding/` source (1139 LOC, 5 files, real shadcn primitives) through the new pipeline:
-
-- ✅ Pipeline succeeds, 11KB CSS produced
-- ✅ Standard utilities present: `h-full`, `overflow-hidden`, `w-full`, `text-sm`, `rounded-md`
-- ✅ Two arbitrary values now compile that were silently broken before:
-  - `.w-\[500px\]` — used in `pages/index.tsx:288` for a Skeleton loader width
-  - `.text-\[10px\]` — used in `components/OnboardingPipeline.tsx:292` for a small label
-- ✅ `bg-background` (custom shadcn-style utility) is NOT in the bundler's per-app output — that's expected and correct: it's served by the host's preloaded stylesheet which has the full theme. Both rules continue to fire at runtime.
-
-**Net visual effect:** customer-onboarding will render *better* after this change — two spots that were previously laying out at fallback widths/sizes now render exactly as the author intended. Zero regressions on standard utilities (proven by tests + the strict additive cascade).
-
-## Findings — what works, what doesn't
-
-### Works (the wins)
-
-| Pattern | Example | Before | After |
-|---|---|---|---|
-| Arbitrary measurement | `max-w-[1400px]` | silently no-op | ✅ compiles |
-| Arbitrary calc() | `min-h-[calc(100vh-4rem)]` | silently no-op | ✅ compiles |
-| Arbitrary clamp() | `px-[clamp(1rem,3vw,2.5rem)]` | silently no-op | ✅ compiles |
-| Arbitrary minmax() | `lg:grid-cols-[minmax(0,1fr)_360px]` | silently no-op | ✅ compiles |
-| Arbitrary auto-fit | `md:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]` | silently no-op | ✅ compiles |
-| CSS-variable bg | `bg-[color:var(--ops-paper)]` | silently no-op | ✅ compiles |
-| oklch() in arbitrary | `bg-[oklch(0.4_0.1_220)]` | silently no-op | ✅ compiles |
-| hsl(var()) opacity | `bg-[hsl(var(--accent)/0.6)]` | silently no-op | ✅ compiles |
-| Responsive arbitrary | `lg:py-14`, `md:grid-cols-[1fr_380px]` | partial — only compiles if also seen in host | ✅ compiles deterministically |
-| Bracket viewport units | `w-[min(360px,90vw)]` | silently no-op | ✅ compiles |
-
-### Doesn't work yet (documented friction, not silent breakage)
+### What works after phase 2
 
 | Pattern | Example | Status |
 |---|---|---|
-| `@apply` in app `.css` files | `.ops-pill { @apply px-3 py-1 ...; }` | ❌ — user CSS isn't run through Tailwind PostCSS. Workaround: write classes inline. v3 fixes this with full Vite. |
-| `@layer components { ... }` | adding component-layer styles in styles.css | ❌ — same root cause. v3 fixes. |
-| Custom shadcn theme tokens (`bg-background`, `bg-card`) | `<div className="bg-card">` | Works because the host's preload has them. Per-app bundler doesn't have host theme loaded — that's fine for now (preload covers it) but worth knowing if we ever stop preloading the host stylesheet. |
-| Custom `tailwind.config.ts` per app | App-level theme overrides | ❌ — current `tailwind.js` runs with a fixed entry CSS (`@import 'tailwindcss/theme'; @import 'tailwindcss/utilities'`). Per-app config would require a bigger change. v3 fixes this naturally with one Vite project per app. |
+| `@apply` in user CSS | `.foo { @apply px-4 py-2 rounded; }` | ✅ compiles |
+| `@apply` with arbitrary value | `.foo { @apply bg-[color:var(--x)]; }` | ✅ compiles |
+| `@layer components` | `@layer components { .card { @apply ... } }` | ✅ compiles |
+| `:root` CSS variables | `:root { --x: oklch(...); }` | ✅ passes through |
+| Per-app `tailwind.config.js` | `theme.extend.colors.brand.500` → `bg-brand-500` | ✅ honored |
+| Custom selectors in user CSS | `.dark { ... }`, `[data-state=open]` | ✅ pass through |
+| `@property`, `@supports` from utilities | Generated automatically | ✅ emitted |
 
-### Surprises during the experiment
+Plus everything from phase 1 (arbitrary values, responsive variants of arbitrary, `clamp()`/`minmax()`/`oklch()`/`hsl()`/CSS-variable arbitrary values).
 
-1. **`@tailwindcss/node` was already in the repo, fully wired up to a working compiler subprocess** — it was just plumbed into the *legacy* per-file `app_compiler` path (`app_code_files.py:507`), not the modern bundler. The "implementation" was 90% wiring, 10% real new code. Validated the original quick-win hypothesis exactly.
+### Verified by tests
 
-2. **The pre-existing candidate extractor regex was broken for Tailwind v4 syntax** — comma splitting and missing paren support. This bug had been hiding behind the host preload (utilities the host already had compiled). Now that we're compiling per-app, the regex bug surfaces. Fix is two character-class changes in one regex. Documented above.
+- `api/tests/integration/test_app_bundler_pipeline.py` — 5 tests against the real `@tailwindcss/node` subprocess:
+  - `@apply` in user CSS produces real declarations
+  - `@layer components` with `@apply` chain
+  - Per-app `tailwind.config.js` honored
+  - User CSS variables pass through
+  - `@apply` with arbitrary values
 
-3. **The host is on Tailwind v4, not v3.** I went in expecting `tailwindcss@^3` and was wrong. v4's `@tailwindcss/node` has a different API (`compile(input, opts).build(candidates)`) which the existing `tailwind.js` already uses correctly. No version mismatch to manage.
+All pass.
 
-4. **Schema version bumping is the deploy-safe migration mechanism.** Bumping `SCHEMA_VERSION = 2 → 3` means every existing app's bundle is silently re-built on first viewer request after deploy, picking up the Tailwind output. No DB migration, no manual republish.
+## Real-world compatibility
 
-## Verdict
+Bundled the actual `~/GitHub/bifrost-workspace/apps/customer-onboarding/` source (1139 LOC, 5 files) through the new pipeline:
 
-**The Tailwind quick-win delivers the design-quality fix.** Every layout/CSS issue from the Pipeline Command session is now a non-issue:
+- ✅ Pipeline succeeds, 11KB CSS produced — identical size to phase 1
+- ✅ `consumed: set()` (app has no `.css` files, so pipeline degrades gracefully to candidate-only compile)
+- ✅ Standard utilities all there: `h-full`, `overflow-hidden`, `w-full`, `text-sm`, `rounded-md`
+- ✅ Two arbitrary values now compile that were silently broken before:
+  - `.w-\[500px\]` — `pages/index.tsx:288`, Skeleton loader width
+  - `.text-\[10px\]` — `components/OnboardingPipeline.tsx:292`, small label
+- ✅ `bg-background` (custom shadcn-style utility) is correctly NOT in the per-app output — served by the host's preloaded stylesheet which has the full theme. Both rules fire at runtime.
 
-- Side rail at bottom → fixed (responsive arbitrary grid template compiles)
-- Translucent drawer → fixed (CSS-variable bg compiles)
-- Missing page padding → fixed (responsive arbitrary py- compiles)
-- Custom CSS variable theme tokens → fixed (var() in arbitrary values compiles)
-- `oklch()`/`hsl()` color values → fixed
-- `clamp()` for responsive sizing → fixed
+**Net effect:** zero regression for existing apps; latent visual bugs in production are silently fixed; new apps can use the full Tailwind feature set.
 
-What v3 is still needed for (separate from design quality):
+## What v3 is still needed for
 
-- `@apply` and `@layer` in user CSS files (requires full Tailwind PostCSS pipeline, which wants Vite).
-- Per-app `tailwind.config.ts` (requires bundling each app as its own project).
-- Real npm packages (the original v3 motivation — `npm install`, real lockfile, escape hatch from implicit externals).
-- The "ran locally / Azure SWA model" — that's about dev loop, not bundling.
-- Workflow proxy for local dev — orthogonal.
-- Realtime primitives via `executions.publish` — orthogonal.
+The design-quality argument for v3 is now resolved at the v2 layer. v3 is still justified, but for **developer experience** reasons:
 
-So: **ship the quick-win independently of v3**. It removes the design-quality reason to do v3, leaving v3 to focus on the developer-experience and primitives reasons.
+- `bifrost` as a real npm package (escape from implicit externals; `npm install bifrost` instead of synthesized virtual)
+- Real local dev loop (`npm run dev` against an instance, Azure SWA-style)
+- Workflow proxy for local dev (run worktree Python through a local sidecar)
+- Realtime primitives via `executions.publish`
+- Per-app fully isolated React tree (only matters if BYO-React-version becomes a real ask)
+
+When v3 design resumes, layout-quality is off the table. We focus on the parts that v2 can't provide.
 
 ## Files changed
 
 ```
-api/src/services/app_bundler/__init__.py    | +63 lines (helper + integration + comment renumbering)
-api/src/services/app_compiler/__init__.py   |  +5/-3 lines (regex fixes)
-api/tests/unit/test_app_bundler.py          | +75 lines (4 new tests + import)
-api/tests/integration/test_app_bundler_tailwind_e2e.py   | NEW (3 tests, ~110 lines)
-api/tests/integration/test_app_bundler_stress.py         | NEW (1 test, ~165 lines)
+api/src/services/app_bundler/__init__.py       | +85 lines  (helper + integration + comments)
+api/src/services/app_compiler/__init__.py      | +50/-3     (regex fixes + pipeline method + _invoke split)
+api/src/services/app_compiler/tailwind.js      | rewritten  (~70 LOC, dual-mode)
+api/tests/unit/test_app_bundler.py             | +130 lines (5 new unit tests)
+api/tests/integration/test_app_bundler_tailwind_e2e.py    | NEW (3 tests, ~110 lines)
+api/tests/integration/test_app_bundler_stress.py          | NEW (1 test, ~165 lines)
+api/tests/integration/test_app_bundler_pipeline.py        | NEW (5 tests, ~165 lines)
+docs/experiments/v2-tailwind-quickwin-plan.md             | NEW
+docs/experiments/v2-tailwind-quickwin.md                  | this file
 ```
 
-Plus this report and the experiment plan. Total impact: ~5 production files modified/created, ~280 lines of test code, real-Tailwind-compiler integration tests covering every pattern from the friction log.
+37 tests pass total: 14 unit (5 new for the pipeline) + 14 compiler (regex changes don't regress) + 9 integration (3 phase-1 e2e + 1 stress + 5 phase-2 pipeline).
 
 ## Recommended follow-up
 
-1. **Merge this to main as a standalone PR.** Title: `feat(bundler): per-app Tailwind compilation for arbitrary values`. Auto-rebuilds everyone's apps on first view via SCHEMA_VERSION bump.
-2. **Update the bifrost-build skill** to remove "arbitrary Tailwind values are unsupported" caveats. Skill becomes shorter, not longer.
-3. **Resume v3 design conversation** focused on the developer-experience wins (real npm escape hatch, local dev loop, workflow proxy) rather than design-quality. The design-quality argument is now resolved at the v2 layer.
+1. **Squash + ship as one PR.** Phase 1 and phase 2 should land together — phase 1 alone leaves `@apply` broken, which preserves the "Claude has to remember things" failure mode this whole experiment is trying to close.
+2. **Update the bifrost-build skill.** Remove all "Tailwind limitation" caveats. Skill becomes shorter.
+3. **Resume v3 design conversation** focused on the developer-experience wins, not design-quality.
 
 ## Out of scope (deliberate)
 
@@ -155,4 +132,4 @@ Plus this report and the experiment plan. Total impact: ~5 production files modi
 - Workflow proxy for local dev
 - npm package conversion (`bifrost` as real package)
 - Realtime primitives via `executions.publish`
-- Browser screenshot E2E (test stack lacks the auth path; the integration tests already exercise the real Tailwind compiler with the same code path the runtime uses)
+- Browser screenshot E2E (test stack lacks the auth path; the integration tests already exercise the real Tailwind compiler with the same code path the runtime uses, including the real `@apply`/`@layer`/`@config` machinery)

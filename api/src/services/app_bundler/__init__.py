@@ -172,15 +172,21 @@ class BundlerService:
                     )],
                 )
 
-            # 2. Generate per-app Tailwind CSS from class candidates in
-            #    user source. Writes __bifrost_tailwind.css into src_dir
-            #    so _write_entry picks it up alongside user-authored CSS.
-            #    Without this, arbitrary values (e.g. bg-[color:var(--x)],
-            #    lg:grid-cols-[1fr_360px]) silently no-op because the host's
-            #    preloaded Tailwind only contains utilities the host scanned.
-            tailwind_added = await self._generate_app_tailwind(src_dir, sources)
+            # 2. Run the per-app Tailwind v4 pipeline. This compiles
+            #    arbitrary-value utilities (bg-[color:var(--x)],
+            #    lg:grid-cols-[1fr_360px]) the host preload doesn't know
+            #    about, AND processes user .css files so @apply / @layer /
+            #    @theme directives + per-app tailwind.config.* work.
+            #    User CSS files that were consumed get filtered out of
+            #    `sources` because they're now inlined into the unified
+            #    __bifrost_tailwind.css; re-importing them through esbuild
+            #    would duplicate (or, if they contain @apply, fail).
+            tailwind_added, consumed_css = await self._generate_app_tailwind(
+                src_dir, sources
+            )
             if tailwind_added:
-                sources = sources + [TAILWIND_OUTPUT_CSS]
+                sources = [s for s in sources if s not in consumed_css]
+                sources.append(TAILWIND_OUTPUT_CSS)
 
             # 3. Synthesize _entry.tsx that imports layout + pages
             entry_file = "_entry.tsx"
@@ -301,17 +307,23 @@ class BundlerService:
 
     async def _generate_app_tailwind(
         self, src_dir: Path, sources: list[str]
-    ) -> bool:
-        """Generate per-app Tailwind CSS, write to src_dir/__bifrost_tailwind.css.
+    ) -> tuple[bool, set[str]]:
+        """Run the per-app Tailwind v4 pipeline.
 
-        Returns True if a Tailwind file was written, False otherwise.
+        Scans .tsx/.ts/.jsx/.js for class candidates, concatenates user
+        .css files into the Tailwind input so @apply / @layer / @theme
+        directives are processed, optionally honors a per-app
+        tailwind.config.{js,ts,mjs,cjs} via @config. Writes the unified
+        result to src_dir/__bifrost_tailwind.css.
 
-        Scans every materialized .tsx/.ts/.jsx/.js source for class candidates
-        (string literals split on whitespace), then asks @tailwindcss/node to
-        compile them. The host's globally-loaded Tailwind only contains
-        utilities the host scanned; this fills in the per-app long tail
-        (arbitrary values, responsive variants of arbitrary values, custom
-        bracket utilities) that would otherwise silently no-op at render.
+        Returns:
+            (wrote_css, consumed_css_files). When wrote_css is True, the
+            caller MUST omit consumed_css_files from `sources` before
+            calling _write_entry — those files are now inlined in
+            __bifrost_tailwind.css and re-importing them through esbuild
+            would either duplicate the CSS or, if they contain @apply /
+            @layer, fail outright (esbuild's CSS loader doesn't understand
+            those Tailwind directives).
         """
         from src.services.app_compiler import AppTailwindService
 
@@ -319,24 +331,49 @@ class BundlerService:
             s for s in sources
             if s.endswith((".tsx", ".ts", ".jsx", ".js"))
         ]
-        if not scannable:
-            return False
+        css_files = [s for s in sources if s.endswith(".css")]
 
-        contents: list[str] = []
+        if not scannable and not css_files:
+            return (False, set())
+
+        code_contents: list[str] = []
         for rel in scannable:
             try:
-                contents.append((src_dir / rel).read_text(encoding="utf-8"))
+                code_contents.append((src_dir / rel).read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError) as e:
                 logger.warning(
                     f"Bundler: skipping {log_safe(rel)} for tailwind scan: {e}"
                 )
 
-        css = await AppTailwindService.generate_css(contents)
+        user_css: list[tuple[str, str]] = []
+        for rel in css_files:
+            try:
+                user_css.append((rel, (src_dir / rel).read_text(encoding="utf-8")))
+            except (OSError, UnicodeDecodeError) as e:
+                logger.warning(
+                    f"Bundler: skipping {log_safe(rel)} for tailwind input: {e}"
+                )
+
+        # Per-app tailwind.config.* — first match wins. Tailwind v4 honors
+        # @config from the input CSS regardless of extension; we just need
+        # to find the file.
+        config_path: str | None = None
+        for ext in ("ts", "js", "mjs", "cjs"):
+            candidate = src_dir / f"tailwind.config.{ext}"
+            if candidate.exists():
+                config_path = str(candidate.resolve())
+                break
+
+        css = await AppTailwindService.generate_css_pipeline(
+            code_sources=code_contents,
+            user_css=user_css,
+            config_path=config_path,
+        )
         if not css:
-            return False
+            return (False, set())
 
         (src_dir / TAILWIND_OUTPUT_CSS).write_text(css, encoding="utf-8")
-        return True
+        return (True, set(css_files))
 
     def _write_entry(self, src_dir: Path, entry_file: str, sources: list[str]) -> None:
         """Synthesize an entry file that imports layout + pages + routes them.

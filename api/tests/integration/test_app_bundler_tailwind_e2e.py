@@ -52,7 +52,7 @@ async def test_arbitrary_values_compile_to_real_css_rules() -> None:
         )
         sources = ["_layout.tsx"]
 
-        added = await bundler._generate_app_tailwind(src_dir, sources)
+        added, _ = await bundler._generate_app_tailwind(src_dir, sources)
         assert added is True, "tailwind generation should produce CSS for these candidates"
         css = (src_dir / TAILWIND_OUTPUT_CSS).read_text(encoding="utf-8")
 
@@ -88,7 +88,7 @@ async def test_candidate_extraction_handles_responsive_arbitrary_brackets() -> N
             encoding="utf-8",
         )
 
-        added = await bundler._generate_app_tailwind(src_dir, ["page.tsx"])
+        added, _ = await bundler._generate_app_tailwind(src_dir, ["page.tsx"])
         assert added is True
         css = (src_dir / TAILWIND_OUTPUT_CSS).read_text(encoding="utf-8")
 
@@ -111,7 +111,7 @@ async def test_no_classes_no_output() -> None:
             encoding="utf-8",
         )
 
-        added = await bundler._generate_app_tailwind(src_dir, ["page.tsx"])
+        added, _ = await bundler._generate_app_tailwind(src_dir, ["page.tsx"])
 
     # If extraction happens to find candidates from the bare JSX (e.g.
     # "default") and Tailwind classifies them as utilities, the CSS will

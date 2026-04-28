@@ -171,7 +171,7 @@ async def test_stress_app_compiles_all_modern_tailwind_patterns() -> None:
         (src_dir / "styles.css").write_text(STRESS_STYLES_CSS, encoding="utf-8")
         sources = ["_layout.tsx", "pages/index.tsx", "styles.css"]
 
-        added = await bundler._generate_app_tailwind(src_dir, sources)
+        added, _ = await bundler._generate_app_tailwind(src_dir, sources)
         assert added is True, "stress-test sources should yield Tailwind CSS"
         css = (src_dir / TAILWIND_OUTPUT_CSS).read_text(encoding="utf-8")
 
