@@ -59,7 +59,27 @@ The fork remains the unit of measurement. Diagnostics, heartbeats, cancellation,
 
 This design replaces an earlier consideration of two separate pools with a shared `ExecutionRuntime` interface. The interface is unnecessary because the fork-as-unit model already gives us the unification we wanted.
 
-**Privilege model:** rootless `bwrap` where the kernel allows unprivileged user namespaces (Ubuntu 22.04+, Debian 12+ — the common case). For restricted K8s clusters, the worker container takes `CAP_SYS_ADMIN`. Documentable, configurable, not a v1 blocker.
+**Privilege model:** the worker pod itself stays unprivileged — no `CAP_SYS_ADMIN`, no `privileged: true`, default `RuntimeDefault` seccomp. `bwrap` constructs its sandbox using unprivileged user namespaces, so pod-level capabilities are not required. The constraint is at the *host kernel* layer: the node must allow unprivileged user namespaces and not block them via AppArmor.
+
+Per-platform reality (verified, 2026-04):
+
+| Platform | Status | Operator action required? |
+|---|---|---|
+| DigitalOcean Managed K8s (Debian 12) | Works clean | None |
+| GKE (COS) | Works clean | None |
+| EKS on Amazon Linux 2023 | Works clean | None |
+| AKS on Azure Linux 3.0 | Works clean | None |
+| Local Docker Compose on Ubuntu 22.04 / Debian 12 | Works clean | None |
+| **EKS on Bottlerocket** | Fails by default | Set `user.max_user_namespaces > 0` in node user data |
+| **AKS on Ubuntu 24.04** | Fails by default | Disable `kernel.apparmor_restrict_unprivileged_userns` OR load an AppArmor profile granting `userns,` |
+| Local Docker on Ubuntu 23.10+ host with default AppArmor | Fails by default | Same as AKS-Ubuntu fix |
+
+To handle the failure cases, the worker runs a startup **preflight check** (`unshare -U true` from inside the pod) and one of two paths happens:
+
+1. **Strong sandbox available** — proceed normally.
+2. **Strong sandbox unavailable** — log a loud diagnostic with platform-specific remediation, and either (a) refuse to start sandbox executions (default, fail-closed), or (b) drop to `enableWeakerNestedSandbox` mode if the org has explicitly opted in to the weaker isolation. `sandbox-runtime` ships this weak mode upstream specifically for restrictive container environments; we surface it as an org-level config knob with a clear security-tradeoff acknowledgement.
+
+This means there is no "CAP_SYS_ADMIN fallback" — that was incorrect in an earlier draft. The fallback is either operator-side host config (preferred) or the upstream weak-mode flag (opt-in, documented tradeoff).
 
 **Multi-runtime:** different binaries (`python3`, `node`, `pwsh`) invoked through the same shell-out pattern, different `sandbox-runtime` policy files per runtime. Adding a new runtime = ship a new policy + ensure the binary is in the worker image. No protocol changes.
 
@@ -137,7 +157,12 @@ Each sub-project ships:
 - Vitest tests for new functional frontend modules (`client/src/lib/**`, `client/src/services/**`).
 - Playwright happy-path for any user-facing flow.
 
-Sandbox-related tests need a CI runner with `bwrap` available and unprivileged user namespaces enabled. GitHub Actions Ubuntu runners satisfy this today.
+Sandbox-related tests need a CI runner with `bwrap` available and unprivileged user namespaces enabled. GitHub Actions `ubuntu-22.04` runners satisfy this today (`ubuntu-24.04` runners hit the AppArmor restriction; pin to 22.04 or pre-load an AppArmor profile in CI setup).
+
+Sub-project (4) must also include:
+- A startup preflight check inside the worker pod (`unshare -U true`) that surfaces a clear, actionable diagnostic on failure with per-platform remediation links.
+- Documentation pages per supported platform (DOKS, GKE, EKS-AL2023, EKS-Bottlerocket, AKS-AzureLinux, AKS-Ubuntu24, on-prem) covering whether sandbox works out of the box and what an operator has to do if not.
+- Org-level config to opt in to `enableWeakerNestedSandbox` for operators on locked-down platforms, gated behind an explicit acknowledgement.
 
 ## Implementation roadmap
 
