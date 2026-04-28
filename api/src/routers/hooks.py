@@ -9,13 +9,15 @@ Security is handled by:
 2. Adapter-specific validation (HMAC signatures, client state, etc.)
 """
 
+import json
 import logging
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import PlainTextResponse
 
 from src.core.database import DbSession
 from src.core.log_safety import log_safe
+from src.core.rate_limit import RateLimiter
 from src.services.events.processor import EventProcessor, resolve_webhook_source
 from src.services.webhooks.protocol import (
     Deliver,
@@ -120,6 +122,33 @@ async def receive_webhook(
             media_type="text/plain",
         )
     event_source, webhook_source = resolved
+
+    # Per-source rate limiting — checked before any DB writes
+    if (
+        webhook_source.rate_limit_enabled
+        and webhook_source.rate_limit_per_minute is not None
+    ):
+        limiter = RateLimiter(
+            max_requests=webhook_source.rate_limit_per_minute,
+            window_seconds=webhook_source.rate_limit_window_seconds,
+        )
+        try:
+            # force=True bypasses the is_testing short-circuit so rate limiting
+            # is exercisable from unit tests; in production is_testing=False so
+            # the flag is a no-op.
+            await limiter.check("webhook_ingress", str(event_source.id), force=True)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+                body = json.dumps(
+                    {"error": "rate_limit_exceeded", "source_id": str(event_source.id)}
+                )
+                return Response(
+                    content=body,
+                    status_code=exc.status_code,
+                    media_type="application/json",
+                    headers=dict(exc.headers or {}),
+                )
+            raise
 
     webhook_request = WebhookRequest(
         method=method,
