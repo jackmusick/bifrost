@@ -138,6 +138,7 @@ class ProcessHandle:
     current_execution: ExecutionInfo | None = None
     executions_completed: int = 0
     pending_recycle: bool = False  # Mark for recycle after current execution
+    result_reported: bool = False  # True once on_result has fired for current_execution; reset when a new execution is assigned.
 
     @property
     def is_alive(self) -> bool:
@@ -690,6 +691,7 @@ class ProcessPoolManager:
             started_at=datetime.now(timezone.utc),
             timeout_seconds=timeout,
         )
+        idle.result_reported = False
 
         # Send to process
         idle.work_queue.put_nowait(execution_id)
