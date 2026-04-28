@@ -436,7 +436,7 @@ class TestProcessPoolManagerTimeouts:
             killed = True
             h.state = ProcessState.KILLED
 
-        async def mock_report_timeout(info: ExecutionInfo) -> None:
+        async def mock_report_timeout(handle: ProcessHandle) -> None:
             nonlocal timeout_reported
             timeout_reported = True
 
@@ -504,7 +504,7 @@ class TestProcessPoolManagerCrashDetection:
         crash_reported = False
         spawn_count = 0
 
-        async def mock_report_crash(info: ExecutionInfo) -> None:
+        async def mock_report_crash(handle: ProcessHandle) -> None:
             nonlocal crash_reported
             crash_reported = True
 

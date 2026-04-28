@@ -138,7 +138,11 @@ class ProcessHandle:
     current_execution: ExecutionInfo | None = None
     executions_completed: int = 0
     pending_recycle: bool = False  # Mark for recycle after current execution
-    result_reported: bool = False  # True once on_result has fired for current_execution; reset when a new execution is assigned.
+    # True once we have *attempted* to fire on_result for current_execution
+    # (set before the await; stays True even if on_result raised). Reset when
+    # a new execution is assigned. Used by the orphan sweep to detect handles
+    # that were never attempted to be reported.
+    result_reported: bool = False
 
     @property
     def is_alive(self) -> bool:
@@ -795,7 +799,7 @@ class ProcessPoolManager:
                 await self._kill_process(handle)
 
                 # Report timeout
-                await self._report_timeout(exec_info)
+                await self._report_timeout(handle)
 
                 # Remove from pool
                 del self.processes[handle.id]
@@ -837,25 +841,31 @@ class ProcessPoolManager:
                 pass
             handle.process.join(timeout=1)
 
-    async def _report_timeout(self, exec_info: ExecutionInfo) -> None:
+    async def _report_timeout(self, handle: ProcessHandle) -> None:
         """
         Report a timeout to the result callback.
 
+        No-op if `on_result` is not configured or if `current_execution` has
+        already been cleared (e.g. raced with the success path).
+
         Args:
-            exec_info: ExecutionInfo for the timed-out execution
+            handle: ProcessHandle whose current_execution timed out
         """
-        if self.on_result:
-            try:
-                await self.on_result({
-                    "type": "result",
-                    "execution_id": exec_info.execution_id,
-                    "success": False,
-                    "error": f"Execution timed out after {exec_info.timeout_seconds}s",
-                    "error_type": "TimeoutError",
-                    "duration_ms": int(exec_info.elapsed_seconds * 1000),
-                })
-            except Exception as e:
-                logger.exception(f"Error reporting timeout: {e}")
+        exec_info = handle.current_execution
+        if self.on_result is None or exec_info is None:
+            return
+        handle.result_reported = True
+        try:
+            await self.on_result({
+                "type": "result",
+                "execution_id": exec_info.execution_id,
+                "success": False,
+                "error": f"Execution timed out after {exec_info.timeout_seconds}s",
+                "error_type": "TimeoutError",
+                "duration_ms": int(exec_info.elapsed_seconds * 1000),
+            })
+        except Exception as e:
+            logger.exception(f"Error reporting timeout: {e}")
 
     async def _cancel_listener_loop(self) -> None:
         """
@@ -1058,7 +1068,7 @@ class ProcessPoolManager:
                 await self._kill_process(handle)
 
                 # Report cancellation
-                await self._report_cancellation(handle.current_execution)
+                await self._report_cancellation(handle)
 
                 # Remove from pool and replace
                 del self.processes[handle.id]
@@ -1071,25 +1081,31 @@ class ProcessPoolManager:
             f"Cancellation request for {execution_id[:8]}... - not found in pool"
         )
 
-    async def _report_cancellation(self, exec_info: ExecutionInfo) -> None:
+    async def _report_cancellation(self, handle: ProcessHandle) -> None:
         """
         Report a cancellation to the result callback.
 
+        No-op if `on_result` is not configured or if `current_execution` has
+        already been cleared.
+
         Args:
-            exec_info: ExecutionInfo for the cancelled execution
+            handle: ProcessHandle whose current_execution was cancelled
         """
-        if self.on_result:
-            try:
-                await self.on_result({
-                    "type": "result",
-                    "execution_id": exec_info.execution_id,
-                    "success": False,
-                    "error": "Execution was cancelled",
-                    "error_type": "CancelledError",
-                    "duration_ms": int(exec_info.elapsed_seconds * 1000),
-                })
-            except Exception as e:
-                logger.exception(f"Error reporting cancellation: {e}")
+        exec_info = handle.current_execution
+        if self.on_result is None or exec_info is None:
+            return
+        handle.result_reported = True
+        try:
+            await self.on_result({
+                "type": "result",
+                "execution_id": exec_info.execution_id,
+                "success": False,
+                "error": "Execution was cancelled",
+                "error_type": "CancelledError",
+                "duration_ms": int(exec_info.elapsed_seconds * 1000),
+            })
+        except Exception as e:
+            logger.exception(f"Error reporting cancellation: {e}")
 
     async def _check_process_health(self) -> None:
         """
@@ -1109,7 +1125,7 @@ class ProcessPoolManager:
 
                 # Report crash if there was an execution in progress
                 if handle.current_execution:
-                    await self._report_crash(handle.current_execution)
+                    await self._report_crash(handle)
 
                 to_remove.append(process_id)
 
@@ -1121,25 +1137,31 @@ class ProcessPoolManager:
         while len(self.processes) < self.min_workers:
             self._fork_process()
 
-    async def _report_crash(self, exec_info: ExecutionInfo) -> None:
+    async def _report_crash(self, handle: ProcessHandle) -> None:
         """
         Report a crash to the result callback.
 
+        No-op if `on_result` is not configured or if `current_execution` has
+        already been cleared.
+
         Args:
-            exec_info: ExecutionInfo for the crashed execution
+            handle: ProcessHandle whose current_execution crashed
         """
-        if self.on_result:
-            try:
-                await self.on_result({
-                    "type": "result",
-                    "execution_id": exec_info.execution_id,
-                    "success": False,
-                    "error": "Worker process crashed unexpectedly",
-                    "error_type": "ProcessCrashError",
-                    "duration_ms": int(exec_info.elapsed_seconds * 1000),
-                })
-            except Exception as e:
-                logger.exception(f"Error reporting crash: {e}")
+        exec_info = handle.current_execution
+        if self.on_result is None or exec_info is None:
+            return
+        handle.result_reported = True
+        try:
+            await self.on_result({
+                "type": "result",
+                "execution_id": exec_info.execution_id,
+                "success": False,
+                "error": "Worker process crashed unexpectedly",
+                "error_type": "ProcessCrashError",
+                "duration_ms": int(exec_info.elapsed_seconds * 1000),
+            })
+        except Exception as e:
+            logger.exception(f"Error reporting crash: {e}")
 
     async def _maybe_scale_down(self) -> None:
         """
@@ -1234,6 +1256,10 @@ class ProcessPoolManager:
             handle: ProcessHandle that produced the result
             result: Result data from the worker
         """
+        # Mark result as reported before clearing current_execution so the invariant
+        # ("result_reported=True once on_result has fired") holds for external observers.
+        handle.result_reported = True
+
         # Clear current execution
         handle.current_execution = None
         handle.executions_completed += 1
