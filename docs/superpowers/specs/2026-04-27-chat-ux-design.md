@@ -509,7 +509,171 @@ What this spec leaves as seams for sub-projects (2)–(5):
 - **(4) Artifacts** — workspaces become the natural home; `Workspace.artifacts` relationship added later. Wire format gets new `artifact_created` / `artifact_updated` chunk types.
 - **(5) Web Search** — same shape as Code Execution: a tool, gated by workspace's `enabled_tool_ids`. Can also be exposed at the workspace level (e.g., "this workspace's web searches use only the org's approved provider").
 
-## 16. References
+## 16. UX descriptions for major surfaces
+
+These ground the spec in Bifrost's existing visual language (shadcn/ui + Tailwind, OKLch teal primary, Lucide icons, the existing chat header / sidebar / picker patterns). Where an existing component fits, it's named explicitly. Where a new pattern is needed, it's described — not constrained by what already exists, but consistent with the surrounding style.
+
+### 16.1 Sidebar with workspace folders
+
+Replaces today's flat `ChatSidebar` conversation list. Width unchanged (`w-80`).
+
+**Structure top-to-bottom:**
+
+1. **Header row.** "+ New chat" button (default variant, full-width, Plus icon). Below it, search input (existing `SearchBox`) filtering across all workspaces' conversations by title and last-message-preview.
+
+2. **Workspace list.** Each workspace renders as a collapsible section:
+   - Header row: chevron (collapsible state, `ChevronRight` rotated when open), workspace icon (Folder / FolderOpen Lucide icons; for the synthetic "Personal" workspace, use `User` icon to differentiate), name (font-medium, truncated), and a small badge for scope when not personal (`Org` / `Role: Senior Tech` — text-xs, muted-foreground variant of existing Badge component, only visible when non-personal). Chevron click toggles open/closed. Workspace name click opens its conversation list (and selects the workspace as "current").
+   - Conversations under it: indented (`pl-6`), same row pattern as today's `ChatSidebar` items — title, last-message preview (text-xs, muted-foreground), active state via `bg-accent`. Right-aligned timestamp ("2h ago") on hover only.
+   - On hover of the workspace header: small `MoreHorizontal` icon → dropdown menu (existing `DropdownMenu` component) with "Settings", "Move all conversations to…", "Delete workspace" (destructive). Personal workspace's menu has only "Settings" — delete is disabled.
+
+3. **Bottom: workspace switcher.** Below the list, a small bordered button: `Plus` icon + "New workspace" (ghost variant). Click opens a Dialog (modeled on `OrgConfigDialog`): name, description, scope picker (RadioGroup: Personal / Organization / Role-specific, with role picker conditional on the third option), advanced fields collapsed under "Configure tools, knowledge, instructions" expander.
+
+**Empty workspace appearance:** indented italicized text "No conversations yet" (text-xs, muted-foreground), no other content.
+
+**Default state:** Personal workspace expanded, all org/role workspaces collapsed. State persisted per-user in localStorage.
+
+**Drag-to-move:** drag a conversation row, drop on another workspace header. Highlight target workspace header with `bg-accent` during drag. Shadcn doesn't ship DnD primitives; use `dnd-kit` (lightweight, accessible) — install if not already present.
+
+### 16.2 Workspace settings panel
+
+Opening "Settings" on a workspace launches a right-side `Sheet` (modeled on the existing `ExecutionDrawer`, `side="right"`, `max-w-2xl`). Sheet has tabs (existing `Tabs` component) — same pattern as the global Settings page:
+
+- **General**: name, description, scope (read-only — scope is set at creation, not editable later), default agent (Combobox of agents the workspace's audience has access to).
+- **Tools**: MultiCombobox of available tools, with chip count. Help text below: "If set, only these tools are available in this workspace. The agent's tools must include each enabled tool — tools you select here that the agent doesn't have are still hidden in chats." Chips show a warning glyph for any selected tool the chosen default agent doesn't have access to (so admins see the intersection at config time).
+- **Knowledge**: MultiCombobox of knowledge sources, same shape.
+- **Instructions**: textarea (auto-resize), labeled "Custom instructions appended to system prompt." Below: "**Baseline cost: ~3.2k tokens / message**" — small text-xs muted line, computed live as the admin types, summing instructions + per-message overhead from knowledge + tools schema. This is the "cost transparency" feature.
+- **Models**: model resolver UI for this workspace (see §16.4).
+
+Footer: "Save" (default) and "Cancel" (outline). Changes are debounced/preview-able before save.
+
+### 16.3 Conversation header
+
+Today's chat header is `h-14, border-b`, with title + agent name on the left and admin-only model/tokens/cost stats on the right. Updates:
+
+**Left side (unchanged structure, refined):**
+- Conversation title (h1, font-medium, truncated, click to inline-rename).
+- Subtitle row (text-xs, muted): workspace name (with `Folder` icon, click → switch to that workspace's view) → agent name (with bot avatar, click → @-mention picker for agent switch).
+
+**Right side (visible to all users, not just admins):**
+- Model pill (clickable). Shows tier glyph (⚡/⚖/💎) + model display name. Click opens model picker (§16.4). This replaces today's admin-only `Cpu` icon + model name.
+- Context budget indicator (compact). Mini progress bar (Tailwind `Progress` from shadcn): `[████░░░░] 32k / 200k`. Color is muted at <70%, primary at 70-85%, destructive past 85%. Hover shows tooltip with breakdown ("System prompt: 3.2k, Knowledge: 8k, History: 21k").
+- Cost tier strip. Up to 8 most recent message tier glyphs in a row, e.g., `⚡ ⚡ ⚖ ⚖ ⚖ 💎 💎 ⚡` — text-xs, gap-0.5. Hover tooltip: "12 messages this session: 8 fast, 3 balanced, 1 premium."
+- Overflow `MoreHorizontal` → DropdownMenu: "Compact older turns" (with usage badge), "Customize this chat" (per-conversation instructions), "Export…" (Markdown / JSON), "Delete conversation" (destructive).
+
+When the budget indicator is past 85%, a subtle inline button "Compact" appears alongside the bar (ghost variant, text-xs). One-click runs manual compaction.
+
+### 16.4 Model picker
+
+Triggered from: the model pill in the chat header, the workspace settings, the org admin AI settings, and the retry-with-different-model dropdown.
+
+Built on existing `Popover + Command` (matches `MentionPicker` and the workflow Combobox). Differences from a standard combobox:
+
+- Each item shows: tier glyph, display name (font-medium), real provider model ID (text-xs muted, on a second line — visible by default, no hover needed).
+- Items the user cannot select are **rendered grayed out** (`opacity-50 cursor-not-allowed`) at the bottom of the list, sorted under a divider with header "Restricted." Each restricted item shows a `Lock` icon and a one-line tooltip on hover: "Restricted by your org admin" / "Restricted by this workspace" / "Restricted by your role (Help Desk)" / "Not enabled on this Bifrost installation."
+- Search filter (CommandInput) operates across both available and restricted entries.
+- Selection: click → close picker, switch model. New chat header pill updates.
+
+**Special row in the picker:** a divider above the list reading "Aliases" lists `bifrost-fast`, `bifrost-balanced`, `bifrost-premium`, plus any org-defined aliases. Each shows the alias name (font-medium) and the resolved real model on the second line ("⚖ Balanced • Claude Sonnet 4.6"). Below them, a "Specific models" section with raw IDs.
+
+### 16.5 Org admin AI settings
+
+Existing settings live at `/settings/llm` as a tabbed sub-page (`LLMConfig.tsx`). Refactor that page to:
+
+**Top section: provider configuration** (existing — choose Anthropic / OpenAI / OpenRouter / etc., enter API keys).
+
+**Middle section: model availability for chat.**
+- DataTable (existing component, used in Forms list) with columns: Display Name (with override field if set), Model ID, Provider, Cost Tier (Select dropdown to override platform default), Available for Chat (Switch).
+- Above the table: "+ Add model" button → Dialog with Combobox of all platform-known models not yet in the org list, plus an option to add a raw model ID for self-hosted endpoints.
+- Below the table: defaults panel — "Default model for new chats" (Combobox restricted to enabled-for-chat models), "Allowed for fallback compaction" (MultiCombobox).
+
+**Bottom section: aliases.**
+- Smaller DataTable of org-defined aliases. Columns: Alias, Display Name, Target Model, Cost Tier, Notes. "+ Add alias" button. Existing `bifrost-*` platform aliases shown grayed out as informational rows ("inherited from platform; click 'Override' to redirect").
+
+**Save flow with reference audit (§5.8.5):**
+On Save click, before persisting, run the reference audit. If references would be orphaned, an `AlertDialog` opens (existing component, used for destructive confirmations) — not a Sheet, because this is a blocking decision. Body:
+
+> ⚠️ Saving these changes will orphan model references.
+>
+> **`minimax-m1`** is referenced in 3 places.
+> Replace with: [Combobox: pre-filled with closest available in same tier, restricted to currently-enabled models]
+>
+> **`gpt-4o`** is referenced in 5 places.
+> Replace with: [Combobox]
+>
+> [ Cancel ] [ Apply replacements and save ]
+
+Each affected model has its own row with the count and a Combobox. The "View affected items" disclosure expands to show which workspaces / roles / conversations reference each (existing Accordion pattern).
+
+### 16.6 Attachment UX in the chat input
+
+Today's `ChatInput` has a Paperclip button (already wired up) and supports auto-resize textarea. Updates:
+
+**Drag-and-drop overlay.** When the user drags a file over the input area (or anywhere in the chat window), a full-window dashed-border overlay appears with `Upload` icon centered and text "Drop files to attach" (matches the existing `ImportDialog` upload affordance vocabulary). On drop, files queue to upload.
+
+**Attachment chips above the textarea.** As files upload, each shows as a chip — a Card with: thumbnail (image preview, or icon for PDF/CSV/text — `FileText` / `FileSpreadsheet` / `FileImage`), filename (truncated), size (text-xs muted), progress bar (during upload), and X to remove. Multiple attachments wrap into rows. Max 5 chips before a "+N more" overflow.
+
+**Paste support.** Pasting an image into the textarea triggers the same upload path with auto-generated filename `screenshot-YYYY-MM-DD-HHmm.png`.
+
+**Server-side text extraction.** For PDFs, after upload completes, the chip's bottom text changes from "1.2 MB" to "1.2 MB • 3 pages, ~2.1k tokens" — communicating the cost contribution before the user sends.
+
+### 16.7 Editing a user message
+
+Hover a user message → small `Pencil` icon appears at the top-right of the message bubble (ghost button, opacity-0 on default, opacity-100 on group-hover — same pattern as inline-edit affordances elsewhere). Click → message text becomes editable inline (textarea, autosize, same width as the bubble), with "Send" (default button) and "Cancel" (ghost) below.
+
+On Send: existing `AlertDialog` confirms — "This will discard the assistant's response and any subsequent messages. Continue?" — because edit-replaces is destructive (DB rows beyond this point get deleted). On Cancel: bubble reverts. (We could skip the confirm for the common case and just show an undo toast, but I'd flag this in usage testing — the destructive action is irreversible without DB restore.)
+
+### 16.8 Retry button
+
+Hover an assistant message → small `RotateCcw` icon at top-right of the bubble. Single click = retry with current model. Adjacent caret (`ChevronDown`) opens a Popover with "Retry with…" header and the model picker (§16.4) inline. Selecting a model retries with that model and switches the conversation's current model going forward.
+
+### 16.9 Compaction indicators
+
+When auto-compaction triggers mid-stream, a brief inline system event renders in the message stream — same component as today's `ChatSystemEvent`, with `Layers` icon and text "Compacted N earlier turns to free context space" (text-xs muted-foreground, italic, centered, with subtle horizontal divider lines extending from each side). Persistent — stays in the scrollback as a bookmark of when compaction happened.
+
+When the user clicks the manual "Compact" button (in the header, when budget is high): same system event renders, plus a one-line toast (`sonner`): "Older turns summarized. ~30k tokens freed."
+
+When compacted summary content is shown to the model in subsequent turns, the user **never** sees the summary — they see the original messages in their scrollback. The summary is purely a model-context construct.
+
+### 16.10 Per-conversation custom instructions
+
+Triggered from the conversation-header overflow menu → "Customize this chat." Opens a small Dialog (not Sheet — this is a single-field, fast-in-fast-out action):
+
+- Title: "Customize [conversation title]"
+- One textarea (autosize, label: "Instructions for this conversation (in addition to the workspace's instructions and agent's prompt)").
+- Live cost preview below the textarea: "+ ~120 tokens / message" — same pattern as the workspace instructions cost.
+- Existing instructions (if any) are pre-loaded.
+- Footer: "Save" / "Cancel" / "Reset to workspace defaults" (ghost, destructive variant).
+
+### 16.11 Multi-agent delegation badge
+
+When an agent delegates within a turn (per §7), the assistant message renders the delegated-agent contribution as a collapsible inline card embedded in the message stream:
+
+```
+┌─ ✓ Consulted [Specialist Agent name] ──────────────┐
+│  [agent avatar] [agent description, text-xs muted] │
+│  ▶ Show details                                    │
+└─────────────────────────────────────────────────────┘
+```
+
+Click "Show details" → expands to show the delegated agent's contribution (markdown-rendered, indented, with subtle left-border in primary color to distinguish). Card uses the existing `Card` shadcn primitive, slim padding (p-3), rounded-md, border-muted.
+
+Delegation card appears *inline within* the primary agent's response, not as a separate message. The conversation's active agent stays the primary.
+
+### 16.12 Empty states
+
+- **Empty Personal workspace, no conversations yet:** centered (existing pattern from Forms list), `MessageSquare` icon (large, muted), h3 "Start your first chat", text "Pick an agent to chat with, or just start typing." (muted-foreground), "+ New chat" button.
+- **Workspace with no conversations:** indented italic "No conversations in this workspace yet."
+- **Search returns no results:** centered, `Search` icon (large, muted), h3 "No conversations match your search", text "Try different keywords or check another workspace."
+- **No workspaces (impossible after first launch — Personal is auto-created — but a defensive empty state):** falls through to the Personal workspace empty state.
+
+### 16.13 Error states
+
+- **Upload fails:** chip turns red with destructive-tinted border; "Upload failed — retry?" link replaces the size info; X to dismiss.
+- **Model unavailable mid-conversation (e.g., provider went down):** inline `ChatSystemEvent`-style banner with `AlertCircle` icon, text "Couldn't reach [model]. Switching to [fallback]." Auto-resolves; no user action needed.
+- **Compaction fails (rare — summarizer model unreachable):** banner: "Context near limit. Compaction unavailable. Try a different model or shorten your message." User can manually compact later.
+- **Workspace permission lost (admin removed user from role):** existing forbidden pattern — workspace disappears from sidebar; if user was viewing one of its conversations, redirects to Personal workspace with toast: "Access to [Workspace] was revoked."
+
+## 17. References
 
 - Program spec: `2026-04-27-chat-v2-program-design.md`
 - Master plan: `../plans/2026-04-27-chat-v2-master-plan.md`
@@ -519,3 +683,10 @@ What this spec leaves as seams for sub-projects (2)–(5):
 - Existing agent executor: `api/src/services/agent_executor.py`
 - Existing chat store: `client/src/stores/chatStore.ts`
 - Existing upload store (reused for attachments): `client/src/stores/uploadStore.ts`
+- Existing settings page (informs admin AI settings refactor): `client/src/pages/settings/LLMConfig.tsx`
+- Existing execution drawer (informs Workspace Settings sheet): `client/src/components/execution/ExecutionDrawer.tsx`
+- Existing combobox / multi-combobox (model picker, tool/knowledge selectors): `client/src/components/ui/combobox.tsx`, `multi-combobox.tsx`
+- Existing data table (informs admin model availability table): `client/src/components/ui/data-table.tsx`
+- Existing import dialog (informs file-upload affordances): `client/src/components/ImportDialog.tsx`
+- Existing chat sidebar (extended for workspaces): `client/src/components/chat/ChatSidebar.tsx`
+- Existing chat layout / header (refactored for visible model+budget): `client/src/components/chat/ChatLayout.tsx`
