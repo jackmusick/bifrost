@@ -14,7 +14,7 @@ All trackable work on `jackmusick/bifrost` lives in **GitHub Issues**, and all n
 3. **GitHub conventions only.** Use `assignee`, `help wanted`, `good first issue` — not custom status/priority/milestone labels.
 4. **Trivial edits don't need issues or worktrees.** See the trivial-edit definition below.
 5. **Worktrees are the default for non-trivial work.** Working directly on `main` is a smell — the user keeps `main` clean to pull updates without conflicting with in-progress work.
-6. **Only one `./debug.sh` across all worktrees.** The dev stack shares a single Postgres; running it in two places corrupts state.
+6. **Debug stacks are per-worktree.** Each worktree gets an isolated `./debug.sh` stack (Compose project derived from the worktree path). See the `bifrost-debug` skill for boot/teardown.
 
 ## When to Activate
 
@@ -120,17 +120,9 @@ If main has migrations the branch lacks, warn: "main has migrations ahead of thi
 
 ### 4. Dev stack coordination
 
-**Rule: only one `./debug.sh` across all worktrees.**
+Debug stacks are per-worktree — `./debug.sh` derives its Compose project name from the worktree path, so two worktrees running their own stacks don't conflict. See the `bifrost-debug` skill for the lifecycle (boot, status, teardown, two-mode behavior).
 
-Before running `./debug.sh` in a worktree:
-
-```bash
-docker ps --filter "name=bifrost-dev-" --format "{{.Names}}"
-```
-
-If anything is running, ask: "A bifrost-dev stack is already running (probably another worktree). Stop it there first, or do you want to work without the dev stack in this worktree?" Do not auto-stop it.
-
-**Most worktrees don't need `./debug.sh`.** The test stack is per-worktree (isolated by Compose project name, see CLAUDE.md), so tests work fine without the dev stack. Type generation can also extract OpenAPI from the worktree's test-stack API container. Only run `./debug.sh` in a worktree when you actually need to click around the UI there.
+**Most worktrees don't need a debug stack.** The test stack (`./test.sh stack up`) is already per-worktree and is enough for unit/E2E coverage. Type generation can extract OpenAPI from the test-stack's API container. Only invoke the `bifrost-debug` skill when you actually need to click around the UI in this worktree.
 
 ### 5. Doing the work
 

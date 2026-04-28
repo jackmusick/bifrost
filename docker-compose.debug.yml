@@ -1,0 +1,329 @@
+# Bifrost Docker Stack - Per-Worktree Debug Environment
+#
+# Standalone compose file driven by ./debug.sh. Container/volume names derive
+# from $COMPOSE_PROJECT_NAME (set by debug.sh per-worktree), so multiple
+# worktrees can run debug stacks in parallel without collisions.
+#
+# Two boot modes (selected via Compose profiles):
+#   default profile  → Mode B: client port exposed on host as $DEBUG_CLIENT_PORT
+#   netbird profile  → Mode A: no host ports; reachable via Netbird mesh
+#
+# Persistent volumes (so DB state survives stack restarts within a worktree).
+# Hot reload via dev Dockerfile + volume mounts.
+
+services:
+  # PostgreSQL - persistent volume per worktree
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: bifrost
+      POSTGRES_USER: bifrost
+      POSTGRES_PASSWORD: bifrost_debug
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bifrost -d bifrost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: bifrost
+      DB_USER: bifrost
+      DB_PASSWORD: bifrost_debug
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      AUTH_TYPE: plain
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "bifrost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: bifrost
+      RABBITMQ_DEFAULT_PASS: bifrost_debug
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: bifrost
+      MINIO_ROOT_PASSWORD: bifrost_debug_key
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 bifrost bifrost_debug_key;
+      mc mb myminio/bifrost-local --ignore-existing;
+      echo 'Bucket created successfully';
+      "
+
+  init:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-debug}
+    environment:
+      BIFROST_ENVIRONMENT: development
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./api/src:/app/src:ro
+      - /app/src/services/app_compiler/node_modules
+      - /app/src/services/app_bundler/node_modules
+      - ./api/shared:/app/shared:ro
+      - ./api/scripts:/app/scripts:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "scripts.init_container"]
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-debug}
+    environment:
+      BIFROST_ENVIRONMENT: development
+      BIFROST_DEBUG: "true"
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_S3_BUCKET: bifrost-local
+      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ACCESS_KEY: bifrost
+      BIFROST_S3_SECRET_KEY: bifrost_debug_key
+      BIFROST_S3_REGION: us-east-1
+      BIFROST_PUBLIC_URL: ${BIFROST_PUBLIC_URL:-}
+      BIFROST_MFA_ENABLED: "false"
+      BIFROST_DEFAULT_USER_EMAIL: ${BIFROST_DEFAULT_USER_EMAIL:-dev@gobifrost.com}
+      BIFROST_DEFAULT_USER_PASSWORD: ${BIFROST_DEFAULT_USER_PASSWORD:-password}
+      BIFROST_WEBAUTHN_RP_ID: ${BIFROST_WEBAUTHN_RP_ID:-localhost}
+      BIFROST_WEBAUTHN_ORIGIN: ${BIFROST_WEBAUTHN_ORIGIN:-http://localhost:3000}
+    volumes:
+      - ./api/src:/app/src:ro
+      - /app/src/services/app_compiler/node_modules
+      - /app/src/services/app_bundler/node_modules
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+    user: root
+    command: >
+      uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+      --reload-dir /app/src --reload-dir /app/shared
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-debug}
+    environment:
+      BIFROST_ENVIRONMENT: development
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_S3_BUCKET: bifrost-local
+      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ACCESS_KEY: bifrost
+      BIFROST_S3_SECRET_KEY: bifrost_debug_key
+      BIFROST_S3_REGION: us-east-1
+    volumes:
+      - ./api/src:/app/src:ro
+      - /app/src/services/app_compiler/node_modules
+      - /app/src/services/app_bundler/node_modules
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    user: root
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared
+      --pattern="*.py" --recursive -- python -m src.scheduler.main
+
+  worker:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+      args:
+        BIFROST_VERSION: ${BIFROST_VERSION:-debug}
+    environment:
+      BIFROST_ENVIRONMENT: development
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
+      BIFROST_REDIS_URL: redis://redis:6379/0
+      BIFROST_S3_BUCKET: bifrost-local
+      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ACCESS_KEY: bifrost
+      BIFROST_S3_SECRET_KEY: bifrost_debug_key
+      BIFROST_S3_REGION: us-east-1
+      BIFROST_USE_THREAD_WORKERS: "true"
+      BIFROST_DATABASE_POOL_SIZE: "1"
+      BIFROST_DATABASE_MAX_OVERFLOW: "2"
+    volumes:
+      - ./api/src:/app/src:ro
+      - /app/src/services/app_compiler/node_modules
+      - /app/src/services/app_bundler/node_modules
+      - ./api/shared:/app/shared:ro
+      - ./api/bifrost:/app/bifrost:ro
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    user: root
+    command: >
+      watchmedo auto-restart --directory=/app/src --directory=/app/shared
+      --pattern="*.py" --recursive -- python -m src.worker.main
+
+  # In Mode B (port), debug.sh adds a "ports:" entry via docker-compose.debug.port.yml.
+  # In Mode A (netbird), no host port is bound — the netbird sidecar shares
+  # this container's network namespace and surfaces it on the Netbird mesh.
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+      args:
+        VITE_BIFROST_VERSION: ${VITE_BIFROST_VERSION:-debug}
+    environment:
+      API_URL: http://api:8000
+      WS_URL: ws://api:8000
+    volumes:
+      - ./client/src:/app/src
+      - ./client/public:/app/public
+      - ./client/index.html:/app/index.html
+      - ./client/vite.config.ts:/app/vite.config.ts
+      - ./client/tsconfig.json:/app/tsconfig.json
+      - ./client/tsconfig.app.json:/app/tsconfig.app.json
+      - ./client/tsconfig.node.json:/app/tsconfig.node.json
+      - ./client/tailwind.config.js:/app/tailwind.config.js
+      - ./client/postcss.config.js:/app/postcss.config.js
+    # Capabilities/devices needed by the netbird sidecar (which shares this
+    # container's network namespace via network_mode: service:client).
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    devices:
+      - /dev/net/tun
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Netbird peer — sidecar to client (shares its network namespace).
+  # In Netbird Admin, peer = $NETBIRD_HOSTNAME, port 80 = client nginx.
+  # Only started with --profile netbird.
+  netbird:
+    image: netbirdio/netbird:latest
+    network_mode: "service:client"
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      # Validated by debug.sh before starting the netbird profile.
+      NB_SETUP_KEY: ${NETBIRD_SETUP_KEY:-}
+      NB_HOSTNAME: ${NETBIRD_HOSTNAME:-}
+      # Optional: comma-separated DNS aliases (e.g. "vpc1,api" -> vpc1.netbird.cloud,
+      # api.netbird.cloud). Wildcard prefix supported (e.g. "*.myserver"). Set in
+      # ~/.config/bifrost/debug.env if you want stable alias names for the peer.
+      NB_EXTRA_DNS_LABELS: ${NETBIRD_EXTRA_DNS_LABELS:-}
+    volumes:
+      - netbird_data:/etc/netbird
+    depends_on:
+      client:
+        condition: service_started
+    profiles:
+      - netbird
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:
+  minio_data:
+  netbird_data:

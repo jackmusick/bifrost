@@ -16,7 +16,7 @@
 		"tsc": "tsc -b",
 		"lint": "eslint .",
 		"format": "prettier --write .",
-		"generate:types": "npx openapi-typescript http://localhost:3000/openapi.json -o src/lib/v1.d.ts",
+		"generate:types": "npx openapi-typescript ${OPENAPI_URL:-http://localhost:3000/openapi.json} -o src/lib/v1.d.ts",
 		"generate:types:docker": "npx openapi-typescript http://localhost/openapi.json -o src/lib/v1.d.ts",
 		"test": "vitest run",
 		"test:watch": "vitest",
