@@ -335,3 +335,77 @@ export default function ClientDetails() {
 ```
 
 Scope: the app session. Cleared on browser refresh or when switching apps. NOT persistent storage — save to DB via workflows for anything that must survive a reload.
+
+## 10. Styling — Tailwind v4 in apps
+
+Apps go through the platform's per-app Tailwind v4 pipeline at bundle time. Everything a normal Tailwind project supports works — including the long-tail features that landed in v4. **Use them.** The platform compiles your app's classes against the host theme; you don't have to remember a list of "what's safe."
+
+### What works
+
+- **All standard utilities**, including the host's shadcn theme tokens (`bg-background`, `bg-card`, `text-muted-foreground`, etc.) — these come from the host preload, available everywhere.
+- **Arbitrary values**, including with CSS variables and modern color spaces:
+  - `max-w-[1400px]`, `min-h-[calc(100vh-4rem)]`, `px-[clamp(1rem,3vw,2.5rem)]`
+  - `lg:grid-cols-[minmax(0,1fr)_360px]`, `md:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]`
+  - `bg-[color:var(--ops-paper)]`, `bg-[oklch(0.4_0.1_220)]`, `bg-[hsl(var(--accent)/0.6)]`
+- **Responsive variants of arbitrary values:** `lg:py-14`, `xl:grid-cols-[1fr_440px_280px]`
+- **`@apply` in `styles.css`**, including with arbitrary values: `.themed { @apply bg-[color:var(--paper)] p-4 rounded; }`
+- **`@layer components { .x { @apply ... } }`** for shared component styles.
+- **`:root` and `.dark` CSS variable blocks** in `styles.css` — pass through unchanged.
+- **Per-app `tailwind.config.{ts,js,mjs,cjs}`** — drop one at the app root and its `theme.extend` is honored. Use this to add custom theme tokens like `theme.extend.colors.brand.500` so `bg-brand-500` compiles.
+
+### Worked example: app with theme tokens, @apply, and per-app config
+
+```css
+/* apps/my-app/styles.css */
+:root {
+  --ops-bg: oklch(0.985 0 0);
+  --ops-paper: oklch(1 0 0);
+  --ops-fg: oklch(0.145 0 0);
+}
+.dark {
+  --ops-bg: oklch(0.145 0 0);
+  --ops-paper: oklch(0.205 0 0);
+  --ops-fg: oklch(0.985 0 0);
+}
+
+@layer components {
+  .ops-pill {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-medium;
+  }
+}
+```
+
+```ts
+// apps/my-app/tailwind.config.ts (optional)
+export default {
+  theme: {
+    extend: {
+      colors: { brand: { 500: "#facc15" } },
+    },
+  },
+};
+```
+
+```tsx
+// apps/my-app/pages/index.tsx
+export default function Page() {
+  return (
+    <div className="bg-[color:var(--ops-bg)] text-[color:var(--ops-fg)] min-h-[calc(100vh-4rem)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <span className="ops-pill bg-brand-500">Status</span>
+      </div>
+    </div>
+  );
+}
+```
+
+All four feature classes here (custom CSS variables, `@layer` + `@apply`, per-app theme token, arbitrary-value layout) compile correctly. No workarounds needed.
+
+### Cascade order
+
+The bundler emits the per-app Tailwind output ahead of any other user CSS in the synthesized entry, then user CSS comes after. So host preload < app utilities < user CSS specificity. If you need to override a Tailwind utility, just write the CSS rule.
+
+### What's still NOT supported
+
+- Tailwind plugins beyond `@tailwindcss/typography` (which the host already provides via the preload). The bundler's compile pass uses the default v4 plugin set; per-app `plugins: [...]` arrays in `tailwind.config.ts` are ignored.
+- `@source` directives to scan files outside the app root. The bundler scans the app's own materialized source tree only.
