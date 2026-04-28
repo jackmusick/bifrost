@@ -62,6 +62,18 @@ class WebhookSourceConfig(BaseModel):
         default_factory=dict,
         description="Adapter-specific configuration",
     )
+    rate_limit_per_minute: int | None = Field(
+        default=60,
+        description="Max events per window. Null disables.",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        description="Window in seconds.",
+    )
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Per-source kill switch.",
+    )
 
 
 class ScheduleSourceConfig(BaseModel):
@@ -245,6 +257,18 @@ class WebhookSourceResponse(BaseModel):
     expires_at: datetime | None = Field(
         default=None,
         description="When the external subscription expires",
+    )
+    rate_limit_per_minute: int | None = Field(
+        default=60,
+        description="Max events per window. Null disables.",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        description="Window in seconds.",
+    )
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Per-source kill switch.",
     )
 
 

@@ -97,6 +97,17 @@ function EditEventSourceDialogContent({
 		Record<string, unknown>
 	>(source.webhook?.config || {});
 
+	// Webhook rate-limit config
+	const [rateLimitPerMinute, setRateLimitPerMinute] = useState<number | null>(
+		source.webhook?.rate_limit_per_minute ?? 60,
+	);
+	const [rateLimitWindowSeconds, setRateLimitWindowSeconds] = useState(
+		source.webhook?.rate_limit_window_seconds ?? 60,
+	);
+	const [rateLimitEnabled, setRateLimitEnabled] = useState(
+		source.webhook?.rate_limit_enabled ?? true,
+	);
+
 	// Schedule config fields
 	const [cronExpression, setCronExpression] = useState<string>(
 		source.schedule?.cron_expression ?? "",
@@ -192,7 +203,14 @@ function EditEventSourceDialogContent({
 			// Build body - include organization_id if admin changed it
 			const body: Record<string, unknown> = {
 				name: name.trim(),
-				webhook: isWebhook ? { config: webhookConfig } : undefined,
+				webhook: isWebhook
+					? {
+							config: webhookConfig,
+							rate_limit_per_minute: rateLimitPerMinute,
+							rate_limit_window_seconds: rateLimitWindowSeconds,
+							rate_limit_enabled: rateLimitEnabled,
+						}
+					: undefined,
 				schedule: isSchedule
 					? {
 							cron_expression: cronExpression.trim(),
@@ -294,6 +312,74 @@ function EditEventSourceDialogContent({
 							config={webhookConfig}
 							onChange={setWebhookConfig}
 						/>
+					</>
+				)}
+
+				{/* Rate Limiting (Webhook only) */}
+				{isWebhook && (
+					<>
+						<div className="border-t pt-4">
+							<h4 className="text-sm font-medium mb-3">
+								Rate limiting
+							</h4>
+						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="rate-limit-per-minute">
+								Rate limit (events per minute)
+							</Label>
+							<Input
+								id="rate-limit-per-minute"
+								type="number"
+								min={1}
+								value={rateLimitPerMinute ?? ""}
+								onChange={(e) => {
+									const val = e.target.value;
+									setRateLimitPerMinute(
+										val === "" ? null : Number(val),
+									);
+								}}
+								placeholder="60 (leave empty to disable)"
+							/>
+							<p className="text-xs text-muted-foreground">
+								Maximum events accepted per window. Leave empty to
+								disable the limit.
+							</p>
+						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="rate-limit-window">
+								Window (seconds)
+							</Label>
+							<Input
+								id="rate-limit-window"
+								type="number"
+								min={1}
+								value={rateLimitWindowSeconds}
+								onChange={(e) =>
+									setRateLimitWindowSeconds(Number(e.target.value))
+								}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Duration of the rate-limit sliding window.
+							</p>
+						</div>
+
+						<div className="flex items-center justify-between">
+							<div className="space-y-0.5">
+								<Label htmlFor="rate-limit-enabled">
+									Enabled
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Disable to bypass rate limiting for this source.
+								</p>
+							</div>
+							<Switch
+								id="rate-limit-enabled"
+								checked={rateLimitEnabled}
+								onCheckedChange={setRateLimitEnabled}
+							/>
+						</div>
 					</>
 				)}
 

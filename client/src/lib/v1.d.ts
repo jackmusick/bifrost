@@ -19314,6 +19314,24 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            /**
+             * Rate Limit Per Minute
+             * @description Max events per window. Null disables.
+             * @default 60
+             */
+            rate_limit_per_minute: number | null;
+            /**
+             * Rate Limit Window Seconds
+             * @description Window in seconds.
+             * @default 60
+             */
+            rate_limit_window_seconds: number;
+            /**
+             * Rate Limit Enabled
+             * @description Per-source kill switch.
+             * @default true
+             */
+            rate_limit_enabled: boolean;
         };
         /**
          * WebhookSourceResponse
@@ -19357,6 +19375,24 @@ export interface components {
              * @description When the external subscription expires
              */
             expires_at?: string | null;
+            /**
+             * Rate Limit Per Minute
+             * @description Max events per window. Null disables.
+             * @default 60
+             */
+            rate_limit_per_minute: number | null;
+            /**
+             * Rate Limit Window Seconds
+             * @description Window in seconds.
+             * @default 60
+             */
+            rate_limit_window_seconds: number;
+            /**
+             * Rate Limit Enabled
+             * @description Per-source kill switch.
+             * @default true
+             */
+            rate_limit_enabled: boolean;
         };
         /**
          * WorkerMetricPoint

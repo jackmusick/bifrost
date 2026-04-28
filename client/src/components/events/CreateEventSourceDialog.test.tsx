@@ -122,6 +122,38 @@ describe("CreateEventSourceDialog — webhook happy path", () => {
 		expect(body.name).toBe("GitHub Hooks");
 		expect(body.source_type).toBe("webhook");
 		expect(body.webhook.adapter_name).toBe("generic");
+		// Rate-limit defaults are included
+		expect(body.webhook.rate_limit_per_minute).toBe(60);
+		expect(body.webhook.rate_limit_window_seconds).toBe(60);
+		expect(body.webhook.rate_limit_enabled).toBe(true);
+	});
+});
+
+describe("CreateEventSourceDialog — webhook rate-limit section", () => {
+	it("renders rate-limit inputs for webhook sources", () => {
+		renderWithProviders(
+			<CreateEventSourceDialog open onOpenChange={() => {}} />,
+		);
+
+		expect(
+			screen.getByLabelText(/rate limit \(events per minute\)/i),
+		).toBeInTheDocument();
+		expect(screen.getByLabelText(/window \(seconds\)/i)).toBeInTheDocument();
+		expect(screen.getByLabelText(/^enabled$/i)).toBeInTheDocument();
+	});
+
+	it("clears rate_limit_per_minute to empty string when field is cleared", () => {
+		renderWithProviders(
+			<CreateEventSourceDialog open onOpenChange={() => {}} />,
+		);
+
+		const input = screen.getByLabelText(
+			/rate limit \(events per minute\)/i,
+		) as HTMLInputElement;
+		expect(input.value).toBe("60");
+
+		fireEvent.change(input, { target: { value: "" } });
+		expect(input.value).toBe("");
 	});
 });
 

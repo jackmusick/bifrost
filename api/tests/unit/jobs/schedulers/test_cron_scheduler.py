@@ -139,7 +139,7 @@ async def test_schedule_fires_when_no_active_executions(db_session):
         patch(PATH_SUB_REPO, return_value=mock_sub_repo),
         patch(PATH_PROCESSOR, return_value=mock_processor),
     ):
-        results = await process_schedule_sources()
+        await process_schedule_sources()
 
     after = await _count_events_for_source(db_session, source.id)
     assert after == 1, "Expected one event to be created for this source"
@@ -286,7 +286,7 @@ async def test_schedule_fires_when_only_completed_executions(db_session):
         patch(PATH_SUB_REPO, return_value=mock_sub_repo),
         patch(PATH_PROCESSOR, return_value=mock_processor),
     ):
-        results = await process_schedule_sources()
+        await process_schedule_sources()
 
     after = await _count_events_for_source(db_session, source.id)
     assert after == 2, "Expected a new event fired (terminal executions must not block)"

@@ -94,6 +94,9 @@ async def _build_event_source_response(
             callback_url=_build_callback_url(source.id),
             external_id=ws.external_id,
             expires_at=ws.expires_at,
+            rate_limit_per_minute=ws.rate_limit_per_minute,
+            rate_limit_window_seconds=ws.rate_limit_window_seconds,
+            rate_limit_enabled=ws.rate_limit_enabled,
         )
 
     # Build schedule response if applicable
@@ -410,6 +413,9 @@ async def create_source(
             adapter_name=adapter_name,
             integration_id=request.webhook.integration_id,
             config=request.webhook.config,
+            rate_limit_per_minute=request.webhook.rate_limit_per_minute,
+            rate_limit_window_seconds=request.webhook.rate_limit_window_seconds,
+            rate_limit_enabled=request.webhook.rate_limit_enabled,
             created_at=now,
             updated_at=now,
         )
@@ -547,6 +553,12 @@ async def update_source(
                 new_state = dict(ws.state or {})
                 new_state["secret"] = request.webhook.config["secret"]
                 ws.state = new_state
+        if "rate_limit_per_minute" in request.webhook.model_fields_set:
+            ws.rate_limit_per_minute = request.webhook.rate_limit_per_minute
+        if "rate_limit_window_seconds" in request.webhook.model_fields_set:
+            ws.rate_limit_window_seconds = request.webhook.rate_limit_window_seconds
+        if "rate_limit_enabled" in request.webhook.model_fields_set:
+            ws.rate_limit_enabled = request.webhook.rate_limit_enabled
         ws.updated_at = datetime.now(timezone.utc)
 
     # Update schedule-specific fields

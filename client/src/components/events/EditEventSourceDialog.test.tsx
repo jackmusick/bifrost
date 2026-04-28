@@ -49,6 +49,29 @@ vi.mock("@/services/events", async () => {
 import { EditEventSourceDialog } from "./EditEventSourceDialog";
 import type { EventSource } from "@/services/events";
 
+function makeWebhookSource(overrides: Partial<EventSource> = {}): EventSource {
+	return {
+		id: "src-w1",
+		name: "Generic Webhook",
+		source_type: "webhook",
+		organization_id: null,
+		is_active: true,
+		webhook: {
+			adapter_name: "generic",
+			integration_id: null,
+			integration_name: null,
+			config: {},
+			callback_url: "https://example.com/hooks/src-w1",
+			external_id: null,
+			expires_at: null,
+			rate_limit_per_minute: 60,
+			rate_limit_window_seconds: 60,
+			rate_limit_enabled: true,
+		},
+		...overrides,
+	} as unknown as EventSource;
+}
+
 beforeEach(() => {
 	mockUpdate.mockReset();
 	mockUpdate.mockResolvedValue({});
@@ -159,6 +182,20 @@ describe("EditEventSourceDialog — schedule", () => {
 		expect(body.schedule.overlap_policy).toBe("queue");
 	});
 
+	it("does not render rate-limit section for schedule sources", () => {
+		renderWithProviders(
+			<EditEventSourceDialog
+				source={makeScheduleSource()}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		expect(
+			screen.queryByLabelText(/rate limit/i),
+		).not.toBeInTheDocument();
+	});
+
 	it("surfaces a validation error when cron is cleared on submit", async () => {
 		const { user } = renderWithProviders(
 			<EditEventSourceDialog
@@ -178,5 +215,54 @@ describe("EditEventSourceDialog — schedule", () => {
 			await screen.findByText(/cron expression is required/i),
 		).toBeInTheDocument();
 		expect(mockUpdate).not.toHaveBeenCalled();
+	});
+});
+
+describe("EditEventSourceDialog — webhook rate-limit", () => {
+	it("renders rate-limit section with pre-filled values for webhook sources", () => {
+		renderWithProviders(
+			<EditEventSourceDialog
+				source={makeWebhookSource()}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		const rpmInput = screen.getByLabelText(
+			/rate limit \(events per minute\)/i,
+		) as HTMLInputElement;
+		expect(rpmInput.value).toBe("60");
+
+		const windowInput = screen.getByLabelText(
+			/window \(seconds\)/i,
+		) as HTMLInputElement;
+		expect(windowInput.value).toBe("60");
+
+		// Enabled switch is present
+		expect(screen.getByLabelText(/^enabled$/i)).toBeInTheDocument();
+	});
+
+	it("includes rate_limit fields in the update payload", async () => {
+		const { user } = renderWithProviders(
+			<EditEventSourceDialog
+				source={makeWebhookSource()}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		// Change the per-minute limit
+		fireEvent.change(
+			screen.getByLabelText(/rate limit \(events per minute\)/i),
+			{ target: { value: "30" } },
+		);
+
+		await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+		await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+		const body = mockUpdate.mock.calls[0]![0].body;
+		expect(body.webhook.rate_limit_per_minute).toBe(30);
+		expect(body.webhook.rate_limit_window_seconds).toBe(60);
+		expect(body.webhook.rate_limit_enabled).toBe(true);
 	});
 });

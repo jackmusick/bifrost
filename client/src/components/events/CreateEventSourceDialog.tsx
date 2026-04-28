@@ -17,6 +17,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -89,6 +90,11 @@ function CreateEventSourceDialogContent({
 	const [webhookConfig, setWebhookConfig] = useState<Record<string, unknown>>(
 		{},
 	);
+
+	// Webhook rate-limit state
+	const [rateLimitPerMinute, setRateLimitPerMinute] = useState<number | null>(60);
+	const [rateLimitWindowSeconds, setRateLimitWindowSeconds] = useState(60);
+	const [rateLimitEnabled, setRateLimitEnabled] = useState(true);
 
 	// Schedule state
 	const [cronExpression, setCronExpression] = useState("");
@@ -219,6 +225,9 @@ function CreateEventSourceDialogContent({
 									adapter_name: adapterName || undefined,
 									integration_id: integrationId || undefined,
 									config: webhookConfig,
+									rate_limit_per_minute: rateLimitPerMinute,
+									rate_limit_window_seconds: rateLimitWindowSeconds,
+									rate_limit_enabled: rateLimitEnabled,
 								}
 							: undefined,
 					schedule:
@@ -402,6 +411,74 @@ function CreateEventSourceDialogContent({
 							/>
 						</>
 					)}
+
+				{/* Rate Limiting */}
+				{sourceType === "webhook" && (
+					<>
+						<div className="border-t pt-4">
+							<h4 className="text-sm font-medium mb-3">
+								Rate limiting
+							</h4>
+						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="rate-limit-per-minute">
+								Rate limit (events per minute)
+							</Label>
+							<Input
+								id="rate-limit-per-minute"
+								type="number"
+								min={1}
+								value={rateLimitPerMinute ?? ""}
+								onChange={(e) => {
+									const val = e.target.value;
+									setRateLimitPerMinute(
+										val === "" ? null : Number(val),
+									);
+								}}
+								placeholder="60 (leave empty to disable)"
+							/>
+							<p className="text-xs text-muted-foreground">
+								Maximum events accepted per window. Leave empty to
+								disable the limit.
+							</p>
+						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="rate-limit-window">
+								Window (seconds)
+							</Label>
+							<Input
+								id="rate-limit-window"
+								type="number"
+								min={1}
+								value={rateLimitWindowSeconds}
+								onChange={(e) =>
+									setRateLimitWindowSeconds(Number(e.target.value))
+								}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Duration of the rate-limit sliding window.
+							</p>
+						</div>
+
+						<div className="flex items-center justify-between">
+							<div className="space-y-0.5">
+								<Label htmlFor="rate-limit-enabled">
+									Enabled
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Disable to bypass rate limiting for this source.
+								</p>
+							</div>
+							<Switch
+								id="rate-limit-enabled"
+								checked={rateLimitEnabled}
+								onCheckedChange={setRateLimitEnabled}
+							/>
+						</div>
+					</>
+				)}
 
 				{/* Schedule Configuration */}
 				{sourceType === "schedule" && (

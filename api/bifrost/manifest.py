@@ -273,6 +273,9 @@ class ManifestEventSource(BaseModel):
     adapter_name: str | None = Field(default=None, description="Webhook adapter (e.g. 'generic', 'halopsa')")
     webhook_integration_id: str | None = Field(default=None, description="Integration UUID for webhook auth")
     webhook_config: dict | None = Field(default=None, description="Adapter-specific config")
+    rate_limit_per_minute: int | None = Field(default=60, description="Max events per window. Null disables.")
+    rate_limit_window_seconds: int = Field(default=60, description="Window in seconds.")
+    rate_limit_enabled: bool = Field(default=True, description="Per-source kill switch.")
     # Subscriptions
     subscriptions: list[ManifestEventSubscription] = Field(default_factory=list, description="Workflow subscriptions")
 
