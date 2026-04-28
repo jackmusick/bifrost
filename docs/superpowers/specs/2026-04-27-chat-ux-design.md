@@ -271,11 +271,58 @@ The `model` field on a Message records *what actually handled this turn at the t
 | `Agent.default_model` | yes | yes |
 | `Message.model` | NO (historical record) | NO (historical record) |
 
-**5.8.5 Provider switch (out-of-spec migration).**
+**5.8.5 Save-time validation in AI settings (the safety net).**
 
-If an org migrates wholesale from one provider to another (e.g., Anthropic → OpenAI), the migration mechanism is: define organization-level aliases pointing to the new provider's models, and re-target the existing `bifrost-*` aliases via org override. Workflows that hardcoded raw provider IDs need a one-time grep+migrate; the SDK exposes a `bifrost.models.normalize(model_id)` helper that maps to the resolver's effective target so workflow authors can adopt the indirection too.
+The aliases and deprecation table cover the *expected* migration paths. The save-time validator catches the *unexpected* ones — admin changes that orphan model references without realizing it.
 
-This is one of the pieces that's *better* than what Claude.ai or ChatGPT offer — they hide the model entirely (ChatGPT's "GPT-5") or expose the raw ID with no indirection (Claude.ai). The aliases-with-visibility model is borrowed loosely from Vercel AI SDK and OpenRouter's model routing patterns.
+Triggering events:
+- Admin removes a model from `Org.allowed_chat_models`.
+- Admin switches the AI provider integration (OpenRouter → direct Anthropic, etc.) such that previously-reachable models are no longer reachable.
+- Admin disables an integration that was the path to certain models.
+- Admin deletes an org-level alias that has downstream references.
+
+When any of these happens at save time, the system runs a **reference audit** that scans every place a model ID can be stored:
+
+| Location | Field |
+|---|---|
+| Workspace | `default_model`, `allowed_models[]` |
+| Role | `default_chat_model`, `allowed_chat_models[]` |
+| Org | `default_chat_model`, `allowed_chat_models[]` |
+| Conversation | `current_model` |
+| Agent | `default_model` |
+| Workflow code | grep for hardcoded model IDs (heuristic, surfaced as warnings) |
+
+`Message.model` is **excluded** from the audit — it's immutable history (per §5.8.4).
+
+If references to soon-to-be-orphaned models exist, the admin sees a remediation UI:
+
+> ⚠ Saving these changes will orphan some model references:
+> - **`minimax-m1`** is referenced in 3 places (1 workspace, 2 conversations). Choose a replacement: [picker, suggested default = closest available model in same cost tier]
+> - **`gpt-4o`** is referenced in 5 places (1 role default, 4 conversations). Choose a replacement: [picker]
+>
+> [ Cancel ] [ Apply replacements and save ]
+
+On apply, the chosen replacements are written *both* to the affected rows AND to the org-level deprecation remap table so any future references to the old IDs (e.g., from a workflow that hadn't been updated yet) also resolve. This dual-write is intentional — the row rewrite cleans up *known* references, the remap entry catches *unknown* ones (workflow strings, conversation overrides set after the migration started, etc.).
+
+**Suggested replacement heuristic:** for each orphaned model, find the closest available model in the same `cost_tier`. Tie-break by provider preference (an admin setting). The admin can override every suggestion individually before applying.
+
+**API:** `POST /api/admin/models/migrate-references` takes `{replacements: {old_model_id: new_model_id, ...}}` and returns a summary of what was changed where. Idempotent — running twice with the same input is a no-op.
+
+**5.8.6 Display name overrides.**
+
+Independently of provider/migration concerns, an org admin can override the user-facing display name of any model. Useful for white-labeling or for using internal language ("Acme Pro" instead of "Claude Opus 4.7"). The override lives on the org's model entry; the actual provider model ID stays correct because that's what's used to call the API.
+
+| Field | Purpose |
+|---|---|
+| `org.allowed_chat_models[].model_id` | Real provider ID — used for API calls |
+| `org.allowed_chat_models[].display_name_override` | User-facing label, defaults to platform registry's display name |
+| `org.allowed_chat_models[].cost_tier_override` | Optional, defaults to platform registry's tier |
+
+This is a thin org-wide UX customization; doesn't intersect with the resolver's model-selection logic at all.
+
+**5.8.7 Why this is better than the alternatives.**
+
+Claude.ai and ChatGPT hide the model entirely. Power users have no idea what they're running. OpenRouter exposes raw IDs with no indirection — every change is a manual update. Vercel AI SDK has `customProvider` aliases but no curation, no per-org views, no save-time validation. Bifrost's aliases-with-visibility model plus the save-time orphan check is a real differentiator and the implementation cost is moderate (the audit logic is mostly SQL queries; the UI is a single modal at admin-save time).
 
 ## 6. Per-conversation custom instructions
 
