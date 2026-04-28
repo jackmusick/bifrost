@@ -243,7 +243,7 @@ describe("EditEventSourceDialog — rate-limit hit counter", () => {
 		);
 
 		expect(
-			screen.getByText(/rate-limited 5 times in the last 24 hours/i),
+			screen.getByText(/5 requests rate limited in the last 24 hours/i),
 		).toBeInTheDocument();
 	});
 
@@ -271,7 +271,7 @@ describe("EditEventSourceDialog — rate-limit hit counter", () => {
 		);
 
 		expect(
-			screen.queryByText(/rate-limited.*times in the last 24 hours/i),
+			screen.queryByText(/rate limited in the last 24 hours/i),
 		).not.toBeInTheDocument();
 	});
 });

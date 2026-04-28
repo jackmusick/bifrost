@@ -326,7 +326,9 @@ function EditEventSourceDialogContent({
 
 						{source.webhook && source.webhook.rate_limited_count_24h > 0 && (
 							<p className="text-xs text-destructive">
-								Rate-limited {source.webhook.rate_limited_count_24h} times in the last 24 hours.
+								{source.webhook.rate_limited_count_24h} request
+								{source.webhook.rate_limited_count_24h === 1 ? "" : "s"}{" "}
+								rate limited in the last 24 hours.
 							</p>
 						)}
 
