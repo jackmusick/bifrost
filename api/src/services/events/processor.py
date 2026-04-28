@@ -651,51 +651,6 @@ class EventProcessor:
         )
 
 
-async def process_webhook_request(
-    session: AsyncSession,
-    source_id: str,
-    method: str,
-    headers: dict[str, str],
-    query_params: dict[str, str],
-    body: bytes,
-    source_ip: str | None = None,
-) -> HandleResult:
-    """
-    Convenience function to process a webhook request.
-
-    Args:
-        session: Database session
-        source_id: The event source UUID from the URL
-        method: HTTP method
-        headers: Request headers (lowercase keys)
-        query_params: Query parameters
-        body: Raw request body
-        source_ip: Client IP address
-
-    Returns:
-        HandleResult indicating how to respond
-    """
-    resolved = await resolve_webhook_source(session, source_id)
-    if resolved is None:
-        logger.warning(f"Webhook not found or inactive for source_id: {log_safe(source_id)}")
-        return Rejected(message="Webhook not found", status_code=404)
-
-    event_source, webhook_source = resolved
-
-    # Build WebhookRequest
-    request = WebhookRequest(
-        method=method,
-        path=f"/api/hooks/{source_id}",
-        headers=headers,
-        query_params=query_params,
-        body=body,
-        client_ip=source_ip,
-    )
-
-    # Process through EventProcessor
-    processor = EventProcessor(session)
-    return await processor.process_webhook(event_source, webhook_source, request)
-
 
 async def update_delivery_from_execution(
     execution_id: str,
