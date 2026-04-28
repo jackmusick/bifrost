@@ -1037,6 +1037,132 @@ class TestAdmissionControl:
                     assert mock_handle.state == ProcessState.BUSY
 
 
+class TestOrphanedKilledHandleSweep:
+    """Tests for _check_process_health sweeping orphaned KILLED handles."""
+
+    @pytest.mark.asyncio
+    async def test_check_process_health_sweeps_orphaned_killed_handles(self):
+        """A handle whose state is KILLED but result_reported=False should
+        have a synthetic orphan callback fired so the DB doesn't sit orphaned."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(min_workers=0, max_workers=5, on_result=callback)
+
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False
+        mock_process.exitcode = -9
+
+        exec_info = ExecutionInfo(
+            execution_id="exec-orphan-123",
+            started_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+            timeout_seconds=300,
+        )
+
+        handle = ProcessHandle(
+            id="process-1",
+            process=mock_process,
+            pid=12345,
+            state=ProcessState.KILLED,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=exec_info,
+            result_reported=False,
+            killed_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        pool.processes["process-1"] = handle
+
+        await pool._check_process_health()
+
+        # Orphan callback must have fired exactly once
+        callback.assert_awaited_once()
+        call_args = callback.call_args[0][0]
+        assert call_args["success"] is False
+        assert call_args["error_type"] == "OrphanedExecution"
+        assert call_args["execution_id"] == "exec-orphan-123"
+
+        # Handle must be removed from pool
+        assert "process-1" not in pool.processes
+
+    @pytest.mark.asyncio
+    async def test_check_process_health_orphan_idempotent_when_already_reported(self):
+        """If result_reported is already True, the orphan callback must NOT fire
+        even when state is KILLED."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(min_workers=0, max_workers=5, on_result=callback)
+
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False
+        mock_process.exitcode = -9
+
+        exec_info = ExecutionInfo(
+            execution_id="exec-already-reported",
+            started_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+            timeout_seconds=300,
+        )
+
+        handle = ProcessHandle(
+            id="process-1",
+            process=mock_process,
+            pid=12345,
+            state=ProcessState.KILLED,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=exec_info,
+            result_reported=True,
+            killed_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        pool.processes["process-1"] = handle
+
+        await pool._check_process_health()
+
+        # Callback must not fire again
+        callback.assert_not_awaited()
+
+        # Handle still removed from pool (cleanup still happens)
+        assert "process-1" not in pool.processes
+
+
+    @pytest.mark.asyncio
+    async def test_check_process_health_does_not_race_with_kill_grace_sleep(self):
+        """
+        During _kill_process's grace-sleep window, _check_process_health must NOT
+        fire an orphan callback. The cancel/timeout path is about to report
+        legitimately; orphan-sweeping now would duplicate it.
+        """
+        callback = AsyncMock()
+        pool = ProcessPoolManager(
+            min_workers=0, max_workers=1, graceful_shutdown_seconds=5,
+            on_result=callback,
+        )
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False
+        handle = ProcessHandle(
+            id="proc-1",
+            process=mock_process,
+            pid=12345,
+            state=ProcessState.KILLED,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=ExecutionInfo(
+                execution_id="exec-mid-cancel",
+                started_at=datetime.now(timezone.utc),
+                timeout_seconds=300,
+            ),
+            result_reported=False,
+            killed_at=datetime.now(timezone.utc),  # JUST killed — inside grace window
+        )
+        pool.processes["proc-1"] = handle
+
+        await pool._check_process_health()
+
+        # The in-flight cancel will report; we must not duplicate
+        callback.assert_not_awaited()
+        # Handle still in pool — not orphan-removed yet
+        assert "proc-1" in pool.processes
+
+
 class TestOnDemandMode:
     """Tests for on-demand mode (min_workers is always 0 now)."""
 

@@ -143,6 +143,10 @@ class ProcessHandle:
     # a new execution is assigned. Used by the orphan sweep to detect handles
     # that were never attempted to be reported.
     result_reported: bool = False
+    # Timestamp set when a kill was initiated (in _kill_process / _terminate_process).
+    # Used by the orphan sweep to wait out the grace-sleep window before treating
+    # a KILLED handle as truly stuck.
+    killed_at: datetime | None = None
 
     @property
     def is_alive(self) -> bool:
@@ -575,6 +579,7 @@ class ProcessPoolManager:
         # Mark as KILLED immediately to prevent route_execution from sending
         # work to this process during the graceful_shutdown_seconds sleep.
         handle.state = ProcessState.KILLED
+        handle.killed_at = datetime.now(timezone.utc)
 
         if not handle.is_alive:
             return
@@ -818,6 +823,7 @@ class ProcessPoolManager:
         # Mark as KILLED immediately to prevent route_execution from sending
         # work to this process during the graceful_shutdown_seconds sleep.
         handle.state = ProcessState.KILLED
+        handle.killed_at = datetime.now(timezone.utc)
 
         pid = handle.pid
         if pid is None:
@@ -1111,31 +1117,82 @@ class ProcessPoolManager:
         """
         Check for crashed processes and replace them.
 
-        For each process that is not alive but not in KILLED state,
-        marks it as crashed and spawns a replacement if needed.
+        Case A: Process is dead and state is NOT KILLED — unexpected crash
+        (SIGSEGV, worker exit, etc.). Report crash if not already reported.
+
+        Case B: Process is in KILLED state with a current_execution but
+        result_reported is False — cancel/timeout was attempted but the result
+        callback never fired. Fire a synthetic orphan callback to recover.
         """
         to_remove: list[str] = []
 
         for process_id, handle in self.processes.items():
             if not handle.is_alive and handle.state != ProcessState.KILLED:
+                # Case A: unexpected crash
                 logger.warning(
                     f"Process {process_id} crashed "
                     f"(exit_code={handle.process.exitcode})"
                 )
 
-                # Report crash if there was an execution in progress
-                if handle.current_execution:
+                if handle.current_execution and not handle.result_reported:
                     await self._report_crash(handle)
 
                 to_remove.append(process_id)
 
-        # Remove crashed processes
+            elif handle.state == ProcessState.KILLED and handle.current_execution:
+                # Case B: KILLED — wait out the kill grace window before treating
+                # as orphaned. During the legitimate cancel/timeout grace-sleep,
+                # the cancel/timeout path is *about to* fire its own callback;
+                # orphan-sweeping now would duplicate it.
+                grace_buffer = self.graceful_shutdown_seconds + 1.0
+                killed_at = handle.killed_at
+                if killed_at is None or (datetime.now(timezone.utc) - killed_at).total_seconds() < grace_buffer:
+                    continue  # not yet time to consider this orphaned
+
+                if not handle.result_reported:
+                    logger.warning(
+                        f"Process {process_id} is KILLED but execution "
+                        f"{handle.current_execution.execution_id[:8]}... was never reported — "
+                        f"firing orphan callback"
+                    )
+                    await self._report_orphan(handle)
+                to_remove.append(process_id)
+
+        # Remove crashed/orphaned processes
         for process_id in to_remove:
             del self.processes[process_id]
 
         # Spawn replacements to maintain min_workers
         while len(self.processes) < self.min_workers:
             self._fork_process()
+
+    async def _report_orphan(self, handle: ProcessHandle) -> None:
+        """
+        Report an orphaned execution — KILLED state with no prior reporting.
+
+        Used by _check_process_health to recover from races where the cancel/
+        timeout path killed a process but never fired the result callback.
+        No-op if `on_result` is not configured or if `current_execution` has
+        already been cleared.
+
+        Args:
+            handle: ProcessHandle whose current_execution was orphaned
+        """
+        exec_info = handle.current_execution
+        if self.on_result is None or exec_info is None:
+            return
+        handle.result_reported = True
+        try:
+            await self.on_result({
+                "type": "result",
+                "execution_id": exec_info.execution_id,
+                "success": False,
+                "error": "Execution orphaned — process was killed but result was never reported",
+                "error_type": "OrphanedExecution",
+                "duration_ms": int(exec_info.elapsed_seconds * 1000),
+            })
+        except Exception as e:
+            logger.exception(f"Error reporting orphan: {e}")
 
     async def _report_crash(self, handle: ProcessHandle) -> None:
         """
