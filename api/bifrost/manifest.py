@@ -268,10 +268,14 @@ class ManifestEventSource(BaseModel):
     cron_expression: str | None = Field(default=None, description="Cron schedule (e.g. '0 9 * * *')")
     timezone: str | None = Field(default=None, description="Timezone (e.g. 'America/New_York')")
     schedule_enabled: bool | None = Field(default=None, description="Enable/disable schedule")
+    overlap_policy: str | None = Field(default=None, description="Overlap policy: skip | queue | replace")
     # Webhook config
     adapter_name: str | None = Field(default=None, description="Webhook adapter (e.g. 'generic', 'halopsa')")
     webhook_integration_id: str | None = Field(default=None, description="Integration UUID for webhook auth")
     webhook_config: dict | None = Field(default=None, description="Adapter-specific config")
+    rate_limit_per_minute: int | None = Field(default=60, description="Max events per window. Null disables.")
+    rate_limit_window_seconds: int = Field(default=60, description="Window in seconds.")
+    rate_limit_enabled: bool = Field(default=True, description="Per-source kill switch.")
     # Subscriptions
     subscriptions: list[ManifestEventSubscription] = Field(default_factory=list, description="Workflow subscriptions")
 

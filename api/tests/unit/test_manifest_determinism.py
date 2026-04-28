@@ -128,11 +128,13 @@ def _mock_event_source(source_id=EVENT_SOURCE_ID, name="det_source"):
 
 
 def _mock_schedule_source(source_id=EVENT_SOURCE_ID):
+    from src.models.enums import ScheduleOverlapPolicy
     ss = MagicMock()
     ss.event_source_id = source_id
     ss.cron_expression = "0 * * * *"
     ss.timezone = "UTC"
     ss.enabled = True
+    ss.overlap_policy = ScheduleOverlapPolicy.SKIP
     return ss
 
 

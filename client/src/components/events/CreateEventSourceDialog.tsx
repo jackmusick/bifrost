@@ -17,6 +17,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -90,9 +91,17 @@ function CreateEventSourceDialogContent({
 		{},
 	);
 
+	// Webhook rate-limit state
+	const [rateLimitPerMinute, setRateLimitPerMinute] = useState<number | null>(60);
+	const [rateLimitWindowSeconds, setRateLimitWindowSeconds] = useState(60);
+	const [rateLimitEnabled, setRateLimitEnabled] = useState(true);
+
 	// Schedule state
 	const [cronExpression, setCronExpression] = useState("");
 	const [timezone, setTimezone] = useState("UTC");
+	const [overlapPolicy, setOverlapPolicy] = useState<
+		"skip" | "queue" | "replace"
+	>("skip");
 	const [cronValidation, setCronValidation] =
 		useState<CronValidationResult | null>(null);
 
@@ -216,6 +225,9 @@ function CreateEventSourceDialogContent({
 									adapter_name: adapterName || undefined,
 									integration_id: integrationId || undefined,
 									config: webhookConfig,
+									rate_limit_per_minute: rateLimitPerMinute,
+									rate_limit_window_seconds: rateLimitWindowSeconds,
+									rate_limit_enabled: rateLimitEnabled,
 								}
 							: undefined,
 					schedule:
@@ -224,6 +236,7 @@ function CreateEventSourceDialogContent({
 									cron_expression: cronExpression.trim(),
 									timezone,
 									enabled: true,
+									overlap_policy: overlapPolicy,
 								}
 							: undefined,
 				},
@@ -399,6 +412,73 @@ function CreateEventSourceDialogContent({
 						</>
 					)}
 
+				{/* Rate Limiting */}
+				{sourceType === "webhook" && (
+					<>
+						<div className="border-t pt-4">
+							<h4 className="text-sm font-medium mb-3">
+								Rate limiting
+							</h4>
+						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="rate-limit-per-minute">Max events</Label>
+							<Input
+								id="rate-limit-per-minute"
+								type="number"
+								min={1}
+								value={rateLimitPerMinute ?? ""}
+								onChange={(e) => {
+									const val = e.target.value;
+									setRateLimitPerMinute(
+										val === "" ? null : Number(val),
+									);
+								}}
+								placeholder="60 (leave empty to disable)"
+							/>
+							<p className="text-xs text-muted-foreground">
+								Maximum events accepted within the window below.
+								Leave empty to disable the limit.
+							</p>
+						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="rate-limit-window">
+								Per (seconds)
+							</Label>
+							<Input
+								id="rate-limit-window"
+								type="number"
+								min={1}
+								value={rateLimitWindowSeconds}
+								onChange={(e) =>
+									setRateLimitWindowSeconds(Number(e.target.value))
+								}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Window duration. Default 60 means the limit above
+								applies per minute.
+							</p>
+						</div>
+
+						<div className="flex items-center justify-between">
+							<div className="space-y-0.5">
+								<Label htmlFor="rate-limit-enabled">
+									Enabled
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Disable to bypass rate limiting for this source.
+								</p>
+							</div>
+							<Switch
+								id="rate-limit-enabled"
+								checked={rateLimitEnabled}
+								onCheckedChange={setRateLimitEnabled}
+							/>
+						</div>
+					</>
+				)}
+
 				{/* Schedule Configuration */}
 				{sourceType === "schedule" && (
 					<>
@@ -540,6 +620,37 @@ function CreateEventSourceDialogContent({
 							<p className="text-xs text-muted-foreground">
 								The timezone used to evaluate the cron
 								expression.
+							</p>
+						</div>
+
+						{/* Overlap Policy */}
+						<div className="space-y-2">
+							<Label htmlFor="overlap-policy">
+								Overlap policy
+							</Label>
+							<Select
+								value={overlapPolicy}
+								onValueChange={(v) =>
+									setOverlapPolicy(
+										v as "skip" | "queue" | "replace",
+									)
+								}
+							>
+								<SelectTrigger id="overlap-policy">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="skip">Skip</SelectItem>
+									<SelectItem value="queue">Queue</SelectItem>
+									<SelectItem value="replace">
+										Replace
+									</SelectItem>
+								</SelectContent>
+							</Select>
+							<p className="text-xs text-muted-foreground">
+								Skip (default) drops the new run if a previous
+								run is still active. Queue and replace are
+								reserved for future use.
 							</p>
 						</div>
 					</>

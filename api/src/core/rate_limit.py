@@ -40,7 +40,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
 
-    async def check(self, endpoint: str, identifier: str) -> None:
+    async def check(self, endpoint: str, identifier: str, force: bool = False) -> None:
         """
         Check if request should be rate limited.
 
@@ -50,13 +50,16 @@ class RateLimiter:
         Args:
             endpoint: Endpoint name for rate limit key
             identifier: IP address or user ID
+            force: If True, bypass the is_testing early-return so the limiter
+                   can be exercised from unit tests. Should only be passed by
+                   the webhook ingress path.
 
         Raises:
             HTTPException: If rate limit exceeded (429)
         """
-        # Skip rate limiting in testing environment
+        # Skip rate limiting in testing environment (unless forced for test coverage)
         settings = get_settings()
-        if settings.is_testing:
+        if settings.is_testing and not force:
             return
 
         r = await get_shared_redis()
@@ -81,6 +84,12 @@ class RateLimiter:
                     "limit": self.max_requests,
                 }
             )
+            # Track the hit for ops visibility (24h sliding count)
+            hit_key = f"bifrost:rate_limit_hits:{identifier}"
+            pipe = r.pipeline()
+            pipe.incr(hit_key)
+            pipe.expire(hit_key, 86400)
+            await pipe.execute()
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many requests. Please try again later.",

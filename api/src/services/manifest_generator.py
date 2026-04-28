@@ -283,10 +283,14 @@ def serialize_event_source(
     cron_expression = schedule.cron_expression if schedule else None
     tz = schedule.timezone if schedule else None
     schedule_enabled = schedule.enabled if schedule else None
+    overlap_policy = schedule.overlap_policy.value if schedule and schedule.overlap_policy else None
 
     adapter_name = webhook.adapter_name if webhook else None
     webhook_integration_id = str(webhook.integration_id) if webhook and webhook.integration_id else None
     webhook_config = webhook.config if webhook and webhook.config else None
+    rate_limit_per_minute = webhook.rate_limit_per_minute if webhook else 60
+    rate_limit_window_seconds = webhook.rate_limit_window_seconds if webhook else 60
+    rate_limit_enabled = webhook.rate_limit_enabled if webhook else True
 
     return ManifestEventSource(
         id=str(es.id),
@@ -297,9 +301,13 @@ def serialize_event_source(
         cron_expression=cron_expression,
         timezone=tz,
         schedule_enabled=schedule_enabled,
+        overlap_policy=overlap_policy,
         adapter_name=adapter_name,
         webhook_integration_id=webhook_integration_id,
         webhook_config=webhook_config,
+        rate_limit_per_minute=rate_limit_per_minute,
+        rate_limit_window_seconds=rate_limit_window_seconds,
+        rate_limit_enabled=rate_limit_enabled,
         subscriptions=[
             ManifestEventSubscription(
                 id=str(sub.id),

@@ -136,6 +136,17 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                     else:
                         continue
 
+                    # Log orphan execution being swept (before status update, to capture original status)
+                    stuck_for_seconds = int((now - execution.started_at).total_seconds()) if execution.started_at else 0
+                    logger.warning(
+                        "orphan_execution_swept",
+                        extra={
+                            "execution_id": str(execution.id),
+                            "stuck_status": execution.status,
+                            "stuck_for_seconds": stuck_for_seconds,
+                        },
+                    )
+
                     logger.warning(
                         f"Timing out stuck execution: {execution.id}",
                         extra={

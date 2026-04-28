@@ -54,6 +54,7 @@ from src.repositories.events import (
     EventSourceRepository,
     EventSubscriptionRepository,
 )
+from src.core.cache import get_shared_redis
 from src.services.webhooks.registry import get_adapter_registry
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,13 @@ router = APIRouter(prefix="/api/events", tags=["Events"])
 def _build_callback_url(source_id: UUID) -> str:
     """Build callback URL path from event source ID."""
     return f"/api/hooks/{source_id}"
+
+
+async def _get_rate_limited_count(source_id: str) -> int:
+    """Read the 24h rate-limit hit counter for a webhook source from Redis."""
+    r = await get_shared_redis()
+    raw = await r.get(f"bifrost:rate_limit_hits:{source_id}")
+    return int(raw) if raw else 0
 
 
 async def _build_event_source_response(
@@ -94,6 +102,10 @@ async def _build_event_source_response(
             callback_url=_build_callback_url(source.id),
             external_id=ws.external_id,
             expires_at=ws.expires_at,
+            rate_limit_per_minute=ws.rate_limit_per_minute,
+            rate_limit_window_seconds=ws.rate_limit_window_seconds,
+            rate_limit_enabled=ws.rate_limit_enabled,
+            rate_limited_count_24h=await _get_rate_limited_count(str(source.id)),
         )
 
     # Build schedule response if applicable
@@ -104,6 +116,7 @@ async def _build_event_source_response(
             cron_expression=ss.cron_expression,
             timezone=ss.timezone,
             enabled=ss.enabled,
+            overlap_policy=ss.overlap_policy,
         )
 
     return EventSourceResponse(
@@ -409,6 +422,9 @@ async def create_source(
             adapter_name=adapter_name,
             integration_id=request.webhook.integration_id,
             config=request.webhook.config,
+            rate_limit_per_minute=request.webhook.rate_limit_per_minute,
+            rate_limit_window_seconds=request.webhook.rate_limit_window_seconds,
+            rate_limit_enabled=request.webhook.rate_limit_enabled,
             created_at=now,
             updated_at=now,
         )
@@ -448,6 +464,7 @@ async def create_source(
             cron_expression=request.schedule.cron_expression,
             timezone=request.schedule.timezone,
             enabled=request.schedule.enabled,
+            overlap_policy=request.schedule.overlap_policy,
             created_at=now,
             updated_at=now,
         )
@@ -545,6 +562,12 @@ async def update_source(
                 new_state = dict(ws.state or {})
                 new_state["secret"] = request.webhook.config["secret"]
                 ws.state = new_state
+        if "rate_limit_per_minute" in request.webhook.model_fields_set:
+            ws.rate_limit_per_minute = request.webhook.rate_limit_per_minute
+        if "rate_limit_window_seconds" in request.webhook.model_fields_set:
+            ws.rate_limit_window_seconds = request.webhook.rate_limit_window_seconds
+        if "rate_limit_enabled" in request.webhook.model_fields_set:
+            ws.rate_limit_enabled = request.webhook.rate_limit_enabled
         ws.updated_at = datetime.now(timezone.utc)
 
     # Update schedule-specific fields
@@ -556,6 +579,8 @@ async def update_source(
             ss.timezone = request.schedule.timezone
         if request.schedule.enabled is not None:
             ss.enabled = request.schedule.enabled
+        if request.schedule.overlap_policy is not None:
+            ss.overlap_policy = request.schedule.overlap_policy
         ss.updated_at = datetime.now(timezone.utc)
 
     await db.flush()

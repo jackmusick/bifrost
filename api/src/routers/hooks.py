@@ -9,18 +9,21 @@ Security is handled by:
 2. Adapter-specific validation (HMAC signatures, client state, etc.)
 """
 
+import json
 import logging
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import PlainTextResponse
 
 from src.core.database import DbSession
 from src.core.log_safety import log_safe
-from src.services.events.processor import EventProcessor
+from src.core.rate_limit import RateLimiter
+from src.services.events.processor import EventProcessor, resolve_webhook_source
 from src.services.webhooks.protocol import (
     Deliver,
     Rejected,
     ValidationResponse,
+    WebhookRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -110,10 +113,42 @@ async def receive_webhook(
         },
     )
 
-    # Process through EventProcessor
-    processor = EventProcessor(db)
+    # Resolve source before any side effects so the handler can act on it
+    resolved = await resolve_webhook_source(db, source_id)
+    if resolved is None:
+        return Response(
+            content="Not Found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            media_type="text/plain",
+        )
+    event_source, webhook_source = resolved
 
-    from src.services.webhooks.protocol import WebhookRequest
+    # Per-source rate limiting — checked before any DB writes
+    if (
+        webhook_source.rate_limit_enabled
+        and webhook_source.rate_limit_per_minute is not None
+    ):
+        limiter = RateLimiter(
+            max_requests=webhook_source.rate_limit_per_minute,
+            window_seconds=webhook_source.rate_limit_window_seconds,
+        )
+        try:
+            # force=True bypasses the is_testing short-circuit so rate limiting
+            # is exercisable from unit tests; in production is_testing=False so
+            # the flag is a no-op.
+            await limiter.check("webhook_ingress", str(event_source.id), force=True)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+                body = json.dumps(
+                    {"error": "rate_limit_exceeded", "source_id": str(event_source.id)}
+                )
+                return Response(
+                    content=body,
+                    status_code=exc.status_code,
+                    media_type="application/json",
+                    headers=dict(exc.headers or {}),
+                )
+            raise
 
     webhook_request = WebhookRequest(
         method=method,
@@ -124,8 +159,10 @@ async def receive_webhook(
         client_ip=source_ip,
     )
 
+    processor = EventProcessor(db)
+
     try:
-        result = await processor.process_webhook(source_id, webhook_request)
+        result = await processor.process_webhook(event_source, webhook_source, webhook_request)
     except Exception as e:
         logger.error(f"Error processing webhook: {log_safe(e)}", exc_info=True)
         # Return 500 but don't expose internal error details
@@ -168,37 +205,29 @@ async def receive_webhook(
         # Queue workflow executions asynchronously
         # This is done after commit to ensure delivery records exist
         try:
-            # Get the event ID from the most recent event for this source
-            from uuid import UUID as PyUUID
             from sqlalchemy import select
             from src.models.orm.events import Event
 
-            try:
-                source_uuid = PyUUID(source_id)
-            except ValueError:
-                source_uuid = None
+            event_result = await db.execute(
+                select(Event)
+                .where(Event.event_source_id == event_source.id)
+                .order_by(Event.created_at.desc())
+                .limit(1)
+            )
+            event = event_result.scalar_one_or_none()
 
-            if source_uuid:
-                event_result = await db.execute(
-                    select(Event)
-                    .where(Event.event_source_id == source_uuid)
-                    .order_by(Event.created_at.desc())
-                    .limit(1)
+            if event:
+                queued = await processor.queue_event_deliveries(event.id)
+                await db.commit()
+
+                logger.info(
+                    f"Webhook accepted: {log_safe(source_id)}",
+                    extra={
+                        "source_id": log_safe(source_id),
+                        "event_id": str(event.id),
+                        "deliveries_queued": queued,
+                    },
                 )
-                event = event_result.scalar_one_or_none()
-
-                if event:
-                    queued = await processor.queue_event_deliveries(event.id)
-                    await db.commit()
-
-                    logger.info(
-                        f"Webhook accepted: {log_safe(source_id)}",
-                        extra={
-                            "source_id": log_safe(source_id),
-                            "event_id": str(event.id),
-                            "deliveries_queued": queued,
-                        },
-                    )
         except Exception as e:
             logger.error(f"Error queueing deliveries: {log_safe(e)}", exc_info=True)
             # Event was recorded, just couldn't queue - don't fail the webhook

@@ -436,7 +436,7 @@ class TestProcessPoolManagerTimeouts:
             killed = True
             h.state = ProcessState.KILLED
 
-        async def mock_report_timeout(info: ExecutionInfo) -> None:
+        async def mock_report_timeout(handle: ProcessHandle) -> None:
             nonlocal timeout_reported
             timeout_reported = True
 
@@ -504,7 +504,7 @@ class TestProcessPoolManagerCrashDetection:
         crash_reported = False
         spawn_count = 0
 
-        async def mock_report_crash(info: ExecutionInfo) -> None:
+        async def mock_report_crash(handle: ProcessHandle) -> None:
             nonlocal crash_reported
             crash_reported = True
 
@@ -1037,6 +1037,132 @@ class TestAdmissionControl:
                     assert mock_handle.state == ProcessState.BUSY
 
 
+class TestOrphanedKilledHandleSweep:
+    """Tests for _check_process_health sweeping orphaned KILLED handles."""
+
+    @pytest.mark.asyncio
+    async def test_check_process_health_sweeps_orphaned_killed_handles(self):
+        """A handle whose state is KILLED but result_reported=False should
+        have a synthetic orphan callback fired so the DB doesn't sit orphaned."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(min_workers=0, max_workers=5, on_result=callback)
+
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False
+        mock_process.exitcode = -9
+
+        exec_info = ExecutionInfo(
+            execution_id="exec-orphan-123",
+            started_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+            timeout_seconds=300,
+        )
+
+        handle = ProcessHandle(
+            id="process-1",
+            process=mock_process,
+            pid=12345,
+            state=ProcessState.KILLED,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=exec_info,
+            result_reported=False,
+            killed_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        pool.processes["process-1"] = handle
+
+        await pool._check_process_health()
+
+        # Orphan callback must have fired exactly once
+        callback.assert_awaited_once()
+        call_args = callback.call_args[0][0]
+        assert call_args["success"] is False
+        assert call_args["error_type"] == "OrphanedExecution"
+        assert call_args["execution_id"] == "exec-orphan-123"
+
+        # Handle must be removed from pool
+        assert "process-1" not in pool.processes
+
+    @pytest.mark.asyncio
+    async def test_check_process_health_orphan_idempotent_when_already_reported(self):
+        """If result_reported is already True, the orphan callback must NOT fire
+        even when state is KILLED."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(min_workers=0, max_workers=5, on_result=callback)
+
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False
+        mock_process.exitcode = -9
+
+        exec_info = ExecutionInfo(
+            execution_id="exec-already-reported",
+            started_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+            timeout_seconds=300,
+        )
+
+        handle = ProcessHandle(
+            id="process-1",
+            process=mock_process,
+            pid=12345,
+            state=ProcessState.KILLED,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=exec_info,
+            result_reported=True,
+            killed_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        pool.processes["process-1"] = handle
+
+        await pool._check_process_health()
+
+        # Callback must not fire again
+        callback.assert_not_awaited()
+
+        # Handle still removed from pool (cleanup still happens)
+        assert "process-1" not in pool.processes
+
+
+    @pytest.mark.asyncio
+    async def test_check_process_health_does_not_race_with_kill_grace_sleep(self):
+        """
+        During _kill_process's grace-sleep window, _check_process_health must NOT
+        fire an orphan callback. The cancel/timeout path is about to report
+        legitimately; orphan-sweeping now would duplicate it.
+        """
+        callback = AsyncMock()
+        pool = ProcessPoolManager(
+            min_workers=0, max_workers=1, graceful_shutdown_seconds=5,
+            on_result=callback,
+        )
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False
+        handle = ProcessHandle(
+            id="proc-1",
+            process=mock_process,
+            pid=12345,
+            state=ProcessState.KILLED,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=ExecutionInfo(
+                execution_id="exec-mid-cancel",
+                started_at=datetime.now(timezone.utc),
+                timeout_seconds=300,
+            ),
+            result_reported=False,
+            killed_at=datetime.now(timezone.utc),  # JUST killed — inside grace window
+        )
+        pool.processes["proc-1"] = handle
+
+        await pool._check_process_health()
+
+        # The in-flight cancel will report; we must not duplicate
+        callback.assert_not_awaited()
+        # Handle still in pool — not orphan-removed yet
+        assert "proc-1" in pool.processes
+
+
 class TestOnDemandMode:
     """Tests for on-demand mode (min_workers is always 0 now)."""
 
@@ -1044,3 +1170,102 @@ class TestOnDemandMode:
         """Pool should always have min_workers=0 for on-demand mode."""
         pool = ProcessPoolManager(min_workers=0, max_workers=5)
         assert pool.min_workers == 0
+
+
+class TestCrashedProcessReport:
+    """Tests that a SIGKILLed worker with an in-flight execution gets reported immediately.
+
+    Conceptual note: a SIGKILL on a BUSY worker triggers Case A in
+    _check_process_health (state != KILLED, is_alive == False), which calls
+    _report_crash. This is the *crash* path, not the orphan path. The orphan
+    path (Case B) covers KILLED-state handles where the cancel/timeout handler
+    crashed before it could fire the result callback — that is covered by
+    TestOrphanedKilledHandleSweep. This class proves the crash path fires the
+    on_result callback immediately (no waiting) and sets result_reported=True so
+    the reaper-of-last-resort never double-fires it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_sigkilled_worker_crashes_get_reported_within_seconds(self):
+        """A BUSY worker whose process died unexpectedly (e.g. SIGKILL) should
+        have on_result called with success=False and error_type='ProcessCrashError'
+        synchronously within _check_process_health — no reaper wait needed."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(min_workers=0, max_workers=5, on_result=callback)
+
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False  # process is dead
+        mock_process.exitcode = -9  # SIGKILL
+
+        exec_info = ExecutionInfo(
+            execution_id="exec-sigkill-789",
+            started_at=datetime.now(timezone.utc) - timedelta(seconds=3),
+            timeout_seconds=300,
+        )
+
+        handle = ProcessHandle(
+            id="process-sigkill",
+            process=mock_process,
+            pid=99999,
+            state=ProcessState.BUSY,  # still BUSY — crash was unexpected
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=exec_info,
+            result_reported=False,
+        )
+        pool.processes["process-sigkill"] = handle
+
+        await pool._check_process_health()
+
+        # Callback must fire exactly once with the crash payload
+        callback.assert_awaited_once()
+        call_args = callback.call_args[0][0]
+        assert call_args["success"] is False
+        assert call_args["error_type"] == "ProcessCrashError"
+        assert call_args["execution_id"] == "exec-sigkill-789"
+
+        # Handle must be removed from the pool
+        assert "process-sigkill" not in pool.processes
+
+        # result_reported must be True — reaper-of-last-resort must not re-fire
+        assert handle.result_reported is True
+
+    @pytest.mark.asyncio
+    async def test_sigkilled_worker_already_reported_does_not_double_fire(self):
+        """If a crashed BUSY worker already had result_reported=True (rare race
+        where the result came back on the queue before the health check ran),
+        the crash callback must NOT fire again."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(min_workers=0, max_workers=5, on_result=callback)
+
+        mock_process = MagicMock()
+        mock_process.is_alive.return_value = False
+        mock_process.exitcode = -9
+
+        exec_info = ExecutionInfo(
+            execution_id="exec-already-done",
+            started_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+            timeout_seconds=300,
+        )
+
+        handle = ProcessHandle(
+            id="process-sigkill-2",
+            process=mock_process,
+            pid=99998,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=exec_info,
+            result_reported=True,  # already reported
+        )
+        pool.processes["process-sigkill-2"] = handle
+
+        await pool._check_process_health()
+
+        # Callback must not fire — already reported
+        callback.assert_not_awaited()
+
+        # Handle still removed from pool (cleanup still happens)
+        assert "process-sigkill-2" not in pool.processes

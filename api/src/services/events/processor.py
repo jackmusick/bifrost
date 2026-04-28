@@ -17,11 +17,14 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from src.core.log_safety import log_safe
-from src.models.enums import EventDeliveryStatus, EventStatus
+from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus
 from src.models.orm.events import (
     Event,
     EventDelivery,
@@ -45,6 +48,39 @@ from src.services.webhooks.protocol import (
 from src.services.webhooks.registry import get_adapter
 
 logger = logging.getLogger(__name__)
+
+
+async def resolve_webhook_source(
+    db: AsyncSession,
+    source_id: str,
+) -> tuple[EventSource, WebhookSource] | None:
+    """Look up the EventSource + WebhookSource for a given source_id.
+
+    Returns None if the source doesn't exist, isn't active, or isn't a webhook source.
+    """
+    try:
+        source_uuid = UUID(source_id)
+    except ValueError:
+        return None
+
+    stmt = (
+        sa.select(EventSource)
+        .options(
+            joinedload(EventSource.webhook_source).joinedload(
+                WebhookSource.integration
+            ),
+        )
+        .where(
+            EventSource.id == source_uuid,
+            EventSource.is_active.is_(True),
+            EventSource.source_type == EventSourceType.WEBHOOK,
+        )
+    )
+    result = await db.execute(stmt)
+    event_source = result.unique().scalar_one_or_none()
+    if not event_source or not event_source.webhook_source:
+        return None
+    return event_source, event_source.webhook_source
 
 
 def _render_template(template: str, context: dict) -> Any:
@@ -177,14 +213,16 @@ class EventProcessor:
 
     async def process_webhook(
         self,
-        source_id: str,
+        event_source: EventSource,
+        webhook_source: WebhookSource,
         request: WebhookRequest,
     ) -> HandleResult:
         """
         Process an incoming webhook request.
 
         Args:
-            source_id: The event source UUID (from URL path)
+            event_source: The resolved EventSource ORM object
+            webhook_source: The resolved WebhookSource ORM object
             request: The incoming webhook request data
 
         Returns:
@@ -193,34 +231,7 @@ class EventProcessor:
             - Deliver: Event was accepted and will be processed
             - Rejected: Request was rejected (invalid signature, etc.)
         """
-        # Validate and parse source_id as UUID
-        try:
-            from uuid import UUID as PyUUID
-            source_uuid = PyUUID(source_id)
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid source_id: {log_safe(source_id)}")
-            return Rejected(
-                message="Invalid webhook URL",
-                status_code=404,
-            )
-
-        # Look up webhook source by event_source_id
-        webhook_source = await self._webhook_repo.get_by_event_source_id(source_uuid)
-
-        if not webhook_source:
-            logger.warning(f"Webhook not found for source_id: {log_safe(source_id)}")
-            return Rejected(
-                message="Webhook not found",
-                status_code=404,
-            )
-
-        event_source = webhook_source.event_source
-        if not event_source or not event_source.is_active:
-            logger.warning(f"Event source inactive for webhook: {log_safe(source_id)}")
-            return Rejected(
-                message="Webhook is inactive",
-                status_code=404,
-            )
+        source_id = str(event_source.id)
 
         # Get the adapter for this webhook
         adapter = get_adapter(webhook_source.adapter_name)
@@ -639,44 +650,6 @@ class EventProcessor:
             },
         )
 
-
-async def process_webhook_request(
-    session: AsyncSession,
-    source_id: str,
-    method: str,
-    headers: dict[str, str],
-    query_params: dict[str, str],
-    body: bytes,
-    source_ip: str | None = None,
-) -> HandleResult:
-    """
-    Convenience function to process a webhook request.
-
-    Args:
-        session: Database session
-        source_id: The event source UUID from the URL
-        method: HTTP method
-        headers: Request headers (lowercase keys)
-        query_params: Query parameters
-        body: Raw request body
-        source_ip: Client IP address
-
-    Returns:
-        HandleResult indicating how to respond
-    """
-    # Build WebhookRequest
-    request = WebhookRequest(
-        method=method,
-        path=f"/api/hooks/{source_id}",
-        headers=headers,
-        query_params=query_params,
-        body=body,
-        client_ip=source_ip,
-    )
-
-    # Process through EventProcessor
-    processor = EventProcessor(session)
-    return await processor.process_webhook(source_id, request)
 
 
 async def update_delivery_from_execution(
