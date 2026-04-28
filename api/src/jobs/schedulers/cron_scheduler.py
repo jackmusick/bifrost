@@ -19,9 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.core.database import get_db_context
-from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ExecutionStatus, ScheduleOverlapPolicy
+from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ScheduleOverlapPolicy
 from src.models.orm.events import Event, EventDelivery, EventSource
-from src.models.orm.executions import Execution
 from src.repositories.events import EventSubscriptionRepository
 
 logger = logging.getLogger(__name__)
@@ -113,19 +112,20 @@ async def process_schedule_sources() -> dict[str, Any]:
                     if seconds_since_last >= 60:
                         continue  # Last match was outside our polling window
 
-                    # Check overlap policy: skip if a prior execution is still active.
-                    # The join path: Execution ← EventDelivery → Event → EventSource.
+                    # Check overlap policy: skip if a prior delivery is still active.
+                    # Query EventDelivery.status directly — covers both workflow-target
+                    # (execution_id set) and agent-target (agent_run_id set) subscriptions,
+                    # and catches deliveries that have been queued before their downstream
+                    # Execution / AgentRun row has materialized.
                     overlap_policy = ss.overlap_policy
                     active_count = await db.scalar(
-                        sa.select(sa.func.count(Execution.id))
-                        .join(EventDelivery, EventDelivery.execution_id == Execution.id)
+                        sa.select(sa.func.count(EventDelivery.id))
                         .join(Event, Event.id == EventDelivery.event_id)
                         .where(
                             Event.event_source_id == source.id,
-                            Execution.status.in_([
-                                ExecutionStatus.PENDING,
-                                ExecutionStatus.RUNNING,
-                                ExecutionStatus.CANCELLING,
+                            EventDelivery.status.in_([
+                                EventDeliveryStatus.PENDING,
+                                EventDeliveryStatus.QUEUED,
                             ]),
                         )
                     )

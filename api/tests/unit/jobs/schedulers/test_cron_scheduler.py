@@ -16,9 +16,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
-from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ExecutionStatus, ScheduleOverlapPolicy
+from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ScheduleOverlapPolicy
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, ScheduleSource
-from src.models.orm.executions import Execution
 
 PATH_DB_CTX = "src.jobs.schedulers.cron_scheduler.get_db_context"
 # EventSubscriptionRepository is imported at module level in cron_scheduler
@@ -46,6 +45,7 @@ def _make_source_and_subscription(
     *,
     cron: str = "* * * * *",
     overlap_policy: ScheduleOverlapPolicy = ScheduleOverlapPolicy.SKIP,
+    target_type: str = "workflow",
 ) -> tuple[EventSource, ScheduleSource, EventSubscription]:
     source_id = uuid4()
     source = EventSource(
@@ -67,7 +67,7 @@ def _make_source_and_subscription(
         id=uuid4(),
         event_source_id=source_id,
         workflow_id=None,
-        target_type="workflow",
+        target_type=target_type,
         is_active=True,
         created_by="test",
     )
@@ -85,25 +85,22 @@ def _make_event(source_id) -> Event:
     )
 
 
-def _make_execution(*, status: ExecutionStatus) -> Execution:
-    return Execution(
-        id=uuid4(),
-        workflow_name="test-workflow",
-        status=status,
-        parameters={},
-        executed_by=None,
-        executed_by_name="system",
-    )
-
-
-def _make_delivery(*, event_id, execution_id, subscription_id) -> EventDelivery:
+def _make_delivery(
+    *,
+    event_id,
+    subscription_id,
+    status: EventDeliveryStatus = EventDeliveryStatus.SUCCESS,
+    execution_id=None,
+    agent_run_id=None,
+) -> EventDelivery:
     return EventDelivery(
         id=uuid4(),
         event_id=event_id,
         event_subscription_id=subscription_id,
         workflow_id=None,
         execution_id=execution_id,
-        status=EventDeliveryStatus.SUCCESS,
+        agent_run_id=agent_run_id,
+        status=status,
     )
 
 
@@ -159,13 +156,12 @@ async def test_schedule_skipped_when_previous_run_active_skip_policy(db_session,
     db_session.add(prior_event)
     await db_session.flush()
 
-    # An execution that is still RUNNING
-    running_exec = _make_execution(status=ExecutionStatus.RUNNING)
-    db_session.add(running_exec)
-    await db_session.flush()
-
-    # Link: EventDelivery.execution_id → running_exec, EventDelivery.event_id → prior_event
-    delivery = _make_delivery(event_id=prior_event.id, execution_id=running_exec.id, subscription_id=sub.id)
+    # An active delivery (still PENDING — downstream Execution not yet materialized or in-flight)
+    delivery = _make_delivery(
+        event_id=prior_event.id,
+        subscription_id=sub.id,
+        status=EventDeliveryStatus.PENDING,
+    )
     db_session.add(delivery)
     await db_session.commit()
 
@@ -211,11 +207,11 @@ async def test_schedule_skipped_when_previous_run_active_queue_policy_v1_fallbac
     db_session.add(prior_event)
     await db_session.flush()
 
-    pending_exec = _make_execution(status=ExecutionStatus.PENDING)
-    db_session.add(pending_exec)
-    await db_session.flush()
-
-    delivery = _make_delivery(event_id=prior_event.id, execution_id=pending_exec.id, subscription_id=sub.id)
+    delivery = _make_delivery(
+        event_id=prior_event.id,
+        subscription_id=sub.id,
+        status=EventDeliveryStatus.QUEUED,
+    )
     db_session.add(delivery)
     await db_session.commit()
 
@@ -260,12 +256,13 @@ async def test_schedule_fires_when_only_completed_executions(db_session):
     db_session.add(prior_event)
     await db_session.flush()
 
-    # Two historical terminal executions
-    for status in (ExecutionStatus.SUCCESS, ExecutionStatus.FAILED):
-        exec_ = _make_execution(status=status)
-        db_session.add(exec_)
-        await db_session.flush()
-        delivery = _make_delivery(event_id=prior_event.id, execution_id=exec_.id, subscription_id=sub.id)
+    # Two historical terminal deliveries (SUCCESS and FAILED — both non-blocking)
+    for terminal_status in (EventDeliveryStatus.SUCCESS, EventDeliveryStatus.FAILED):
+        delivery = _make_delivery(
+            event_id=prior_event.id,
+            subscription_id=sub.id,
+            status=terminal_status,
+        )
         db_session.add(delivery)
 
     await db_session.commit()
@@ -292,3 +289,67 @@ async def test_schedule_fires_when_only_completed_executions(db_session):
     assert after == 2, "Expected a new event fired (terminal executions must not block)"
     # We cannot assert skipped_overlap == 0 globally because prior committed test data
     # (from other tests using the same DB) may have active executions on other sources.
+
+
+@pytest.mark.asyncio
+async def test_schedule_skipped_when_active_agent_run_target(db_session, caplog):
+    """Schedule with overlap_policy=SKIP and an active EventDelivery targeting an
+    AGENT subscription (agent_run_id set, execution_id=None) must skip the new fire.
+
+    This tests the gap that the previous Execution-join query missed: agent-target
+    deliveries set agent_run_id and leave execution_id=None, so the old join on
+    EventDelivery.execution_id == Execution.id never matched them.
+    """
+    source, ss, sub = _make_source_and_subscription(
+        overlap_policy=ScheduleOverlapPolicy.SKIP,
+        target_type="agent",
+    )
+    db_session.add(source)
+    db_session.add(ss)
+    db_session.add(sub)
+    await db_session.flush()
+
+    # Prior event from a previous fire
+    prior_event = _make_event(source.id)
+    db_session.add(prior_event)
+    await db_session.flush()
+
+    # Active delivery to an agent subscription — execution_id is None, agent_run_id would
+    # normally be set but may not yet be (delivery is PENDING pre-materialization).
+    delivery = _make_delivery(
+        event_id=prior_event.id,
+        subscription_id=sub.id,
+        status=EventDeliveryStatus.PENDING,
+        execution_id=None,
+        agent_run_id=None,
+    )
+    db_session.add(delivery)
+    await db_session.commit()
+
+    before = await _count_events_for_source(db_session, source.id)
+    assert before == 1, "Setup sanity: 1 prior event"
+
+    mock_sub_repo = AsyncMock()
+    mock_sub_repo.get_active_for_event = AsyncMock(return_value=[])
+    mock_processor = AsyncMock()
+
+    from src.jobs.schedulers.cron_scheduler import process_schedule_sources
+    import logging
+
+    with (
+        patch(PATH_DB_CTX, return_value=_DbCtx(db_session)),
+        patch(PATH_IS_VALID, return_value=True),
+        patch(PATH_SUB_REPO, return_value=mock_sub_repo),
+        patch(PATH_PROCESSOR, return_value=mock_processor),
+        caplog.at_level(logging.INFO, logger="src.jobs.schedulers.cron_scheduler"),
+    ):
+        results = await process_schedule_sources()
+
+    assert results.get("skipped_overlap", 0) >= 1, "Expected skipped_overlap counter >= 1"
+    assert any("schedule_skipped_overlap" in r.message for r in caplog.records), (
+        "Expected a schedule_skipped_overlap log entry"
+    )
+
+    # No new Event row must have been created for this source
+    after = await _count_events_for_source(db_session, source.id)
+    assert after == 1, "Expected exactly 1 event (the prior one) — agent-target overlap must block"
