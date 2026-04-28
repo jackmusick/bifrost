@@ -27,6 +27,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live Health Check
+         * @description Liveness check endpoint.
+         *
+         *     Returns healthy when the API process can respond.
+         */
+        get: operations["live_health_check_health_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ready Health Check
+         * @description Readiness check for core API serving dependencies.
+         */
+        get: operations["ready_health_check_health_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/detailed": {
         parameters: {
             query?: never;
@@ -40,6 +82,9 @@ export interface paths {
          *
          *     Checks:
          *     - Database connectivity
+         *     - Redis connectivity
+         *     - RabbitMQ connectivity
+         *     - S3 bucket availability when S3 is configured
          *
          *     Returns:
          *         Detailed health status with component information
@@ -3423,22 +3468,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4820,10 +4865,12 @@ export interface paths {
          *     the affordance instead of surfacing a dead-end "Nothing to backfill"
          *     modal.
          *
-         *     When ``prompt_version_below`` is set, also counts ``completed`` runs whose
-         *     ``summary_prompt_version`` is older than the given version (or NULL), so
-         *     admins can discover the existence of a roll-forward opportunity even when
-         *     there are no pending/failed runs.
+         *     Three orthogonal flags shape the count:
+         *       - default (no flags)                  → pending + failed summaries
+         *       - ``prompt_version_below="vN"``       → above + completed runs on an
+         *                                                older prompt version (or NULL)
+         *       - ``include_completed=true``          → above + ALL completed summaries
+         *                                                regardless of version
          */
         get: operations["get_backfill_eligible_api_agent_runs_backfill_eligible_get"];
         put?: never;
@@ -11485,11 +11532,8 @@ export interface components {
             is_active?: boolean | null;
             /** Name */
             name?: string | null;
-            /**
-             * Hmac Scheme
-             * @enum {string}
-             */
-            hmac_scheme?: "shopify" | "halopsa" | null;
+            /** Hmac Scheme */
+            hmac_scheme?: ("shopify" | "halopsa") | null;
         };
         /**
          * EmbeddingConfigRequest
@@ -17978,6 +18022,12 @@ export interface components {
             app?: string | null;
         };
         /**
+         * ScheduleOverlapPolicy
+         * @description Behavior when a schedule fires while a previous run is still active.
+         * @enum {string}
+         */
+        ScheduleOverlapPolicy: "skip" | "queue" | "replace";
+        /**
          * ScheduleSourceConfig
          * @description Schedule-specific configuration for creating an event source.
          */
@@ -17999,6 +18049,11 @@ export interface components {
              * @default true
              */
             enabled: boolean;
+            /**
+             * @description Behavior when a schedule fires while a previous run is still active
+             * @default skip
+             */
+            overlap_policy: components["schemas"]["ScheduleOverlapPolicy"];
         };
         /**
          * ScheduleSourceResponse
@@ -18020,6 +18075,11 @@ export interface components {
              * @description Whether the schedule is enabled
              */
             enabled: boolean;
+            /**
+             * @description Behavior when a schedule fires while a previous run is still active
+             * @default skip
+             */
+            overlap_policy: components["schemas"]["ScheduleOverlapPolicy"];
         };
         /**
          * SearchRequest
@@ -20335,6 +20395,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthCheck"];
+                };
+            };
+        };
+    };
+    live_health_check_health_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthCheck"];
+                };
+            };
+        };
+    };
+    ready_health_check_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailedHealthCheck"];
                 };
             };
         };
@@ -25608,7 +25708,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25641,7 +25741,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25674,7 +25774,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25707,7 +25807,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -27960,6 +28060,7 @@ export interface operations {
             query?: {
                 agent_id?: string | null;
                 prompt_version_below?: string | null;
+                include_completed?: boolean;
             };
             header?: never;
             path?: never;

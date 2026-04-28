@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models.enums import EventSourceType, EventStatus
+from src.models.enums import EventSourceType, EventStatus, ScheduleOverlapPolicy
 
 
 # ==================== WEBHOOK ADAPTER MODELS ====================
@@ -78,6 +78,10 @@ class ScheduleSourceConfig(BaseModel):
     enabled: bool = Field(
         default=True,
         description="Whether the schedule is enabled",
+    )
+    overlap_policy: ScheduleOverlapPolicy = Field(
+        default=ScheduleOverlapPolicy.SKIP,
+        description="Behavior when a schedule fires while a previous run is still active",
     )
 
 
@@ -260,6 +264,10 @@ class ScheduleSourceResponse(BaseModel):
     enabled: bool = Field(
         ...,
         description="Whether the schedule is enabled",
+    )
+    overlap_policy: ScheduleOverlapPolicy = Field(
+        default=ScheduleOverlapPolicy.SKIP,
+        description="Behavior when a schedule fires while a previous run is still active",
     )
 
 

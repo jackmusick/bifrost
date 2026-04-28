@@ -283,6 +283,7 @@ def serialize_event_source(
     cron_expression = schedule.cron_expression if schedule else None
     tz = schedule.timezone if schedule else None
     schedule_enabled = schedule.enabled if schedule else None
+    overlap_policy = schedule.overlap_policy.value if schedule and schedule.overlap_policy else None
 
     adapter_name = webhook.adapter_name if webhook else None
     webhook_integration_id = str(webhook.integration_id) if webhook and webhook.integration_id else None
@@ -297,6 +298,7 @@ def serialize_event_source(
         cron_expression=cron_expression,
         timezone=tz,
         schedule_enabled=schedule_enabled,
+        overlap_policy=overlap_policy,
         adapter_name=adapter_name,
         webhook_integration_id=webhook_integration_id,
         webhook_config=webhook_config,

@@ -104,6 +104,7 @@ async def _build_event_source_response(
             cron_expression=ss.cron_expression,
             timezone=ss.timezone,
             enabled=ss.enabled,
+            overlap_policy=ss.overlap_policy,
         )
 
     return EventSourceResponse(
@@ -448,6 +449,7 @@ async def create_source(
             cron_expression=request.schedule.cron_expression,
             timezone=request.schedule.timezone,
             enabled=request.schedule.enabled,
+            overlap_policy=request.schedule.overlap_policy,
             created_at=now,
             updated_at=now,
         )
@@ -556,6 +558,8 @@ async def update_source(
             ss.timezone = request.schedule.timezone
         if request.schedule.enabled is not None:
             ss.enabled = request.schedule.enabled
+        if request.schedule.overlap_policy is not None:
+            ss.overlap_policy = request.schedule.overlap_policy
         ss.updated_at = datetime.now(timezone.utc)
 
     await db.flush()

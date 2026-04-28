@@ -2185,17 +2185,20 @@ class ManifestResolver:
 
         # Upsert schedule source if applicable
         if mes.source_type == "schedule" and mes.cron_expression:
+            overlap_policy = mes.overlap_policy or "skip"
             sched_stmt = insert(ScheduleSource).values(
                 event_source_id=es_id,
                 cron_expression=mes.cron_expression,
                 timezone=mes.timezone or "UTC",
                 enabled=mes.schedule_enabled if mes.schedule_enabled is not None else True,
+                overlap_policy=overlap_policy,
             ).on_conflict_do_update(
                 index_elements=["event_source_id"],
                 set_={
                     "cron_expression": mes.cron_expression,
                     "timezone": mes.timezone or "UTC",
                     "enabled": mes.schedule_enabled if mes.schedule_enabled is not None else True,
+                    "overlap_policy": overlap_policy,
                     "updated_at": datetime.now(timezone.utc),
                 },
             )

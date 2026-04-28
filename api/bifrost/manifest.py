@@ -268,6 +268,7 @@ class ManifestEventSource(BaseModel):
     cron_expression: str | None = Field(default=None, description="Cron schedule (e.g. '0 9 * * *')")
     timezone: str | None = Field(default=None, description="Timezone (e.g. 'America/New_York')")
     schedule_enabled: bool | None = Field(default=None, description="Enable/disable schedule")
+    overlap_policy: str | None = Field(default=None, description="Overlap policy: skip | queue | replace")
     # Webhook config
     adapter_name: str | None = Field(default=None, description="Webhook adapter (e.g. 'generic', 'halopsa')")
     webhook_integration_id: str | None = Field(default=None, description="Integration UUID for webhook auth")
