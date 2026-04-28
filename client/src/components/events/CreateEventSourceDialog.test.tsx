@@ -136,9 +136,9 @@ describe("CreateEventSourceDialog — webhook rate-limit section", () => {
 		);
 
 		expect(
-			screen.getByLabelText(/rate limit \(events per minute\)/i),
+			screen.getByLabelText(/^max events$/i),
 		).toBeInTheDocument();
-		expect(screen.getByLabelText(/window \(seconds\)/i)).toBeInTheDocument();
+		expect(screen.getByLabelText(/per \(seconds\)/i)).toBeInTheDocument();
 		expect(screen.getByLabelText(/^enabled$/i)).toBeInTheDocument();
 	});
 
@@ -148,7 +148,7 @@ describe("CreateEventSourceDialog — webhook rate-limit section", () => {
 		);
 
 		const input = screen.getByLabelText(
-			/rate limit \(events per minute\)/i,
+			/^max events$/i,
 		) as HTMLInputElement;
 		expect(input.value).toBe("60");
 

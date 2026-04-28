@@ -325,9 +325,7 @@ function EditEventSourceDialogContent({
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="rate-limit-per-minute">
-								Rate limit (events per minute)
-							</Label>
+							<Label htmlFor="rate-limit-per-minute">Max events</Label>
 							<Input
 								id="rate-limit-per-minute"
 								type="number"
@@ -342,14 +340,14 @@ function EditEventSourceDialogContent({
 								placeholder="60 (leave empty to disable)"
 							/>
 							<p className="text-xs text-muted-foreground">
-								Maximum events accepted per window. Leave empty to
-								disable the limit.
+								Maximum events accepted within the window below.
+								Leave empty to disable the limit.
 							</p>
 						</div>
 
 						<div className="space-y-2">
 							<Label htmlFor="rate-limit-window">
-								Window (seconds)
+								Per (seconds)
 							</Label>
 							<Input
 								id="rate-limit-window"
@@ -361,7 +359,8 @@ function EditEventSourceDialogContent({
 								}
 							/>
 							<p className="text-xs text-muted-foreground">
-								Duration of the rate-limit sliding window.
+								Window duration. Default 60 means the limit above
+								applies per minute.
 							</p>
 						</div>
 

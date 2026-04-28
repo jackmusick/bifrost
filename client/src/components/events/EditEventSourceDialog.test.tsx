@@ -229,12 +229,12 @@ describe("EditEventSourceDialog — webhook rate-limit", () => {
 		);
 
 		const rpmInput = screen.getByLabelText(
-			/rate limit \(events per minute\)/i,
+			/^max events$/i,
 		) as HTMLInputElement;
 		expect(rpmInput.value).toBe("60");
 
 		const windowInput = screen.getByLabelText(
-			/window \(seconds\)/i,
+			/per \(seconds\)/i,
 		) as HTMLInputElement;
 		expect(windowInput.value).toBe("60");
 
@@ -253,7 +253,7 @@ describe("EditEventSourceDialog — webhook rate-limit", () => {
 
 		// Change the per-minute limit
 		fireEvent.change(
-			screen.getByLabelText(/rate limit \(events per minute\)/i),
+			screen.getByLabelText(/^max events$/i),
 			{ target: { value: "30" } },
 		);
 
