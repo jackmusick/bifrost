@@ -108,11 +108,16 @@ class AppCompilerService:
 # This is intentionally broad to handle both JSX (className="...") and compiled
 # output (className: "...") without fragile pattern matching.
 _STRING_LITERAL = re.compile(r'"([^"]{1,500})"')
-_TOKEN_SPLIT = re.compile(r"[\s,]+")
-# Tailwind classes contain hyphens, brackets, colons, or slashes.
+# Split tokens on whitespace ONLY. Splitting on commas breaks Tailwind v4
+# arbitrary values that legitimately contain commas — e.g.
+# `lg:grid-cols-[minmax(0,1fr)_360px]` or `bg-[rgb(0,0,0)]`.
+_TOKEN_SPLIT = re.compile(r"\s+")
+# Tailwind classes contain hyphens, brackets, parens, colons, slashes, commas.
+# Tailwind v4 arbitrary values heavily use `()` (var(), minmax(), calc()) and
+# `,` (rgb commas, minmax args), so both must pass the candidate filter.
 # Single-word utilities (flex, grid, hidden, etc.) also need to pass through.
 _LOOKS_LIKE_CLASS = re.compile(
-    r"^!?-?[a-z][a-z0-9:\-/\[.=#%_*>~&+\]]*$",
+    r"^!?-?[a-z][a-z0-9:\-/\[\](),.=#%_*>~&+]*$",
     re.IGNORECASE,
 )
 
