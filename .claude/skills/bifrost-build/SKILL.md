@@ -258,7 +258,7 @@ Before writing any app code, design what you're building.
 1. Ask: "What should this app feel like? Any products you'd like it inspired by?"
 2. If a product is named, **describe the specific visual patterns** that define it — not abstract qualities ("clean", "modern") but concrete observations: "full-height dark sidebar with icon+label nav items, content area with a sticky toolbar row above the main editor, right panel for live preview with a simulated email client frame, generous whitespace between sections, muted borders instead of heavy dividers."
 3. Write a visual spec for each key screen: what elements exist, their spatial relationships, which are fixed vs. scrollable, where the visual weight sits, how the eye flows. This is the design — get it right before writing code.
-4. Plan `styles.css` for visual identity — color palette, typography scale, spacing rhythm, dark mode variants.
+4. Plan `styles.css` for visual identity — color palette via CSS variables (`:root` + `.dark`), typography scale, spacing rhythm. Use Tailwind v4 features freely: `@apply`, `@layer components`, arbitrary values with `var()`, optional per-app `tailwind.config.ts` for custom theme tokens. See [app-patterns.md](app-patterns.md) §10.
 5. Decide what's a custom component vs. pre-included shadcn. shadcn is for standard interactions (settings forms, confirmation dialogs, data tables). Custom components are for the interactions that define the app's identity — a project management app needs a custom kanban board, not a `<Table>`; an email tool needs a simulated inbox, not a textarea in a split pane.
 6. Then start building.
 
@@ -272,7 +272,7 @@ Before writing any app code, design what you're building.
 2. **Root layout:** `_layout.tsx` uses `<Outlet />` from `"bifrost"` (or `"react-router-dom"`) — NOT `{children}`.
 3. **Workflow hooks:** Always use UUIDs, never names — `useWorkflowQuery("uuid-here")`. Resolve UUIDs with `bifrost workflows list --json` or `bifrost workflows get <ref> --json`.
 4. **Fixed-height container:** Your app renders in a fixed-height box — manage your own scrolling (see [app-patterns.md](app-patterns.md) "Custom components" for layout patterns).
-5. **Custom CSS:** `styles.css` at app root, dark mode via `.dark` selector.
+5. **Styling:** Tailwind v4 with the full feature set — arbitrary values (`bg-[color:var(--x)]`, `lg:grid-cols-[1fr_360px]`), `@apply` and `@layer components` in `styles.css`, optional per-app `tailwind.config.{ts,js,mjs,cjs}` for custom theme tokens. Dark mode via `.dark` selector. See [app-patterns.md](app-patterns.md) §10.
 6. **Dependencies:** Declare npm packages in `app.yaml` (max 20, loaded from esm.sh at runtime — no `package.json` required).
 7. **Default exports:** Every page file MUST have a default export. Components under `components/` may be default or named; the bundler detects which.
 8. **Migrating an older app:** run `bifrost migrate-imports` from the workspace root, then **review the diff** before applying. See [import-patterns.md](import-patterns.md) "Migration notes".

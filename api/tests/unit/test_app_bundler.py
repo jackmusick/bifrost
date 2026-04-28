@@ -15,6 +15,7 @@ import pytest
 from src.services.app_bundler import (
     _PLATFORM_EXPORT_NAMES,
     SCHEMA_VERSION,
+    TAILWIND_OUTPUT_CSS,
     BundleManifest,
     BundleResult,
     BundlerService,
@@ -304,4 +305,151 @@ async def test_build_writes_current_schema_version_into_manifest(
     assert manifest["schema_version"] == SCHEMA_VERSION, (
         "manifest must record the bundler's current SCHEMA_VERSION so readers "
         "can detect stale manifests and trigger a rebuild"
+    )
+
+
+# ---------------------------------------------------------------------------
+# _generate_app_tailwind — per-app Tailwind compilation step that fills in
+# arbitrary values / responsive variants the host's preloaded Tailwind misses.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_app_tailwind_writes_css_when_candidates_present(
+    bundler: BundlerService, tmp_path: pathlib.Path
+) -> None:
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "_layout.tsx").write_text(
+        'export default () => <div className="bg-[color:var(--x)]" />;\n',
+        encoding="utf-8",
+    )
+    sources = ["_layout.tsx"]
+
+    fake_css = ".bg-\\[color\\:var\\(--x\\)\\]{background:var(--x)}"
+    with patch(
+        "src.services.app_compiler.AppTailwindService.generate_css_pipeline",
+        new=AsyncMock(return_value=fake_css),
+    ):
+        added, consumed = await bundler._generate_app_tailwind(src_dir, sources)
+
+    assert added is True
+    assert consumed == set()  # no .css files in sources
+    assert (src_dir / TAILWIND_OUTPUT_CSS).exists()
+    assert (src_dir / TAILWIND_OUTPUT_CSS).read_text() == fake_css
+
+
+@pytest.mark.asyncio
+async def test_generate_app_tailwind_returns_false_when_compiler_emits_nothing(
+    bundler: BundlerService, tmp_path: pathlib.Path
+) -> None:
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "_layout.tsx").write_text("export default () => null;\n")
+
+    with patch(
+        "src.services.app_compiler.AppTailwindService.generate_css_pipeline",
+        new=AsyncMock(return_value=None),
+    ):
+        added, consumed = await bundler._generate_app_tailwind(
+            src_dir, ["_layout.tsx"]
+        )
+
+    assert added is False
+    assert consumed == set()
+    assert not (src_dir / TAILWIND_OUTPUT_CSS).exists()
+
+
+@pytest.mark.asyncio
+async def test_generate_app_tailwind_consumes_user_css_files(
+    bundler: BundlerService, tmp_path: pathlib.Path
+) -> None:
+    """User .css files must be reported as consumed so the caller can
+    remove them from `sources` — re-importing them through esbuild after
+    inlining into __bifrost_tailwind.css would duplicate or break."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "_layout.tsx").write_text(
+        'export default () => <div className="flex" />;\n',
+        encoding="utf-8",
+    )
+    (src_dir / "styles.css").write_text(":root { --x: red; }\n")
+    (src_dir / "extra.css").write_text(".y { color: blue; }\n")
+    sources = ["_layout.tsx", "styles.css", "extra.css"]
+
+    with patch(
+        "src.services.app_compiler.AppTailwindService.generate_css_pipeline",
+        new=AsyncMock(return_value=".flex{display:flex}"),
+    ):
+        added, consumed = await bundler._generate_app_tailwind(src_dir, sources)
+
+    assert added is True
+    assert consumed == {"styles.css", "extra.css"}
+
+
+@pytest.mark.asyncio
+async def test_generate_app_tailwind_threads_per_app_config(
+    bundler: BundlerService, tmp_path: pathlib.Path
+) -> None:
+    """When the app source includes a tailwind.config.{ts,js,mjs,cjs},
+    its absolute path must be forwarded to the compiler as @config."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "_layout.tsx").write_text(
+        'export default () => <div className="flex" />;\n',
+        encoding="utf-8",
+    )
+    config_file = src_dir / "tailwind.config.ts"
+    config_file.write_text("export default { theme: {} };\n")
+    sources = ["_layout.tsx", "tailwind.config.ts"]
+
+    captured: dict[str, object] = {}
+
+    async def fake_pipeline(*, code_sources, user_css, config_path):
+        captured["config_path"] = config_path
+        return ".flex{display:flex}"
+
+    with patch(
+        "src.services.app_compiler.AppTailwindService.generate_css_pipeline",
+        new=fake_pipeline,
+    ):
+        added, _ = await bundler._generate_app_tailwind(src_dir, sources)
+
+    assert added is True
+    assert captured["config_path"] == str(config_file.resolve())
+
+
+@pytest.mark.asyncio
+async def test_generate_app_tailwind_skips_when_nothing_to_process(
+    bundler: BundlerService, tmp_path: pathlib.Path
+) -> None:
+    """No JSX, no CSS — nothing to do, don't fork a subprocess."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+
+    with patch(
+        "src.services.app_compiler.AppTailwindService.generate_css_pipeline",
+        new=AsyncMock(return_value="should not run"),
+    ) as gen:
+        added, consumed = await bundler._generate_app_tailwind(src_dir, [])
+
+    assert added is False
+    assert consumed == set()
+    gen.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_write_entry_imports_tailwind_css_when_present() -> None:
+    """The synthesized entry must import __bifrost_tailwind.css so esbuild
+    rolls it into entry-[hash].css alongside any user-authored CSS imports."""
+    bundler = BundlerService()
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        src_dir = pathlib.Path(tmp) / "src"
+        src_dir.mkdir()
+        sources = ["_layout.tsx", "pages/index.tsx", TAILWIND_OUTPUT_CSS]
+        bundler._write_entry(src_dir, "_entry.tsx", sources)
+        entry = (src_dir / "_entry.tsx").read_text()
+    assert f"./{TAILWIND_OUTPUT_CSS}" in entry, (
+        "entry must import the generated tailwind CSS so esbuild bundles it"
     )
