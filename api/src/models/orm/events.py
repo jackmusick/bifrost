@@ -199,6 +199,11 @@ class WebhookSource(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    # Rate limiting
+    rate_limit_per_minute: Mapped[int | None] = mapped_column(Integer, default=60, nullable=True)
+    rate_limit_window_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    rate_limit_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     # Relationships
     event_source: Mapped["EventSource"] = relationship(back_populates="webhook_source")
     integration: Mapped["Integration | None"] = relationship(lazy="joined")
