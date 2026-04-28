@@ -185,6 +185,47 @@ async def test_webhook_rate_limit_disabled_per_source():
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_hits_counter_incremented_on_429():
+    """Each 429 increments bifrost:rate_limit_hits:{source_id} with 24h TTL."""
+    from unittest.mock import call
+    from src.core.rate_limit import RateLimiter
+
+    identifier = str(uuid4())
+    limiter = RateLimiter(max_requests=2, window_seconds=60)
+
+    # Build a mock redis pipeline
+    mock_pipeline = AsyncMock()
+    mock_pipeline.incr = MagicMock()
+    mock_pipeline.expire = MagicMock()
+    mock_pipeline.execute = AsyncMock(return_value=[1, True])
+
+    mock_redis = AsyncMock()
+    # incr: first two calls allowed (1, 2), third call exceeds (3)
+    mock_redis.incr = AsyncMock(side_effect=[1, 2, 3])
+    mock_redis.expire = AsyncMock()
+    mock_redis.ttl = AsyncMock(return_value=55)
+    mock_redis.pipeline = MagicMock(return_value=mock_pipeline)
+
+    with patch("src.core.rate_limit.get_shared_redis", return_value=mock_redis):
+        # First two calls: no 429
+        await limiter.check("test_endpoint", identifier, force=True)
+        await limiter.check("test_endpoint", identifier, force=True)
+        mock_pipeline.incr.assert_not_called()
+
+        # Third call: exceeds limit → pipeline.incr called
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc_info:
+            await limiter.check("test_endpoint", identifier, force=True)
+
+        assert exc_info.value.status_code == 429
+
+        hit_key = f"bifrost:rate_limit_hits:{identifier}"
+        mock_pipeline.incr.assert_called_once_with(hit_key)
+        mock_pipeline.expire.assert_called_once_with(hit_key, 86400)
+        mock_pipeline.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_webhook_rate_limit_none_per_minute_bypasses_limiter():
     """When rate_limit_per_minute is None, no throttling."""
     source_id = uuid4()

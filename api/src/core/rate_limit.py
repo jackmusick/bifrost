@@ -84,6 +84,12 @@ class RateLimiter:
                     "limit": self.max_requests,
                 }
             )
+            # Track the hit for ops visibility (24h sliding count)
+            hit_key = f"bifrost:rate_limit_hits:{identifier}"
+            pipe = r.pipeline()
+            pipe.incr(hit_key)
+            pipe.expire(hit_key, 86400)
+            await pipe.execute()
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many requests. Please try again later.",

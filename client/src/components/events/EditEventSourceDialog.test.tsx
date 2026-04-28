@@ -218,6 +218,64 @@ describe("EditEventSourceDialog — schedule", () => {
 	});
 });
 
+describe("EditEventSourceDialog — rate-limit hit counter", () => {
+	it("renders the rejection count when rate_limited_count_24h > 0", () => {
+		renderWithProviders(
+			<EditEventSourceDialog
+				source={makeWebhookSource({
+					webhook: {
+						adapter_name: "generic",
+						integration_id: null,
+						integration_name: null,
+						config: {},
+						callback_url: "https://example.com/hooks/src-w1",
+						external_id: null,
+						expires_at: null,
+						rate_limit_per_minute: 60,
+						rate_limit_window_seconds: 60,
+						rate_limit_enabled: true,
+						rate_limited_count_24h: 5,
+					},
+				})}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		expect(
+			screen.getByText(/rate-limited 5 times in the last 24 hours/i),
+		).toBeInTheDocument();
+	});
+
+	it("does NOT render the rejection count when rate_limited_count_24h is 0", () => {
+		renderWithProviders(
+			<EditEventSourceDialog
+				source={makeWebhookSource({
+					webhook: {
+						adapter_name: "generic",
+						integration_id: null,
+						integration_name: null,
+						config: {},
+						callback_url: "https://example.com/hooks/src-w1",
+						external_id: null,
+						expires_at: null,
+						rate_limit_per_minute: 60,
+						rate_limit_window_seconds: 60,
+						rate_limit_enabled: true,
+						rate_limited_count_24h: 0,
+					},
+				})}
+				open
+				onOpenChange={() => {}}
+			/>,
+		);
+
+		expect(
+			screen.queryByText(/rate-limited.*times in the last 24 hours/i),
+		).not.toBeInTheDocument();
+	});
+});
+
 describe("EditEventSourceDialog — webhook rate-limit", () => {
 	it("renders rate-limit section with pre-filled values for webhook sources", () => {
 		renderWithProviders(

@@ -54,6 +54,7 @@ from src.repositories.events import (
     EventSourceRepository,
     EventSubscriptionRepository,
 )
+from src.core.cache import get_shared_redis
 from src.services.webhooks.registry import get_adapter_registry
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,13 @@ router = APIRouter(prefix="/api/events", tags=["Events"])
 def _build_callback_url(source_id: UUID) -> str:
     """Build callback URL path from event source ID."""
     return f"/api/hooks/{source_id}"
+
+
+async def _get_rate_limited_count(source_id: str) -> int:
+    """Read the 24h rate-limit hit counter for a webhook source from Redis."""
+    r = await get_shared_redis()
+    raw = await r.get(f"bifrost:rate_limit_hits:{source_id}")
+    return int(raw) if raw else 0
 
 
 async def _build_event_source_response(
@@ -97,6 +105,7 @@ async def _build_event_source_response(
             rate_limit_per_minute=ws.rate_limit_per_minute,
             rate_limit_window_seconds=ws.rate_limit_window_seconds,
             rate_limit_enabled=ws.rate_limit_enabled,
+            rate_limited_count_24h=await _get_rate_limited_count(str(source.id)),
         )
 
     # Build schedule response if applicable

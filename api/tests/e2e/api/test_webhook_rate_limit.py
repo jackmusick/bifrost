@@ -136,3 +136,16 @@ async def test_webhook_rate_limit_caps_event_creation(
         f"Expected at most 3 Event rows (one per accepted request), "
         f"found {len(events)}"
     )
+
+    # The rate_limited_count_24h on the source response must reflect the rejections
+    src_response = e2e_client.get(
+        f"/api/events/sources/{source_id}",
+        headers=platform_admin.headers,
+    )
+    assert src_response.status_code == 200
+    webhook_data = src_response.json()["webhook"]
+    assert webhook_data is not None
+    assert webhook_data["rate_limited_count_24h"] >= 7, (
+        f"Expected at least 7 rate-limit hits recorded, "
+        f"got {webhook_data['rate_limited_count_24h']}"
+    )

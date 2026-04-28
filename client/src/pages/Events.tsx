@@ -385,7 +385,14 @@ export function Events() {
 										{getSourceTypeLabel(source.source_type)}
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap text-right">
-										{source.event_count_24h || 0}
+										<div className="flex items-center justify-end gap-1.5">
+											<span>{source.event_count_24h || 0}</span>
+											{source.webhook && source.webhook.rate_limited_count_24h > 0 && (
+												<Badge variant="destructive" className="text-xs" title="Rate-limit rejections in last 24h">
+													{source.webhook.rate_limited_count_24h} throttled
+												</Badge>
+											)}
+										</div>
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap text-muted-foreground">
 										{formatDistanceToNow(

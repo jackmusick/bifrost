@@ -324,6 +324,12 @@ function EditEventSourceDialogContent({
 							</h4>
 						</div>
 
+						{source.webhook && source.webhook.rate_limited_count_24h > 0 && (
+							<p className="text-xs text-destructive">
+								Rate-limited {source.webhook.rate_limited_count_24h} times in the last 24 hours.
+							</p>
+						)}
+
 						<div className="space-y-2">
 							<Label htmlFor="rate-limit-per-minute">Max events</Label>
 							<Input

@@ -270,6 +270,10 @@ class WebhookSourceResponse(BaseModel):
         default=True,
         description="Per-source kill switch.",
     )
+    rate_limited_count_24h: int = Field(
+        default=0,
+        description="Number of rate-limit rejections in the last 24h (read-only).",
+    )
 
 
 class ScheduleSourceResponse(BaseModel):
