@@ -13,13 +13,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import sqlalchemy as sa
 from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.core.database import get_db_context
-from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus
+from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ExecutionStatus, ScheduleOverlapPolicy
 from src.models.orm.events import Event, EventDelivery, EventSource
+from src.models.orm.executions import Execution
 from src.repositories.events import EventSubscriptionRepository
 
 logger = logging.getLogger(__name__)
@@ -110,6 +112,44 @@ async def process_schedule_sources() -> dict[str, Any]:
                     seconds_since_last = (now - prev_run).total_seconds()
                     if seconds_since_last >= 60:
                         continue  # Last match was outside our polling window
+
+                    # Check overlap policy: skip if a prior execution is still active.
+                    # The join path: Execution ← EventDelivery → Event → EventSource.
+                    overlap_policy = ss.overlap_policy
+                    active_count = await db.scalar(
+                        sa.select(sa.func.count(Execution.id))
+                        .join(EventDelivery, EventDelivery.execution_id == Execution.id)
+                        .join(Event, Event.id == EventDelivery.event_id)
+                        .where(
+                            Event.event_source_id == source.id,
+                            Execution.status.in_([
+                                ExecutionStatus.PENDING,
+                                ExecutionStatus.RUNNING,
+                                ExecutionStatus.CANCELLING,
+                            ]),
+                        )
+                    )
+                    if active_count and active_count > 0:
+                        if overlap_policy != ScheduleOverlapPolicy.SKIP:
+                            logger.warning(
+                                "schedule_overlap_policy_not_implemented",
+                                extra={
+                                    "schedule_id": str(source.id),
+                                    "schedule_name": source.name,
+                                    "policy": str(overlap_policy),
+                                    "behavior": "treated as SKIP for v1",
+                                },
+                            )
+                        logger.info(
+                            "schedule_skipped_overlap",
+                            extra={
+                                "schedule_id": str(source.id),
+                                "schedule_name": source.name,
+                                "active_executions": active_count,
+                            },
+                        )
+                        results["skipped_overlap"] = results.get("skipped_overlap", 0) + 1
+                        continue
 
                     logger.info(f"Firing schedule source: {source.name} ({source.id})")
 
