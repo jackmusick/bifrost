@@ -59,20 +59,24 @@ The fork remains the unit of measurement. Diagnostics, heartbeats, cancellation,
 
 This design replaces an earlier consideration of two separate pools with a shared `ExecutionRuntime` interface. The interface is unnecessary because the fork-as-unit model already gives us the unification we wanted.
 
-**Privilege model:** the worker pod itself stays unprivileged — no `CAP_SYS_ADMIN`, no `privileged: true`, default `RuntimeDefault` seccomp. `bwrap` constructs its sandbox using unprivileged user namespaces, so pod-level capabilities are not required. The constraint is at the *host kernel* layer: the node must allow unprivileged user namespaces and not block them via AppArmor.
+**Privilege model:** the worker pod itself stays unprivileged — no `CAP_SYS_ADMIN`, no `privileged: true`, no root capabilities. But `bwrap`'s syscalls (`unshare(CLONE_NEWUSER)`, mount operations) are blocked by Docker's and K8s's default seccomp profile (`RuntimeDefault`). So the worker pod **does** require a relaxed seccomp profile — either `Unconfined` (simplest, broadest relaxation) or a custom profile (`bifrost-sandbox-seccomp.json`) that whitelists the specific bwrap-required syscalls. On Ubuntu 24.04 hosts, the pod also needs `apparmor: Unconfined`. These are real security relaxations vs. PSA "restricted" — meaningful enough to flag, but narrower than `privileged: true`.
 
-Per-platform reality (verified, 2026-04):
+The detailed empirical findings — what was tested, on what platforms, what the working bwrap recipe looks like, why we don't get a fresh PID namespace, the four security layers and which platforms gate which — live in the companion document `2026-04-27-chat-v2-sandbox-bwrap-findings.md`. Sub-project (4) starts from that recipe rather than re-deriving it.
 
-| Platform | Status | Operator action required? |
+Per-platform reality (verified, 2026-04 — full table in the findings doc):
+
+| Platform | Pod-side knobs needed | Host-side knobs needed |
 |---|---|---|
-| DigitalOcean Managed K8s (Debian 12) | Works clean | None |
-| GKE (COS) | Works clean | None |
-| EKS on Amazon Linux 2023 | Works clean | None |
-| AKS on Azure Linux 3.0 | Works clean | None |
-| Local Docker Compose on Ubuntu 22.04 / Debian 12 | Works clean | None |
-| **EKS on Bottlerocket** | Fails by default | Set `user.max_user_namespaces > 0` in node user data |
-| **AKS on Ubuntu 24.04** | Fails by default | Disable `kernel.apparmor_restrict_unprivileged_userns` OR load an AppArmor profile granting `userns,` |
-| Local Docker on Ubuntu 23.10+ host with default AppArmor | Fails by default | Same as AKS-Ubuntu fix |
+| DigitalOcean Managed K8s (Debian 12) | seccomp=Unconfined (or custom) | None |
+| GKE (COS) | seccomp=Unconfined | None |
+| EKS on Amazon Linux 2023 | seccomp=Unconfined | None |
+| AKS on Azure Linux 3.0 | seccomp=Unconfined | None |
+| Local Docker Compose on Debian 12 / Ubuntu 22.04 | seccomp=unconfined | None |
+| **EKS on Bottlerocket** | seccomp=Unconfined | `user.max_user_namespaces > 0` in node user data |
+| **AKS on Ubuntu 24.04** | seccomp=Unconfined + apparmor=Unconfined | `kernel.apparmor_restrict_unprivileged_userns=0` |
+| Local Docker on Ubuntu 24.04 host | seccomp=unconfined + apparmor=unconfined | Same |
+
+**Note on seccomp:** The "seccomp=Unconfined" requirement is universal — it's a Docker/K8s default issue, not a host issue. We will likely ship a custom seccomp profile (`bifrost-sandbox-seccomp.json`) that whitelists the specific bwrap-required syscalls so operators don't have to use full Unconfined. That profile is sub-project (4)'s responsibility to author.
 
 To handle the failure cases, the worker runs a startup **preflight check** (`unshare -U true` from inside the pod) and one of two paths happens:
 
@@ -206,4 +210,5 @@ Sub-project (5). Smallest. Pure tool addition.
 - `anthropic-experimental/sandbox-runtime` — Apache-2.0 sandbox tech we're building on
 - `api/src/services/execution/README.md` — current execution engine architecture (the load-bearing reference for sub-project (4))
 - `docs/superpowers/specs/2026-04-05-fork-based-process-pool-design.md` — process pool design we're extending, not replacing
+- `docs/superpowers/specs/2026-04-27-chat-v2-sandbox-bwrap-findings.md` — empirical bwrap test results; the working sandbox recipe; per-platform security-layer matrix. Mandatory reading before sub-project (4) begins.
 - `docs/plans/2026-02-04-bifrost-sdk-skills-design.md` — *different* "skills" concept (SDK scaffolding); name disambiguation is sub-project (2)'s problem
