@@ -143,21 +143,25 @@ function CapIcon({ kind }: { kind: string }) {
 	return null;
 }
 
+// Reserve a fixed column width for each meta cell so rows align across the
+// dropdown — without this, icon clusters and price strings of different
+// widths cause the second line to "dance" between rows.
+const PRICE_COL = "w-[8.5rem]";
+const CONTEXT_COL = "w-[4.5rem]";
+const CAPS_COL = "w-[5rem]";
+
 function RowMeta({ row }: { row: RichRow }) {
-	const parts: string[] = [];
-	if (row.price) parts.push(row.price);
-	if (row.context) parts.push(row.context);
-	const text = parts.join(" · ") || row.id;
 	return (
-		<div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-			<span className="font-mono truncate">{text}</span>
-			{row.caps.length > 0 && (
-				<span className="flex items-center gap-1">
-					{row.caps.map((c) => (
-						<CapIcon key={c} kind={c} />
-					))}
-				</span>
-			)}
+		<div className="flex items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
+			<span className={cn(PRICE_COL, "font-mono shrink-0")}>{row.price ?? "?"}</span>
+			<span className={cn(CONTEXT_COL, "font-mono shrink-0")}>
+				{row.context ?? "?"}
+			</span>
+			<span className={cn(CAPS_COL, "flex items-center gap-1 shrink-0")}>
+				{row.caps.length > 0
+					? row.caps.map((c) => <CapIcon key={c} kind={c} />)
+					: null}
+			</span>
 		</div>
 	);
 }
