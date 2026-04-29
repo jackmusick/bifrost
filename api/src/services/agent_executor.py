@@ -25,6 +25,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+_UNSET = object()  # sentinel for "kwarg not provided" vs explicit None
+
 from src.models.contracts.agents import (
     AgentSwitch,
     ChatStreamChunk,
@@ -1145,8 +1147,9 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         tool_input: dict[str, Any] | None = None,
         # Client-generated ID for optimistic update reconciliation
         local_id: str | None = None,
+        parent_message_id_override: UUID | None = _UNSET,  # type: ignore[assignment]
     ) -> Message:
-        """Save a message to the conversation."""
+        """Save a message to the conversation, advancing the active branch leaf."""
         msg_id = message_id if message_id else uuid4()
 
         async with self._db() as session:
@@ -1157,6 +1160,18 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             )
             max_sequence = result.scalar() or 0
             next_sequence = max_sequence + 1
+
+            # Load conversation to read current leaf and update it after insert.
+            conversation_result = await session.execute(
+                select(Conversation).where(Conversation.id == conversation_id)
+            )
+            conversation = conversation_result.scalar_one()
+
+            parent_id = (
+                parent_message_id_override
+                if parent_message_id_override is not _UNSET
+                else conversation.active_leaf_message_id
+            )
 
             message = Message(
                 id=msg_id,
@@ -1172,6 +1187,7 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 model=model,
                 duration_ms=duration_ms,
                 sequence=next_sequence,
+                parent_message_id=parent_id,
                 # New fields for TOOL_CALL messages
                 tool_state=tool_state,
                 tool_result=tool_result,
@@ -1180,12 +1196,10 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 local_id=local_id,
             )
             session.add(message)
+            await session.flush()  # ensure message.id is realized before leaf update
 
-            # Update conversation updated_at
-            conversation_result = await session.execute(
-                select(Conversation).where(Conversation.id == conversation_id)
-            )
-            conversation = conversation_result.scalar_one()
+            # Advance the active branch leaf.
+            conversation.active_leaf_message_id = message.id
             conversation.updated_at = datetime.now(timezone.utc)
             # commit happens on context manager exit
 
