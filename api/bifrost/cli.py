@@ -303,7 +303,12 @@ async def ephemeral_login_flow(api_url: str, email: str, password: str) -> tuple
     api_url = api_url.rstrip("/")
     try:
         async with httpx.AsyncClient(base_url=api_url, timeout=30.0) as client:
-            response = await client.post("/auth/login", json={"email": email, "password": password})
+            # /auth/login uses OAuth2PasswordRequestForm — form-encoded, not JSON
+            response = await client.post(
+                "/auth/login",
+                data={"username": email, "password": password},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
             if response.status_code != 200:
                 print(f"Error: /auth/login returned HTTP {response.status_code}", file=sys.stderr)
                 return 1, None

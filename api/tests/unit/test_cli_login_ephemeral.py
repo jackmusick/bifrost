@@ -29,7 +29,7 @@ def _stub_post(json_payload: dict, status_code: int = 200):
         async def __aexit__(self, *_a):
             return False
 
-        async def post(self, _url, json=None):
+        async def post(self, _url, json=None, data=None, headers=None):
             return StubResponse(status_code, json_payload)
 
     return StubClient
