@@ -85,11 +85,17 @@ interface RichRow {
 	match: PlatformModel | null;
 }
 
-function fmtPrice(input: number | null | undefined, output: number | null | undefined): string | null {
-	if (input == null && output == null) return null;
+function fmtPrice(
+	input: number | string | null | undefined,
+	output: number | string | null | undefined,
+): string | null {
+	const ni = input == null ? null : Number(input);
+	const no = output == null ? null : Number(output);
+	const valid = (n: number | null): n is number => n != null && Number.isFinite(n);
+	if (!valid(ni) && !valid(no)) return null;
 	const fmt = (n: number) => (n < 0.01 ? n.toFixed(4) : n.toFixed(2));
-	const i = input != null ? `$${fmt(input)}` : "—";
-	const o = output != null ? `$${fmt(output)}` : "—";
+	const i = valid(ni) ? `$${fmt(ni)}` : "—";
+	const o = valid(no) ? `$${fmt(no)}` : "—";
 	return `${i} / ${o} per M`;
 }
 
@@ -116,8 +122,8 @@ function buildRows(props: Props): RichRow[] {
 				id: m.id,
 				display: match?.display_name?.trim() || m.display_name?.trim() || m.id,
 				price: fmtPrice(
-					match?.input_price_per_million as unknown as number | null,
-					match?.output_price_per_million as unknown as number | null,
+					match?.input_price_per_million ?? null,
+					match?.output_price_per_million ?? null,
 				),
 				context: fmtContext(match?.context_window),
 				caps,
