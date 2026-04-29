@@ -52,6 +52,42 @@ The user picks the mode by setting (or not setting) `NETBIRD_SETUP_KEY` in `~/.c
 
 4. **Point at logs if they ask.** `./debug.sh logs <service>` — services include `api`, `client`, `worker`, `scheduler`, `postgres`, `rabbitmq`, `redis`, `minio`.
 
+## Auto-connect the CLI in this folder
+
+Once `./debug.sh up` reports the URL, wire the per-folder Bifrost CLI session so commands in this directory automatically target this stack — without overwriting any existing `~/.bifrost/credentials.json` (the user may have prod connected).
+
+1. Capture the three env-var lines from an ephemeral login:
+
+   ```bash
+   bifrost login --ephemeral --email dev@gobifrost.com --password password \
+     --url <URL_FROM_DEBUG_STATUS>
+   ```
+
+   The CLI prints to stdout:
+   ```
+   BIFROST_API_URL=http://localhost:38421
+   BIFROST_ACCESS_TOKEN=...
+   BIFROST_REFRESH_TOKEN=...
+   ```
+
+2. Append (or replace) the fenced block in `.env` at the worktree root:
+
+   ```
+   # BIFROST CLI ephemeral session
+   BIFROST_API_URL=...
+   BIFROST_ACCESS_TOKEN=...
+   BIFROST_REFRESH_TOKEN=...
+   # END BIFROST CLI ephemeral session
+   ```
+
+   Use marker comments so the block can be removed cleanly on teardown without touching the user's other env vars.
+
+3. Add `.env` to `.gitignore` if it isn't already present. Do not add the file otherwise — only that one line.
+
+4. Tell the user once: *"Stack up at <URL>. CLI in this folder is now connected (tokens are ephemeral; nothing was written to `~/.bifrost/`). MFA-off password login was used — do not run an instance like that in production."*
+
+On `./debug.sh down`, remove the fenced block (everything between `# BIFROST CLI ephemeral session` and `# END BIFROST CLI ephemeral session`, inclusive). If `.env` is empty after removal, delete it.
+
 ## Lifecycle: who tears down what
 
 - **The stack outlives this Claude session.** Closing or clearing the session does NOT tear it down. This is intentional — the user might come back, or have another Claude session attach to the same stack.
