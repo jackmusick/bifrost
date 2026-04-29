@@ -54,6 +54,11 @@ class ModelResolutionContext:
     conversation_current_model: str | None = None
     message_override: str | None = None
     required_capabilities: frozenset[str] = frozenset()
+    # The org allowlist gates *user-facing chat model selection*. System
+    # tasks (summarization, tuning, agent-internal completions) configure a
+    # specific model and shouldn't be filtered by the per-org chat allowlist
+    # — set to False for those call sites.
+    enforce_allowlist: bool = True
 
 
 @dataclass(frozen=True)
@@ -122,10 +127,14 @@ async def resolve_model(
         raise ModelResolutionError(
             f"organization {ctx.organization_id} not found"
         )
+    # Allowlist only narrows when the caller asked for it. Non-chat call
+    # sites (summarization, tuning, agent-internal completions) bypass it
+    # so a user-facing allowlist change doesn't break system tasks.
     org_allowlist: set[str] = set(org.allowed_chat_models or [])
-    allowed_ids = (
-        set(by_id.keys()) & org_allowlist if org_allowlist else set(by_id.keys())
-    )
+    if ctx.enforce_allowlist and org_allowlist:
+        allowed_ids = set(by_id.keys()) & org_allowlist
+    else:
+        allowed_ids = set(by_id.keys())
 
     # 3. Cascade — most-specific wins. (model_id, provenance) tuples.
     candidates: list[tuple[str | None, str]] = []

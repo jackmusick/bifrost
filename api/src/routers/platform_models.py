@@ -1,32 +1,41 @@
 """
 Platform Models Router
 
-Read-only catalog (`/api/platform-models`) and the admin model-migration flow
-(`/api/admin/models/preview-migration`, `/api/admin/models/apply-migration`).
+Read-only catalog (`/api/platform-models`) and the platform-wide allowlist
+migration flow:
+- `/api/admin/models/preview-allowlist-migration`
+- `/api/admin/models/apply-allowlist-migration`
 
-The migration flow is what the admin sees when an AI-settings change is about
-to remove access to currently-referenced models — they pick a replacement for
-each affected model before the change commits.
+The migration flow runs at the *platform* level: when a configuration change
+makes some set of model_ids unreachable for the whole installation (provider
+switch, model deactivation), it shows the platform admin which orgs have those
+ids in their `allowed_chat_models` and lets them pick a replacement (or drop)
+per id, before the saving change commits.
+
+We do NOT scan defaults (org/role/workspace/user/conversation/agent
+default_model fields), summarization model, tuning model, etc. Those are
+picks, not constraints — the resolver walks them at lookup time and falls
+through any that are unreachable. Only allowlists *constrain* what users can
+pick in chat, so they're the only fields that need active migration.
 """
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from sqlalchemy import select
 
 from shared.model_migration import (
-    apply_model_migration,
-    scan_model_references,
-    suggest_replacements,
+    apply_allowlist_migration,
+    scan_orphaned_allowlists,
 )
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
 from src.core.database import DbSession
 from src.models import (
-    ModelMigrationApplyRequest,
-    ModelMigrationApplyResponse,
-    ModelMigrationImpactItem,
-    ModelMigrationPreviewRequest,
-    ModelMigrationPreviewResponse,
+    OrgAllowlistImpactRow,
+    PlatformAllowlistApplyRequest,
+    PlatformAllowlistApplyResponse,
+    PlatformAllowlistPreviewRequest,
+    PlatformAllowlistPreviewResponse,
     PlatformModelListResponse,
     PlatformModelPublic,
 )
@@ -38,10 +47,42 @@ router = APIRouter(tags=["Platform Models"])
 
 
 @router.get(
+    "/api/admin/models/referenced-allowlist-ids",
+    response_model=list[str],
+    summary="All model_ids currently in any org's allowlist",
+    description=(
+        "Used by the LLMConfig save flow to know which models are at risk "
+        "of becoming unreachable when the provider changes. The frontend "
+        "diffs this against the new provider's /v1/models response and "
+        "passes the difference to /preview-allowlist-migration."
+    ),
+    dependencies=[RequirePlatformAdmin],
+)
+async def list_referenced_allowlist_ids(
+    user: CurrentActiveUser,
+    db: DbSession,
+) -> list[str]:
+    from src.models.orm import Organization
+
+    rows = (
+        await db.execute(
+            select(Organization.allowed_chat_models).where(
+                Organization.allowed_chat_models.isnot(None)
+            )
+        )
+    ).all()
+    out: set[str] = set()
+    for (allowlist,) in rows:
+        for m in allowlist or []:
+            out.add(m)
+    return sorted(out)
+
+
+@router.get(
     "/api/platform-models",
     response_model=PlatformModelListResponse,
     summary="List platform model catalog",
-    description="Active models from the global registry (synced from models.json).",
+    description="Active models from the global registry (synced from LiteLLM).",
 )
 async def list_platform_models(
     user: CurrentActiveUser,
@@ -60,81 +101,52 @@ async def list_platform_models(
 
 
 @router.post(
-    "/api/admin/models/preview-migration",
-    response_model=ModelMigrationPreviewResponse,
-    summary="Preview impact of removing model access",
-    description=(
-        "Given a list of model IDs the admin is about to lose access to, "
-        "return how many references exist and a suggested replacement per model."
-    ),
+    "/api/admin/models/preview-allowlist-migration",
+    response_model=PlatformAllowlistPreviewResponse,
+    summary="Preview which orgs reference soon-to-be-unreachable models",
     dependencies=[RequirePlatformAdmin],
 )
-async def preview_migration(
-    request: ModelMigrationPreviewRequest,
+async def preview_allowlist_migration(
+    request: PlatformAllowlistPreviewRequest,
     user: CurrentActiveUser,
     db: DbSession,
-) -> ModelMigrationPreviewResponse:
-    if user.organization_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User has no organization context.",
+) -> PlatformAllowlistPreviewResponse:
+    impacts = await scan_orphaned_allowlists(
+        db, unreachable_model_ids=request.unreachable_model_ids
+    )
+    rows = [
+        OrgAllowlistImpactRow(
+            organization_id=i.organization_id,
+            organization_name=i.organization_name,
+            orphaned_model_ids=i.orphaned_model_ids,
         )
-
-    impact = await scan_model_references(db, request.old_model_ids)
-
-    available = (
-        await db.scalars(
-            select(PlatformModel).where(PlatformModel.is_active.is_(True))
-        )
-    ).all()
-    suggestions = suggest_replacements(impact, list(available))
-
-    items = [
-        ModelMigrationImpactItem(
-            model_id=mid,
-            total=ref.total,
-            by_kind=ref.to_summary()["by_kind"],
-            suggested_replacement=suggestions.get(mid),
-        )
-        for mid, ref in impact.items()
+        for i in impacts
     ]
-    total = sum(i.total for i in items)
-    return ModelMigrationPreviewResponse(
-        organization_id=user.organization_id,
-        items=items,
-        total_references=total,
+    return PlatformAllowlistPreviewResponse(
+        affected_orgs=rows,
+        total_orgs=len(rows),
     )
 
 
 @router.post(
-    "/api/admin/models/apply-migration",
-    response_model=ModelMigrationApplyResponse,
-    summary="Rewrite model references",
+    "/api/admin/models/apply-allowlist-migration",
+    response_model=PlatformAllowlistApplyResponse,
+    summary="Apply allowlist replacements platform-wide",
     description=(
-        "Apply replacements: rewrite every reference of `old -> new` and add "
-        "an org-level deprecation entry per pair so any leftover string "
-        "references (workflow code, in-flight conversations) also remap."
+        "For each unreachable model_id, swap it to the new model_id in every "
+        "org's allowed_chat_models, or drop it (replacement = null). One "
+        "platform-wide ModelDeprecation row is added per (old → new) pair "
+        "so any in-flight string references also remap."
     ),
     dependencies=[RequirePlatformAdmin],
 )
-async def apply_migration(
-    request: ModelMigrationApplyRequest,
+async def apply_allowlist_migration_endpoint(
+    request: PlatformAllowlistApplyRequest,
     user: CurrentActiveUser,
     db: DbSession,
-) -> ModelMigrationApplyResponse:
-    if user.organization_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User has no organization context.",
-        )
-
-    result = await apply_model_migration(
-        db,
-        organization_id=user.organization_id,
-        replacements=request.replacements,
-    )
-    return ModelMigrationApplyResponse(
-        organization_id=user.organization_id,
-        rewrites=result.rewrites,
+) -> PlatformAllowlistApplyResponse:
+    result = await apply_allowlist_migration(db, replacements=request.replacements)
+    return PlatformAllowlistApplyResponse(
+        orgs_rewritten=result.orgs_rewritten,
         deprecations_added=result.deprecations_added,
     )

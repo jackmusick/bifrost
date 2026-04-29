@@ -8,16 +8,18 @@ import type { components } from "@/lib/v1";
 export type PlatformModel = components["schemas"]["PlatformModelPublic"];
 export type PlatformModelListResponse =
 	components["schemas"]["PlatformModelListResponse"];
-export type ModelMigrationPreviewRequest =
-	components["schemas"]["ModelMigrationPreviewRequest"];
-export type ModelMigrationPreviewResponse =
-	components["schemas"]["ModelMigrationPreviewResponse"];
-export type ModelMigrationApplyRequest =
-	components["schemas"]["ModelMigrationApplyRequest"];
-export type ModelMigrationApplyResponse =
-	components["schemas"]["ModelMigrationApplyResponse"];
-export type ModelMigrationImpactItem =
-	components["schemas"]["ModelMigrationImpactItem"];
+
+// Platform-wide allowlist migration types
+export type OrgAllowlistImpactRow =
+	components["schemas"]["OrgAllowlistImpactRow"];
+export type PlatformAllowlistPreviewRequest =
+	components["schemas"]["PlatformAllowlistPreviewRequest"];
+export type PlatformAllowlistPreviewResponse =
+	components["schemas"]["PlatformAllowlistPreviewResponse"];
+export type PlatformAllowlistApplyRequest =
+	components["schemas"]["PlatformAllowlistApplyRequest"];
+export type PlatformAllowlistApplyResponse =
+	components["schemas"]["PlatformAllowlistApplyResponse"];
 
 export type CostTier = "fast" | "balanced" | "premium";
 
@@ -126,22 +128,22 @@ export async function listPlatformModels(): Promise<PlatformModelListResponse> {
 	return data;
 }
 
-export async function previewModelMigration(
-	request: ModelMigrationPreviewRequest,
-): Promise<ModelMigrationPreviewResponse> {
+export async function previewAllowlistMigration(
+	request: PlatformAllowlistPreviewRequest,
+): Promise<PlatformAllowlistPreviewResponse> {
 	const { data, error } = await apiClient.POST(
-		"/api/admin/models/preview-migration",
+		"/api/admin/models/preview-allowlist-migration",
 		{ body: request },
 	);
 	if (error) throw new Error(`Preview failed: ${JSON.stringify(error)}`);
 	return data;
 }
 
-export async function applyModelMigration(
-	request: ModelMigrationApplyRequest,
-): Promise<ModelMigrationApplyResponse> {
+export async function applyAllowlistMigration(
+	request: PlatformAllowlistApplyRequest,
+): Promise<PlatformAllowlistApplyResponse> {
 	const { data, error } = await apiClient.POST(
-		"/api/admin/models/apply-migration",
+		"/api/admin/models/apply-allowlist-migration",
 		{ body: request },
 	);
 	if (error) throw new Error(`Apply failed: ${JSON.stringify(error)}`);

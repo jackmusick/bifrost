@@ -25,12 +25,10 @@ import { TagsInput } from "@/components/ui/tags-input";
 import { apiClient, $api } from "@/lib/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-	previewModelMigration,
 	resellerForEndpoint,
 	type PlatformModel,
 } from "@/services/platformModels";
 import { ModelSelect, type ModelSelectModel } from "@/components/chat/ModelSelect";
-import { ModelMigrationModal } from "@/components/admin/ModelMigrationModal";
 import { listPlatformModels } from "@/services/platformModels";
 
 interface OrgModelSettings {
@@ -74,13 +72,10 @@ export function ModelsSettings() {
 
 	const [platformModels, setPlatformModels] = useState<PlatformModel[]>([]);
 	const [org, setOrg] = useState<OrgModelSettings | null>(null);
-	const [savedSnapshot, setSavedSnapshot] = useState<OrgModelSettings | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [allowedStatus, setAllowedStatus] = useState<SaveStatus>("idle");
 	const [defaultStatus, setDefaultStatus] = useState<SaveStatus>("idle");
 	const [error, setError] = useState<string | null>(null);
-	const [migrationOpen, setMigrationOpen] = useState(false);
-	const [migrationCandidates, setMigrationCandidates] = useState<string[]>([]);
 
 	const llmConfigQuery = $api.useQuery(
 		"get",
@@ -121,7 +116,6 @@ export function ModelsSettings() {
 						default_chat_model: orgRes.data.default_chat_model ?? null,
 					};
 					setOrg(initial);
-					setSavedSnapshot(initial);
 				}
 			})
 			.catch((e: unknown) => {
@@ -164,7 +158,6 @@ export function ModelsSettings() {
 					default_chat_model: next.default_chat_model,
 				},
 			});
-			setSavedSnapshot(next);
 			setStatus("saved");
 			if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
 			savedTimerRef.current = window.setTimeout(() => setStatus("idle"), 2000);
@@ -180,31 +173,11 @@ export function ModelsSettings() {
 		setOrg(updated);
 		if (allowedTimer.current) window.clearTimeout(allowedTimer.current);
 		allowedTimer.current = window.setTimeout(async () => {
-			const before = new Set(savedSnapshot?.allowed_chat_models ?? []);
-			const after = new Set(next);
-			const removed = [...before].filter((m) => !after.has(m));
-			// Only open the migration modal if removed models are *actually
-			// referenced somewhere* — ask the server. Removing a model nobody
-			// uses should just save quietly.
-			if (removed.length > 0 && before.size > 0) {
-				try {
-					setAllowedStatus("saving");
-					const preview = await previewModelMigration({
-						old_model_ids: removed,
-					});
-					if (preview.total_references > 0) {
-						setMigrationCandidates(removed);
-						setMigrationOpen(true);
-						setAllowedStatus("idle");
-						return;
-					}
-				} catch (e) {
-					// If preview fails, proceed with the save — the resolver's
-					// deprecation path will still keep references working at
-					// lookup time even without a remap entry.
-					console.warn("[ModelsSettings] preview-migration failed", e);
-				}
-			}
+			// Narrowing your own org's allowlist is a non-event for migration:
+			// the chat picker just won't pick those models anymore, which is
+			// the intent. The migration flow runs at the platform level (when
+			// LLMConfig changes make models unreachable across the install)
+			// and lives in the LLMConfig save flow, not here.
 			await persist(updated, setAllowedStatus, allowedSavedTimer);
 		}, 500);
 	}
@@ -217,18 +190,6 @@ export function ModelsSettings() {
 		defaultTimer.current = window.setTimeout(async () => {
 			await persist(updated, setDefaultStatus, defaultSavedTimer);
 		}, 500);
-	}
-
-	function handleMigrationCancel() {
-		// Revert local state so the picker stops showing removed models.
-		if (savedSnapshot) setOrg(savedSnapshot);
-		setMigrationCandidates([]);
-	}
-
-	async function handleMigrationComplete() {
-		if (!org) return;
-		setMigrationCandidates([]);
-		await persist(org, setAllowedStatus, allowedSavedTimer);
 	}
 
 	useEffect(() => {
@@ -353,18 +314,6 @@ export function ModelsSettings() {
 					{error}
 				</div>
 			)}
-
-			<ModelMigrationModal
-				open={migrationOpen}
-				onOpenChange={(open) => {
-					setMigrationOpen(open);
-					if (!open && migrationCandidates.length > 0) {
-						handleMigrationCancel();
-					}
-				}}
-				oldModelIds={migrationCandidates}
-				onComplete={handleMigrationComplete}
-			/>
 		</div>
 	);
 }

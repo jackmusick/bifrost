@@ -3492,22 +3492,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6106,6 +6106,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/models/referenced-allowlist-ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * All model_ids currently in any org's allowlist
+         * @description Used by the LLMConfig save flow to know which models are at risk of becoming unreachable when the provider changes. The frontend diffs this against the new provider's /v1/models response and passes the difference to /preview-allowlist-migration.
+         */
+        get: operations["list_referenced_allowlist_ids_api_admin_models_referenced_allowlist_ids_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/platform-models": {
         parameters: {
             query?: never;
@@ -6115,7 +6135,7 @@ export interface paths {
         };
         /**
          * List platform model catalog
-         * @description Active models from the global registry (synced from models.json).
+         * @description Active models from the global registry (synced from LiteLLM).
          */
         get: operations["list_platform_models_api_platform_models_get"];
         put?: never;
@@ -6126,7 +6146,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/models/preview-migration": {
+    "/api/admin/models/preview-allowlist-migration": {
         parameters: {
             query?: never;
             header?: never;
@@ -6135,18 +6155,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Preview impact of removing model access
-         * @description Given a list of model IDs the admin is about to lose access to, return how many references exist and a suggested replacement per model.
-         */
-        post: operations["preview_migration_api_admin_models_preview_migration_post"];
+        /** Preview which orgs reference soon-to-be-unreachable models */
+        post: operations["preview_allowlist_migration_api_admin_models_preview_allowlist_migration_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/admin/models/apply-migration": {
+    "/api/admin/models/apply-allowlist-migration": {
         parameters: {
             query?: never;
             header?: never;
@@ -6156,10 +6173,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Rewrite model references
-         * @description Apply replacements: rewrite every reference of `old -> new` and add an org-level deprecation entry per pair so any leftover string references (workflow code, in-flight conversations) also remap.
+         * Apply allowlist replacements platform-wide
+         * @description For each unreachable model_id, swap it to the new model_id in every org's allowed_chat_models, or drop it (replacement = null). One platform-wide ModelDeprecation row is added per (old → new) pair so any in-flight string references also remap.
          */
-        post: operations["apply_migration_api_admin_models_apply_migration_post"];
+        post: operations["apply_allowlist_migration_endpoint_api_admin_models_apply_allowlist_migration_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15262,84 +15279,6 @@ export interface components {
             tenant_id: string;
         };
         /**
-         * ModelMigrationApplyRequest
-         * @description Map of `old_model_id -> new_model_id_or_typed_string`.
-         *
-         *     `new` may be a model_id from `platform_models`, an alias, or a free-typed
-         *     string when the new provider's catalog isn't represented in
-         *     `platform_models` yet (custom OpenAI-compatible endpoint, self-hosted, etc.).
-         */
-        ModelMigrationApplyRequest: {
-            /** Replacements */
-            replacements: {
-                [key: string]: string;
-            };
-        };
-        /** ModelMigrationApplyResponse */
-        ModelMigrationApplyResponse: {
-            /**
-             * Organization Id
-             * Format: uuid
-             */
-            organization_id: string;
-            /** Rewrites */
-            rewrites: {
-                [key: string]: number;
-            };
-            /** Deprecations Added */
-            deprecations_added: number;
-        };
-        /** ModelMigrationByKind */
-        ModelMigrationByKind: {
-            /** Organizations Default */
-            organizations_default: number;
-            /** Organizations Allowlist */
-            organizations_allowlist: number;
-            /** Roles */
-            roles: number;
-            /** Users */
-            users: number;
-            /** Workspaces */
-            workspaces: number;
-            /** Conversations */
-            conversations: number;
-            /** Agents */
-            agents: number;
-        };
-        /** ModelMigrationImpactItem */
-        ModelMigrationImpactItem: {
-            /** Model Id */
-            model_id: string;
-            /** Total */
-            total: number;
-            by_kind: components["schemas"]["ModelMigrationByKind"];
-            /** Suggested Replacement */
-            suggested_replacement?: string | null;
-        };
-        /**
-         * ModelMigrationPreviewRequest
-         * @description List of model IDs the admin is about to lose access to.
-         */
-        ModelMigrationPreviewRequest: {
-            /**
-             * Old Model Ids
-             * @description The model IDs that will become unreachable after the change.
-             */
-            old_model_ids: string[];
-        };
-        /** ModelMigrationPreviewResponse */
-        ModelMigrationPreviewResponse: {
-            /**
-             * Organization Id
-             * Format: uuid
-             */
-            organization_id: string;
-            /** Items */
-            items: components["schemas"]["ModelMigrationImpactItem"][];
-            /** Total References */
-            total_references: number;
-        };
-        /**
          * NotificationCategory
          * @description Categories for grouping notifications.
          * @enum {string}
@@ -15930,6 +15869,18 @@ export interface components {
              */
             display_name: string;
         };
+        /** OrgAllowlistImpactRow */
+        OrgAllowlistImpactRow: {
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Organization Name */
+            organization_name: string;
+            /** Orphaned Model Ids */
+            orphaned_model_ids: string[];
+        };
         /**
          * OrganizationCreate
          * @description Input for creating an organization.
@@ -16477,6 +16428,38 @@ export interface components {
              * @description Forms, agents, and apps that depend on this workflow
              */
             affected_entities?: components["schemas"]["AffectedEntity"][];
+        };
+        /**
+         * PlatformAllowlistApplyRequest
+         * @description For each unreachable model, swap to a new model_id or drop (None).
+         */
+        PlatformAllowlistApplyRequest: {
+            /** Replacements */
+            replacements: {
+                [key: string]: string | null;
+            };
+        };
+        /** PlatformAllowlistApplyResponse */
+        PlatformAllowlistApplyResponse: {
+            /** Orgs Rewritten */
+            orgs_rewritten: number;
+            /** Deprecations Added */
+            deprecations_added: number;
+        };
+        /**
+         * PlatformAllowlistPreviewRequest
+         * @description Models that will become unreachable after the imminent change.
+         */
+        PlatformAllowlistPreviewRequest: {
+            /** Unreachable Model Ids */
+            unreachable_model_ids: string[];
+        };
+        /** PlatformAllowlistPreviewResponse */
+        PlatformAllowlistPreviewResponse: {
+            /** Affected Orgs */
+            affected_orgs: components["schemas"]["OrgAllowlistImpactRow"][];
+            /** Total Orgs */
+            total_orgs: number;
         };
         /**
          * PlatformMetricsResponse
@@ -26328,7 +26311,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26361,7 +26344,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26394,7 +26377,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26427,7 +26410,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -30901,6 +30884,26 @@ export interface operations {
             };
         };
     };
+    list_referenced_allowlist_ids_api_admin_models_referenced_allowlist_ids_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
     list_platform_models_api_platform_models_get: {
         parameters: {
             query?: never;
@@ -30921,7 +30924,7 @@ export interface operations {
             };
         };
     };
-    preview_migration_api_admin_models_preview_migration_post: {
+    preview_allowlist_migration_api_admin_models_preview_allowlist_migration_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -30930,7 +30933,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ModelMigrationPreviewRequest"];
+                "application/json": components["schemas"]["PlatformAllowlistPreviewRequest"];
             };
         };
         responses: {
@@ -30940,7 +30943,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModelMigrationPreviewResponse"];
+                    "application/json": components["schemas"]["PlatformAllowlistPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -30954,7 +30957,7 @@ export interface operations {
             };
         };
     };
-    apply_migration_api_admin_models_apply_migration_post: {
+    apply_allowlist_migration_endpoint_api_admin_models_apply_allowlist_migration_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -30963,7 +30966,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ModelMigrationApplyRequest"];
+                "application/json": components["schemas"]["PlatformAllowlistApplyRequest"];
             };
         };
         responses: {
@@ -30973,7 +30976,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModelMigrationApplyResponse"];
+                    "application/json": components["schemas"]["PlatformAllowlistApplyResponse"];
                 };
             };
             /** @description Validation Error */

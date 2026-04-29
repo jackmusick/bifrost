@@ -512,6 +512,11 @@ from src.models.contracts.platform_models import (
     ModelMigrationPreviewResponse,
     ModelMigrationApplyRequest,
     ModelMigrationApplyResponse,
+    OrgAllowlistImpactRow,
+    PlatformAllowlistPreviewRequest,
+    PlatformAllowlistPreviewResponse,
+    PlatformAllowlistApplyRequest,
+    PlatformAllowlistApplyResponse,
 )
 
 # Export/Import
@@ -934,6 +939,11 @@ __all__ = [
     "ModelMigrationPreviewResponse",
     "ModelMigrationApplyRequest",
     "ModelMigrationApplyResponse",
+    "OrgAllowlistImpactRow",
+    "PlatformAllowlistPreviewRequest",
+    "PlatformAllowlistPreviewResponse",
+    "PlatformAllowlistApplyRequest",
+    "PlatformAllowlistApplyResponse",
     # SDK Response Models
     "ConfigData",
     "IntegrationData",

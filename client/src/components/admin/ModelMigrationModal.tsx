@@ -1,10 +1,15 @@
 /**
- * Model Migration Modal
+ * Platform-wide Model Migration Modal
  *
- * Opens when an admin is about to apply a change that removes access to
- * currently-referenced models. Shows the impact map + a replacement input
- * per old model (dropdown when the new provider is in `platform_models`,
- * free-text when it isn't), then calls /apply-migration on confirm.
+ * Opens when an LLM-config change is about to make some model_ids
+ * unreachable for the whole installation. Shows the platform admin which
+ * orgs reference those models in their allowlists, and lets them pick a
+ * replacement (from the new provider's catalog) or drop the entry per old
+ * model.
+ *
+ * Scope is intentionally narrow: only `Organization.allowed_chat_models`.
+ * Defaults (org/role/workspace/user/conversation default_model) self-heal
+ * via the resolver's lookup-time fallback, so they're not in this flow.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -24,37 +29,38 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
-	applyModelMigration,
+	applyAllowlistMigration,
 	listPlatformModels,
-	previewModelMigration,
+	previewAllowlistMigration,
+	type OrgAllowlistImpactRow,
 	type PlatformModel,
-	type ModelMigrationImpactItem,
 } from "@/services/platformModels";
 
 interface ModelMigrationModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	/** Models the admin is about to lose access to. */
-	oldModelIds: string[];
-	/** Called after the apply step succeeds. */
+	/** Models that will become unreachable after the imminent LLM-config change. */
+	unreachableModelIds: string[];
+	/** Called after the apply step succeeds — typically to commit the LLM config save that triggered this. */
 	onComplete?: () => void;
 }
 
 export function ModelMigrationModal({
 	open,
 	onOpenChange,
-	oldModelIds,
+	unreachableModelIds,
 	onComplete,
 }: ModelMigrationModalProps) {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [impacts, setImpacts] = useState<ModelMigrationImpactItem[]>([]);
+	const [affected, setAffected] = useState<OrgAllowlistImpactRow[]>([]);
 	const [catalogModels, setCatalogModels] = useState<PlatformModel[]>([]);
-	const [replacements, setReplacements] = useState<Record<string, string>>({});
+	const [replacements, setReplacements] = useState<
+		Record<string, string | null>
+	>({});
 	const [submitting, setSubmitting] = useState(false);
 
-	// Provider catalog (the "new provider's" available models — what the admin
-	// is migrating to). Live from /api/admin/llm/models.
+	// Provider catalog (the new provider's available models)
 	const llmConfigQuery = $api.useQuery(
 		"get",
 		"/api/admin/llm/config",
@@ -77,28 +83,25 @@ export function ModelMigrationModal({
 	}, [catalogModels]);
 
 	useEffect(() => {
-		if (!open || oldModelIds.length === 0) return;
+		if (!open || unreachableModelIds.length === 0) return;
 		let cancelled = false;
-		// Kick off load asynchronously so React doesn't see synchronous setState in the effect body.
 		queueMicrotask(() => {
 			if (cancelled) return;
 			setLoading(true);
 			setError(null);
 		});
 		Promise.all([
-			previewModelMigration({ old_model_ids: oldModelIds }),
+			previewAllowlistMigration({ unreachable_model_ids: unreachableModelIds }),
 			listPlatformModels(),
 		])
 			.then(([preview, catalog]) => {
 				if (cancelled) return;
-				setImpacts(preview.items);
+				setAffected(preview.affected_orgs);
 				setCatalogModels(catalog.models);
-				const initial: Record<string, string> = {};
-				for (const item of preview.items) {
-					if (item.suggested_replacement) {
-						initial[item.model_id] = item.suggested_replacement;
-					}
-				}
+				// Initialize each unreachable id with no replacement (admin
+				// chooses or leaves as "drop").
+				const initial: Record<string, string | null> = {};
+				for (const id of unreachableModelIds) initial[id] = null;
 				setReplacements(initial);
 			})
 			.catch((e: unknown) => {
@@ -110,18 +113,21 @@ export function ModelMigrationModal({
 		return () => {
 			cancelled = true;
 		};
-	}, [open, oldModelIds]);
+	}, [open, unreachableModelIds]);
 
-	const totalRefs = impacts.reduce((acc, i) => acc + i.total, 0);
-	const canSubmit =
-		impacts.length > 0 &&
-		impacts.every((i) => (replacements[i.model_id] ?? "").trim().length > 0);
+	const totalOrgs = affected.length;
+	// Aggregate orphaned ids across all orgs so admin sees one input per id
+	// rather than one per (org, id).
+	const allOrphanedIds = useMemo(() => {
+		const set = new Set<string>();
+		for (const o of affected) for (const id of o.orphaned_model_ids) set.add(id);
+		return [...set].sort();
+	}, [affected]);
 
 	async function handleApply() {
-		if (!canSubmit) return;
 		setSubmitting(true);
 		try {
-			await applyModelMigration({ replacements });
+			await applyAllowlistMigration({ replacements });
 			onComplete?.();
 			onOpenChange(false);
 		} catch (e) {
@@ -136,49 +142,52 @@ export function ModelMigrationModal({
 			<DialogContent className="max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>
-						{totalRefs > 0
-							? `Migrate ${totalRefs} model reference${totalRefs === 1 ? "" : "s"}`
-							: "No migration needed"}
+						{totalOrgs > 0
+							? `${totalOrgs} org${totalOrgs === 1 ? "" : "s"} reference unreachable models`
+							: "Nothing to migrate"}
 					</DialogTitle>
 					<DialogDescription>
-						These models are about to become unreachable. Pick a replacement
-						for each — the suggested option matches the original cost tier when
-						available. If your new provider isn't in the catalog yet, type the
-						model ID it expects.
+						These models will no longer be reachable after the configuration
+						change. Pick a replacement from your new provider for each, or
+						leave it blank to drop the entry from every affected allowlist.
 					</DialogDescription>
 				</DialogHeader>
 
 				{loading ? (
 					<div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
 						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-						Scanning references…
+						Scanning org allowlists…
 					</div>
 				) : error ? (
 					<div className="rounded border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
 						{error}
 					</div>
-				) : impacts.length === 0 ? (
+				) : totalOrgs === 0 ? (
 					<p className="text-sm text-muted-foreground">
-						Nothing references these models. Safe to proceed.
+						No org allowlists reference these models. Safe to proceed.
 					</p>
 				) : (
 					<div className="space-y-4 max-h-[60vh] overflow-auto">
-						{impacts.map((item) => (
-							<div
-								key={item.model_id}
-								className="rounded border p-3 space-y-2"
-							>
-								<div className="flex items-baseline justify-between gap-2">
-									<code className="text-sm font-mono">{item.model_id}</code>
-									<span className="text-xs text-muted-foreground">
-										{item.total} reference{item.total === 1 ? "" : "s"}
-									</span>
-								</div>
-								<div className="text-xs text-muted-foreground">
-									{Object.entries(item.by_kind)
-										.filter(([, n]) => n > 0)
-										.map(([k, n]) => `${n} ${k.replace(/_/g, " ")}`)
-										.join(" · ") || "no references"}
+						<div className="rounded border p-3 space-y-1">
+							<div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Affected orgs
+							</div>
+							<ul className="text-sm space-y-0.5">
+								{affected.map((o) => (
+									<li key={o.organization_id}>
+										<span className="font-medium">{o.organization_name}</span>
+										<span className="ml-2 text-xs text-muted-foreground">
+											{o.orphaned_model_ids.join(", ")}
+										</span>
+									</li>
+								))}
+							</ul>
+						</div>
+
+						{allOrphanedIds.map((oldId) => (
+							<div key={oldId} className="rounded border p-3 space-y-2">
+								<div>
+									<code className="text-sm font-mono">{oldId}</code>
 								</div>
 								<div className="space-y-1.5">
 									<Label className="text-xs">Replacement</Label>
@@ -186,15 +195,12 @@ export function ModelMigrationModal({
 										models={providerModels}
 										catalog={catalogById}
 										reseller={reseller}
-										value={replacements[item.model_id] ?? null}
+										value={replacements[oldId] ?? null}
 										onChange={(v) =>
-											setReplacements((r) => ({
-												...r,
-												[item.model_id]: v ?? "",
-											}))
+											setReplacements((r) => ({ ...r, [oldId]: v }))
 										}
 										clearable
-										placeholder="Pick a replacement…"
+										placeholder="(drop from every allowlist)"
 									/>
 								</div>
 							</div>
@@ -210,9 +216,9 @@ export function ModelMigrationModal({
 					>
 						Cancel
 					</Button>
-					<Button onClick={handleApply} disabled={!canSubmit || submitting}>
+					<Button onClick={handleApply} disabled={submitting || totalOrgs === 0}>
 						{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						Apply replacements
+						Apply
 					</Button>
 				</DialogFooter>
 			</DialogContent>

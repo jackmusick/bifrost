@@ -91,3 +91,33 @@ class ModelMigrationApplyResponse(BaseModel):
     organization_id: UUID
     rewrites: dict[str, int]
     deprecations_added: int
+
+
+# ---- Platform-wide allowlist migration --------------------------------------
+
+class OrgAllowlistImpactRow(BaseModel):
+    organization_id: UUID
+    organization_name: str
+    orphaned_model_ids: list[str]
+
+
+class PlatformAllowlistPreviewRequest(BaseModel):
+    """Models that will become unreachable after the imminent change."""
+
+    unreachable_model_ids: list[str] = Field(..., min_length=1)
+
+
+class PlatformAllowlistPreviewResponse(BaseModel):
+    affected_orgs: list[OrgAllowlistImpactRow]
+    total_orgs: int
+
+
+class PlatformAllowlistApplyRequest(BaseModel):
+    """For each unreachable model, swap to a new model_id or drop (None)."""
+
+    replacements: dict[str, str | None] = Field(..., min_length=1)
+
+
+class PlatformAllowlistApplyResponse(BaseModel):
+    orgs_rewritten: int
+    deprecations_added: int
