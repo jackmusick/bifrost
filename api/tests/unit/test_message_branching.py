@@ -331,3 +331,78 @@ async def test_save_message_first_message_has_null_parent(
         assert m.parent_message_id is None
     finally:
         await _cleanup_conversation(async_session_factory, conv_id)
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_includes_workspace_and_conversation_instructions(
+    db_session, seed_user, seed_agent, async_session_factory
+):
+    """System prompt = agent prompt + workspace inst + conv inst."""
+    from sqlalchemy import delete
+    from src.models.enums import WorkspaceScope
+    from src.models.orm import Workspace
+
+    ws = Workspace(
+        name="Test M3",
+        scope=WorkspaceScope.PERSONAL,
+        user_id=seed_user.id,
+        organization_id=None,
+        created_by=seed_user.email,
+        instructions="Always respond in formal English.",
+    )
+    db_session.add(ws)
+    await db_session.flush()
+
+    conv = Conversation(
+        user_id=seed_user.id,
+        channel="chat",
+        workspace_id=ws.id,
+        agent_id=seed_agent.id,
+        instructions="Cite the user's name in every reply.",
+    )
+    db_session.add(conv)
+    await db_session.commit()
+    conv_id = conv.id
+    ws_id = ws.id
+
+    try:
+        executor = AgentExecutor(async_session_factory)
+        async with async_session_factory() as s:
+            fresh_conv = await s.get(Conversation, conv_id)
+            fresh_agent = await s.get(type(seed_agent), seed_agent.id)
+        messages = await executor._build_message_history(fresh_agent, fresh_conv)
+        assert messages[0].role == "system"
+        sysp = messages[0].content or ""
+        assert "Always respond in formal English." in sysp
+        assert "Cite the user's name in every reply." in sysp
+    finally:
+        await _cleanup_conversation(async_session_factory, conv_id)
+        async with async_session_factory() as s:
+            await s.execute(delete(Workspace).where(Workspace.id == ws_id))
+            await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_omits_empty_instruction_blocks(
+    db_session, seed_user, seed_agent, async_session_factory
+):
+    """Empty workspace/conv instructions don't produce stray triple-blank-lines."""
+    conv = Conversation(
+        user_id=seed_user.id,
+        channel="chat",
+        agent_id=seed_agent.id,
+    )
+    db_session.add(conv)
+    await db_session.commit()
+    conv_id = conv.id
+
+    try:
+        executor = AgentExecutor(async_session_factory)
+        async with async_session_factory() as s:
+            fresh_conv = await s.get(Conversation, conv_id)
+            fresh_agent = await s.get(type(seed_agent), seed_agent.id)
+        messages = await executor._build_message_history(fresh_agent, fresh_conv)
+        sysp = messages[0].content or ""
+        assert "\n\n\n" not in sysp
+    finally:
+        await _cleanup_conversation(async_session_factory, conv_id)
