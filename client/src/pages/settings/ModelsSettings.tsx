@@ -20,8 +20,12 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import {
+	MultiCombobox,
+	type MultiComboboxOption,
+} from "@/components/ui/multi-combobox";
+import { TagsInput } from "@/components/ui/tags-input";
 import {
 	Select,
 	SelectContent,
@@ -33,14 +37,11 @@ import { apiClient } from "@/lib/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	COST_TIER_GLYPH,
-	COST_TIER_LABEL,
 	listPlatformModels,
 	type CostTier,
 	type PlatformModel,
 } from "@/services/platformModels";
 import { ModelMigrationModal } from "@/components/admin/ModelMigrationModal";
-
-const TIER_ORDER: CostTier[] = ["fast", "balanced", "premium"];
 
 interface OrgModelSettings {
 	id: string;
@@ -90,28 +91,23 @@ export function ModelsSettings() {
 		};
 	}, [orgId]);
 
-	const grouped = useMemo(() => {
-		const out: Record<CostTier, PlatformModel[]> = {
-			fast: [],
-			balanced: [],
-			premium: [],
-		};
-		for (const m of models) {
-			const tier = (m.cost_tier as CostTier) ?? "balanced";
-			(out[tier] ?? out.balanced).push(m);
-		}
-		return out;
+	// Build combobox options from the platform catalog, sorted by tier then name.
+	const allowedOptions = useMemo<MultiComboboxOption[]>(() => {
+		const tierRank: Record<string, number> = { fast: 0, balanced: 1, premium: 2 };
+		return [...models]
+			.sort((a, b) => {
+				const t = (tierRank[a.cost_tier] ?? 99) - (tierRank[b.cost_tier] ?? 99);
+				return t !== 0 ? t : a.display_name.localeCompare(b.display_name);
+			})
+			.map((m) => ({
+				value: m.model_id,
+				label: `${COST_TIER_GLYPH[(m.cost_tier as CostTier) ?? "balanced"]} ${m.display_name}`,
+				description: m.model_id,
+			}));
 	}, [models]);
 
-	const allowed = new Set(org?.allowed_chat_models ?? []);
-
-	function toggleAllowed(modelId: string) {
-		if (!org) return;
-		const next = new Set(allowed);
-		if (next.has(modelId)) next.delete(modelId);
-		else next.add(modelId);
-		setOrg({ ...org, allowed_chat_models: Array.from(next) });
-	}
+	const allowed = org?.allowed_chat_models ?? [];
+	const hasCatalog = models.length > 0;
 
 	async function save() {
 		if (!org) return;
@@ -189,41 +185,32 @@ export function ModelsSettings() {
 				<CardHeader>
 					<CardTitle>Allowed models</CardTitle>
 					<CardDescription>
-						Pick which models your users can chat with. Empty allowlist means
-						every model in the platform catalog is available.
+						{hasCatalog
+							? "Pick which models your users can chat with. Empty allowlist means every model in the platform catalog is available."
+							: "No platform catalog yet — type model IDs as your provider expects them. Press Enter or Tab to add each one."}
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-4">
-					{TIER_ORDER.map((tier) => {
-						const items = grouped[tier];
-						if (items.length === 0) return null;
-						return (
-							<div key={tier} className="space-y-2">
-								<div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-									{COST_TIER_GLYPH[tier]} {COST_TIER_LABEL[tier]}
-								</div>
-								<div className="space-y-1.5">
-									{items.map((m) => (
-										<label
-											key={m.model_id}
-											className="flex items-start gap-3 cursor-pointer"
-										>
-											<Checkbox
-												checked={allowed.has(m.model_id)}
-												onCheckedChange={() => toggleAllowed(m.model_id)}
-											/>
-											<div className="flex-1 min-w-0">
-												<div className="text-sm">{m.display_name}</div>
-												<div className="text-xs text-muted-foreground font-mono">
-													{m.model_id}
-												</div>
-											</div>
-										</label>
-									))}
-								</div>
-							</div>
-						);
-					})}
+				<CardContent className="space-y-3">
+					<Label htmlFor="org-allowed-models">Models</Label>
+					{hasCatalog ? (
+						<MultiCombobox
+							options={allowedOptions}
+							value={allowed}
+							onValueChange={(values) =>
+								setOrg(org ? { ...org, allowed_chat_models: values } : null)
+							}
+							placeholder="All models allowed (no narrowing)"
+							searchPlaceholder="Search models…"
+						/>
+					) : (
+						<TagsInput
+							value={allowed}
+							onChange={(values) =>
+								setOrg(org ? { ...org, allowed_chat_models: values } : null)
+							}
+							placeholder="Type a model ID and press Enter…"
+						/>
+					)}
 				</CardContent>
 			</Card>
 
@@ -237,26 +224,57 @@ export function ModelsSettings() {
 				</CardHeader>
 				<CardContent>
 					<Label htmlFor="org-default-model">Default</Label>
-					<Select
-						value={org?.default_chat_model ?? ""}
-						onValueChange={(v) =>
-							setOrg(org ? { ...org, default_chat_model: v || null } : null)
-						}
-					>
-						<SelectTrigger id="org-default-model" className="mt-1">
-							<SelectValue placeholder="(no default — uses platform floor)" />
-						</SelectTrigger>
-						<SelectContent>
-							{models
-								.filter((m) => allowed.size === 0 || allowed.has(m.model_id))
-								.map((m) => (
-									<SelectItem key={m.model_id} value={m.model_id}>
-										{COST_TIER_GLYPH[(m.cost_tier as CostTier) ?? "balanced"]}{" "}
-										{m.display_name}
-									</SelectItem>
-								))}
-						</SelectContent>
-					</Select>
+					{hasCatalog ? (
+						<Select
+							value={org?.default_chat_model ?? ""}
+							onValueChange={(v) =>
+								setOrg(org ? { ...org, default_chat_model: v || null } : null)
+							}
+						>
+							<SelectTrigger id="org-default-model" className="mt-1">
+								<SelectValue placeholder="(no default — uses platform floor)" />
+							</SelectTrigger>
+							<SelectContent>
+								{models
+									.filter(
+										(m) =>
+											allowed.length === 0 || allowed.includes(m.model_id),
+									)
+									.map((m) => (
+										<SelectItem key={m.model_id} value={m.model_id}>
+											{COST_TIER_GLYPH[(m.cost_tier as CostTier) ?? "balanced"]}{" "}
+											{m.display_name}
+										</SelectItem>
+									))}
+							</SelectContent>
+						</Select>
+					) : (
+						<input
+							id="org-default-model"
+							type="text"
+							list="default-model-suggestions"
+							value={org?.default_chat_model ?? ""}
+							onChange={(e) =>
+								setOrg(
+									org
+										? {
+												...org,
+												default_chat_model: e.target.value || null,
+											}
+										: null,
+								)
+							}
+							placeholder="model_id (or leave blank for platform floor)"
+							className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+						/>
+					)}
+					{!hasCatalog && (
+						<datalist id="default-model-suggestions">
+							{allowed.map((m) => (
+								<option key={m} value={m} />
+							))}
+						</datalist>
+					)}
 				</CardContent>
 			</Card>
 
