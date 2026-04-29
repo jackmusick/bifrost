@@ -297,7 +297,7 @@ async def test_save_message_with_parent_override_creates_sibling(
             assert fresh_conv is not None
             assert fresh_conv.active_leaf_message_id == u1_edit.id
 
-        # Retry-style: a sibling assistant under u1, NOT a1's parent (u1.id).
+        # Retry-style: a sibling assistant under u1 (a1's parent).
         a1_retry = await executor._save_message(
             conversation_id=conv_id,
             role=MessageRole.ASSISTANT,

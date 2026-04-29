@@ -25,8 +25,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-_UNSET = object()  # sentinel for "kwarg not provided" vs explicit None
-
 from src.models.contracts.agents import (
     AgentSwitch,
     ChatStreamChunk,
@@ -47,6 +45,24 @@ from src.services.execution.agent_helpers import find_delegated_agent, resolve_a
 from src.services.execution.autonomous_agent_executor import AutonomousAgentExecutor
 
 logger = logging.getLogger(__name__)
+
+
+class _Unset:
+    """Sentinel type for "kwarg not provided" vs explicit None.
+
+    `_save_message`'s `parent_message_id_override` accepts three states:
+    - `_UNSET` — caller didn't provide a value; use the conversation's leaf.
+    - `None` — caller explicitly wants a NULL parent (root sibling for an
+      edit of the first user message).
+    - `UUID` — caller wants this exact parent (retry under a specific user
+      message).
+
+    Using a typed sentinel (rather than `object()`) lets pyright check that
+    every call site passes a member of `UUID | None | _Unset`.
+    """
+
+
+_UNSET = _Unset()
 
 
 def _serialize_for_json(value: Any) -> str:
@@ -1147,7 +1163,7 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         tool_input: dict[str, Any] | None = None,
         # Client-generated ID for optimistic update reconciliation
         local_id: str | None = None,
-        parent_message_id_override: UUID | None = _UNSET,  # type: ignore[assignment]
+        parent_message_id_override: UUID | None | _Unset = _UNSET,
     ) -> Message:
         """Save a message to the conversation, advancing the active branch leaf."""
         msg_id = message_id if message_id else uuid4()
@@ -1167,11 +1183,11 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             )
             conversation = conversation_result.scalar_one()
 
-            parent_id = (
-                parent_message_id_override
-                if parent_message_id_override is not _UNSET
-                else conversation.active_leaf_message_id
-            )
+            parent_id: UUID | None
+            if isinstance(parent_message_id_override, _Unset):
+                parent_id = conversation.active_leaf_message_id
+            else:
+                parent_id = parent_message_id_override
 
             message = Message(
                 id=msg_id,
@@ -1196,7 +1212,11 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 local_id=local_id,
             )
             session.add(message)
-            await session.flush()  # ensure message.id is realized before leaf update
+            # Force the INSERT to land before the conversations UPDATE below.
+            # The FK constraint fk_conversations_active_leaf_message_id is
+            # checked at statement time, so we need the message row in the
+            # database before pointing the conversation at it.
+            await session.flush()
 
             # Advance the active branch leaf.
             conversation.active_leaf_message_id = message.id
