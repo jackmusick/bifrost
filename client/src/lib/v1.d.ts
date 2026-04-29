@@ -3492,22 +3492,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -14683,14 +14683,65 @@ export interface components {
             api_key_set: boolean;
         };
         /**
+         * LLMModelCapabilities
+         * @description Capability flags surfaced by the provider's /v1/models response.
+         */
+        LLMModelCapabilities: {
+            /**
+             * Supports Images In
+             * @default false
+             */
+            supports_images_in: boolean;
+            /**
+             * Supports Images Out
+             * @default false
+             */
+            supports_images_out: boolean;
+            /**
+             * Supports Pdf In
+             * @default false
+             */
+            supports_pdf_in: boolean;
+            /**
+             * Supports Audio In
+             * @default false
+             */
+            supports_audio_in: boolean;
+            /**
+             * Supports Audio Out
+             * @default false
+             */
+            supports_audio_out: boolean;
+            /**
+             * Supports Tool Use
+             * @default false
+             */
+            supports_tool_use: boolean;
+        };
+        /**
          * LLMModelInfo
-         * @description Model information with both ID and display name.
+         * @description Model info with optional rich metadata when the provider supplies it.
+         *
+         *     OpenRouter's /v1/models response includes pricing, capabilities, context
+         *     length, and a human display name — we pass those through directly so the
+         *     UI doesn't need a secondary capability lookup. For providers that only
+         *     return id+name (Anthropic, OpenAI direct), the rich fields stay None and
+         *     the frontend falls back to the LiteLLM catalog lookup chain.
          */
         LLMModelInfo: {
             /** Id */
             id: string;
             /** Display Name */
             display_name: string;
+            /** Context Length */
+            context_length?: number | null;
+            /** Max Output Tokens */
+            max_output_tokens?: number | null;
+            /** Input Price Per Million */
+            input_price_per_million?: number | null;
+            /** Output Price Per Million */
+            output_price_per_million?: number | null;
+            capabilities?: components["schemas"]["LLMModelCapabilities"] | null;
         };
         /**
          * LLMModelsResponse
@@ -26277,7 +26328,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26310,7 +26361,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26343,7 +26394,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26376,7 +26427,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {

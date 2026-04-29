@@ -46,6 +46,18 @@ import {
 export interface ModelSelectModel {
 	id: string;
 	display_name: string;
+	context_length?: number | null;
+	max_output_tokens?: number | null;
+	input_price_per_million?: number | null;
+	output_price_per_million?: number | null;
+	capabilities?: {
+		supports_images_in?: boolean;
+		supports_images_out?: boolean;
+		supports_pdf_in?: boolean;
+		supports_audio_in?: boolean;
+		supports_audio_out?: boolean;
+		supports_tool_use?: boolean;
+	} | null;
 }
 
 interface BaseProps {
@@ -129,20 +141,35 @@ function buildRows(props: Props): RichRow[] {
 	const rows = models
 		.filter((m) => !restrict || restrict.has(m.id))
 		.map((m): RichRow => {
-			const match = lookupModel(m.id, reseller, catalog);
+			// Prefer the provider's own rich data when it gave us any.
+			// OpenRouter populates pricing/capabilities/context inline; the
+			// LiteLLM catalog is only consulted when the provider didn't.
+			const inlineCaps = m.capabilities ?? null;
+			const inlinePrice =
+				m.input_price_per_million != null || m.output_price_per_million != null;
+			const inlineCtx = m.context_length != null;
+			const needCatalog =
+				inlineCaps == null || !inlinePrice || !inlineCtx;
+			const match = needCatalog ? lookupModel(m.id, reseller, catalog) : null;
+
 			const caps: string[] = [];
-			if (match?.capabilities?.supports_images_in) caps.push("vision");
-			if (match?.capabilities?.supports_tool_use) caps.push("tools");
-			if (match?.capabilities?.supports_pdf_in) caps.push("pdf");
-			if (match?.capabilities?.supports_audio_in) caps.push("audio");
+			const c = inlineCaps ?? match?.capabilities ?? null;
+			if (c?.supports_images_in) caps.push("vision");
+			if (c?.supports_tool_use) caps.push("tools");
+			if (c?.supports_pdf_in) caps.push("pdf");
+			if (c?.supports_audio_in) caps.push("audio");
+
+			const inputPrice =
+				m.input_price_per_million ?? match?.input_price_per_million ?? null;
+			const outputPrice =
+				m.output_price_per_million ?? match?.output_price_per_million ?? null;
+			const contextLen = m.context_length ?? match?.context_window ?? null;
+
 			return {
 				id: m.id,
 				display: pickDisplay(m.id, m.display_name, match?.display_name),
-				price: fmtPrice(
-					match?.input_price_per_million ?? null,
-					match?.output_price_per_million ?? null,
-				),
-				context: fmtContext(match?.context_window),
+				price: fmtPrice(inputPrice, outputPrice),
+				context: fmtContext(contextLen),
 				caps,
 				match,
 			};
