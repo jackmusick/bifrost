@@ -25,4 +25,13 @@ hash_b=$(compute_project_name "$tmp_dir")
 rm -rf "$tmp_dir"
 [[ "$hash_a" != "$hash_b" ]] || { echo "FAIL: same hash for different worktrees: $hash_a"; exit 1; }
 
+# stack_is_up should return non-zero quickly for a non-existent project.
+# (No rows from ps → bail after the 2-attempt fast path.)
+start=$(date +%s)
+stack_is_up bifrost-test-nonexistent-${RANDOM} docker-compose.test.yml >/dev/null 2>&1 && \
+    { echo "FAIL: stack_is_up returned success for non-existent project"; exit 1; }
+end=$(date +%s)
+elapsed=$((end - start))
+[ "$elapsed" -lt 4 ] || { echo "FAIL: stack_is_up took ${elapsed}s for missing project (expect <4s fast bail)"; exit 1; }
+
 echo "PASS: all"

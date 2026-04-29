@@ -67,10 +67,43 @@ wait_for_api_ready() {
 }
 
 # Is the stack for this worktree currently running?
+#
+# Reads container State columns directly via `--format` rather than relying on
+# `--status running --quiet`. The `--status` filter has shown a CI-only race
+# (issue #92) where the second `./test.sh` invocation sees no rows immediately
+# after the first invocation finished `docker compose up -d --build` — a
+# transient daemon state desync, possibly compounded by the buildx builder
+# in the GitHub Actions runner.
+#
+# The fix has two parts:
+#   1. Use `ps -a --format '{{.State}}'` and grep for a `running` row. This is
+#      a different code path through compose's CLI than the `--status` filter,
+#      and empirically does not exhibit the race.
+#   2. Retry up to 5×1s on a "no rows seen" result. If the stack is genuinely
+#      down (no rows at all) we bail after the second attempt to keep the
+#      not-running case fast. Local stacks settle on the first try.
 stack_is_up() {
     local project="$1"
     local compose_file="$2"
-    docker compose -p "$project" -f "$compose_file" ps --status running --quiet 2>/dev/null | grep -q .
+    local attempt
+    for ((attempt=1; attempt<=5; attempt++)); do
+        local states
+        states="$(docker compose -p "$project" -f "$compose_file" ps -a --format '{{.State}}' 2>/dev/null)"
+        if grep -q '^running$' <<<"$states"; then
+            return 0
+        fi
+        # Genuinely down — no compose rows at all. Skip the rest of the retry
+        # budget; this isn't the race we're trying to absorb.
+        if [ -z "$states" ] && [ "$attempt" -ge 2 ]; then
+            return 1
+        fi
+        sleep 1
+    done
+    # Last-ditch: dump compose's view of the project so the failure log carries
+    # evidence the next time this triggers.
+    echo "stack_is_up: no running state seen after 5 attempts. Compose ps output:" >&2
+    docker compose -p "$project" -f "$compose_file" ps -a >&2 2>&1 || true
+    return 1
 }
 
 # Export per-service logs for a running stack to LOG_DIR.
