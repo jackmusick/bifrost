@@ -2836,6 +2836,217 @@ class TestPullUpsertNaturalKeys:
         assert len(rows) == 1, f"Expected 1 integration, got {len(rows)}"
         assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
 
+    async def test_integration_import_with_different_id_and_config_schema(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        """Regression for #148: integration UUID rewrite + existing config_schema rows
+        must not collide with the FK ON UPDATE CASCADE-migrated rows.
+
+        Pre-fix: prefetch cache is keyed on the OLD integration_id. After the
+        upsert rewrites the integration's id, the cascade migrates the schema
+        rows to the new id, but the cache lookup at the new id returns {},
+        the loop falls through to INSERT, and hits a unique violation on
+        (integration_id, key).
+        """
+        from src.models.orm.integrations import Integration, IntegrationConfigSchema
+
+        # Existing integration with config_schema rows under id_a
+        id_a = uuid4()
+        integ = Integration(id=id_a, name="CascadeSchemaInteg", is_deleted=False)
+        db_session.add(integ)
+        await db_session.flush()
+        db_session.add_all([
+            IntegrationConfigSchema(
+                integration_id=id_a, key="api_key", type="secret",
+                required=True, position=0,
+            ),
+            IntegrationConfigSchema(
+                integration_id=id_a, key="region", type="string",
+                required=False, position=1,
+            ),
+        ])
+        await db_session.commit()
+
+        # Manifest references the same integration name with a different UUID,
+        # plus the same two schema keys.
+        id_b = uuid4()
+        clone_dir = Path(working_clone.working_dir)
+        bifrost_dir = clone_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "CascadeSchemaInteg": {
+                    "id": str(id_b),
+                    "config_schema": [
+                        {"key": "api_key", "type": "secret", "required": True, "position": 0},
+                        {"key": "region", "type": "string", "required": False, "position": 1},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("integration with cross-env id + config schema")
+        working_clone.remotes.origin.push("main")
+
+        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert sync_result.success, f"Sync failed: {sync_result.error}"
+
+        # Integration now has id_b and exactly the two schema rows under id_b.
+        integ_rows = (await db_session.execute(
+            select(Integration).where(Integration.name == "CascadeSchemaInteg")
+        )).scalars().all()
+        assert len(integ_rows) == 1
+        assert integ_rows[0].id == id_b
+
+        cs_rows = (await db_session.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == id_b
+            ).order_by(IntegrationConfigSchema.position)
+        )).scalars().all()
+        assert [c.key for c in cs_rows] == ["api_key", "region"]
+        # No orphan rows under id_a
+        orphans = (await db_session.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == id_a
+            )
+        )).scalars().all()
+        assert orphans == []
+
+    async def test_integration_import_with_different_id_and_mapping(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        """Same #148 cache-staleness pattern, applied to integration_mappings:
+        the unique index is (integration_id, organization_id), and the cache
+        key is the OLD integration_id."""
+        from src.models.orm.integrations import Integration, IntegrationMapping
+        from src.models.orm.organizations import Organization
+
+        org_id = uuid4()
+        db_session.add(Organization(id=org_id, name="MappingCascadeOrg", created_by="test"))
+
+        id_a = uuid4()
+        db_session.add(Integration(id=id_a, name="CascadeMappingInteg", is_deleted=False))
+        await db_session.flush()
+        db_session.add(IntegrationMapping(
+            integration_id=id_a, organization_id=org_id, entity_id="tenant-a",
+        ))
+        await db_session.commit()
+
+        id_b = uuid4()
+        clone_dir = Path(working_clone.working_dir)
+        bifrost_dir = clone_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "CascadeMappingInteg": {
+                    "id": str(id_b),
+                    "mappings": [
+                        {"organization_id": str(org_id), "entity_id": "tenant-a"},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("integration with cross-env id + mapping")
+        working_clone.remotes.origin.push("main")
+
+        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert sync_result.success, f"Sync failed: {sync_result.error}"
+
+        m_rows = (await db_session.execute(
+            select(IntegrationMapping).where(
+                IntegrationMapping.integration_id == id_b
+            )
+        )).scalars().all()
+        assert len(m_rows) == 1
+        assert m_rows[0].entity_id == "tenant-a"
+        assert m_rows[0].organization_id == org_id
+
+    async def test_integration_import_with_different_id_and_config(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        """Same #148 cache-staleness pattern, applied to configs that
+        reference the integration. The Config unique index is
+        (integration_id, organization_id, key); after CASCADE the existing
+        config row sits at the new integ_id, so a fresh INSERT collides."""
+        from src.models.orm.config import Config
+        from src.models.orm.integrations import Integration
+
+        id_a = uuid4()
+        db_session.add(Integration(id=id_a, name="CascadeConfigInteg", is_deleted=False))
+        await db_session.flush()
+        cfg_id = uuid4()
+        db_session.add(Config(
+            id=cfg_id, key="api_url", value={"value": "https://old.example.com"},
+            integration_id=id_a, organization_id=None,
+            updated_by="test",
+        ))
+        await db_session.commit()
+
+        id_b = uuid4()
+        clone_dir = Path(working_clone.working_dir)
+        bifrost_dir = clone_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "CascadeConfigInteg": {
+                    "id": str(id_b),
+                },
+            },
+        }, default_flow_style=False))
+        # Manifest carries the same config under the NEW integ_id (cross-env
+        # parent rewrite is the trigger for the cache-staleness bug here).
+        new_cfg_id = uuid4()
+        (bifrost_dir / "configs.yaml").write_text(yaml.dump({
+            "configs": {
+                "api_url": {
+                    "id": str(new_cfg_id),
+                    "key": "api_url",
+                    "config_type": "string",
+                    "value": {"value": "https://new.example.com"},
+                    "integration_id": str(id_b),
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            ".bifrost/integrations.yaml",
+            ".bifrost/configs.yaml",
+        ])
+        working_clone.index.commit("integration with cross-env id + config")
+        working_clone.remotes.origin.push("main")
+
+        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert sync_result.success, f"Sync failed: {sync_result.error}"
+
+        cfg_rows = (await db_session.execute(
+            select(Config).where(
+                Config.key == "api_url",
+                Config.integration_id == id_b,
+            )
+        )).scalars().all()
+        assert len(cfg_rows) == 1, f"Expected 1 config row under integ id_b, got {len(cfg_rows)}"
+        assert cfg_rows[0].value == {"value": "https://new.example.com"}
+        # And nothing left under the old integ id (CASCADE moved them all)
+        orphans = (await db_session.execute(
+            select(Config).where(Config.integration_id == id_a)
+        )).scalars().all()
+        assert orphans == []
+
     async def test_app_import_with_different_id(
         self,
         db_session: AsyncSession,
