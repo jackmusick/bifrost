@@ -22,6 +22,7 @@ import { useChatStream } from "@/hooks/useChatStream";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { components } from "@/lib/v1";
 import { integrateMessages, type UnifiedMessage } from "@/lib/chat-utils";
+import { apiClient } from "@/lib/api-client";
 
 type MessagePublic = components["schemas"]["MessagePublic"];
 
@@ -147,6 +148,45 @@ export function ChatWindow({
 }: ChatWindowProps) {
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
+
+	// Current model for the conversation (set by the picker; resolver applies
+	// the cascade if null).
+	const [currentModel, setCurrentModel] = useState<string | null>(null);
+	useEffect(() => {
+		if (!conversationId) {
+			setCurrentModel(null);
+			return;
+		}
+		let cancelled = false;
+		apiClient
+			.GET("/api/chat/conversations/{conversation_id}", {
+				params: { path: { conversation_id: conversationId } },
+			})
+			.then(({ data }) => {
+				if (!cancelled && data) setCurrentModel(data.current_model ?? null);
+			})
+			.catch(() => {
+				/* ignore - picker will just show "Select a model" */
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [conversationId]);
+	const handleSelectModel = useCallback(
+		async (modelId: string) => {
+			if (!conversationId) return;
+			setCurrentModel(modelId);
+			try {
+				await apiClient.PATCH("/api/chat/conversations/{conversation_id}", {
+					params: { path: { conversation_id: conversationId } },
+					body: { current_model: modelId },
+				});
+			} catch (e) {
+				console.error("[ChatWindow] Failed to update conversation model", e);
+			}
+		},
+		[conversationId],
+	);
 
 	// Track if user is at bottom of scroll area (for smart auto-scroll)
 	const [isAtBottom, setIsAtBottom] = useState(true);
@@ -467,6 +507,8 @@ export function ChatWindow({
 				placeholder={
 					agentName ? `Message ${agentName}...` : "Send a message..."
 				}
+				selectedModel={currentModel}
+				onSelectModel={handleSelectModel}
 			/>
 		</div>
 	);

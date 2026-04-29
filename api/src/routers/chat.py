@@ -298,6 +298,9 @@ async def update_conversation(
                 )
         conversation.workspace_id = new_workspace_id
 
+    if "current_model" in update_fields:
+        conversation.current_model = update_fields["current_model"]
+
     conversation.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
@@ -321,6 +324,7 @@ async def update_conversation(
         agent_id=conversation.agent_id,
         user_id=conversation.user_id,
         workspace_id=conversation.workspace_id,
+        current_model=conversation.current_model,
         channel=conversation.channel,
         title=conversation.title,
         is_active=conversation.is_active,

@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MentionPicker } from "./MentionPicker";
+import { ModelPicker } from "./ModelPicker";
 import type { components } from "@/lib/v1";
 
 type AgentSummary = components["schemas"]["AgentSummary"];
@@ -33,6 +34,12 @@ interface ChatInputProps {
 	isLoading?: boolean;
 	placeholder?: string;
 	onStop?: () => void;
+	/** Currently-selected model for this conversation (the model picker shows it). */
+	selectedModel?: string | null;
+	/** Org allowlist if set; controls which models the picker enables. */
+	allowedModelIds?: string[];
+	/** Called when the user picks a different model. */
+	onSelectModel?: (modelId: string) => void;
 }
 
 export function ChatInput({
@@ -41,6 +48,9 @@ export function ChatInput({
 	isLoading = false,
 	placeholder = "Reply...",
 	onStop,
+	selectedModel,
+	allowedModelIds,
+	onSelectModel,
 }: ChatInputProps) {
 	const [message, setMessage] = useState("");
 	const [mentions, setMentions] = useState<MentionChip[]>([]);
@@ -292,6 +302,14 @@ export function ChatInput({
 							>
 								<Paperclip className="h-4 w-4" />
 							</Button>
+							{onSelectModel && (
+								<ModelPicker
+									value={selectedModel ?? null}
+									allowedModelIds={allowedModelIds}
+									onChange={onSelectModel}
+									disabled={disabled}
+								/>
+							)}
 						</div>
 
 						{/* Right side: stop or send button */}

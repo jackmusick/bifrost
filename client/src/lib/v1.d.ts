@@ -1345,6 +1345,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Preferences
+         * @description Return the current user's chat preferences (per-user default model).
+         */
+        get: operations["get_my_preferences_api_users_me_preferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update My Preferences
+         * @description Update the current user's chat preferences.
+         */
+        patch: operations["update_my_preferences_api_users_me_preferences_patch"];
+        trace?: never;
+    };
     "/api/roles": {
         parameters: {
             query?: never;
@@ -3468,22 +3492,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6077,6 +6101,66 @@ export interface paths {
          * @description Delete an existing model pricing entry.
          */
         delete: operations["delete_pricing_api_settings_ai_pricing__pricing_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List platform model catalog
+         * @description Active models from the global registry (synced from models.json).
+         */
+        get: operations["list_platform_models_api_platform_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/models/preview-migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview impact of removing model access
+         * @description Given a list of model IDs the admin is about to lose access to, return how many references exist and a suggested replacement per model.
+         */
+        post: operations["preview_migration_api_admin_models_preview_migration_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/models/apply-migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rewrite model references
+         * @description Apply replacements: rewrite every reference of `old -> new` and add an org-level deprecation entry per pair so any leftover string references (workflow code, in-flight conversations) also remap.
+         */
+        post: operations["apply_migration_api_admin_models_apply_migration_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -10541,6 +10625,8 @@ export interface components {
             user_id: string;
             /** Workspace Id */
             workspace_id?: string | null;
+            /** Current Model */
+            current_model?: string | null;
             /** Channel */
             channel: string;
             /** Title */
@@ -10580,8 +10666,7 @@ export interface components {
         };
         /**
          * ConversationUpdate
-         * @description Patch model for updating a conversation. Today only `workspace_id` is
-         *     mutable — used by the 'Move to workspace' affordance.
+         * @description Patch model for updating a conversation.
          */
         ConversationUpdate: {
             /**
@@ -10589,6 +10674,11 @@ export interface components {
              * @description New workspace id (or null to move to the general pool).
              */
             workspace_id?: string | null;
+            /**
+             * Current Model
+             * @description Model to use for this conversation going forward. Set by the chat picker. Resolved through the cascade — must be in the user's allowed set.
+             */
+            current_model?: string | null;
         };
         /**
          * ConversationUsage
@@ -15121,6 +15211,84 @@ export interface components {
             tenant_id: string;
         };
         /**
+         * ModelMigrationApplyRequest
+         * @description Map of `old_model_id -> new_model_id_or_typed_string`.
+         *
+         *     `new` may be a model_id from `platform_models`, an alias, or a free-typed
+         *     string when the new provider's catalog isn't represented in
+         *     `platform_models` yet (custom OpenAI-compatible endpoint, self-hosted, etc.).
+         */
+        ModelMigrationApplyRequest: {
+            /** Replacements */
+            replacements: {
+                [key: string]: string;
+            };
+        };
+        /** ModelMigrationApplyResponse */
+        ModelMigrationApplyResponse: {
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Rewrites */
+            rewrites: {
+                [key: string]: number;
+            };
+            /** Deprecations Added */
+            deprecations_added: number;
+        };
+        /** ModelMigrationByKind */
+        ModelMigrationByKind: {
+            /** Organizations Default */
+            organizations_default: number;
+            /** Organizations Allowlist */
+            organizations_allowlist: number;
+            /** Roles */
+            roles: number;
+            /** Users */
+            users: number;
+            /** Workspaces */
+            workspaces: number;
+            /** Conversations */
+            conversations: number;
+            /** Agents */
+            agents: number;
+        };
+        /** ModelMigrationImpactItem */
+        ModelMigrationImpactItem: {
+            /** Model Id */
+            model_id: string;
+            /** Total */
+            total: number;
+            by_kind: components["schemas"]["ModelMigrationByKind"];
+            /** Suggested Replacement */
+            suggested_replacement?: string | null;
+        };
+        /**
+         * ModelMigrationPreviewRequest
+         * @description List of model IDs the admin is about to lose access to.
+         */
+        ModelMigrationPreviewRequest: {
+            /**
+             * Old Model Ids
+             * @description The model IDs that will become unreachable after the change.
+             */
+            old_model_ids: string[];
+        };
+        /** ModelMigrationPreviewResponse */
+        ModelMigrationPreviewResponse: {
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Items */
+            items: components["schemas"]["ModelMigrationImpactItem"][];
+            /** Total References */
+            total_references: number;
+        };
+        /**
          * NotificationCategory
          * @description Categories for grouping notifications.
          * @enum {string}
@@ -15734,6 +15902,10 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /** Allowed Chat Models */
+            allowed_chat_models?: string[];
+            /** Default Chat Model */
+            default_chat_model?: string | null;
         };
         /**
          * OrganizationMetricsResponse
@@ -15792,6 +15964,10 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /** Allowed Chat Models */
+            allowed_chat_models?: string[];
+            /** Default Chat Model */
+            default_chat_model?: string | null;
             /**
              * Id
              * Format: uuid
@@ -15837,6 +16013,10 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             } | null;
+            /** Allowed Chat Models */
+            allowed_chat_models?: string[] | null;
+            /** Default Chat Model */
+            default_chat_model?: string | null;
         };
         /**
          * OrganizationUsage
@@ -16293,6 +16473,70 @@ export interface components {
             success_rate_24h: number;
             /** Refreshed At */
             refreshed_at: string;
+        };
+        /** PlatformModelCapabilities */
+        PlatformModelCapabilities: {
+            /**
+             * Supports Images In
+             * @default false
+             */
+            supports_images_in: boolean;
+            /**
+             * Supports Images Out
+             * @default false
+             */
+            supports_images_out: boolean;
+            /**
+             * Supports Pdf In
+             * @default false
+             */
+            supports_pdf_in: boolean;
+            /**
+             * Supports Tool Use
+             * @default false
+             */
+            supports_tool_use: boolean;
+            /**
+             * Supports Audio In
+             * @default false
+             */
+            supports_audio_in: boolean;
+            /**
+             * Supports Audio Out
+             * @default false
+             */
+            supports_audio_out: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PlatformModelListResponse */
+        PlatformModelListResponse: {
+            /** Models */
+            models: components["schemas"]["PlatformModelPublic"][];
+        };
+        /** PlatformModelPublic */
+        PlatformModelPublic: {
+            /** Model Id */
+            model_id: string;
+            /** Provider */
+            provider: string;
+            /** Display Name */
+            display_name: string;
+            /** Cost Tier */
+            cost_tier: string;
+            /** Context Window */
+            context_window?: number | null;
+            /** Max Output Tokens */
+            max_output_tokens?: number | null;
+            /** Input Price Per Million */
+            input_price_per_million?: string | null;
+            /** Output Price Per Million */
+            output_price_per_million?: string | null;
+            capabilities?: components["schemas"]["PlatformModelCapabilities"];
+            /** Deprecated At */
+            deprecated_at?: string | null;
+            /** Is Active */
+            is_active: boolean;
         };
         /**
          * PoolDetail
@@ -19096,6 +19340,11 @@ export interface components {
              * @default 0
              */
             output_tokens: number;
+        };
+        /** UserChatPreferences */
+        UserChatPreferences: {
+            /** Default Chat Model */
+            default_chat_model?: string | null;
         };
         /**
          * UserFormsResponse
@@ -22129,6 +22378,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserFormsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_preferences_api_users_me_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserChatPreferences"];
+                };
+            };
+        };
+    };
+    update_my_preferences_api_users_me_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserChatPreferences"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserChatPreferences"];
                 };
             };
             /** @description Validation Error */
@@ -25975,7 +26277,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -26008,7 +26310,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -26041,7 +26343,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -26074,7 +26376,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -30536,6 +30838,92 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_platform_models_api_platform_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformModelListResponse"];
+                };
+            };
+        };
+    };
+    preview_migration_api_admin_models_preview_migration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelMigrationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelMigrationPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_migration_api_admin_models_apply_migration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelMigrationApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelMigrationApplyResponse"];
+                };
             };
             /** @description Validation Error */
             422: {
