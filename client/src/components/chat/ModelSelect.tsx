@@ -78,6 +78,8 @@ interface SingleProps extends BaseProps {
 	multiple?: false;
 	value: string | null;
 	onChange: (value: string | null) => void;
+	/** Show a "Clear" button next to the trigger when there's a value. */
+	clearable?: boolean;
 }
 
 interface MultiProps extends BaseProps {
@@ -254,22 +256,26 @@ export function ModelSelect(props: Props) {
 		return rowsById[sole]?.display ?? sole;
 	})();
 
+	const isClearable = !isMulti && (props as SingleProps).clearable === true;
+	const hasValueForClear = !isMulti && selectedIds.length > 0;
+
 	return (
 		<div className={cn("space-y-2", className)}>
-			<Popover open={open} onOpenChange={setOpen}>
-				<PopoverTrigger asChild>
-					<Button
-						variant="outline"
-						role="combobox"
-						disabled={disabled}
-						className="w-full justify-between font-normal"
-					>
-						<span className={cn("truncate", selectedIds.length === 0 && "text-muted-foreground")}>
-							{triggerLabel}
-						</span>
-						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-					</Button>
-				</PopoverTrigger>
+			<div className="flex items-center gap-2">
+				<Popover open={open} onOpenChange={setOpen}>
+					<PopoverTrigger asChild>
+						<Button
+							variant="outline"
+							role="combobox"
+							disabled={disabled}
+							className="flex-1 justify-between font-normal"
+						>
+							<span className={cn("truncate", selectedIds.length === 0 && "text-muted-foreground")}>
+								{triggerLabel}
+							</span>
+							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+						</Button>
+					</PopoverTrigger>
 				<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
 					<Command
 						filter={(value, search, keywords) => {
@@ -318,6 +324,19 @@ export function ModelSelect(props: Props) {
 					</Command>
 				</PopoverContent>
 			</Popover>
+			{isClearable && hasValueForClear && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => (props as SingleProps).onChange(null)}
+						aria-label="Clear selection"
+						title="Clear"
+					>
+						<X className="h-4 w-4" />
+					</Button>
+				)}
+			</div>
 
 			{isMulti && selectedIds.length > 0 && (
 				<div className="flex flex-wrap gap-1">

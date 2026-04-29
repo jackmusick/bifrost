@@ -53,6 +53,12 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { ModelSelect } from "@/components/chat/ModelSelect";
+import {
+	listPlatformModels,
+	resellerForEndpoint,
+	type PlatformModel,
+} from "@/services/platformModels";
 import { toast } from "sonner";
 import {
 	Loader2,
@@ -113,6 +119,23 @@ export function LLMConfig() {
 
 	// Models state (loaded dynamically after test)
 	const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+	const [platformCatalog, setPlatformCatalog] = useState<Record<string, PlatformModel>>({});
+	useEffect(() => {
+		let cancelled = false;
+		listPlatformModels()
+			.then((res) => {
+				if (cancelled) return;
+				const idx: Record<string, PlatformModel> = {};
+				for (const m of res.models) idx[m.model_id] = m;
+				setPlatformCatalog(idx);
+			})
+			.catch(() => {
+				/* fine — picker still works, just without enriched info */
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 	const [modelsLoaded, setModelsLoaded] = useState(false);
 
 	// UI state
@@ -645,13 +668,14 @@ export function LLMConfig() {
 							<Label htmlFor="summarization-model">
 								Summarization model (optional)
 							</Label>
-							<Input
-								id="summarization-model"
+							<ModelSelect
+								models={availableModels}
+								catalog={platformCatalog}
+								reseller={resellerForEndpoint(endpoint || null)}
+								value={summarizationModel || null}
+								onChange={(v) => setSummarizationModel(v ?? "")}
+								clearable
 								placeholder="Leave blank to use primary model"
-								value={summarizationModel}
-								onChange={(e) =>
-									setSummarizationModel(e.target.value)
-								}
 							/>
 							<p className="text-xs text-muted-foreground">
 								Override the model used for post-run summarization.
@@ -664,13 +688,14 @@ export function LLMConfig() {
 							<Label htmlFor="tuning-model">
 								Tuning model (optional)
 							</Label>
-							<Input
-								id="tuning-model"
+							<ModelSelect
+								models={availableModels}
+								catalog={platformCatalog}
+								reseller={resellerForEndpoint(endpoint || null)}
+								value={tuningModel || null}
+								onChange={(v) => setTuningModel(v ?? "")}
+								clearable
 								placeholder="Leave blank to use primary model"
-								value={tuningModel}
-								onChange={(e) =>
-									setTuningModel(e.target.value)
-								}
 							/>
 							<p className="text-xs text-muted-foreground">
 								Override the model used for agent tuning chat and
