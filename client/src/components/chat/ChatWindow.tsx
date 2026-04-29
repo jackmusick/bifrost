@@ -169,10 +169,33 @@ export function ChatWindow({
 			cancelled = true;
 		};
 	}, [conversationId]);
+
+	// On new chats (no conversationId yet), buffer the picker selection so
+	// it can be applied to the conversation after the first send creates it.
+	const pendingModelRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (conversationId && pendingModelRef.current) {
+			const pending = pendingModelRef.current;
+			pendingModelRef.current = null;
+			apiClient
+				.PATCH("/api/chat/conversations/{conversation_id}", {
+					params: { path: { conversation_id: conversationId } },
+					body: { current_model: pending },
+				})
+				.catch((e) =>
+					console.error("[ChatWindow] Failed to apply buffered model", e),
+				);
+		}
+	}, [conversationId]);
+
 	const handleSelectModel = useCallback(
 		async (modelId: string) => {
-			if (!conversationId) return;
 			setCurrentModel(modelId);
+			if (!conversationId) {
+				// New chat — buffer until the conversation is created.
+				pendingModelRef.current = modelId;
+				return;
+			}
 			try {
 				await apiClient.PATCH("/api/chat/conversations/{conversation_id}", {
 					params: { path: { conversation_id: conversationId } },
@@ -357,7 +380,12 @@ export function ChatWindow({
 						</div>
 					))}
 				</div>
-				<ChatInput onSend={handleSendMessage} disabled />
+				<ChatInput
+					onSend={handleSendMessage}
+					disabled
+					selectedModel={currentModel}
+					onSelectModel={handleSelectModel}
+				/>
 			</div>
 		);
 	}
@@ -383,6 +411,8 @@ export function ChatWindow({
 				<ChatInput
 					onSend={handleSendMessage}
 					placeholder="Send a message..."
+					selectedModel={currentModel}
+					onSelectModel={handleSelectModel}
 				/>
 			</div>
 		);

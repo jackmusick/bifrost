@@ -34,11 +34,12 @@ interface ChatInputProps {
 	isLoading?: boolean;
 	placeholder?: string;
 	onStop?: () => void;
-	/** Currently-selected model for this conversation (the model picker shows it). */
+	/** Currently-selected model for this conversation. The picker uses
+	 *  the resolved default when this is null. */
 	selectedModel?: string | null;
-	/** Org allowlist if set; controls which models the picker enables. */
-	allowedModelIds?: string[];
-	/** Called when the user picks a different model. */
+	/** Called when the user picks a different model. Also fires before
+	 *  the first message in a new chat — the caller should buffer the pick
+	 *  and apply it on conversation create. */
 	onSelectModel?: (modelId: string) => void;
 }
 
@@ -49,7 +50,6 @@ export function ChatInput({
 	placeholder = "Reply...",
 	onStop,
 	selectedModel,
-	allowedModelIds,
 	onSelectModel,
 }: ChatInputProps) {
 	const [message, setMessage] = useState("");
@@ -305,7 +305,6 @@ export function ChatInput({
 							{onSelectModel && (
 								<ModelPicker
 									value={selectedModel ?? null}
-									allowedModelIds={allowedModelIds}
 									onChange={onSelectModel}
 									disabled={disabled}
 								/>

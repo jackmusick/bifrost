@@ -72,6 +72,8 @@ interface BaseProps {
 	placeholder?: string;
 	disabled?: boolean;
 	className?: string;
+	/** Subtle ghost-styled trigger for embedding inline in toolbars. */
+	compact?: boolean;
 }
 
 interface SingleProps extends BaseProps {
@@ -213,7 +215,12 @@ function RowMeta({ row }: { row: RichRow }) {
 }
 
 export function ModelSelect(props: Props) {
-	const { placeholder = "Choose a model…", disabled = false, className } = props;
+	const {
+		placeholder = "Choose a model…",
+		disabled = false,
+		className,
+		compact = false,
+	} = props;
 	const [open, setOpen] = useState(false);
 	const rows = useMemo(() => buildRows(props), [props]);
 	const rowsById = useMemo(() => {
@@ -264,17 +271,35 @@ export function ModelSelect(props: Props) {
 			<div className="flex items-center gap-2">
 				<Popover open={open} onOpenChange={setOpen}>
 					<PopoverTrigger asChild>
-						<Button
-							variant="outline"
-							role="combobox"
-							disabled={disabled}
-							className="flex-1 justify-between font-normal"
-						>
-							<span className={cn("truncate", selectedIds.length === 0 && "text-muted-foreground")}>
-								{triggerLabel}
-							</span>
-							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-						</Button>
+						{compact ? (
+							<Button
+								variant="ghost"
+								size="sm"
+								role="combobox"
+								disabled={disabled}
+								className="h-8 gap-1 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
+							>
+								<span className="truncate">{triggerLabel}</span>
+								<ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+							</Button>
+						) : (
+							<Button
+								variant="outline"
+								role="combobox"
+								disabled={disabled}
+								className="flex-1 justify-between font-normal"
+							>
+								<span
+									className={cn(
+										"truncate",
+										selectedIds.length === 0 && "text-muted-foreground",
+									)}
+								>
+									{triggerLabel}
+								</span>
+								<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+							</Button>
+						)}
 					</PopoverTrigger>
 				<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
 					<Command

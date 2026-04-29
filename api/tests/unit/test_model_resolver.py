@@ -135,17 +135,40 @@ async def _make_org(
 # ---------------------------------------------------------------------------
 
 
-async def test_falls_back_to_platform_floor_when_nothing_set(db_session):
+async def test_no_allowlist_no_default_raises(db_session):
+    """With no allowlist AND no default, the resolver has nothing to call."""
     await _seed_catalog(db_session)
     org = await _make_org(db_session)
 
+    with pytest.raises(ModelResolutionError):
+        await resolve_model(
+            db_session,
+            ModelResolutionContext(organization_id=org.id),
+        )
+
+
+async def test_empty_allowlist_uses_only_org_default(db_session):
+    """Empty allowlist = the safety guardrail. Only the org default is
+    selectable; cascade values that don't equal it fall through."""
+    await _seed_catalog(db_session)
+    org = await _make_org(db_session, default="anthropic/claude-haiku-4-5")
+    user = User(
+        id=uuid4(),
+        email=f"{uuid4().hex[:6]}@example.com",
+        organization_id=org.id,
+        # User would prefer Sonnet, but allowlist is empty so only
+        # the org default (Haiku) is permitted.
+        default_chat_model="anthropic/claude-sonnet-4-6",
+    )
+    db_session.add(user)
+    await db_session.flush()
+
     choice = await resolve_model(
         db_session,
-        ModelResolutionContext(organization_id=org.id),
+        ModelResolutionContext(organization_id=org.id, user_id=user.id),
     )
-    # Floor is the alphabetically-first allowed model.
     assert choice.model_id == "anthropic/claude-haiku-4-5"
-    assert choice.provenance == "platform"
+    assert choice.provenance == "org"
 
 
 async def test_org_default_wins_over_platform_floor(db_session):
@@ -162,7 +185,11 @@ async def test_org_default_wins_over_platform_floor(db_session):
 
 async def test_user_default_beats_org_default(db_session):
     await _seed_catalog(db_session)
-    org = await _make_org(db_session, default="anthropic/claude-sonnet-4-6")
+    org = await _make_org(
+        db_session,
+        allowed=["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-7"],
+        default="anthropic/claude-sonnet-4-6",
+    )
     user = User(
         id=uuid4(),
         email=f"{uuid4().hex[:6]}@example.com",
@@ -187,7 +214,15 @@ async def test_user_default_beats_workspace_default(db_session):
     user is the more specific layer.
     """
     await _seed_catalog(db_session)
-    org = await _make_org(db_session, default="anthropic/claude-sonnet-4-6")
+    org = await _make_org(
+        db_session,
+        allowed=[
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-haiku-4-5",
+            "anthropic/claude-opus-4-7",
+        ],
+        default="anthropic/claude-sonnet-4-6",
+    )
     user = User(
         id=uuid4(),
         email=f"{uuid4().hex[:6]}@example.com",
@@ -222,7 +257,11 @@ async def test_user_default_beats_workspace_default(db_session):
 async def test_workspace_default_used_when_user_has_none(db_session):
     """Workspace default applies when the user hasn't set a personal default."""
     await _seed_catalog(db_session)
-    org = await _make_org(db_session, default="anthropic/claude-sonnet-4-6")
+    org = await _make_org(
+        db_session,
+        allowed=["anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5"],
+        default="anthropic/claude-sonnet-4-6",
+    )
     user = User(
         id=uuid4(),
         email=f"{uuid4().hex[:6]}@example.com",
@@ -256,7 +295,15 @@ async def test_workspace_default_used_when_user_has_none(db_session):
 
 async def test_message_override_wins(db_session):
     await _seed_catalog(db_session)
-    org = await _make_org(db_session, default="anthropic/claude-sonnet-4-6")
+    org = await _make_org(
+        db_session,
+        allowed=[
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-haiku-4-5",
+            "anthropic/claude-opus-4-7",
+        ],
+        default="anthropic/claude-sonnet-4-6",
+    )
 
     choice = await resolve_model(
         db_session,
@@ -272,7 +319,15 @@ async def test_message_override_wins(db_session):
 
 async def test_conversation_override_wins_over_user_default(db_session):
     await _seed_catalog(db_session)
-    org = await _make_org(db_session, default="anthropic/claude-sonnet-4-6")
+    org = await _make_org(
+        db_session,
+        allowed=[
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-haiku-4-5",
+            "anthropic/claude-opus-4-7",
+        ],
+        default="anthropic/claude-sonnet-4-6",
+    )
     user = User(
         id=uuid4(),
         email=f"{uuid4().hex[:6]}@example.com",
@@ -324,15 +379,21 @@ async def test_org_allowlist_excludes_default(db_session):
     assert choice.provenance == "org"
 
 
-async def test_org_allowlist_excluding_everything_raises(db_session):
+async def test_uncached_allowlist_passes_through(db_session):
+    """Catalog is for enrichment, not gating. An allowlist entry that isn't
+    in platform_models is still callable — the resolver returns it as-is."""
     await _seed_catalog(db_session)
-    org = await _make_org(db_session, allowed=["unknown-model-id"])
+    org = await _make_org(
+        db_session,
+        allowed=["some-new-provider/some-new-model"],
+        default="some-new-provider/some-new-model",
+    )
 
-    with pytest.raises(ModelResolutionError):
-        await resolve_model(
-            db_session,
-            ModelResolutionContext(organization_id=org.id),
-        )
+    choice = await resolve_model(
+        db_session,
+        ModelResolutionContext(organization_id=org.id),
+    )
+    assert choice.model_id == "some-new-provider/some-new-model"
 
 
 # ---------------------------------------------------------------------------
@@ -416,7 +477,11 @@ async def test_org_deprecation_overrides_platform(db_session):
 
 async def test_role_default_used_when_set(db_session):
     await _seed_catalog(db_session)
-    org = await _make_org(db_session, default="anthropic/claude-sonnet-4-6")
+    org = await _make_org(
+        db_session,
+        allowed=["anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5"],
+        default="anthropic/claude-sonnet-4-6",
+    )
     role = Role(
         id=uuid4(),
         name=f"role-{uuid4().hex[:6]}",
