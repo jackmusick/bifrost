@@ -61,6 +61,7 @@ from src.routers import (
     roi_reports_router,
     usage_reports_router,
     ai_pricing_router,
+    platform_models_router,
     email_config_router,
     email_sdk_router,
     oauth_config_router,
@@ -553,6 +554,7 @@ def create_app() -> FastAPI:
     app.include_router(roi_reports_router)
     app.include_router(usage_reports_router)
     app.include_router(ai_pricing_router)
+    app.include_router(platform_models_router)
     app.include_router(email_config_router)
     app.include_router(email_sdk_router)
     app.include_router(oauth_config_router)

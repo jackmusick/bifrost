@@ -501,6 +501,19 @@ from src.models.contracts.ai_usage import (
     UsageReportResponse,
 )
 
+# Platform Model Registry (Chat V2 / M2)
+from src.models.contracts.platform_models import (
+    PlatformModelCapabilities,
+    PlatformModelPublic,
+    PlatformModelListResponse,
+    ModelMigrationByKind,
+    ModelMigrationImpactItem,
+    ModelMigrationPreviewRequest,
+    ModelMigrationPreviewResponse,
+    ModelMigrationApplyRequest,
+    ModelMigrationApplyResponse,
+)
+
 # Export/Import
 from src.models.contracts.export_import import (
     BulkExportRequest,
@@ -911,6 +924,16 @@ __all__ = [
     "KnowledgeStorageUsage",
     "KnowledgeStorageTrend",
     "UsageReportResponse",
+    # Platform Model Registry (Chat V2 / M2)
+    "PlatformModelCapabilities",
+    "PlatformModelPublic",
+    "PlatformModelListResponse",
+    "ModelMigrationByKind",
+    "ModelMigrationImpactItem",
+    "ModelMigrationPreviewRequest",
+    "ModelMigrationPreviewResponse",
+    "ModelMigrationApplyRequest",
+    "ModelMigrationApplyResponse",
     # SDK Response Models
     "ConfigData",
     "IntegrationData",
