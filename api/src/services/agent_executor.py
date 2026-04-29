@@ -34,7 +34,7 @@ from src.models.contracts.agents import (
     ToolResult,
 )
 from src.models.enums import MessageRole
-from src.models.orm import Agent, Conversation, Message, User, Workflow
+from src.models.orm import Agent, Conversation, Message, User, Workflow, Workspace
 from src.services.llm import (
     LLMMessage,
     ToolCallRequest,
@@ -708,6 +708,19 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             system_prompt = build_agent_system_prompt(agent, execution_context={"mode": "chat"})
         else:
             system_prompt = await self._get_default_system_prompt()
+
+        # M3: append workspace + per-conversation instructions when present.
+        extra_blocks: list[str] = []
+        if conversation.workspace_id is not None:
+            async with self._db() as _ws_session:
+                ws = await _ws_session.get(Workspace, conversation.workspace_id)
+            if ws is not None and ws.instructions:
+                extra_blocks.append(ws.instructions.strip())
+        if conversation.instructions:
+            extra_blocks.append(conversation.instructions.strip())
+        if extra_blocks:
+            system_prompt = "\n\n".join([system_prompt.strip(), *extra_blocks])
+
         messages.append(
             LLMMessage(
                 role="system",
