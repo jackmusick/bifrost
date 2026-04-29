@@ -169,16 +169,97 @@ class JsonBackend:
         return list(self._load().keys())
 
 
-# KeyringBackend defined in Task 3.
+class KeyringBackend:
+    """OS-native credential storage via the `keyring` library.
+
+    URLs are tracked in a separate index entry because keyring backends
+    don't expose a `list` operation across (service, username) pairs.
+    """
+
+    INDEX_USERNAME = "__index__"
+
+    def __init__(self, _keyring=None):
+        if _keyring is None:
+            import keyring as _keyring  # noqa: PLR0402
+        self._kr = _keyring
+
+    def _load_index(self) -> set[str]:
+        raw = self._kr.get_password(KEYRING_SERVICE, self.INDEX_USERNAME)
+        if not raw:
+            return set()
+        try:
+            return set(json.loads(raw))
+        except (json.JSONDecodeError, ValueError):
+            return set()
+
+    def _save_index(self, index: set[str]) -> None:
+        self._kr.set_password(KEYRING_SERVICE, self.INDEX_USERNAME, json.dumps(sorted(index)))
+
+    def get(self, api_url: str) -> Credentials | None:
+        api_url = api_url.rstrip("/")
+        raw = self._kr.get_password(KEYRING_SERVICE, api_url)
+        if not raw:
+            return None
+        try:
+            return Credentials.from_dict(json.loads(raw))
+        except (json.JSONDecodeError, KeyError):
+            return None
+
+    def save(self, creds: Credentials) -> None:
+        api_url = creds.api_url.rstrip("/")
+        self._kr.set_password(KEYRING_SERVICE, api_url, json.dumps(creds.to_dict()))
+        idx = self._load_index()
+        idx.add(api_url)
+        self._save_index(idx)
+
+    def clear(self, api_url: str) -> None:
+        api_url = api_url.rstrip("/")
+        try:
+            self._kr.delete_password(KEYRING_SERVICE, api_url)
+        except Exception:
+            pass  # already absent
+        idx = self._load_index()
+        idx.discard(api_url)
+        self._save_index(idx)
+
+    def list_urls(self) -> list[str]:
+        return sorted(self._load_index())
 
 
 # --------------------------------------------------------------------------- #
-# Backend selection (will be expanded in Task 3)
+# Backend selection
 # --------------------------------------------------------------------------- #
 
 def _select_persistent_backend() -> Backend:
-    """Choose the persistent backend. Task 3 wires keyring in."""
-    return JsonBackend()
+    """
+    Choose the persistent backend.
+
+    Order: try `keyring` (probe with a no-op read so headless Linux fails
+    fast at startup), fall back to JSON. On fallback, print a one-time
+    stderr warning so users know why their tokens aren't in the OS keychain.
+    """
+    import sys
+
+    try:
+        import keyring
+        import keyring.errors
+    except ImportError:
+        return JsonBackend()
+
+    try:
+        keyring.get_keyring()
+        # Probe — surfaces NoKeyringError / SecretServiceError / DBusException
+        # when the backend is nominally available but the OS service isn't.
+        keyring.get_password(KEYRING_SERVICE, "__probe__")
+        return KeyringBackend(_keyring=keyring)
+    except (keyring.errors.NoKeyringError, keyring.errors.KeyringError, Exception) as e:
+        print(
+            f"warning: OS keychain unavailable ({type(e).__name__}); "
+            "falling back to ~/.bifrost/credentials.json. "
+            "Install/enable a keyring service to upgrade.",
+            file=sys.stderr,
+        )
+        return JsonBackend()
 
 
 _persistent_backend: Backend | None = None

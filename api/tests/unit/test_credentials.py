@@ -173,3 +173,132 @@ class TestNoArgResolution:
         result = creds_mod.get_credentials()
         assert result is not None
         assert result["api_url"] == "http://second"
+
+
+# ---------- KeyringBackend ----------
+
+class FakeKeyring:
+    """In-memory keyring used to test KeyringBackend without touching the OS."""
+
+    def __init__(self):
+        self.store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str):
+        return self.store.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str):
+        self.store[(service, username)] = password
+
+    def delete_password(self, service: str, username: str):
+        self.store.pop((service, username), None)
+
+
+class FakeFailKeyring:
+    """Keyring that raises NoKeyringError on every operation, mimicking headless Linux."""
+
+    def get_password(self, *_a, **_kw):
+        import keyring.errors
+        raise keyring.errors.NoKeyringError("no backend")
+
+    def set_password(self, *_a, **_kw):
+        import keyring.errors
+        raise keyring.errors.NoKeyringError("no backend")
+
+    def delete_password(self, *_a, **_kw):
+        import keyring.errors
+        raise keyring.errors.NoKeyringError("no backend")
+
+
+class TestKeyringBackend:
+    @pytest.fixture
+    def fake_kr(self):
+        from bifrost.credentials import KeyringBackend
+        fake = FakeKeyring()
+        backend = KeyringBackend(_keyring=fake)
+        return backend, fake
+
+    def test_save_and_get_round_trip(self, fake_kr):
+        backend, _ = fake_kr
+        c = Credentials("http://localhost:38421", "at", "rt", "2030-01-01T00:00:00+00:00")
+        backend.save(c)
+        assert backend.get("http://localhost:38421") == c
+
+    def test_save_two_urls_independently(self, fake_kr):
+        backend, _ = fake_kr
+        c1 = Credentials("http://a", "at1", "rt1", "2030-01-01T00:00:00+00:00")
+        c2 = Credentials("http://b", "at2", "rt2", "2030-01-01T00:00:00+00:00")
+        backend.save(c1)
+        backend.save(c2)
+        assert backend.get("http://a") == c1
+        assert backend.get("http://b") == c2
+
+    def test_clear_one_leaves_others(self, fake_kr):
+        backend, _ = fake_kr
+        backend.save(Credentials("http://a", "at1", "rt1", "2030-01-01T00:00:00+00:00"))
+        backend.save(Credentials("http://b", "at2", "rt2", "2030-01-01T00:00:00+00:00"))
+        backend.clear("http://a")
+        assert backend.get("http://a") is None
+        assert backend.get("http://b") is not None
+
+    def test_list_urls_via_index(self, fake_kr):
+        backend, _ = fake_kr
+        backend.save(Credentials("http://a", "at", "rt", "2030-01-01T00:00:00+00:00"))
+        backend.save(Credentials("http://b", "at", "rt", "2030-01-01T00:00:00+00:00"))
+        assert sorted(backend.list_urls()) == ["http://a", "http://b"]
+
+    def test_get_returns_none_for_unknown_url(self, fake_kr):
+        backend, _ = fake_kr
+        assert backend.get("http://never-saved") is None
+
+
+# ---------- Backend selection ----------
+
+class TestBackendSelection:
+    def test_keyring_available_returns_keyring_backend(self, monkeypatch):
+        from bifrost.credentials import KeyringBackend, _select_persistent_backend
+        creds_mod._reset_persistent_backend_for_tests()
+        fake = FakeKeyring()
+        # Make `keyring.get_keyring()` return our fake AND make `keyring.get_password`
+        # (the probe call) succeed. The probe is what the selector uses to verify
+        # the backend isn't a fail.Keyring underneath.
+        import keyring
+        monkeypatch.setattr(keyring, "get_keyring", lambda: fake)
+        monkeypatch.setattr(keyring, "get_password", lambda s, u: None)
+        backend = _select_persistent_backend()
+        assert isinstance(backend, KeyringBackend)
+
+    def test_no_keyring_falls_back_to_json(self, monkeypatch, capsys):
+        from bifrost.credentials import JsonBackend, _select_persistent_backend
+        creds_mod._reset_persistent_backend_for_tests()
+        import keyring
+        import keyring.errors
+
+        monkeypatch.setattr(keyring, "get_keyring", lambda: FakeFailKeyring())
+
+        def fake_get_password(_s, _u):
+            raise keyring.errors.NoKeyringError("no backend")
+
+        monkeypatch.setattr(keyring, "get_password", fake_get_password)
+        backend = _select_persistent_backend()
+        assert isinstance(backend, JsonBackend)
+        # Stderr warning so users know.
+        captured = capsys.readouterr()
+        assert "keyring" in captured.err.lower()
+        assert "fallback" in captured.err.lower() or "falling back" in captured.err.lower()
+
+    def test_keyring_import_error_falls_back_to_json(self, monkeypatch):
+        from bifrost.credentials import JsonBackend, _select_persistent_backend
+        creds_mod._reset_persistent_backend_for_tests()
+        import sys
+        # Force ImportError by removing the keyring module from cache and
+        # blocking re-import.
+        original = sys.modules.get("keyring")
+        sys.modules["keyring"] = None  # type: ignore[assignment]
+        try:
+            backend = _select_persistent_backend()
+        finally:
+            if original is not None:
+                sys.modules["keyring"] = original
+            else:
+                sys.modules.pop("keyring", None)
+        assert isinstance(backend, JsonBackend)
