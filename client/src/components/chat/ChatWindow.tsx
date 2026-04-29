@@ -153,10 +153,7 @@ export function ChatWindow({
 	// the cascade if null).
 	const [currentModel, setCurrentModel] = useState<string | null>(null);
 	useEffect(() => {
-		if (!conversationId) {
-			setCurrentModel(null);
-			return;
-		}
+		if (!conversationId) return;
 		let cancelled = false;
 		apiClient
 			.GET("/api/chat/conversations/{conversation_id}", {

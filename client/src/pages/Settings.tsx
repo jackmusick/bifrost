@@ -7,6 +7,7 @@ import { Email } from "@/pages/settings/Email";
 import { OAuth } from "@/pages/settings/OAuth";
 import { GitHub } from "@/pages/settings/GitHub";
 import { LLMConfig } from "@/pages/settings/LLMConfig";
+import { ModelsSettings } from "@/pages/settings/ModelsSettings";
 import { MCP } from "@/pages/settings/MCP";
 import { Maintenance } from "@/pages/settings/Maintenance";
 import { Bot, Key, Mail, Palette, Plug, Shield, Wrench } from "lucide-react";
@@ -48,6 +49,10 @@ export function Settings() {
 						<Bot className="h-4 w-4 mr-1" />
 						AI
 					</TabsTrigger>
+					<TabsTrigger value="models">
+						<Bot className="h-4 w-4 mr-1" />
+						Models
+					</TabsTrigger>
 					<TabsTrigger value="mcp">
 						<Plug className="h-4 w-4 mr-1" />
 						MCP
@@ -81,6 +86,10 @@ export function Settings() {
 
 				<TabsContent value="ai" className="mt-6">
 					<LLMConfig />
+				</TabsContent>
+
+				<TabsContent value="models" className="mt-6">
+					<ModelsSettings />
 				</TabsContent>
 
 				<TabsContent value="mcp" className="mt-6">
