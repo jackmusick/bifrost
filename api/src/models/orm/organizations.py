@@ -38,6 +38,10 @@ class Organization(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_provider: Mapped[bool] = mapped_column(Boolean, default=False)
     settings: Mapped[dict] = mapped_column(JSONB, default={})
+    allowed_chat_models: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
+    )
+    default_chat_model: Mapped[str | None] = mapped_column(String(255), default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )

@@ -190,6 +190,23 @@ class Scheduler:
         except ImportError:
             logger.warning("Knowledge storage refresh job not available")
 
+        # Model registry sync — every 6 hours, plus immediate on startup so
+        # `platform_models` is populated before chat traffic begins.
+        try:
+            from src.jobs.schedulers.model_registry_sync import sync_model_registry
+            scheduler.add_job(
+                sync_model_registry,
+                IntervalTrigger(hours=6),
+                id="model_registry_sync",
+                name="Sync platform model registry from models.json",
+                replace_existing=True,
+                next_run_time=datetime.now(timezone.utc),  # Run immediately at startup
+                **misfire_options,
+            )
+            logger.info("Model registry sync scheduled (every 6 hours)")
+        except ImportError:
+            logger.warning("Model registry sync not available")
+
         # Webhook subscription renewal - every 6 hours
         try:
             from src.jobs.schedulers.webhook_renewal import renew_expiring_webhooks
