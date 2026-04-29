@@ -25,13 +25,95 @@ from pydantic import BaseModel, ConfigDict, Field
 logger = logging.getLogger(__name__)
 
 
-# Default URL points at the main branch of the Bifrost repo. Overridable via
-# env var so self-hosters can point at a fork or private mirror.
+# LiteLLM publishes a 2k+ entry registry with per-model pricing, capability
+# flags, and context window. Updated multiple times per day (median ~3h between
+# commits). MIT-licensed. We snapshot it on a 6h interval, validating + tier-
+# binning along the way; the bundled file in `data/models.json` is the offline
+# / first-boot seed.
 DEFAULT_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/jackmusick/bifrost/main/api/shared/data/models.json"
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/"
+    "model_prices_and_context_window.json"
 )
 
 BUNDLED_REGISTRY_PATH = Path(__file__).parent / "data" / "models.json"
+
+
+# Reseller hostnames → reseller key, matching LiteLLM's get_llm_provider_logic.
+# When the configured LLM endpoint hostname matches one of these, the model_id
+# returned by /v1/models is prefixed with `<reseller>/` to form the key into
+# this registry. Empty match (None) means "direct provider call" — the model_id
+# is the key as-is. List lifted verbatim from LiteLLM upstream.
+RESELLER_BY_HOST: dict[str, str] = {
+    "openrouter.ai": "openrouter",
+    "api.together.xyz": "together_ai",
+    "api.fireworks.ai": "fireworks_ai",
+    "api.deepinfra.com": "deepinfra",
+    "api.groq.com": "groq",
+    "integrate.api.nvidia.com": "nvidia_nim",
+    "api.cerebras.ai": "cerebras",
+    "inference.baseten.co": "baseten",
+    "api.sambanova.ai": "sambanova",
+    "api.ai21.com": "ai21_chat",
+    "api.perplexity.ai": "perplexity",
+    "api.mistral.ai": "mistral",
+    "api.deepseek.com": "deepseek",
+    "api.friendli.ai": "friendliai",
+    "api.lambdalabs.com": "lambda_ai",
+    "api.novita.ai": "novita",
+    "api.hyperbolic.xyz": "hyperbolic",
+    "api.replicate.com": "replicate",
+    "ollama.com": "ollama",
+    "api.z.ai": "z_ai",
+}
+
+
+def reseller_for_endpoint(endpoint: str | None) -> str | None:
+    """Map a configured LLM endpoint URL to a LiteLLM-style reseller key.
+
+    Returns None when the endpoint is the model maker's own API (direct call,
+    no prefix needed in the registry lookup) or when we don't recognize the
+    host. Direct calls and unknown hosts both fall through to the unprefixed
+    `model_id` key in `lookup_capabilities()`.
+    """
+    if not endpoint:
+        return None
+    from urllib.parse import urlparse
+
+    host = urlparse(endpoint).hostname or ""
+    return RESELLER_BY_HOST.get(host)
+
+
+def lookup_capabilities(
+    model_id: str,
+    *,
+    reseller: str | None = None,
+    by_id: dict[str, "RegistryModel"] | None = None,
+) -> "RegistryModel | None":
+    """Resolve a returned-from-provider model_id into a registry row.
+
+    Tries, in order:
+      1. `<reseller>/<model_id>` exact match (handles OpenRouter/Together/etc.)
+      2. `model_id` exact match (handles direct provider calls)
+      3. Suffix-after-last-slash match (handles odd routing forms)
+    Returns None if nothing matches; the caller treats those as Uncategorized.
+    """
+    if by_id is None:
+        return None
+    if reseller:
+        prefixed = f"{reseller}/{model_id}"
+        hit = by_id.get(prefixed)
+        if hit is not None:
+            return hit
+    hit = by_id.get(model_id)
+    if hit is not None:
+        return hit
+    # Last resort: match by suffix after the last slash.
+    suffix = model_id.rsplit("/", 1)[-1]
+    if suffix != model_id:
+        hit = by_id.get(suffix)
+        if hit is not None:
+            return hit
+    return None
 
 
 class RegistryCapabilities(BaseModel):
@@ -90,9 +172,91 @@ def load_bundled() -> RegistryFile:
 
 
 def parse(raw: str | bytes | dict[str, Any]) -> RegistryFile:
-    """Validate-and-parse a registry payload from JSON text or a dict."""
-    if isinstance(raw, dict):
-        return RegistryFile.model_validate(raw)
+    """Validate-and-parse a registry payload from JSON text or a dict.
+
+    Auto-detects shape: our own snapshot (dict with `schema_version`) is
+    parsed directly; LiteLLM's raw upstream shape (flat dict keyed by model_id)
+    is transformed first via `transform_litellm()`.
+    """
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
-    return RegistryFile.model_validate(json.loads(raw))
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    assert isinstance(raw, dict)
+    if "schema_version" in raw and "models" in raw:
+        return RegistryFile.model_validate(raw)
+    return transform_litellm(raw)
+
+
+def _derive_tier(output_price_per_token: float | None) -> str:
+    """Bin a model into a cost tier based on its output price.
+
+    LiteLLM has price but no tier label, so derive on import. Thresholds
+    chosen to put Haiku/Mini-class in `fast`, Sonnet/4o in `balanced`, and
+    Opus/o1/Gemini-Pro in `premium`. Free / unknown lands in `uncategorized`.
+    """
+    if output_price_per_token is None or output_price_per_token == 0:
+        return "uncategorized"
+    per_million = output_price_per_token * 1_000_000
+    if per_million < 1.0:
+        return "fast"
+    if per_million < 10.0:
+        return "balanced"
+    return "premium"
+
+
+def transform_litellm(litellm_doc: dict[str, Any]) -> RegistryFile:
+    """Convert LiteLLM's flat catalog into our `RegistryFile` shape.
+
+    LiteLLM publishes 2k+ entries keyed by model_id. We keep chat models only
+    (skip embeddings, audio-only, image gen) and project the fields we use.
+    """
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    models: list[RegistryModel] = []
+    for k, v in litellm_doc.items():
+        if not isinstance(v, dict):
+            continue
+        # Skip "sample_spec" pseudo-rows and any non-chat modes (LiteLLM marks
+        # embeddings as "embedding", audio TTS as "audio_speech", etc.).
+        if k == "sample_spec":
+            continue
+        mode = v.get("mode")
+        if mode is not None and mode != "chat":
+            continue
+        cap = RegistryCapabilities(
+            supports_images_in=bool(v.get("supports_vision")),
+            supports_images_out=False,
+            supports_pdf_in=bool(v.get("supports_pdf_input")),
+            supports_tool_use=bool(v.get("supports_function_calling")),
+            supports_audio_in=bool(v.get("supports_audio_input")),
+            supports_audio_out=bool(v.get("supports_audio_output")),
+        )
+        inp = v.get("input_cost_per_token")
+        outp = v.get("output_cost_per_token")
+        models.append(
+            RegistryModel(
+                model_id=k,
+                provider=v.get("litellm_provider", "unknown"),
+                display_name=k.split("/")[-1],
+                cost_tier=_derive_tier(outp),
+                context_window=v.get("max_input_tokens") or v.get("max_tokens"),
+                max_output_tokens=v.get("max_output_tokens"),
+                input_price_per_million=(
+                    Decimal(str(round(inp * 1_000_000, 6))) if inp else None
+                ),
+                output_price_per_million=(
+                    Decimal(str(round(outp * 1_000_000, 6))) if outp else None
+                ),
+                capabilities=cap,
+            )
+        )
+    return RegistryFile(
+        schema_version=2,
+        generated_at=datetime.now(timezone.utc),
+        source=DEFAULT_REGISTRY_URL,
+        models=models,
+        aliases=[],
+        deprecations=[],
+    )
