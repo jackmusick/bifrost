@@ -242,23 +242,12 @@ export function ModelSelect(props: Props) {
 											onSelect={() => toggle(row.id)}
 											className="flex items-start gap-2 py-2"
 										>
-											{isMulti ? (
-												<Check
-													aria-hidden
-													className={cn(
-														"mt-1 h-4 w-4 shrink-0",
-														checked ? "opacity-100" : "opacity-0",
-													)}
-												/>
-											) : (
-												<Check
-													aria-hidden
-													className={cn(
-														"mt-1 h-4 w-4 shrink-0",
-														checked ? "opacity-100" : "opacity-0",
-													)}
-												/>
-											)}
+											<div
+												aria-hidden
+												className="mt-1 h-4 w-4 shrink-0 flex items-center justify-center"
+											>
+												{checked ? <Check className="h-4 w-4" /> : null}
+											</div>
 											<div className="flex-1 min-w-0">
 												<div className="text-sm">{row.display}</div>
 												<RowMeta row={row} />
