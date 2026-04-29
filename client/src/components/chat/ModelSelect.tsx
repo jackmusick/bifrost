@@ -301,7 +301,18 @@ export function ModelSelect(props: Props) {
 							</Button>
 						)}
 					</PopoverTrigger>
-				<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+				<PopoverContent
+					className={cn(
+						"p-0",
+						// Match trigger width by default; in compact mode the trigger
+						// is small (just "model name ▾") so we let the popover size
+						// to its own content with a comfortable minimum.
+						compact
+							? "w-[28rem] max-w-[calc(100vw-2rem)]"
+							: "w-[var(--radix-popover-trigger-width)]",
+					)}
+					align="start"
+				>
 					<Command
 						filter={(value, search, keywords) => {
 							// cmdk's default fuzzy matcher accepts split-letter matches
