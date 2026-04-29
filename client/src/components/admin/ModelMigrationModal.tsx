@@ -7,9 +7,12 @@
  * free-text when it isn't), then calls /apply-migration on confirm.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
+import { ModelSelect, type ModelSelectModel } from "@/components/chat/ModelSelect";
+import { resellerForEndpoint } from "@/services/platformModels";
+import { $api } from "@/lib/api-client";
 import {
 	Dialog,
 	DialogContent,
@@ -19,7 +22,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
 	applyModelMigration,
@@ -47,9 +49,32 @@ export function ModelMigrationModal({
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [impacts, setImpacts] = useState<ModelMigrationImpactItem[]>([]);
-	const [available, setAvailable] = useState<PlatformModel[]>([]);
+	const [catalogModels, setCatalogModels] = useState<PlatformModel[]>([]);
 	const [replacements, setReplacements] = useState<Record<string, string>>({});
 	const [submitting, setSubmitting] = useState(false);
+
+	// Provider catalog (the "new provider's" available models — what the admin
+	// is migrating to). Live from /api/admin/llm/models.
+	const llmConfigQuery = $api.useQuery(
+		"get",
+		"/api/admin/llm/config",
+		undefined,
+		{ staleTime: 5 * 60 * 1000, enabled: open },
+	);
+	const reseller = resellerForEndpoint(llmConfigQuery.data?.endpoint ?? null);
+	const providerModelsQuery = $api.useQuery(
+		"get",
+		"/api/admin/llm/models",
+		undefined,
+		{ retry: false, staleTime: 5 * 60 * 1000, enabled: open },
+	);
+	const providerModels: ModelSelectModel[] =
+		providerModelsQuery.data?.models ?? [];
+	const catalogById = useMemo(() => {
+		const idx: Record<string, PlatformModel> = {};
+		for (const m of catalogModels) idx[m.model_id] = m;
+		return idx;
+	}, [catalogModels]);
 
 	useEffect(() => {
 		if (!open || oldModelIds.length === 0) return;
@@ -67,7 +92,7 @@ export function ModelMigrationModal({
 			.then(([preview, catalog]) => {
 				if (cancelled) return;
 				setImpacts(preview.items);
-				setAvailable(catalog.models);
+				setCatalogModels(catalog.models);
 				const initial: Record<string, string> = {};
 				for (const item of preview.items) {
 					if (item.suggested_replacement) {
@@ -155,35 +180,22 @@ export function ModelMigrationModal({
 										.map(([k, n]) => `${n} ${k.replace(/_/g, " ")}`)
 										.join(" · ") || "no references"}
 								</div>
-								<div>
-									<Label
-										htmlFor={`replacement-${item.model_id}`}
-										className="text-xs"
-									>
-										Replacement
-									</Label>
-									<Input
-										id={`replacement-${item.model_id}`}
-										list={`available-models-${item.model_id}`}
-										value={replacements[item.model_id] ?? ""}
-										onChange={(e) =>
+								<div className="space-y-1.5">
+									<Label className="text-xs">Replacement</Label>
+									<ModelSelect
+										models={providerModels}
+										catalog={catalogById}
+										reseller={reseller}
+										value={replacements[item.model_id] ?? null}
+										onChange={(v) =>
 											setReplacements((r) => ({
 												...r,
-												[item.model_id]: e.target.value,
+												[item.model_id]: v ?? "",
 											}))
 										}
-										placeholder="model_id from your new provider"
-										className="font-mono text-xs"
+										clearable
+										placeholder="Pick a replacement…"
 									/>
-									<datalist id={`available-models-${item.model_id}`}>
-										{available.map((m) => (
-											<option
-												key={m.model_id}
-												value={m.model_id}
-												label={`${m.display_name} · ${m.cost_tier}`}
-											/>
-										))}
-									</datalist>
 								</div>
 							</div>
 						))}

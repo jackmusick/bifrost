@@ -25,6 +25,7 @@ import { TagsInput } from "@/components/ui/tags-input";
 import { apiClient, $api } from "@/lib/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+	previewModelMigration,
 	resellerForEndpoint,
 	type PlatformModel,
 } from "@/services/platformModels";
@@ -179,15 +180,30 @@ export function ModelsSettings() {
 		setOrg(updated);
 		if (allowedTimer.current) window.clearTimeout(allowedTimer.current);
 		allowedTimer.current = window.setTimeout(async () => {
-			// Detect orphan-causing removals before persisting. Open the
-			// migration modal if any; that flow does its own PATCH.
 			const before = new Set(savedSnapshot?.allowed_chat_models ?? []);
 			const after = new Set(next);
 			const removed = [...before].filter((m) => !after.has(m));
+			// Only open the migration modal if removed models are *actually
+			// referenced somewhere* — ask the server. Removing a model nobody
+			// uses should just save quietly.
 			if (removed.length > 0 && before.size > 0) {
-				setMigrationCandidates(removed);
-				setMigrationOpen(true);
-				return;
+				try {
+					setAllowedStatus("saving");
+					const preview = await previewModelMigration({
+						old_model_ids: removed,
+					});
+					if (preview.total_references > 0) {
+						setMigrationCandidates(removed);
+						setMigrationOpen(true);
+						setAllowedStatus("idle");
+						return;
+					}
+				} catch (e) {
+					// If preview fails, proceed with the save — the resolver's
+					// deprecation path will still keep references working at
+					// lookup time even without a remap entry.
+					console.warn("[ModelsSettings] preview-migration failed", e);
+				}
 			}
 			await persist(updated, setAllowedStatus, allowedSavedTimer);
 		}, 500);
