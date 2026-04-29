@@ -1,12 +1,23 @@
 /**
  * Models Settings (Chat V2 / M2)
  *
- * Per-org admin view of:
- * - The platform model catalog (read-only, synced from models.json).
- * - Org allowlist + default model (multi-select + single-select).
- * - "Migrate references" button — opens the migration modal so the admin can
- *   pick replacements for currently-referenced models that are about to be
- *   removed (most commonly during a provider switch).
+ * Per-org admin view sitting under the configured LLM provider on the AI tab.
+ *
+ * Data flow:
+ *   - The "available models" list comes from the configured provider's
+ *     /v1/models response (via /api/admin/llm/models). That's the authoritative
+ *     catalog — Anthropic, OpenAI, OpenRouter, or any custom OpenAI-compat
+ *     endpoint all expose it.
+ *   - For each returned model_id, we look up tier + capabilities in
+ *     platform_models (synced from models.json). When a model isn't in our
+ *     table — most common with direct-provider Anthropic/OpenAI calls — it
+ *     falls into the "Uncategorized" tier section so the admin can still
+ *     allowlist it.
+ *
+ * Three tier sections (⚡ Fast / ⚖ Balanced / 💎 Premium / Uncategorized).
+ * Each section is a multi-select bound to that tier's slice of the provider
+ * list. When the provider /models call fails, every section falls back to a
+ * TagsInput so the admin can still curate by typing IDs.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -33,15 +44,37 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, $api } from "@/lib/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	COST_TIER_GLYPH,
+	COST_TIER_LABEL,
 	listPlatformModels,
 	type CostTier,
 	type PlatformModel,
 } from "@/services/platformModels";
 import { ModelMigrationModal } from "@/components/admin/ModelMigrationModal";
+
+type SectionKey = CostTier | "uncategorized";
+const SECTION_ORDER: SectionKey[] = ["fast", "balanced", "premium", "uncategorized"];
+const SECTION_LABEL: Record<SectionKey, string> = {
+	fast: COST_TIER_LABEL.fast,
+	balanced: COST_TIER_LABEL.balanced,
+	premium: COST_TIER_LABEL.premium,
+	uncategorized: "Uncategorized",
+};
+const SECTION_GLYPH: Record<SectionKey, string> = {
+	fast: COST_TIER_GLYPH.fast,
+	balanced: COST_TIER_GLYPH.balanced,
+	premium: COST_TIER_GLYPH.premium,
+	uncategorized: "·",
+};
+const SECTION_DESCRIPTION: Record<SectionKey, string> = {
+	fast: "Cheap, fast — short tasks.",
+	balanced: "General-purpose default.",
+	premium: "Highest quality, most expensive.",
+	uncategorized: "Models we don't have capability metadata for yet.",
+};
 
 interface OrgModelSettings {
 	id: string;
@@ -49,16 +82,38 @@ interface OrgModelSettings {
 	default_chat_model: string | null;
 }
 
+interface ProviderModel {
+	id: string;
+	display_name: string;
+}
+
 export function ModelsSettings() {
 	const { user } = useAuth();
 	const orgId = user?.organizationId ?? null;
-	const [models, setModels] = useState<PlatformModel[]>([]);
+
+	const [platformModels, setPlatformModels] = useState<PlatformModel[]>([]);
 	const [org, setOrg] = useState<OrgModelSettings | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [migrationOpen, setMigrationOpen] = useState(false);
 	const [migrationCandidates, setMigrationCandidates] = useState<string[]>([]);
+
+	// Provider models — reuse the same endpoint LLMConfig already polls.
+	const providerModelsQuery = $api.useQuery(
+		"get",
+		"/api/admin/llm/models",
+		undefined,
+		{ retry: false, staleTime: 5 * 60 * 1000 },
+	);
+	const providerModels: ProviderModel[] | null = useMemo(() => {
+		if (providerModelsQuery.data) return providerModelsQuery.data.models;
+		if (providerModelsQuery.error) return [];
+		return null;
+	}, [providerModelsQuery.data, providerModelsQuery.error]);
+	const providerError = providerModelsQuery.error
+		? "Provider /v1/models unavailable; using freeform input."
+		: null;
 
 	useEffect(() => {
 		if (!orgId) return;
@@ -71,7 +126,7 @@ export function ModelsSettings() {
 		])
 			.then(([catalog, orgRes]) => {
 				if (cancelled) return;
-				setModels(catalog.models);
+				setPlatformModels(catalog.models);
 				if (orgRes.data) {
 					setOrg({
 						id: orgRes.data.id,
@@ -91,23 +146,76 @@ export function ModelsSettings() {
 		};
 	}, [orgId]);
 
-	// Build combobox options from the platform catalog, sorted by tier then name.
-	const allowedOptions = useMemo<MultiComboboxOption[]>(() => {
-		const tierRank: Record<string, number> = { fast: 0, balanced: 1, premium: 2 };
-		return [...models]
-			.sort((a, b) => {
-				const t = (tierRank[a.cost_tier] ?? 99) - (tierRank[b.cost_tier] ?? 99);
-				return t !== 0 ? t : a.display_name.localeCompare(b.display_name);
-			})
-			.map((m) => ({
-				value: m.model_id,
-				label: `${COST_TIER_GLYPH[(m.cost_tier as CostTier) ?? "balanced"]} ${m.display_name}`,
-				description: m.model_id,
-			}));
-	}, [models]);
+	// Build a tier index from platform_models so we can group provider entries.
+	const tierByModelId = useMemo(() => {
+		const idx: Record<string, CostTier> = {};
+		for (const m of platformModels) {
+			idx[m.model_id] = (m.cost_tier as CostTier) ?? "balanced";
+		}
+		return idx;
+	}, [platformModels]);
 
-	const allowed = org?.allowed_chat_models ?? [];
-	const hasCatalog = models.length > 0;
+	const displayNameByModelId = useMemo(() => {
+		const idx: Record<string, string> = {};
+		for (const m of platformModels) idx[m.model_id] = m.display_name;
+		for (const p of providerModels ?? []) {
+			if (!idx[p.id]) idx[p.id] = p.display_name || p.id;
+		}
+		return idx;
+	}, [platformModels, providerModels]);
+
+	// Group the provider's catalog by tier (uncategorized for unknown).
+	const providerOptionsBySection = useMemo(() => {
+		const out: Record<SectionKey, MultiComboboxOption[]> = {
+			fast: [],
+			balanced: [],
+			premium: [],
+			uncategorized: [],
+		};
+		for (const p of providerModels ?? []) {
+			const tier: SectionKey = tierByModelId[p.id] ?? "uncategorized";
+			out[tier].push({
+				value: p.id,
+				label: `${SECTION_GLYPH[tier]} ${displayNameByModelId[p.id] ?? p.id}`,
+				description: p.id,
+			});
+		}
+		for (const k of SECTION_ORDER) {
+			out[k].sort((a, b) => a.label.localeCompare(b.label));
+		}
+		return out;
+	}, [providerModels, tierByModelId, displayNameByModelId]);
+
+	// Slice the org allowlist by section so each input shows only its own.
+	const allowed = useMemo(
+		() => org?.allowed_chat_models ?? [],
+		[org?.allowed_chat_models],
+	);
+	const allowedBySection = useMemo(() => {
+		const out: Record<SectionKey, string[]> = {
+			fast: [],
+			balanced: [],
+			premium: [],
+			uncategorized: [],
+		};
+		for (const id of allowed) {
+			const tier: SectionKey = tierByModelId[id] ?? "uncategorized";
+			out[tier].push(id);
+		}
+		return out;
+	}, [allowed, tierByModelId]);
+
+	function setAllowedForSection(section: SectionKey, ids: string[]) {
+		if (!org) return;
+		// Replace this section's slice; keep other sections' selections intact.
+		const others = allowed.filter((id) => {
+			const t: SectionKey = tierByModelId[id] ?? "uncategorized";
+			return t !== section;
+		});
+		setOrg({ ...org, allowed_chat_models: [...others, ...ids] });
+	}
+
+	const usingFreetext = providerModels !== null && providerModels.length === 0;
 
 	async function save() {
 		if (!org) return;
@@ -122,10 +230,7 @@ export function ModelsSettings() {
 			const beforeAllow = new Set(previous.data?.allowed_chat_models ?? []);
 			const afterAllow = new Set(org.allowed_chat_models);
 			const removed = [...beforeAllow].filter((m) => !afterAllow.has(m));
-			if (
-				removed.length > 0 &&
-				beforeAllow.size > 0 // empty = no narrowing → nothing to lose
-			) {
+			if (removed.length > 0 && beforeAllow.size > 0) {
 				setMigrationCandidates(removed);
 				setMigrationOpen(true);
 				setSaving(false);
@@ -170,7 +275,7 @@ export function ModelsSettings() {
 			</div>
 		);
 	}
-	if (loading) {
+	if (loading || providerModelsQuery.isLoading) {
 		return (
 			<div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
 				<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -185,32 +290,62 @@ export function ModelsSettings() {
 				<CardHeader>
 					<CardTitle>Allowed models</CardTitle>
 					<CardDescription>
-						{hasCatalog
-							? "Pick which models your users can chat with. Empty allowlist means every model in the platform catalog is available."
-							: "No platform catalog yet — type model IDs as your provider expects them. Press Enter or Tab to add each one."}
+						Pick which models from your provider your users can chat with.
+						{providerError ? ` ${providerError}` : ""} Empty allowlist means
+						every model your provider exposes is available.
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-3">
-					<Label htmlFor="org-allowed-models">Models</Label>
-					{hasCatalog ? (
-						<MultiCombobox
-							options={allowedOptions}
-							value={allowed}
-							onValueChange={(values) =>
-								setOrg(org ? { ...org, allowed_chat_models: values } : null)
-							}
-							placeholder="All models allowed (no narrowing)"
-							searchPlaceholder="Search models…"
-						/>
-					) : (
-						<TagsInput
-							value={allowed}
-							onChange={(values) =>
-								setOrg(org ? { ...org, allowed_chat_models: values } : null)
-							}
-							placeholder="Type a model ID and press Enter…"
-						/>
-					)}
+				<CardContent className="space-y-6">
+					{SECTION_ORDER.map((section) => {
+						const opts = providerOptionsBySection[section];
+						const selected = allowedBySection[section];
+						// Skip uncategorized when there's nothing in it AND no items to add.
+						if (
+							section === "uncategorized" &&
+							opts.length === 0 &&
+							selected.length === 0 &&
+							!usingFreetext
+						) {
+							return null;
+						}
+						return (
+							<div key={section} className="space-y-2">
+								<div>
+									<Label className="text-sm font-semibold flex items-center gap-2">
+										<span aria-hidden>{SECTION_GLYPH[section]}</span>
+										{SECTION_LABEL[section]}
+									</Label>
+									<p className="text-xs text-muted-foreground">
+										{SECTION_DESCRIPTION[section]}
+									</p>
+								</div>
+								{usingFreetext ? (
+									<TagsInput
+										value={selected}
+										onChange={(values) =>
+											setAllowedForSection(section, values)
+										}
+										placeholder="Type a model_id and press Enter…"
+									/>
+								) : (
+									<MultiCombobox
+										options={opts}
+										value={selected}
+										onValueChange={(values) =>
+											setAllowedForSection(section, values)
+										}
+										placeholder={
+											opts.length === 0
+												? "(no models from provider in this tier)"
+												: "Choose models…"
+										}
+										searchPlaceholder="Search…"
+										disabled={opts.length === 0}
+									/>
+								)}
+							</div>
+						);
+					})}
 				</CardContent>
 			</Card>
 
@@ -224,7 +359,7 @@ export function ModelsSettings() {
 				</CardHeader>
 				<CardContent>
 					<Label htmlFor="org-default-model">Default</Label>
-					{hasCatalog ? (
+					{!usingFreetext ? (
 						<Select
 							value={org?.default_chat_model ?? ""}
 							onValueChange={(v) =>
@@ -235,45 +370,48 @@ export function ModelsSettings() {
 								<SelectValue placeholder="(no default — uses platform floor)" />
 							</SelectTrigger>
 							<SelectContent>
-								{models
+								{(providerModels ?? [])
 									.filter(
-										(m) =>
-											allowed.length === 0 || allowed.includes(m.model_id),
+										(m) => allowed.length === 0 || allowed.includes(m.id),
 									)
-									.map((m) => (
-										<SelectItem key={m.model_id} value={m.model_id}>
-											{COST_TIER_GLYPH[(m.cost_tier as CostTier) ?? "balanced"]}{" "}
-											{m.display_name}
-										</SelectItem>
-									))}
+									.map((m) => {
+										const tier: SectionKey =
+											tierByModelId[m.id] ?? "uncategorized";
+										return (
+											<SelectItem key={m.id} value={m.id}>
+												{SECTION_GLYPH[tier]}{" "}
+												{displayNameByModelId[m.id] ?? m.id}
+											</SelectItem>
+										);
+									})}
 							</SelectContent>
 						</Select>
 					) : (
-						<input
-							id="org-default-model"
-							type="text"
-							list="default-model-suggestions"
-							value={org?.default_chat_model ?? ""}
-							onChange={(e) =>
-								setOrg(
-									org
-										? {
-												...org,
-												default_chat_model: e.target.value || null,
-											}
-										: null,
-								)
-							}
-							placeholder="model_id (or leave blank for platform floor)"
-							className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-						/>
-					)}
-					{!hasCatalog && (
-						<datalist id="default-model-suggestions">
-							{allowed.map((m) => (
-								<option key={m} value={m} />
-							))}
-						</datalist>
+						<>
+							<input
+								id="org-default-model"
+								type="text"
+								list="default-model-suggestions"
+								value={org?.default_chat_model ?? ""}
+								onChange={(e) =>
+									setOrg(
+										org
+											? {
+													...org,
+													default_chat_model: e.target.value || null,
+												}
+											: null,
+									)
+								}
+								placeholder="model_id (or leave blank for platform floor)"
+								className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+							/>
+							<datalist id="default-model-suggestions">
+								{allowed.map((m) => (
+									<option key={m} value={m} />
+								))}
+							</datalist>
+						</>
 					)}
 				</CardContent>
 			</Card>
