@@ -50,6 +50,8 @@ import {
 	COST_TIER_GLYPH,
 	COST_TIER_LABEL,
 	listPlatformModels,
+	lookupModel,
+	resellerForEndpoint,
 	type CostTier,
 	type PlatformModel,
 } from "@/services/platformModels";
@@ -93,6 +95,17 @@ export function ModelsSettings() {
 
 	const [platformModels, setPlatformModels] = useState<PlatformModel[]>([]);
 	const [org, setOrg] = useState<OrgModelSettings | null>(null);
+
+	// Endpoint comes from LLMConfig — used to derive the reseller key for the
+	// three-step capability lookup chain. Same query LLMConfig.tsx uses, so
+	// react-query dedupes.
+	const llmConfigQuery = $api.useQuery(
+		"get",
+		"/api/admin/llm/config",
+		undefined,
+		{ staleTime: 5 * 60 * 1000 },
+	);
+	const reseller = resellerForEndpoint(llmConfigQuery.data?.endpoint ?? null);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -146,23 +159,35 @@ export function ModelsSettings() {
 		};
 	}, [orgId]);
 
-	// Build a tier index from platform_models so we can group provider entries.
-	const tierByModelId = useMemo(() => {
-		const idx: Record<string, CostTier> = {};
-		for (const m of platformModels) {
-			idx[m.model_id] = (m.cost_tier as CostTier) ?? "balanced";
-		}
+	// Resolve each provider-returned model_id to its catalog row using the
+	// three-step fallback chain (prefixed → bare → suffix). The result is the
+	// authoritative source for tier, display name, etc.
+	const platformByModelId = useMemo(() => {
+		const idx: Record<string, PlatformModel> = {};
+		for (const m of platformModels) idx[m.model_id] = m;
 		return idx;
 	}, [platformModels]);
 
-	const displayNameByModelId = useMemo(() => {
-		const idx: Record<string, string> = {};
-		for (const m of platformModels) idx[m.model_id] = m.display_name;
+	const matchByProviderId = useMemo(() => {
+		const idx: Record<string, PlatformModel | null> = {};
 		for (const p of providerModels ?? []) {
-			if (!idx[p.id]) idx[p.id] = p.display_name || p.id;
+			idx[p.id] = lookupModel(p.id, reseller, platformByModelId);
 		}
 		return idx;
-	}, [platformModels, providerModels]);
+	}, [providerModels, reseller, platformByModelId]);
+
+	function tierFor(modelId: string): SectionKey {
+		const match = matchByProviderId[modelId];
+		if (!match) return "uncategorized";
+		return (match.cost_tier as CostTier) ?? "balanced";
+	}
+
+	function displayFor(modelId: string): string {
+		const match = matchByProviderId[modelId];
+		if (match?.display_name) return match.display_name;
+		const fromProvider = providerModels?.find((p) => p.id === modelId);
+		return fromProvider?.display_name || modelId;
+	}
 
 	// Group the provider's catalog by tier (uncategorized for unknown).
 	const providerOptionsBySection = useMemo(() => {
@@ -173,10 +198,10 @@ export function ModelsSettings() {
 			uncategorized: [],
 		};
 		for (const p of providerModels ?? []) {
-			const tier: SectionKey = tierByModelId[p.id] ?? "uncategorized";
+			const tier = tierFor(p.id);
 			out[tier].push({
 				value: p.id,
-				label: `${SECTION_GLYPH[tier]} ${displayNameByModelId[p.id] ?? p.id}`,
+				label: displayFor(p.id),
 				description: p.id,
 			});
 		}
@@ -184,7 +209,8 @@ export function ModelsSettings() {
 			out[k].sort((a, b) => a.label.localeCompare(b.label));
 		}
 		return out;
-	}, [providerModels, tierByModelId, displayNameByModelId]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [providerModels, matchByProviderId]);
 
 	// Slice the org allowlist by section so each input shows only its own.
 	const allowed = useMemo(
@@ -199,19 +225,16 @@ export function ModelsSettings() {
 			uncategorized: [],
 		};
 		for (const id of allowed) {
-			const tier: SectionKey = tierByModelId[id] ?? "uncategorized";
-			out[tier].push(id);
+			out[tierFor(id)].push(id);
 		}
 		return out;
-	}, [allowed, tierByModelId]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [allowed, matchByProviderId]);
 
 	function setAllowedForSection(section: SectionKey, ids: string[]) {
 		if (!org) return;
 		// Replace this section's slice; keep other sections' selections intact.
-		const others = allowed.filter((id) => {
-			const t: SectionKey = tierByModelId[id] ?? "uncategorized";
-			return t !== section;
-		});
+		const others = allowed.filter((id) => tierFor(id) !== section);
 		setOrg({ ...org, allowed_chat_models: [...others, ...ids] });
 	}
 
@@ -374,16 +397,11 @@ export function ModelsSettings() {
 									.filter(
 										(m) => allowed.length === 0 || allowed.includes(m.id),
 									)
-									.map((m) => {
-										const tier: SectionKey =
-											tierByModelId[m.id] ?? "uncategorized";
-										return (
-											<SelectItem key={m.id} value={m.id}>
-												{SECTION_GLYPH[tier]}{" "}
-												{displayNameByModelId[m.id] ?? m.id}
-											</SelectItem>
-										);
-									})}
+									.map((m) => (
+										<SelectItem key={m.id} value={m.id}>
+											{displayFor(m.id)}
+										</SelectItem>
+									))}
 							</SelectContent>
 						</Select>
 					) : (
