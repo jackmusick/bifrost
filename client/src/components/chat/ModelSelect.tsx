@@ -1,0 +1,399 @@
+/**
+ * ModelSelect
+ *
+ * Canonical "pick a model" component. Used by the chat composer (single
+ * select), the org allowlist (multi select), the user/org default-model
+ * picker (single), and anywhere else we need to pick from the configured
+ * provider's catalog.
+ *
+ * Each row shows:
+ *   line 1: human display name
+ *   line 2: price ($/M), context window, capability icons (vision/tools/pdf/audio)
+ *
+ * Capability/price data comes from `platform_models` (synced from LiteLLM)
+ * resolved against the provider-returned model_id via the three-step lookup
+ * chain (<reseller>/<id> → <id> → suffix). Models with no catalog match
+ * still appear; their second line is just the raw model_id.
+ *
+ * No cost-tier sections, no Uncategorized bucket — the admin reads the price
+ * and decides for themselves.
+ */
+
+import { useMemo, useState } from "react";
+import { Check, ChevronsUpDown, FileText, Hammer, Image, Mic, X } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@/components/ui/command";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+	lookupModel,
+	type PlatformModel,
+} from "@/services/platformModels";
+
+export interface ModelSelectModel {
+	id: string;
+	display_name: string;
+	context_length?: number | null;
+	max_output_tokens?: number | null;
+	input_price_per_million?: number | null;
+	output_price_per_million?: number | null;
+	capabilities?: {
+		supports_images_in?: boolean;
+		supports_images_out?: boolean;
+		supports_pdf_in?: boolean;
+		supports_audio_in?: boolean;
+		supports_audio_out?: boolean;
+		supports_tool_use?: boolean;
+	} | null;
+}
+
+interface BaseProps {
+	/** Models the configured LLM provider exposes via /v1/models. */
+	models: ModelSelectModel[];
+	/** Catalog rows keyed by model_id (from platform_models / LiteLLM). */
+	catalog: Record<string, PlatformModel>;
+	/** Reseller key (openrouter, together_ai, etc.) for catalog lookup. Null = direct. */
+	reseller: string | null;
+	/** Restrict choices (e.g. for default-model when an allowlist is set). */
+	restrictToIds?: string[];
+	placeholder?: string;
+	disabled?: boolean;
+	className?: string;
+	/** Subtle ghost-styled trigger for embedding inline in toolbars. */
+	compact?: boolean;
+}
+
+interface SingleProps extends BaseProps {
+	multiple?: false;
+	value: string | null;
+	onChange: (value: string | null) => void;
+	/** Show a "Clear" button next to the trigger when there's a value. */
+	clearable?: boolean;
+}
+
+interface MultiProps extends BaseProps {
+	multiple: true;
+	value: string[];
+	onChange: (value: string[]) => void;
+}
+
+type Props = SingleProps | MultiProps;
+
+interface RichRow {
+	id: string;
+	display: string;
+	price: string | null;
+	context: string | null;
+	caps: string[]; // icon keys
+	match: PlatformModel | null;
+}
+
+function fmtPrice(
+	input: number | string | null | undefined,
+	output: number | string | null | undefined,
+): string | null {
+	const ni = input == null ? null : Number(input);
+	const no = output == null ? null : Number(output);
+	const valid = (n: number | null): n is number => n != null && Number.isFinite(n);
+	if (!valid(ni) && !valid(no)) return null;
+	const fmt = (n: number) => (n < 0.01 ? n.toFixed(4) : n.toFixed(2));
+	const i = valid(ni) ? `$${fmt(ni)}` : "—";
+	const o = valid(no) ? `$${fmt(no)}` : "—";
+	return `${i} / ${o} per M`;
+}
+
+function fmtContext(ctx: number | null | undefined): string | null {
+	if (!ctx || ctx <= 0) return null;
+	if (ctx >= 1_000_000) return `${(ctx / 1_000_000).toFixed(ctx % 1_000_000 === 0 ? 0 : 1)}M ctx`;
+	if (ctx >= 1_000) return `${Math.round(ctx / 1_000)}k ctx`;
+	return `${ctx} ctx`;
+}
+
+function pickDisplay(
+	providerId: string,
+	providerName: string | undefined,
+	catalogName: string | undefined,
+): string {
+	const cleanId = providerId.replace(/(^|\/)~/g, "$1");
+	// Prefer the provider's name when it's actually human (different from the
+	// raw id and not just the same string with a leading tilde).
+	const pn = providerName?.trim();
+	if (pn && pn !== providerId && pn !== cleanId) return pn;
+	// Fallback to catalog display when it's at least as informative as the id.
+	const cn = catalogName?.trim();
+	if (cn && cn !== providerId && cn !== cleanId) return cn;
+	// Last resort: the tilde-stripped id.
+	return cleanId;
+}
+
+function buildRows(props: Props): RichRow[] {
+	const { models, catalog, reseller, restrictToIds } = props;
+	const restrict = restrictToIds && restrictToIds.length > 0 ? new Set(restrictToIds) : null;
+	const rows = models
+		.filter((m) => !restrict || restrict.has(m.id))
+		.map((m): RichRow => {
+			// Prefer the provider's own rich data when it gave us any.
+			// OpenRouter populates pricing/capabilities/context inline; the
+			// LiteLLM catalog is only consulted when the provider didn't.
+			const inlineCaps = m.capabilities ?? null;
+			const inlinePrice =
+				m.input_price_per_million != null || m.output_price_per_million != null;
+			const inlineCtx = m.context_length != null;
+			const needCatalog =
+				inlineCaps == null || !inlinePrice || !inlineCtx;
+			const match = needCatalog ? lookupModel(m.id, reseller, catalog) : null;
+
+			const caps: string[] = [];
+			const c = inlineCaps ?? match?.capabilities ?? null;
+			if (c?.supports_images_in) caps.push("vision");
+			if (c?.supports_tool_use) caps.push("tools");
+			if (c?.supports_pdf_in) caps.push("pdf");
+			if (c?.supports_audio_in) caps.push("audio");
+
+			const inputPrice =
+				m.input_price_per_million ?? match?.input_price_per_million ?? null;
+			const outputPrice =
+				m.output_price_per_million ?? match?.output_price_per_million ?? null;
+			const contextLen = m.context_length ?? match?.context_window ?? null;
+
+			return {
+				id: m.id,
+				display: pickDisplay(m.id, m.display_name, match?.display_name),
+				price: fmtPrice(inputPrice, outputPrice),
+				context: fmtContext(contextLen),
+				caps,
+				match,
+			};
+		})
+		.sort((a, b) => a.display.localeCompare(b.display));
+	return rows;
+}
+
+function CapIcon({ kind }: { kind: string }) {
+	const cls = "h-3 w-3 text-muted-foreground";
+	if (kind === "vision") return <Image aria-label="vision" className={cls} />;
+	if (kind === "tools") return <Hammer aria-label="tool use" className={cls} />;
+	if (kind === "pdf") return <FileText aria-label="pdf" className={cls} />;
+	if (kind === "audio") return <Mic aria-label="audio" className={cls} />;
+	return null;
+}
+
+// Reserve a fixed column width for each meta cell so rows align across the
+// dropdown — without this, icon clusters and price strings of different
+// widths cause the second line to "dance" between rows.
+const PRICE_COL = "w-[8.5rem]";
+const CONTEXT_COL = "w-[4.5rem]";
+const CAPS_COL = "w-[5rem]";
+
+function RowMeta({ row }: { row: RichRow }) {
+	return (
+		<div className="flex items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
+			<span className={cn(PRICE_COL, "font-mono shrink-0")}>{row.price ?? "?"}</span>
+			<span className={cn(CONTEXT_COL, "font-mono shrink-0")}>
+				{row.context ?? "?"}
+			</span>
+			<span className={cn(CAPS_COL, "flex items-center gap-1 shrink-0")}>
+				{row.caps.length > 0
+					? row.caps.map((c) => <CapIcon key={c} kind={c} />)
+					: null}
+			</span>
+		</div>
+	);
+}
+
+export function ModelSelect(props: Props) {
+	const {
+		placeholder = "Choose a model…",
+		disabled = false,
+		className,
+		compact = false,
+	} = props;
+	const [open, setOpen] = useState(false);
+	const rows = useMemo(() => buildRows(props), [props]);
+	const rowsById = useMemo(() => {
+		const m: Record<string, RichRow> = {};
+		for (const r of rows) m[r.id] = r;
+		return m;
+	}, [rows]);
+
+	const isMulti = props.multiple === true;
+	const selectedIds: string[] = isMulti
+		? (props as MultiProps).value
+		: (props as SingleProps).value
+			? [(props as SingleProps).value as string]
+			: [];
+
+	function toggle(id: string) {
+		if (isMulti) {
+			const cur = (props as MultiProps).value;
+			(props as MultiProps).onChange(
+				cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
+			);
+		} else {
+			(props as SingleProps).onChange(id);
+			setOpen(false);
+		}
+	}
+
+	function removeOne(id: string) {
+		if (isMulti) {
+			(props as MultiProps).onChange((props as MultiProps).value.filter((x) => x !== id));
+		} else {
+			(props as SingleProps).onChange(null);
+		}
+	}
+
+	const triggerLabel = (() => {
+		if (selectedIds.length === 0) return placeholder;
+		if (isMulti) return `${selectedIds.length} selected`;
+		const sole = selectedIds[0];
+		return rowsById[sole]?.display ?? sole;
+	})();
+
+	const isClearable = !isMulti && (props as SingleProps).clearable === true;
+	const hasValueForClear = !isMulti && selectedIds.length > 0;
+
+	return (
+		<div className={cn("space-y-2", className)}>
+			<div className="flex items-center gap-2">
+				<Popover open={open} onOpenChange={setOpen}>
+					<PopoverTrigger asChild>
+						{compact ? (
+							<Button
+								variant="ghost"
+								size="sm"
+								role="combobox"
+								disabled={disabled}
+								className="h-8 gap-1 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
+							>
+								<span className="truncate">{triggerLabel}</span>
+								<ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+							</Button>
+						) : (
+							<Button
+								variant="outline"
+								role="combobox"
+								disabled={disabled}
+								className="flex-1 justify-between font-normal"
+							>
+								<span
+									className={cn(
+										"truncate",
+										selectedIds.length === 0 && "text-muted-foreground",
+									)}
+								>
+									{triggerLabel}
+								</span>
+								<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+							</Button>
+						)}
+					</PopoverTrigger>
+				<PopoverContent
+					className={cn(
+						"p-0",
+						// Match trigger width by default; in compact mode the trigger
+						// is small (just "model name ▾") so we let the popover size
+						// to its own content with a comfortable minimum.
+						compact
+							? "w-[28rem] max-w-[calc(100vw-2rem)]"
+							: "w-[var(--radix-popover-trigger-width)]",
+					)}
+					align="start"
+				>
+					<Command
+						filter={(value, search, keywords) => {
+							// cmdk's default fuzzy matcher accepts split-letter matches
+							// across long strings (typing "opus" matches things with no
+							// "opus" substring). Replace with a plain case-insensitive
+							// substring match against value + keywords.
+							const q = search.trim().toLowerCase();
+							if (!q) return 1;
+							const haystack = [value, ...(keywords ?? [])]
+								.filter(Boolean)
+								.join(" ")
+								.toLowerCase();
+							return haystack.includes(q) ? 1 : 0;
+						}}
+					>
+						<CommandInput placeholder="Search models…" />
+						<CommandList className="max-h-72">
+							<CommandEmpty>No matches.</CommandEmpty>
+							<CommandGroup>
+								{rows.map((row) => {
+									const checked = selectedIds.includes(row.id);
+									return (
+										<CommandItem
+											key={row.id}
+											value={row.id}
+											keywords={[row.display, row.id]}
+											onSelect={() => toggle(row.id)}
+											className="flex items-start gap-2 py-2"
+										>
+											<div
+												aria-hidden
+												className="mt-1 h-4 w-4 shrink-0 flex items-center justify-center"
+											>
+												{checked ? <Check className="h-4 w-4" /> : null}
+											</div>
+											<div className="flex-1 min-w-0">
+												<div className="text-sm">{row.display}</div>
+												<RowMeta row={row} />
+											</div>
+										</CommandItem>
+									);
+								})}
+							</CommandGroup>
+						</CommandList>
+					</Command>
+				</PopoverContent>
+			</Popover>
+			{isClearable && hasValueForClear && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => (props as SingleProps).onChange(null)}
+						aria-label="Clear selection"
+						title="Clear"
+					>
+						<X className="h-4 w-4" />
+					</Button>
+				)}
+			</div>
+
+			{isMulti && selectedIds.length > 0 && (
+				<div className="flex flex-wrap gap-1">
+					{selectedIds.map((id) => {
+						const row = rowsById[id];
+						return (
+							<Badge key={id} variant="secondary" className="gap-1.5 pr-1">
+								<span>{row?.display ?? id}</span>
+								<button
+									type="button"
+									aria-label={`Remove ${row?.display ?? id}`}
+									className="rounded p-0.5 hover:bg-background/40"
+									onClick={() => removeOne(id)}
+								>
+									<X className="h-3 w-3" />
+								</button>
+							</Badge>
+						);
+					})}
+				</div>
+			)}
+		</div>
+	);
+}

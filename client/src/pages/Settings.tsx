@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { $api } from "@/lib/api-client";
 import { WorkflowKeys } from "@/pages/settings/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
 import { Email } from "@/pages/settings/Email";
 import { OAuth } from "@/pages/settings/OAuth";
 import { GitHub } from "@/pages/settings/GitHub";
 import { LLMConfig } from "@/pages/settings/LLMConfig";
+import { ModelsSettings } from "@/pages/settings/ModelsSettings";
 import { MCP } from "@/pages/settings/MCP";
 import { Maintenance } from "@/pages/settings/Maintenance";
 import { Bot, Key, Mail, Palette, Plug, Shield, Wrench } from "lucide-react";
@@ -15,6 +17,17 @@ import { Github } from "@/components/icons/GithubIcon";
 export function Settings() {
 	const navigate = useNavigate();
 	const location = useLocation();
+
+	// Hide the per-org Models section until the LLM provider is configured —
+	// curating an allowlist when no provider exists is meaningless and the
+	// /api/organizations endpoint may not even be reachable for the user yet.
+	const { data: llmConfig } = $api.useQuery(
+		"get",
+		"/api/admin/llm/config",
+		undefined,
+		{ staleTime: 5 * 60 * 1000 },
+	);
+	const aiConfigured = Boolean(llmConfig?.provider && llmConfig?.model);
 
 	// Parse the current tab from the URL path
 	const currentTab = location.pathname.split("/settings/")[1] || "ai";
@@ -79,8 +92,9 @@ export function Settings() {
 				</TabsList>
 				</div>
 
-				<TabsContent value="ai" className="mt-6">
+				<TabsContent value="ai" className="mt-6 space-y-6">
 					<LLMConfig />
+					{aiConfigured && <ModelsSettings />}
 				</TabsContent>
 
 				<TabsContent value="mcp" className="mt-6">

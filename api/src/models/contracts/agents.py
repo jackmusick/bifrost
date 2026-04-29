@@ -190,11 +190,18 @@ class ConversationCreate(BaseModel):
 
 
 class ConversationUpdate(BaseModel):
-    """Patch model for updating a conversation. Today only `workspace_id` is
-    mutable — used by the 'Move to workspace' affordance."""
+    """Patch model for updating a conversation."""
     workspace_id: UUID | None = Field(
         default=None,
         description="New workspace id (or null to move to the general pool).",
+    )
+    current_model: str | None = Field(
+        default=None,
+        description=(
+            "Model to use for this conversation going forward. Set by the "
+            "chat picker. Resolved through the cascade — must be in the "
+            "user's allowed set."
+        ),
     )
 
 
@@ -206,6 +213,7 @@ class ConversationPublic(BaseModel):
     agent_id: UUID | None = None
     user_id: UUID
     workspace_id: UUID | None = None
+    current_model: str | None = None
     channel: str
     title: str | None = None
     is_active: bool

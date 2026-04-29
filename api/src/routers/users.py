@@ -11,7 +11,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
-from src.core.auth import CurrentSuperuser
+from pydantic import BaseModel
+
+from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
 from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter, OrgFilterType
@@ -393,3 +395,35 @@ async def get_user_forms(
         has_access_to_all_forms=False,
         form_ids=form_ids,
     )
+
+
+class UserChatPreferences(BaseModel):
+    default_chat_model: str | None = None
+
+
+@router.get("/me/preferences", response_model=UserChatPreferences)
+async def get_my_preferences(
+    user: CurrentActiveUser,
+    db: DbSession,
+) -> UserChatPreferences:
+    """Return the current user's chat preferences (per-user default model)."""
+    me = await db.get(UserORM, user.user_id)
+    if me is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserChatPreferences(default_chat_model=me.default_chat_model)
+
+
+@router.patch("/me/preferences", response_model=UserChatPreferences)
+async def update_my_preferences(
+    payload: UserChatPreferences,
+    user: CurrentActiveUser,
+    db: DbSession,
+) -> UserChatPreferences:
+    """Update the current user's chat preferences."""
+    me = await db.get(UserORM, user.user_id)
+    if me is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    me.default_chat_model = payload.default_chat_model
+    me.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    return UserChatPreferences(default_chat_model=me.default_chat_model)

@@ -179,6 +179,7 @@ class Conversation(Base):
     )
     channel: Mapped[str] = mapped_column(String(50), default="chat")
     title: Mapped[str | None] = mapped_column(String(500), default=None)
+    current_model: Mapped[str | None] = mapped_column(String(255), default=None)
     extra_data: Mapped[dict] = mapped_column(JSONB, default={})  # Channel-specific metadata
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -246,6 +247,7 @@ class Message(Base):
     token_count_input: Mapped[int | None] = mapped_column(Integer, default=None)
     token_count_output: Mapped[int | None] = mapped_column(Integer, default=None)
     model: Mapped[str | None] = mapped_column(String(100), default=None)
+    cost_tier: Mapped[str | None] = mapped_column(String(20), default=None)
     duration_ms: Mapped[int | None] = mapped_column(Integer, default=None)
     # Order within conversation
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -18,6 +18,7 @@ from src.models.contracts.llm import (
     EmbeddingTestResponse,
     LLMConfigRequest,
     LLMConfigResponse,
+    LLMModelCapabilities,
     LLMModelInfo,
     LLMModelsResponse,
     LLMTestRequest,
@@ -37,6 +38,32 @@ router = APIRouter(
     tags=["LLM Configuration"],
     dependencies=[RequirePlatformAdmin],  # All endpoints require platform admin
 )
+
+
+def _to_pydantic(m) -> LLMModelInfo:
+    """Convert the service-layer dataclass to the wire schema, preserving
+    rich fields (pricing, capabilities, context) when the provider supplied
+    them."""
+    caps = None
+    src = getattr(m, "capabilities", None)
+    if src is not None:
+        caps = LLMModelCapabilities(
+            supports_images_in=src.supports_images_in,
+            supports_images_out=src.supports_images_out,
+            supports_pdf_in=src.supports_pdf_in,
+            supports_audio_in=src.supports_audio_in,
+            supports_audio_out=src.supports_audio_out,
+            supports_tool_use=src.supports_tool_use,
+        )
+    return LLMModelInfo(
+        id=m.id,
+        display_name=m.display_name,
+        context_length=getattr(m, "context_length", None),
+        max_output_tokens=getattr(m, "max_output_tokens", None),
+        input_price_per_million=getattr(m, "input_price_per_million", None),
+        output_price_per_million=getattr(m, "output_price_per_million", None),
+        capabilities=caps,
+    )
 
 
 @router.get("/config")
@@ -199,7 +226,7 @@ async def test_llm_connection(
     return LLMTestResponse(
         success=result.success,
         message=result.message,
-        models=[LLMModelInfo(id=m.id, display_name=m.display_name) for m in result.models] if result.models else None,
+        models=[_to_pydantic(m) for m in result.models] if result.models else None,
     )
 
 
@@ -233,7 +260,7 @@ async def test_saved_llm_connection(
     return LLMTestResponse(
         success=result.success,
         message=result.message,
-        models=[LLMModelInfo(id=m.id, display_name=m.display_name) for m in result.models] if result.models else None,
+        models=[_to_pydantic(m) for m in result.models] if result.models else None,
     )
 
 
@@ -266,7 +293,7 @@ async def list_llm_models(
         )
 
     return LLMModelsResponse(
-        models=[LLMModelInfo(id=m.id, display_name=m.display_name) for m in models],
+        models=[_to_pydantic(m) for m in models],
         provider=config.provider,
     )
 

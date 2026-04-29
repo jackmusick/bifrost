@@ -13,6 +13,8 @@ class OrganizationCreate(BaseModel):
     is_active: bool = Field(default=True)
     is_provider: bool = Field(default=False)
     settings: dict = Field(default_factory=dict)
+    allowed_chat_models: list[str] = Field(default_factory=list)
+    default_chat_model: str | None = None
 
 
 class OrganizationUpdate(BaseModel):
@@ -22,3 +24,5 @@ class OrganizationUpdate(BaseModel):
     domain: str | None = None
     is_active: bool | None = None
     settings: dict | None = None
+    allowed_chat_models: list[str] | None = None
+    default_chat_model: str | None = None

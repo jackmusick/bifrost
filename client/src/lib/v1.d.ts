@@ -1345,6 +1345,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Preferences
+         * @description Return the current user's chat preferences (per-user default model).
+         */
+        get: operations["get_my_preferences_api_users_me_preferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update My Preferences
+         * @description Update the current user's chat preferences.
+         */
+        patch: operations["update_my_preferences_api_users_me_preferences_patch"];
+        trace?: never;
+    };
     "/api/roles": {
         parameters: {
             query?: never;
@@ -3468,22 +3492,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5213,6 +5237,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/model-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chat Model Context
+         * @description Return the picker's effective allowlist + default for the current user.
+         */
+        get: operations["get_chat_model_context_api_chat_model_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/conversations": {
         parameters: {
             query?: never;
@@ -6077,6 +6121,83 @@ export interface paths {
          * @description Delete an existing model pricing entry.
          */
         delete: operations["delete_pricing_api_settings_ai_pricing__pricing_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/models/referenced-allowlist-ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * All model_ids currently in any org's allowlist
+         * @description Used by the LLMConfig save flow to know which models are at risk of becoming unreachable when the provider changes. The frontend diffs this against the new provider's /v1/models response and passes the difference to /preview-allowlist-migration.
+         */
+        get: operations["list_referenced_allowlist_ids_api_admin_models_referenced_allowlist_ids_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/platform-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List platform model catalog
+         * @description Active models from the global registry (synced from LiteLLM).
+         */
+        get: operations["list_platform_models_api_platform_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/models/preview-allowlist-migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview which orgs reference soon-to-be-unreachable models */
+        post: operations["preview_allowlist_migration_api_admin_models_preview_allowlist_migration_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/models/apply-allowlist-migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply allowlist replacements platform-wide
+         * @description For each unreachable model_id, swap it to the new model_id in every org's allowed_chat_models, or drop it (replacement = null). One platform-wide ModelDeprecation row is added per (old → new) pair so any in-flight string references also remap.
+         */
+        post: operations["apply_allowlist_migration_endpoint_api_admin_models_apply_allowlist_migration_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -10175,6 +10296,22 @@ export interface components {
             logs?: components["schemas"]["CLISessionLogRequest"][];
         };
         /**
+         * ChatModelContext
+         * @description What the chat picker needs to render the right options.
+         *
+         *     `allowed_chat_models`: the org's allowlist (empty list = "no narrowing,
+         *     only the default model is selectable").
+         *     `default_chat_model`: the resolved default model_id (org > role >
+         *     workspace > user → first non-null). The picker shows this when the
+         *     allowlist is empty.
+         */
+        ChatModelContext: {
+            /** Allowed Chat Models */
+            allowed_chat_models: string[];
+            /** Default Chat Model */
+            default_chat_model: string | null;
+        };
+        /**
          * ChatRequest
          * @description Request for sending a chat message.
          */
@@ -10541,6 +10678,8 @@ export interface components {
             user_id: string;
             /** Workspace Id */
             workspace_id?: string | null;
+            /** Current Model */
+            current_model?: string | null;
             /** Channel */
             channel: string;
             /** Title */
@@ -10580,8 +10719,7 @@ export interface components {
         };
         /**
          * ConversationUpdate
-         * @description Patch model for updating a conversation. Today only `workspace_id` is
-         *     mutable — used by the 'Move to workspace' affordance.
+         * @description Patch model for updating a conversation.
          */
         ConversationUpdate: {
             /**
@@ -10589,6 +10727,11 @@ export interface components {
              * @description New workspace id (or null to move to the general pool).
              */
             workspace_id?: string | null;
+            /**
+             * Current Model
+             * @description Model to use for this conversation going forward. Set by the chat picker. Resolved through the cascade — must be in the user's allowed set.
+             */
+            current_model?: string | null;
         };
         /**
          * ConversationUsage
@@ -14593,14 +14736,65 @@ export interface components {
             api_key_set: boolean;
         };
         /**
+         * LLMModelCapabilities
+         * @description Capability flags surfaced by the provider's /v1/models response.
+         */
+        LLMModelCapabilities: {
+            /**
+             * Supports Images In
+             * @default false
+             */
+            supports_images_in: boolean;
+            /**
+             * Supports Images Out
+             * @default false
+             */
+            supports_images_out: boolean;
+            /**
+             * Supports Pdf In
+             * @default false
+             */
+            supports_pdf_in: boolean;
+            /**
+             * Supports Audio In
+             * @default false
+             */
+            supports_audio_in: boolean;
+            /**
+             * Supports Audio Out
+             * @default false
+             */
+            supports_audio_out: boolean;
+            /**
+             * Supports Tool Use
+             * @default false
+             */
+            supports_tool_use: boolean;
+        };
+        /**
          * LLMModelInfo
-         * @description Model information with both ID and display name.
+         * @description Model info with optional rich metadata when the provider supplies it.
+         *
+         *     OpenRouter's /v1/models response includes pricing, capabilities, context
+         *     length, and a human display name — we pass those through directly so the
+         *     UI doesn't need a secondary capability lookup. For providers that only
+         *     return id+name (Anthropic, OpenAI direct), the rich fields stay None and
+         *     the frontend falls back to the LiteLLM catalog lookup chain.
          */
         LLMModelInfo: {
             /** Id */
             id: string;
             /** Display Name */
             display_name: string;
+            /** Context Length */
+            context_length?: number | null;
+            /** Max Output Tokens */
+            max_output_tokens?: number | null;
+            /** Input Price Per Million */
+            input_price_per_million?: number | null;
+            /** Output Price Per Million */
+            output_price_per_million?: number | null;
+            capabilities?: components["schemas"]["LLMModelCapabilities"] | null;
         };
         /**
          * LLMModelsResponse
@@ -15711,6 +15905,18 @@ export interface components {
              */
             display_name: string;
         };
+        /** OrgAllowlistImpactRow */
+        OrgAllowlistImpactRow: {
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Organization Name */
+            organization_name: string;
+            /** Orphaned Model Ids */
+            orphaned_model_ids: string[];
+        };
         /**
          * OrganizationCreate
          * @description Input for creating an organization.
@@ -15734,6 +15940,10 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /** Allowed Chat Models */
+            allowed_chat_models?: string[];
+            /** Default Chat Model */
+            default_chat_model?: string | null;
         };
         /**
          * OrganizationMetricsResponse
@@ -15792,6 +16002,10 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /** Allowed Chat Models */
+            allowed_chat_models?: string[];
+            /** Default Chat Model */
+            default_chat_model?: string | null;
             /**
              * Id
              * Format: uuid
@@ -15837,6 +16051,10 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             } | null;
+            /** Allowed Chat Models */
+            allowed_chat_models?: string[] | null;
+            /** Default Chat Model */
+            default_chat_model?: string | null;
         };
         /**
          * OrganizationUsage
@@ -16248,6 +16466,38 @@ export interface components {
             affected_entities?: components["schemas"]["AffectedEntity"][];
         };
         /**
+         * PlatformAllowlistApplyRequest
+         * @description For each unreachable model, swap to a new model_id or drop (None).
+         */
+        PlatformAllowlistApplyRequest: {
+            /** Replacements */
+            replacements: {
+                [key: string]: string | null;
+            };
+        };
+        /** PlatformAllowlistApplyResponse */
+        PlatformAllowlistApplyResponse: {
+            /** Orgs Rewritten */
+            orgs_rewritten: number;
+            /** Deprecations Added */
+            deprecations_added: number;
+        };
+        /**
+         * PlatformAllowlistPreviewRequest
+         * @description Models that will become unreachable after the imminent change.
+         */
+        PlatformAllowlistPreviewRequest: {
+            /** Unreachable Model Ids */
+            unreachable_model_ids: string[];
+        };
+        /** PlatformAllowlistPreviewResponse */
+        PlatformAllowlistPreviewResponse: {
+            /** Affected Orgs */
+            affected_orgs: components["schemas"]["OrgAllowlistImpactRow"][];
+            /** Total Orgs */
+            total_orgs: number;
+        };
+        /**
          * PlatformMetricsResponse
          * @description Platform metrics snapshot response.
          *
@@ -16293,6 +16543,70 @@ export interface components {
             success_rate_24h: number;
             /** Refreshed At */
             refreshed_at: string;
+        };
+        /** PlatformModelCapabilities */
+        PlatformModelCapabilities: {
+            /**
+             * Supports Images In
+             * @default false
+             */
+            supports_images_in: boolean;
+            /**
+             * Supports Images Out
+             * @default false
+             */
+            supports_images_out: boolean;
+            /**
+             * Supports Pdf In
+             * @default false
+             */
+            supports_pdf_in: boolean;
+            /**
+             * Supports Tool Use
+             * @default false
+             */
+            supports_tool_use: boolean;
+            /**
+             * Supports Audio In
+             * @default false
+             */
+            supports_audio_in: boolean;
+            /**
+             * Supports Audio Out
+             * @default false
+             */
+            supports_audio_out: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PlatformModelListResponse */
+        PlatformModelListResponse: {
+            /** Models */
+            models: components["schemas"]["PlatformModelPublic"][];
+        };
+        /** PlatformModelPublic */
+        PlatformModelPublic: {
+            /** Model Id */
+            model_id: string;
+            /** Provider */
+            provider: string;
+            /** Display Name */
+            display_name: string;
+            /** Cost Tier */
+            cost_tier: string;
+            /** Context Window */
+            context_window?: number | null;
+            /** Max Output Tokens */
+            max_output_tokens?: number | null;
+            /** Input Price Per Million */
+            input_price_per_million?: string | null;
+            /** Output Price Per Million */
+            output_price_per_million?: string | null;
+            capabilities?: components["schemas"]["PlatformModelCapabilities"];
+            /** Deprecated At */
+            deprecated_at?: string | null;
+            /** Is Active */
+            is_active: boolean;
         };
         /**
          * PoolDetail
@@ -19096,6 +19410,11 @@ export interface components {
              * @default 0
              */
             output_tokens: number;
+        };
+        /** UserChatPreferences */
+        UserChatPreferences: {
+            /** Default Chat Model */
+            default_chat_model?: string | null;
         };
         /**
          * UserFormsResponse
@@ -22129,6 +22448,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserFormsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_preferences_api_users_me_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserChatPreferences"];
+                };
+            };
+        };
+    };
+    update_my_preferences_api_users_me_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserChatPreferences"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserChatPreferences"];
                 };
             };
             /** @description Validation Error */
@@ -25975,7 +26347,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26008,7 +26380,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26041,7 +26413,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26074,7 +26446,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28881,6 +29253,26 @@ export interface operations {
             };
         };
     };
+    get_chat_model_context_api_chat_model_context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatModelContext"];
+                };
+            };
+        };
+    };
     list_conversations_api_chat_conversations_get: {
         parameters: {
             query?: {
@@ -30536,6 +30928,112 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_referenced_allowlist_ids_api_admin_models_referenced_allowlist_ids_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    list_platform_models_api_platform_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformModelListResponse"];
+                };
+            };
+        };
+    };
+    preview_allowlist_migration_api_admin_models_preview_allowlist_migration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformAllowlistPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformAllowlistPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_allowlist_migration_endpoint_api_admin_models_apply_allowlist_migration_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformAllowlistApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformAllowlistApplyResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

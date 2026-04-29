@@ -64,6 +64,7 @@ class Workspace(Base):
     enabled_tool_ids: Mapped[list[str] | None] = mapped_column(JSONB, default=None)
     enabled_knowledge_source_ids: Mapped[list[str] | None] = mapped_column(JSONB, default=None)
     instructions: Mapped[str | None] = mapped_column(Text, default=None)
+    default_model: Mapped[str | None] = mapped_column(String(255), default=None)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

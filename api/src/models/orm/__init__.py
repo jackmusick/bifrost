@@ -34,6 +34,7 @@ from src.models.orm.metrics import ExecutionMetricsDaily, KnowledgeStorageDaily,
 from src.models.orm.mfa import MFARecoveryCode, TrustedDevice, UserMFAMethod, UserOAuthAccount
 from src.models.orm.oauth import OAuthProvider, OAuthToken
 from src.models.orm.organizations import Organization
+from src.models.orm.platform_models import ModelDeprecation, OrgModelAlias, PlatformModel
 from src.models.orm.tables import Document, Table
 from src.models.orm.users import Role, User, UserRole
 from src.models.orm.workflow_roles import WorkflowRole
@@ -130,4 +131,8 @@ __all__ = [
     "Document",
     # Workspaces (Chat V2)
     "Workspace",
+    # Platform Model Registry (Chat V2)
+    "PlatformModel",
+    "OrgModelAlias",
+    "ModelDeprecation",
 ]

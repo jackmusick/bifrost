@@ -34,7 +34,7 @@ from src.models.contracts.agents import (
     ToolResult,
 )
 from src.models.enums import MessageRole
-from src.models.orm import Agent, Conversation, Message, Workflow
+from src.models.orm import Agent, Conversation, Message, User, Workflow
 from src.services.llm import (
     LLMMessage,
     ToolCallRequest,
@@ -289,8 +289,42 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             total_input_tokens = 0
             total_output_tokens = 0
 
-            # Extract agent LLM overrides
-            model_override = agent.llm_model if agent else None
+            # Resolve which model to use for this turn via the chat-V2
+            # resolver. Agent-level llm_model is honored as a "message
+            # override" so existing per-agent model pinning still works.
+            from shared.model_resolver import (
+                ModelResolutionContext,
+                resolve_model,
+            )
+
+            from src.models.orm.users import UserRole as _UserRole
+
+            async with self._db() as session:
+                user = await session.get(User, conversation.user_id)
+                if user is None or user.organization_id is None:
+                    raise ValueError(
+                        f"conversation {conversation.id} owner has no organization"
+                    )
+                role_id_rows = (
+                    await session.execute(
+                        select(_UserRole.role_id).where(
+                            _UserRole.user_id == conversation.user_id
+                        )
+                    )
+                ).all()
+                role_ids = tuple(rid for (rid,) in role_id_rows)
+                choice = await resolve_model(
+                    session,
+                    ModelResolutionContext(
+                        organization_id=user.organization_id,
+                        user_id=conversation.user_id,
+                        role_ids=role_ids,
+                        workspace_id=conversation.workspace_id,
+                        conversation_current_model=conversation.current_model,
+                        message_override=(agent.llm_model if agent else None),
+                    ),
+                )
+            model_override = choice.model_id
             max_tokens_override = agent.llm_max_tokens if agent else None
 
             # Track tool_call IDs across iterations to handle providers

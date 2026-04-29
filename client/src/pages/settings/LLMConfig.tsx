@@ -53,6 +53,14 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { ModelSelect } from "@/components/chat/ModelSelect";
+import { ModelMigrationModal } from "@/components/admin/ModelMigrationModal";
+import {
+	listPlatformModels,
+	resellerForEndpoint,
+	type PlatformModel,
+} from "@/services/platformModels";
+import { apiClient } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
 	Loader2,
@@ -113,6 +121,23 @@ export function LLMConfig() {
 
 	// Models state (loaded dynamically after test)
 	const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+	const [platformCatalog, setPlatformCatalog] = useState<Record<string, PlatformModel>>({});
+	useEffect(() => {
+		let cancelled = false;
+		listPlatformModels()
+			.then((res) => {
+				if (cancelled) return;
+				const idx: Record<string, PlatformModel> = {};
+				for (const m of res.models) idx[m.model_id] = m;
+				setPlatformCatalog(idx);
+			})
+			.catch(() => {
+				/* fine — picker still works, just without enriched info */
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 	const [modelsLoaded, setModelsLoaded] = useState(false);
 
 	// UI state
@@ -263,6 +288,36 @@ export function LLMConfig() {
 		}
 	};
 
+	// Migration modal state — opened when an LLMConfig save is about to make
+	// model_ids unreachable that some org's allowlist references.
+	const [migrationOpen, setMigrationOpen] = useState(false);
+	const [migrationCandidates, setMigrationCandidates] = useState<string[]>([]);
+
+	const performSave = async () => {
+		const isDefaultEndpoint = endpoint === DEFAULT_ENDPOINTS[provider];
+		await saveMutation.mutateAsync({
+			body: {
+				provider,
+				model,
+				api_key: apiKey || undefined,
+				endpoint: isDefaultEndpoint ? undefined : endpoint || undefined,
+				max_tokens: maxTokens,
+				default_system_prompt: defaultSystemPrompt || null,
+				summarization_model: summarizationModel || null,
+				tuning_model: tuningModel || null,
+			},
+		});
+
+		toast.success("Configuration saved", {
+			description: `Using ${provider} with model ${model}`,
+		});
+
+		setApiKey("");
+		setTestResult(null);
+		refetch();
+		setPricingRefreshKey((k) => k + 1);
+	};
+
 	// Save configuration
 	const handleSave = async () => {
 		if (!apiKey && !config?.api_key_set) {
@@ -277,31 +332,28 @@ export function LLMConfig() {
 
 		setSaving(true);
 		try {
-			const isDefaultEndpoint = endpoint === DEFAULT_ENDPOINTS[provider];
-			await saveMutation.mutateAsync({
-				body: {
-					provider,
-					model,
-					api_key: apiKey || undefined,
-					endpoint: isDefaultEndpoint ? undefined : endpoint || undefined,
-					max_tokens: maxTokens,
-					default_system_prompt: defaultSystemPrompt || null,
-					summarization_model: summarizationModel || null,
-					tuning_model: tuningModel || null,
-				},
-			});
+			// If the new provider's catalog drops models that any org's allowlist
+			// is currently using, open the migration modal first so the admin
+			// can pick replacements before the LLMConfig change commits.
+			const newAvailable = new Set(availableModels.map((m) => m.id));
+			let referenced: string[] = [];
+			try {
+				const { data } = await apiClient.GET(
+					"/api/admin/models/referenced-allowlist-ids",
+				);
+				referenced = data ?? [];
+			} catch {
+				// Endpoint may 404 on older deployments — proceed without gating.
+			}
+			const orphaned = referenced.filter((id) => !newAvailable.has(id));
+			if (orphaned.length > 0) {
+				setMigrationCandidates(orphaned);
+				setMigrationOpen(true);
+				setSaving(false);
+				return;
+			}
 
-			toast.success("Configuration saved", {
-				description: `Using ${provider} with model ${model}`,
-			});
-
-			// Clear API key field (it's saved now)
-			setApiKey("");
-			setTestResult(null);
-
-			// Refetch to get updated config and refresh pricing
-			refetch();
-			setPricingRefreshKey((k) => k + 1);
+			await performSave();
 		} catch (error) {
 			toast.error("Failed to save configuration", {
 				description:
@@ -645,13 +697,14 @@ export function LLMConfig() {
 							<Label htmlFor="summarization-model">
 								Summarization model (optional)
 							</Label>
-							<Input
-								id="summarization-model"
+							<ModelSelect
+								models={availableModels}
+								catalog={platformCatalog}
+								reseller={resellerForEndpoint(endpoint || null)}
+								value={summarizationModel || null}
+								onChange={(v) => setSummarizationModel(v ?? "")}
+								clearable
 								placeholder="Leave blank to use primary model"
-								value={summarizationModel}
-								onChange={(e) =>
-									setSummarizationModel(e.target.value)
-								}
 							/>
 							<p className="text-xs text-muted-foreground">
 								Override the model used for post-run summarization.
@@ -664,13 +717,14 @@ export function LLMConfig() {
 							<Label htmlFor="tuning-model">
 								Tuning model (optional)
 							</Label>
-							<Input
-								id="tuning-model"
+							<ModelSelect
+								models={availableModels}
+								catalog={platformCatalog}
+								reseller={resellerForEndpoint(endpoint || null)}
+								value={tuningModel || null}
+								onChange={(v) => setTuningModel(v ?? "")}
+								clearable
 								placeholder="Leave blank to use primary model"
-								value={tuningModel}
-								onChange={(e) =>
-									setTuningModel(e.target.value)
-								}
 							/>
 							<p className="text-xs text-muted-foreground">
 								Override the model used for agent tuning chat and
@@ -763,6 +817,24 @@ export function LLMConfig() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+			<ModelMigrationModal
+				open={migrationOpen}
+				onOpenChange={setMigrationOpen}
+				unreachableModelIds={migrationCandidates}
+				onComplete={async () => {
+					setSaving(true);
+					try {
+						await performSave();
+					} catch (error) {
+						toast.error("Failed to save configuration", {
+							description:
+								error instanceof Error ? error.message : "Unknown error",
+						});
+					} finally {
+						setSaving(false);
+					}
+				}}
+			/>
 		</div>
 	);
 }

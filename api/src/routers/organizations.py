@@ -167,6 +167,10 @@ async def update_organization(
         org.is_active = request.is_active
     if request.settings is not None:
         org.settings = request.settings
+    if request.allowed_chat_models is not None:
+        org.allowed_chat_models = request.allowed_chat_models
+    if request.default_chat_model is not None:
+        org.default_chat_model = request.default_chat_model
 
     org.updated_at = datetime.now(timezone.utc)
 

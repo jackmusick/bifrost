@@ -45,11 +45,28 @@ class LLMProviderConfig:
 
 
 @dataclass
+class LLMModelCapabilities:
+    """Capability flags surfaced by the provider's /v1/models response."""
+
+    supports_images_in: bool = False
+    supports_images_out: bool = False
+    supports_pdf_in: bool = False
+    supports_audio_in: bool = False
+    supports_audio_out: bool = False
+    supports_tool_use: bool = False
+
+
+@dataclass
 class LLMModelInfo:
-    """Model information with both ID and display name."""
+    """Model info, with optional rich metadata when the provider exposes it."""
 
     id: str
     display_name: str
+    context_length: int | None = None
+    max_output_tokens: int | None = None
+    input_price_per_million: float | None = None
+    output_price_per_million: float | None = None
+    capabilities: LLMModelCapabilities | None = None
 
 
 @dataclass
@@ -258,6 +275,75 @@ class LLMConfigService:
             logger.error(f"LLM connection test failed: {e}")
             return LLMTestResult(success=False, message=f"Connection test failed: {e}")
 
+    async def _fetch_openrouter_models(
+        self, api_key: str, endpoint: str
+    ) -> list[LLMModelInfo] | None:
+        """Hit OpenRouter's /v1/models directly so we get pricing + caps.
+
+        OpenRouter's response is a strict superset of OpenAI's. The OpenAI
+        Python SDK strips the extras, so we use httpx directly when we know
+        we're talking to OpenRouter.
+
+        Returns None on any failure — caller falls back to SDK listing.
+        """
+        import httpx
+
+        try:
+            url = f"{endpoint.rstrip('/')}/models"
+            async with httpx.AsyncClient(timeout=15.0) as http:
+                resp = await http.get(
+                    url, headers={"Authorization": f"Bearer {api_key}"}
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+        except Exception as e:
+            logger.info(f"OpenRouter rich-list fetch failed, falling back: {e}")
+            return None
+
+        out: list[LLMModelInfo] = []
+        for m in payload.get("data", []):
+            mid = m.get("id")
+            if not mid:
+                continue
+            display = (m.get("name") or mid).lstrip("~")
+            arch = m.get("architecture") or {}
+            in_modal = set(arch.get("input_modalities") or [])
+            out_modal = set(arch.get("output_modalities") or [])
+            params = set(m.get("supported_parameters") or [])
+            caps = LLMModelCapabilities(
+                supports_images_in="image" in in_modal,
+                supports_images_out="image" in out_modal,
+                supports_pdf_in="file" in in_modal,
+                supports_audio_in="audio" in in_modal,
+                supports_audio_out="audio" in out_modal,
+                supports_tool_use="tools" in params,
+            )
+            pricing = m.get("pricing") or {}
+            top_provider = m.get("top_provider") or {}
+
+            def _per_m(field: str) -> float | None:
+                raw = pricing.get(field)
+                if raw is None:
+                    return None
+                try:
+                    return float(raw) * 1_000_000
+                except (TypeError, ValueError):
+                    return None
+
+            out.append(
+                LLMModelInfo(
+                    id=mid,
+                    display_name=display,
+                    context_length=m.get("context_length")
+                    or top_provider.get("context_length"),
+                    max_output_tokens=top_provider.get("max_completion_tokens"),
+                    input_price_per_million=_per_m("prompt"),
+                    output_price_per_million=_per_m("completion"),
+                    capabilities=caps,
+                )
+            )
+        return out
+
     async def _test_openai(self, api_key: str, model: str, endpoint: str | None = None) -> LLMTestResult:
         """Test OpenAI-compatible connection and verify chat completions work.
 
@@ -278,12 +364,32 @@ class LLMConfigService:
             model_infos: list[LLMModelInfo] = []
             model_available = False
             try:
-                models_response = await client.models.list()
-
-                all_model_ids: list[str] = []
-                for m in sorted(models_response.data, key=lambda x: x.id):
-                    all_model_ids.append(m.id)
-                    model_infos.append(LLMModelInfo(id=m.id, display_name=m.id))
+                # OpenRouter's /v1/models is a strict superset of the OpenAI shape:
+                # it carries pricing, architecture (modalities), supported_parameters
+                # (tools, structured_outputs, …), context_length, top_provider, and
+                # a human `name`. The OpenAI Python SDK strips the extras, so when
+                # we're talking to OpenRouter we hit /v1/models directly and pass
+                # the rich data through. For any other OpenAI-compat endpoint we
+                # fall back to the SDK (which is fine — the frontend has a LiteLLM
+                # lookup chain for the missing fields).
+                rich_models = (
+                    await self._fetch_openrouter_models(api_key, endpoint)
+                    if endpoint and "openrouter.ai" in endpoint
+                    else None
+                )
+                if rich_models is not None:
+                    all_model_ids = [m.id for m in rich_models]
+                    model_infos = sorted(rich_models, key=lambda m: m.id)
+                else:
+                    models_response = await client.models.list()
+                    all_model_ids = []
+                    for m in sorted(models_response.data, key=lambda x: x.id):
+                        all_model_ids.append(m.id)
+                        raw_name = getattr(m, "name", None) or m.id
+                        display = raw_name.lstrip("~")
+                        model_infos.append(
+                            LLMModelInfo(id=m.id, display_name=display)
+                        )
 
                 model_available = model in all_model_ids
             except Exception as e:

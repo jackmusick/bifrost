@@ -56,6 +56,9 @@ class User(Base):
     avatar_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
     avatar_content_type: Mapped[str | None] = mapped_column(String(50), default=None)
 
+    # Chat preferences (per-user default model — the most personal layer of the resolver chain)
+    default_chat_model: Mapped[str | None] = mapped_column(String(255), default=None)
+
     # WebAuthn/Passkeys
     webauthn_user_id: Mapped[bytes | None] = mapped_column(LargeBinary(64), default=None)
 
@@ -105,6 +108,7 @@ class Role(Base):
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text, default=None)
     permissions: Mapped[dict] = mapped_column(JSONB, default={}, server_default='{}')
+    default_chat_model: Mapped[str | None] = mapped_column(String(255), default=None)
     created_by: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")

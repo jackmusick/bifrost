@@ -41,6 +41,70 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 
 # =============================================================================
+# Picker context — what model the picker should show as default + allowlist
+# =============================================================================
+
+from pydantic import BaseModel
+
+
+class ChatModelContext(BaseModel):
+    """What the chat picker needs to render the right options.
+
+    `allowed_chat_models`: the org's allowlist (empty list = "no narrowing,
+    only the default model is selectable").
+    `default_chat_model`: the resolved default model_id (org > role >
+    workspace > user → first non-null). The picker shows this when the
+    allowlist is empty.
+    """
+
+    allowed_chat_models: list[str]
+    default_chat_model: str | None
+
+
+@router.get("/model-context")
+async def get_chat_model_context(
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> ChatModelContext:
+    """Return the picker's effective allowlist + default for the current user."""
+    from src.models.orm import Organization
+    from src.models.orm.users import User as UserORM, UserRole as UserRoleORM
+    from src.models.orm.users import Role as RoleORM
+
+    org = (
+        await db.get(Organization, user.organization_id)
+        if user.organization_id
+        else None
+    )
+    allowed = list(org.allowed_chat_models or []) if org else []
+
+    # Walk the same default cascade as the resolver, picker-side: user >
+    # role > org. We don't have a workspace here (no conv/workspace
+    # context), so we stop at org. Conversation-level current_model lives
+    # on the conversation row, not in this endpoint.
+    me = await db.get(UserORM, user.user_id)
+    default: str | None = (me.default_chat_model if me else None)
+    if not default:
+        role_rows = (
+            await db.execute(
+                select(RoleORM.default_chat_model)
+                .join(UserRoleORM, UserRoleORM.role_id == RoleORM.id)
+                .where(UserRoleORM.user_id == user.user_id)
+                .where(RoleORM.default_chat_model.isnot(None))
+            )
+        ).all()
+        if role_rows:
+            default = role_rows[0][0]
+    if not default and org:
+        default = org.default_chat_model
+
+    return ChatModelContext(
+        allowed_chat_models=allowed,
+        default_chat_model=default,
+    )
+
+
+# =============================================================================
 # Conversation CRUD
 # =============================================================================
 
@@ -298,6 +362,9 @@ async def update_conversation(
                 )
         conversation.workspace_id = new_workspace_id
 
+    if "current_model" in update_fields:
+        conversation.current_model = update_fields["current_model"]
+
     conversation.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
@@ -321,6 +388,7 @@ async def update_conversation(
         agent_id=conversation.agent_id,
         user_id=conversation.user_id,
         workspace_id=conversation.workspace_id,
+        current_model=conversation.current_model,
         channel=conversation.channel,
         title=conversation.title,
         is_active=conversation.is_active,
