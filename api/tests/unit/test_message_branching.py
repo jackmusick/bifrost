@@ -224,3 +224,110 @@ async def test_load_active_branch_breaks_cycles(
                 delete(Conversation).where(Conversation.id == conv_id)
             )
             await cleanup.commit()
+
+
+@pytest.mark.asyncio
+async def test_save_message_appends_to_active_branch(
+    db_session, seed_user, async_session_factory
+):
+    """_save_message links the new row to the current leaf and advances it."""
+    conv = Conversation(user_id=seed_user.id, channel="chat")
+    db_session.add(conv)
+    await db_session.commit()
+    conv_id = conv.id
+
+    try:
+        executor = AgentExecutor(async_session_factory)
+
+        m1 = await executor._save_message(
+            conversation_id=conv_id,
+            role=MessageRole.USER,
+            content="hi",
+        )
+        async with async_session_factory() as session:
+            fresh_conv = await session.get(Conversation, conv_id)
+            assert fresh_conv is not None
+            assert fresh_conv.active_leaf_message_id == m1.id
+        assert m1.parent_message_id is None
+
+        m2 = await executor._save_message(
+            conversation_id=conv_id,
+            role=MessageRole.ASSISTANT,
+            content="hello",
+        )
+        async with async_session_factory() as session:
+            fresh_conv = await session.get(Conversation, conv_id)
+            assert fresh_conv is not None
+            assert fresh_conv.active_leaf_message_id == m2.id
+        assert m2.parent_message_id == m1.id
+    finally:
+        await _cleanup_conversation(async_session_factory, conv_id)
+
+
+@pytest.mark.asyncio
+async def test_save_message_with_parent_override_creates_sibling(
+    db_session, seed_user, async_session_factory
+):
+    """parent_message_id_override creates a sibling under the chosen parent."""
+    conv = Conversation(user_id=seed_user.id, channel="chat")
+    db_session.add(conv)
+    await db_session.commit()
+    conv_id = conv.id
+
+    try:
+        executor = AgentExecutor(async_session_factory)
+        u1 = await executor._save_message(
+            conversation_id=conv_id, role=MessageRole.USER, content="hi",
+        )
+        a1 = await executor._save_message(
+            conversation_id=conv_id, role=MessageRole.ASSISTANT, content="hello",
+        )
+
+        # Edit-style: a sibling user message under u1's parent (NULL).
+        u1_edit = await executor._save_message(
+            conversation_id=conv_id,
+            role=MessageRole.USER,
+            content="hi (edited)",
+            parent_message_id_override=u1.parent_message_id,
+        )
+        assert u1_edit.parent_message_id == u1.parent_message_id  # both NULL
+        # The leaf advanced to the new sibling.
+        async with async_session_factory() as session:
+            fresh_conv = await session.get(Conversation, conv_id)
+            assert fresh_conv is not None
+            assert fresh_conv.active_leaf_message_id == u1_edit.id
+
+        # Retry-style: a sibling assistant under u1, NOT a1's parent (u1.id).
+        a1_retry = await executor._save_message(
+            conversation_id=conv_id,
+            role=MessageRole.ASSISTANT,
+            content="hello (retry)",
+            parent_message_id_override=a1.parent_message_id,
+        )
+        assert a1_retry.parent_message_id == u1.id
+        async with async_session_factory() as session:
+            fresh_conv = await session.get(Conversation, conv_id)
+            assert fresh_conv is not None
+            assert fresh_conv.active_leaf_message_id == a1_retry.id
+    finally:
+        await _cleanup_conversation(async_session_factory, conv_id)
+
+
+@pytest.mark.asyncio
+async def test_save_message_first_message_has_null_parent(
+    db_session, seed_user, async_session_factory
+):
+    """First message in an empty conversation has NULL parent."""
+    conv = Conversation(user_id=seed_user.id, channel="chat")
+    db_session.add(conv)
+    await db_session.commit()
+    conv_id = conv.id
+
+    try:
+        executor = AgentExecutor(async_session_factory)
+        m = await executor._save_message(
+            conversation_id=conv_id, role=MessageRole.USER, content="first",
+        )
+        assert m.parent_message_id is None
+    finally:
+        await _cleanup_conversation(async_session_factory, conv_id)
