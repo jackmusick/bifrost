@@ -15,6 +15,7 @@ Create Date: 2026-04-29
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "20260429_chat_v2_m3"
 down_revision = "20260428_chat_v2_m2"
@@ -28,7 +29,7 @@ def upgrade() -> None:
         "messages",
         sa.Column(
             "parent_message_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             nullable=True,
         ),
     )
@@ -51,7 +52,7 @@ def upgrade() -> None:
         "conversations",
         sa.Column(
             "active_leaf_message_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             nullable=True,
         ),
     )
