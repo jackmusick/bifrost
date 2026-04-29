@@ -2041,7 +2041,7 @@ git commit -m "feat(tables): expose tables + useTableSubscription to apps"
 **Files:**
 - Create: `client/src/components/tables/TableAccessEditor.tsx`
 - Create: `client/src/components/tables/TableAccessEditor.test.tsx`
-- Modify: the existing Tables admin page (likely `client/src/pages/tables/...`) to render the editor
+- Modify: **both** the table-create dialog and the table-edit form to render the editor (recon: `client/src/components/tables/TableDialog.tsx` and the per-table edit page in `client/src/pages/tables/...`). Access must be settable on creation — apps shouldn't have to make two API calls (create then patch) to opt in.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2182,9 +2182,15 @@ export function TableAccessEditor({
 }
 ```
 
-- [ ] **Step 4: Wire it into the Tables admin page**
+- [ ] **Step 4: Wire it into the Tables create dialog AND edit form**
 
-Find the existing per-table edit form (likely in `client/src/pages/tables/...`). Add an "Access" section that renders `<TableAccessEditor value={table.access} roles={roles} onChange={...} />` and submits on save via the existing PATCH path.
+Two integration points:
+
+**(a) Create dialog** (`client/src/components/tables/TableDialog.tsx`). Add an "Access" section to the create form. The submit path POSTs to `/api/tables` with `access` included in the body. Default value when the dialog opens: `null` (workflow-only, the safe default). The form should make this opt-in obvious — e.g., a collapsed "Access (advanced)" panel that, when expanded, reveals the editor.
+
+**(b) Edit form** (likely `client/src/pages/tables/<id>.tsx` or a sibling). Render `<TableAccessEditor value={table.access ?? null} roles={roles} onChange={...} />` and submit on save via the existing PATCH path.
+
+Both surfaces fetch the available roles via `useRoles()` (existing hook) and pass the list into the editor's `roles` prop.
 
 - [ ] **Step 5: Run client tests + tsc + lint**
 
@@ -2201,25 +2207,111 @@ git commit -m "feat(tables): admin access editor (Everyone/Role/Creator × CRUD)
 
 ---
 
-## Task 16: Playwright e2e — apps use the SDK end-to-end
+## Task 16: Playwright e2e — apps use the SDK end-to-end (via real app fixture)
 
 **Files:**
-- Create: `client/e2e/tables-app-direct.spec.ts`
-- Create: `client/e2e/tables-subscription.spec.ts`
+- Create: `client/e2e/tables-app-direct.admin.spec.ts`
+- Create: `client/e2e/tables-app-subscription.admin.spec.ts`
 
-- [ ] **Step 1: Write the SDK round-trip spec**
+These specs use the **existing app-fixture pattern** in `client/e2e/apps-preview.admin.spec.ts` — they create a real `Application` via `/api/applications`, seed `apps/{slug}/pages/index.tsx` via `/api/files/write`, then navigate to the preview URL. **No new test harness.** Reuse `client/e2e/fixtures/api-fixture.ts` for the authenticated `api` request context.
 
-Create `client/e2e/tables-app-direct.spec.ts`:
+- [ ] **Step 1: Read the existing pattern**
+
+Open `client/e2e/apps-preview.admin.spec.ts` and read it end-to-end. Pay attention to:
+- `writeBody(path, content)` helper that builds the `/api/files/write` payload (base64 + `mode: "cloud"`).
+- The `beforeAll` block that creates the app and seeds files.
+- The `trackPageErrors(page)` helper — reuse it; pageerror/console.error during the test must fail.
+- The preview URL pattern.
+
+The new specs follow the same shape; only the seeded TSX content differs.
+
+- [ ] **Step 2: Write the SDK round-trip spec**
+
+Create `client/e2e/tables-app-direct.admin.spec.ts`:
 
 ```ts
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures/api-fixture";
+import type { Page } from "@playwright/test";
 
-test("app uses tables SDK to insert and read without spawning a workflow execution", async ({ page, request }) => {
-  // Admin creates a table with everyone.read+create
-  const tableId = await test.step("create table", async () => {
-    const r = await request.post("/api/tables", { data: { name: `t_e2e_${Date.now()}` } });
-    const t = await r.json();
-    await request.patch(`/api/tables/${t.id}`, {
+const UNIQUE = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+const APP_SLUG = `e2e-tables-sdk-${UNIQUE}`;
+const APP_NAME = `E2E Tables SDK ${UNIQUE}`;
+const TABLE_NAME = `e2e_tables_sdk_${UNIQUE}`;
+
+const LAYOUT_TSX = `import { Outlet } from "react-router-dom";
+export default function Layout() { return <Outlet />; }
+`;
+
+const INDEX_TSX = `import { tables, useState } from "bifrost";
+
+export default function Home() {
+  const [last, setLast] = useState<string>("idle");
+  const [rows, setRows] = useState<unknown[]>([]);
+
+  async function onInsert() {
+    try {
+      const doc = await tables.insert("${TABLE_NAME}", { value: "from-app" });
+      setLast(\`inserted:\${doc.id}\`);
+    } catch (e) {
+      setLast(\`error:\${(e as Error).message}\`);
+    }
+  }
+
+  async function onQuery() {
+    const r = await tables.query("${TABLE_NAME}");
+    setRows(r.documents);
+    setLast(\`queried:\${r.documents.length}\`);
+  }
+
+  return (
+    <div>
+      <button data-testid="insert" onClick={onInsert}>Insert</button>
+      <button data-testid="query" onClick={onQuery}>Query</button>
+      <div data-testid="last">{last}</div>
+      <ul data-testid="rows">
+        {rows.map((r: any) => <li key={r.id}>{r.data?.value}</li>)}
+      </ul>
+    </div>
+  );
+}
+`;
+
+function writeBody(path: string, content: string) {
+  return {
+    path,
+    content: Buffer.from(content, "utf-8").toString("base64"),
+    mode: "cloud",
+    location: "workspace",
+    binary: true,
+  };
+}
+
+function trackPageErrors(page: Page): { errors: string[] } {
+  const errors: string[] = [];
+  page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(`console.error: ${msg.text()}`);
+  });
+  return { errors };
+}
+
+test.describe("Tables web SDK in apps", () => {
+  let appId: string;
+  let tableId: string;
+
+  test.beforeAll(async ({ api }) => {
+    // Create the app
+    const createApp = await api.post("/api/applications", {
+      data: { name: APP_NAME, slug: APP_SLUG, access_level: "authenticated", role_ids: [] },
+    });
+    expect(createApp.ok(), await createApp.text()).toBe(true);
+    appId = (await createApp.json()).id;
+
+    // Create the table with everyone.read+create
+    const createTable = await api.post("/api/tables", { data: { name: TABLE_NAME } });
+    expect(createTable.ok(), await createTable.text()).toBe(true);
+    tableId = (await createTable.json()).id;
+    const setAccess = await api.patch(`/api/tables/${tableId}`, {
       data: {
         access: {
           everyone: { read: true, create: true, update: false, delete: false },
@@ -2228,66 +2320,173 @@ test("app uses tables SDK to insert and read without spawning a workflow executi
         },
       },
     });
-    return t.id;
+    expect(setAccess.ok(), await setAccess.text()).toBe(true);
+
+    // Seed app source
+    for (const [relPath, source] of [
+      [`apps/${APP_SLUG}/_layout.tsx`, LAYOUT_TSX],
+      [`apps/${APP_SLUG}/pages/index.tsx`, INDEX_TSX],
+    ] as const) {
+      const r = await api.post("/api/files/write", { data: writeBody(relPath, source) });
+      expect(r.ok(), await r.text()).toBe(true);
+    }
   });
 
-  // Mount a tiny app that uses the SDK; we mount via the apps preview page if it
-  // exists, or via a dedicated test harness. Match the existing app-runtime
-  // playwright pattern in this repo.
-  await page.goto("/test-harness/apps/tables-sdk");
+  test.afterAll(async ({ api }) => {
+    await api.delete(`/api/applications/${appId}`);
+    await api.delete(`/api/tables/${tableId}`);
+  });
 
-  await page.click("text=Insert");
-  await expect(page.locator("[data-testid=last-insert]")).toContainText("ok");
+  test("app inserts a row, queries, and renders results — no workflow execution created", async ({ page, api }) => {
+    const { errors } = trackPageErrors(page);
 
-  // Confirm no workflow execution was created
-  const execs = await (await request.get("/api/executions?limit=5")).json();
-  for (const e of execs.executions || []) {
-    expect(e.workflow_path).not.toContain("tables");
-  }
+    // Capture the count of executions before the test
+    const before = await (await api.get("/api/executions?limit=50")).json();
+    const beforeCount = before.executions?.length ?? 0;
+
+    await page.goto(`/apps/${APP_SLUG}/preview`);
+    await page.click('[data-testid="insert"]');
+    await expect(page.locator('[data-testid="last"]')).toContainText("inserted:");
+
+    await page.click('[data-testid="query"]');
+    await expect(page.locator('[data-testid="last"]')).toContainText("queried:1");
+    await expect(page.locator('[data-testid="rows"]')).toContainText("from-app");
+
+    // Confirm no new execution was created (app went over REST, not workflows)
+    const after = await (await api.get("/api/executions?limit=50")).json();
+    expect((after.executions?.length ?? 0)).toBe(beforeCount);
+
+    expect(errors).toEqual([]);
+  });
 });
 ```
 
-This relies on a test-harness app that calls `tables.insert(...)` on click. Add it next to other harness apps used for app-runtime e2e tests in `client/e2e/fixtures/` (match the existing pattern; if no harness pattern exists, add the smallest viable one).
+- [ ] **Step 3: Write the subscription spec**
 
-- [ ] **Step 2: Write the subscription spec**
+Create `client/e2e/tables-app-subscription.admin.spec.ts`:
 
 ```ts
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures/api-fixture";
+import type { Page } from "@playwright/test";
 
-test("app receives a push event when a row is inserted via REST", async ({ page, request }) => {
-  const r = await request.post("/api/tables", { data: { name: `t_e2e_sub_${Date.now()}` } });
-  const t = await r.json();
-  await request.patch(`/api/tables/${t.id}`, {
-    data: {
-      access: {
-        everyone: { read: true, create: true, update: false, delete: false },
-        role: { roles: [], read: false, create: false, update: false, delete: false },
-        creator: { read: false, create: false, update: false, delete: false },
-      },
-    },
+const UNIQUE = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+const APP_SLUG = `e2e-tables-sub-${UNIQUE}`;
+const APP_NAME = `E2E Tables Sub ${UNIQUE}`;
+const TABLE_NAME = `e2e_tables_sub_${UNIQUE}`;
+
+const LAYOUT_TSX = `import { Outlet } from "react-router-dom";
+export default function Layout() { return <Outlet />; }
+`;
+
+// The spec passes the table_id in via search params so the seeded source can
+// stay parameter-free. The app reads it on mount.
+const INDEX_TSX = `import { useTableSubscription, useState, useSearchParams } from "bifrost";
+
+export default function Home() {
+  const [params] = useSearchParams();
+  const tableId = params.get("table") ?? "";
+  const [events, setEvents] = useState<string[]>([]);
+
+  useTableSubscription(tableId, (evt: any) => {
+    setEvents((prev) => [...prev, \`\${evt.type}:\${evt.action ?? ""}\`]);
   });
 
-  await page.goto(`/test-harness/apps/tables-subscription?table=${t.id}`);
-  await page.waitForSelector("[data-testid=ws-connected]");
+  return (
+    <div>
+      <div data-testid="ready">ready</div>
+      <ul data-testid="events">
+        {events.map((e, i) => <li key={i}>{e}</li>)}
+      </ul>
+    </div>
+  );
+}
+`;
 
-  await request.post(`/api/tables/${t.id}/documents`, { data: { data: { x: 1 } } });
+function writeBody(path: string, content: string) {
+  return {
+    path,
+    content: Buffer.from(content, "utf-8").toString("base64"),
+    mode: "cloud",
+    location: "workspace",
+    binary: true,
+  };
+}
 
-  await expect(page.locator("[data-testid=last-event]")).toContainText("insert");
+function trackPageErrors(page: Page): { errors: string[] } {
+  const errors: string[] = [];
+  page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(`console.error: ${msg.text()}`);
+  });
+  return { errors };
+}
+
+test.describe("Tables subscription in apps", () => {
+  let appId: string;
+  let tableId: string;
+
+  test.beforeAll(async ({ api }) => {
+    const createApp = await api.post("/api/applications", {
+      data: { name: APP_NAME, slug: APP_SLUG, access_level: "authenticated", role_ids: [] },
+    });
+    appId = (await createApp.json()).id;
+
+    const createTable = await api.post("/api/tables", { data: { name: TABLE_NAME } });
+    tableId = (await createTable.json()).id;
+    await api.patch(`/api/tables/${tableId}`, {
+      data: {
+        access: {
+          everyone: { read: true, create: true, update: false, delete: false },
+          role: { roles: [], read: false, create: false, update: false, delete: false },
+          creator: { read: false, create: false, update: false, delete: false },
+        },
+      },
+    });
+
+    for (const [relPath, source] of [
+      [`apps/${APP_SLUG}/_layout.tsx`, LAYOUT_TSX],
+      [`apps/${APP_SLUG}/pages/index.tsx`, INDEX_TSX],
+    ] as const) {
+      await api.post("/api/files/write", { data: writeBody(relPath, source) });
+    }
+  });
+
+  test.afterAll(async ({ api }) => {
+    await api.delete(`/api/applications/${appId}`);
+    await api.delete(`/api/tables/${tableId}`);
+  });
+
+  test("app receives a push event when a row is inserted via REST", async ({ page, api }) => {
+    const { errors } = trackPageErrors(page);
+
+    await page.goto(`/apps/${APP_SLUG}/preview?table=${tableId}`);
+    await expect(page.locator('[data-testid="ready"]')).toBeVisible();
+    // Give the ws a moment to subscribe before the REST insert fires.
+    await page.waitForTimeout(500);
+
+    await api.post(`/api/tables/${tableId}/documents`, { data: { data: { x: 1 } } });
+
+    await expect(page.locator('[data-testid="events"]')).toContainText("document_change:insert", { timeout: 5000 });
+
+    expect(errors).toEqual([]);
+  });
 });
 ```
 
-- [ ] **Step 3: Run**
+- [ ] **Step 4: Run**
 
 ```bash
-./test.sh client e2e e2e/tables-app-direct.spec.ts
-./test.sh client e2e e2e/tables-subscription.spec.ts
+./test.sh client e2e e2e/tables-app-direct.admin.spec.ts
+./test.sh client e2e e2e/tables-app-subscription.admin.spec.ts
 ```
 
-- [ ] **Step 4: Commit**
+Expected: both green; no console errors; the SDK round-trip confirms zero workflow executions created during the test.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add client/e2e/tables-app-direct.spec.ts client/e2e/tables-subscription.spec.ts client/e2e/fixtures/
-git commit -m "test(tables): playwright e2e for SDK round-trip + subscription push"
+git add client/e2e/tables-app-direct.admin.spec.ts client/e2e/tables-app-subscription.admin.spec.ts
+git commit -m "test(tables): playwright e2e — real app fixture exercises web SDK + subscription"
 ```
 
 ---
@@ -2340,7 +2539,58 @@ git commit -m "docs(skill): teach bifrost-build to use the tables web SDK + subs
 
 ---
 
-## Task 18: Pre-completion verification
+## Task 18: Update `docs/llm.txt` with the new tables surface
+
+**Files:**
+- Modify: `docs/llm.txt`
+
+The "Tables" section at line 148 currently lists `list / get / create / update / delete`. After Task 12 it gains `--access` on create/update; the file's stated convention is "this file documents commands and non-obvious semantics only; it does not duplicate the flag surface" — so we don't list the new flag, but we DO need to add the access concept and the per-table opt-in semantics, since they are non-obvious.
+
+Per the maintenance contract documented in `CLAUDE.md`:
+
+> If the field changes a command or tool that Claude should know about, update `docs/llm.txt`.
+
+- [ ] **Step 1: Replace the Tables section non-obvious semantics list**
+
+In `docs/llm.txt`, replace the `Non-obvious semantics:` block under `## Tables` with:
+
+```markdown
+Non-obvious semantics:
+- Tables are **workflow-only by default**. The REST endpoints under `/api/tables/{id}/documents/*` reject non-admin callers unless the table has an `access` block configured.
+- `update --name` prints a warning to stderr about workflow SDK references (SDK calls like `sdk.tables.get("clients")` reference tables by name). It does not block — the author must grep the workspace before pushing.
+- `--application` accepts app slug / UUID / name.
+- `--access` accepts a JSON literal or `@path/to/file.json`. Shape:
+  ```
+  {
+    "everyone": {"read": bool, "create": bool, "update": bool, "delete": bool},
+    "role":     {"roles": [<role-uuid>...], "read": bool, "create": bool, "update": bool, "delete": bool},
+    "creator":  {"read": bool, "create": bool, "update": bool, "delete": bool}
+  }
+  ```
+  Resolution is additive (union of grants); `null` (the default) means workflow-only.
+- The Creator scope filters reads to rows whose `created_by` matches the caller's user_id when no broader scope grants `read` — useful for "users see only their own submissions" patterns.
+- Browser apps can call tables directly via the platform SDK (`import { tables, useTableSubscription } from "bifrost"`); see `bifrost-build` skill `platform-api.md` for examples. Apps using the SDK do not create execution records.
+- Workflow SDK auto-attributes `created_by` / `updated_by` from `context.user_id`; pass `created_by=` / `updated_by=` to override.
+```
+
+- [ ] **Step 2: Sanity-check the file**
+
+```bash
+cat docs/llm.txt | grep -A 30 "^## Tables"
+```
+
+Confirm no contradictions with the rest of the file (e.g. the `## MCP tools (parity with CLI)` section). If the MCP section claims the tables MCP tool mirrors the CLI, leave the existing "drift" caveat in place per spec — the MCP tool is unchanged in this work.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/llm.txt
+git commit -m "docs(llm.txt): document Table.access, default-deny, web SDK surface"
+```
+
+---
+
+## Task 19: Pre-completion verification
 
 - [ ] **Step 1: Backend**
 
