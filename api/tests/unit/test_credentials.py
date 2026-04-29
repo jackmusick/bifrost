@@ -1,9 +1,6 @@
 """Tests for bifrost.credentials backend abstraction and multi-record store."""
 
-import json
 import os
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -125,3 +122,54 @@ class TestJsonBackendMultiRecord:
         backend.save(Credentials("http://a", "at", "rt", "2030-01-01T00:00:00+00:00"))
         mode = tmp_creds_path.stat().st_mode & 0o777
         assert mode == 0o600
+
+
+# ---------- Public surface: no-arg resolution ----------
+
+class TestNoArgResolution:
+    """
+    Verify get_credentials() / clear_credentials() agree on which URL
+    they target when called without arguments. Latent bug if they don't:
+    `bifrost logout` after `bifrost login` would leave creds on disk.
+    """
+
+    @pytest.fixture
+    def tmp_creds_path(self, tmp_path, monkeypatch):
+        path = tmp_path / "credentials.json"
+        monkeypatch.setattr(creds_mod, "get_credentials_path", lambda: path)
+        creds_mod._reset_persistent_backend_for_tests()
+        # Clear any inherited env vars so the env-var arm of resolution is off.
+        monkeypatch.delenv("BIFROST_API_URL", raising=False)
+        monkeypatch.delenv("BIFROST_ACCESS_TOKEN", raising=False)
+        monkeypatch.delenv("BIFROST_REFRESH_TOKEN", raising=False)
+        return path
+
+    def test_no_arg_get_returns_first_url_when_two_present(self, tmp_creds_path):
+        # Insertion order on dict iteration is the contract for JsonBackend.
+        creds_mod.save_credentials("http://first", "at1", "rt1", "2030-01-01T00:00:00+00:00")
+        creds_mod.save_credentials("http://second", "at2", "rt2", "2030-01-01T00:00:00+00:00")
+        result = creds_mod.get_credentials()
+        assert result is not None
+        assert result["api_url"] == "http://first"
+
+    def test_no_arg_clear_targets_same_url_as_no_arg_get(self, tmp_creds_path):
+        """clear_credentials() with no arg must clear what get_credentials() returns."""
+        creds_mod.save_credentials("http://first", "at1", "rt1", "2030-01-01T00:00:00+00:00")
+        creds_mod.save_credentials("http://second", "at2", "rt2", "2030-01-01T00:00:00+00:00")
+
+        before = creds_mod.get_credentials()
+        assert before is not None and before["api_url"] == "http://first"
+
+        creds_mod.clear_credentials()  # no arg
+
+        # 'first' should be gone; 'second' must remain
+        assert creds_mod.get_credentials("http://first") is None
+        assert creds_mod.get_credentials("http://second") is not None
+
+    def test_no_arg_get_prefers_env_var_over_first_stored(self, tmp_creds_path, monkeypatch):
+        creds_mod.save_credentials("http://first", "at1", "rt1", "2030-01-01T00:00:00+00:00")
+        creds_mod.save_credentials("http://second", "at2", "rt2", "2030-01-01T00:00:00+00:00")
+        monkeypatch.setenv("BIFROST_API_URL", "http://second")
+        result = creds_mod.get_credentials()
+        assert result is not None
+        assert result["api_url"] == "http://second"

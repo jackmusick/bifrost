@@ -202,30 +202,45 @@ def _reset_persistent_backend_for_tests() -> None:
 # Public functions
 # --------------------------------------------------------------------------- #
 
+def _resolve_url(api_url: str | None) -> str | None:
+    """
+    Resolve which URL the no-arg credentials calls should target.
+
+    Order:
+      1. The argument (if given).
+      2. BIFROST_API_URL env var.
+      3. The first URL in the persistent backend (back-compat for users
+         who only have one set; ordering is stable per backend but not
+         guaranteed across backends).
+    """
+    if api_url:
+        return api_url.rstrip("/")
+    env_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
+    if env_url:
+        return env_url
+    urls = get_persistent_backend().list_urls()
+    if urls:
+        return urls[0]
+    return None
+
+
 def get_credentials(api_url: str | None = None) -> dict | None:
     """
     Resolve credentials for a given API URL.
 
     Resolution order: env vars → persistent backend.
 
-    If api_url is None, falls back to:
-      1. BIFROST_API_URL env var
-      2. The first URL in the persistent backend (back-compat for users
-         who only have one set)
+    If api_url is None, the URL is resolved via _resolve_url() — see that
+    function for the no-arg fallback ladder.
 
     Returns: dict with keys api_url/access_token/refresh_token/expires_at,
     or None. Returns dict (not Credentials) for back-compat with existing
     callers in client.py / cli.py.
     """
+    api_url = _resolve_url(api_url)
     if api_url is None:
-        api_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
-        if not api_url:
-            urls = get_persistent_backend().list_urls()
-            if not urls:
-                return None
-            api_url = urls[0]
+        return None
 
-    api_url = api_url.rstrip("/")
     env_creds = EnvBackend().get(api_url)
     if env_creds is not None:
         return env_creds.to_dict()
@@ -253,18 +268,18 @@ def save_credentials(
 
 
 def clear_credentials(api_url: str | None = None) -> None:
-    """Remove a single URL's credentials from the persistent backend."""
-    if api_url is None:
-        # Back-compat: when called without a URL, clear the current resolved one.
-        urls = get_persistent_backend().list_urls()
-        if len(urls) == 1:
-            api_url = urls[0]
-        elif env_url := os.environ.get("BIFROST_API_URL", "").rstrip("/"):
-            api_url = env_url
-        else:
-            # Nothing to do.
-            return
-    get_persistent_backend().clear(api_url.rstrip("/"))
+    """
+    Remove a single URL's credentials from the persistent backend.
+
+    No-arg behavior uses the same resolution as get_credentials(): env var,
+    then first URL in store. So a `bifrost logout` after a `bifrost login`
+    targets the same record `get_credentials()` would have returned, even
+    when multiple URLs are present.
+    """
+    target = _resolve_url(api_url)
+    if target is None:
+        return
+    get_persistent_backend().clear(target)
 
 
 def list_credentials() -> list[str]:
