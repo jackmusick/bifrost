@@ -286,6 +286,49 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
         return False
 
 
+async def ephemeral_login_flow(api_url: str, email: str, password: str) -> tuple[int, dict | None]:
+    """
+    Password-grant login that does NOT persist tokens.
+
+    Returns (exit_code, payload). On success, payload is the parsed JSON
+    response from /auth/login containing access_token / refresh_token.
+    """
+    # Always print the warning before doing anything.
+    print(
+        "⚠️  Password-grant login is for ephemeral, isolated development stacks only.\n"
+        "   Do not run a Bifrost instance with MFA disabled in production.",
+        file=sys.stderr,
+    )
+
+    api_url = api_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(base_url=api_url, timeout=30.0) as client:
+            response = await client.post("/auth/login", json={"email": email, "password": password})
+            if response.status_code != 200:
+                print(f"Error: /auth/login returned HTTP {response.status_code}", file=sys.stderr)
+                return 1, None
+            data = response.json()
+
+        # MFA paths
+        if data.get("mfa_required") or data.get("mfa_setup_required"):
+            print(
+                "Error: this instance has MFA enabled. Ephemeral password login only works for "
+                "instances with BIFROST_MFA_ENABLED=false. Use `bifrost login` (no flags) for "
+                "the browser flow.",
+                file=sys.stderr,
+            )
+            return 2, None
+
+        if "access_token" not in data or "refresh_token" not in data:
+            print("Error: /auth/login response missing access_token/refresh_token", file=sys.stderr)
+            return 1, None
+
+        return 0, data
+    except Exception as e:
+        print(f"Error during ephemeral login: {e}", file=sys.stderr)
+        return 1, None
+
+
 def logout_flow() -> bool:
     """
     Logout by clearing stored credentials.
@@ -458,19 +501,13 @@ For more information, visit: https://docs.gobifrost.com
 
 
 def handle_login(args: list[str]) -> int:
-    """
-    Handle 'bifrost login' command.
-
-    Args:
-        args: Additional arguments (e.g., --url, --no-browser)
-
-    Returns:
-        Exit code (0 for success, 1 for error)
-    """
+    """Handle 'bifrost login' command."""
     api_url = None
     auto_open = True
+    ephemeral = False
+    email: str | None = None
+    password: str | None = None
 
-    # Parse arguments
     i = 0
     while i < len(args):
         arg = args[i]
@@ -484,29 +521,81 @@ def handle_login(args: list[str]) -> int:
         elif arg in ("--no-browser", "-n"):
             auto_open = False
             i += 1
+        elif arg == "--ephemeral":
+            ephemeral = True
+            i += 1
+        elif arg == "--email":
+            if i + 1 >= len(args):
+                print("Error: --email requires a value", file=sys.stderr)
+                return 1
+            email = args[i + 1]
+            i += 2
+        elif arg == "--password":
+            if i + 1 >= len(args):
+                print("Error: --password requires a value", file=sys.stderr)
+                return 1
+            password = args[i + 1]
+            i += 2
         elif arg in ("--help", "-h"):
             print("""
 Usage: bifrost login [options]
 
-Authenticate with Bifrost using device authorization flow.
-Opens a browser window where you can enter the displayed code to authorize.
+Authenticate with Bifrost. Two modes:
+
+Persistent (default): Browser device-code flow; tokens stored in OS keychain.
+Ephemeral: Password-grant flow; tokens printed to stdout, never persisted.
+           For isolated debug stacks only — refuses if MFA is enabled.
 
 Options:
-  --url, -u URL         API URL (default: BIFROST_DEV_URL or http://localhost:8000)
-  --no-browser, -n      Don't automatically open browser
+  --url, -u URL         API URL (default: BIFROST_API_URL or http://localhost:8000)
+  --no-browser, -n      Don't automatically open browser (persistent mode only)
+  --ephemeral           Use password-grant flow; requires --email and --password
+  --email EMAIL         Email for ephemeral login
+  --password PASSWORD   Password for ephemeral login
   --help, -h            Show this help message
 
 Examples:
   bifrost login
   bifrost login --url https://app.gobifrost.com
-  bifrost login --no-browser
+  bifrost login --ephemeral --email dev@gobifrost.com --password password \\
+                --url http://localhost:38421
 """.strip())
             return 0
         else:
             print(f"Unknown option: {arg}", file=sys.stderr)
             return 1
 
-    # Run login flow
+    # Validate flag combinations.
+    if ephemeral and (email is None or password is None):
+        print("Error: --ephemeral requires both --email and --password", file=sys.stderr)
+        return 1
+    if (email is not None or password is not None) and not ephemeral:
+        print("Error: --email and --password require --ephemeral", file=sys.stderr)
+        return 1
+
+    if ephemeral:
+        # Resolve URL: --url > BIFROST_API_URL env var > error.
+        if not api_url:
+            api_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
+        if not api_url:
+            print(
+                "Error: ephemeral login requires --url or BIFROST_API_URL env var "
+                "(no fallback default to avoid logging into the wrong stack)",
+                file=sys.stderr,
+            )
+            return 1
+
+        # email and password are guaranteed non-None by the validation above
+        assert email is not None
+        assert password is not None
+        rc, data = asyncio.run(ephemeral_login_flow(api_url, email, password))
+        if rc == 0 and data is not None:
+            print(f"BIFROST_API_URL={api_url}")
+            print(f"BIFROST_ACCESS_TOKEN={data['access_token']}")
+            print(f"BIFROST_REFRESH_TOKEN={data['refresh_token']}")
+        return rc
+
+    # Persistent (browser) flow.
     success = asyncio.run(login_flow(api_url=api_url, auto_open=auto_open))
     return 0 if success else 1
 
