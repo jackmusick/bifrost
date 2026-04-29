@@ -72,25 +72,51 @@ export function resellerForEndpoint(endpoint: string | null | undefined): string
 }
 
 /**
- * Three-step capability lookup mirroring the backend's lookup_capabilities():
- *   1. `<reseller>/<model_id>` exact match (handles OpenRouter/Together/etc.)
- *   2. `model_id` exact match (handles direct provider calls)
- *   3. Suffix-after-last-slash exact match (handles odd routing forms)
+ * Capability lookup with multiple fallbacks. Provider-returned IDs and
+ * LiteLLM keys disagree often enough that we need a chain:
+ *   1. `<reseller>/<model_id>` exact (OpenRouter/Together/etc.)
+ *   2. `model_id` exact (direct provider calls)
+ *   3. `~`-stripped variants of both above (OpenRouter "redirect" aliases)
+ *   4. Suffix-after-last-slash exact (odd routing forms)
+ *   5. Endswith-match: any key whose suffix equals our suffix. Handles
+ *      OpenRouter `moonshotai/kimi-k2.6` ↔ LiteLLM `moonshot/kimi-k2.6`.
  */
 export function lookupModel(
 	modelId: string,
 	reseller: string | null,
 	byId: Record<string, PlatformModel>,
 ): PlatformModel | null {
+	const tryKey = (k: string) => byId[k] ?? null;
+	const stripTilde = (s: string) => s.replace(/(^|\/)~/g, "$1");
+
+	const cleanId = stripTilde(modelId);
+	const candidates: string[] = [];
 	if (reseller) {
-		const prefixed = `${reseller}/${modelId}`;
-		if (byId[prefixed]) return byId[prefixed];
+		candidates.push(`${reseller}/${modelId}`);
+		if (cleanId !== modelId) candidates.push(`${reseller}/${cleanId}`);
 	}
-	if (byId[modelId]) return byId[modelId];
-	const suffix = modelId.includes("/")
-		? modelId.slice(modelId.lastIndexOf("/") + 1)
+	candidates.push(modelId);
+	if (cleanId !== modelId) candidates.push(cleanId);
+
+	for (const c of candidates) {
+		const hit = tryKey(c);
+		if (hit) return hit;
+	}
+
+	// Suffix exact (handles `~author/model` → `model`)
+	const suffix = cleanId.includes("/")
+		? cleanId.slice(cleanId.lastIndexOf("/") + 1)
 		: null;
-	if (suffix && byId[suffix]) return byId[suffix];
+	if (suffix) {
+		const hit = tryKey(suffix);
+		if (hit) return hit;
+		// Endswith-match: any catalog key whose own suffix is the same model.
+		// Picks the first match (Object.keys order is insertion-stable in v8).
+		const target = "/" + suffix;
+		for (const k of Object.keys(byId)) {
+			if (k === suffix || k.endsWith(target)) return byId[k];
+		}
+	}
 	return null;
 }
 

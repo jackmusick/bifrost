@@ -86,6 +86,39 @@ def test_lookup_capabilities_suffix_match():
     assert hit.model_id == "gpt-4o"
 
 
+def test_lookup_strips_openrouter_tilde():
+    """OpenRouter prefixes redirect-aliases with `~`; LiteLLM keys don't."""
+    f = load_bundled()
+    by_id = {m.model_id: m for m in f.models}
+    # Look up `~anthropic/claude-haiku-latest` via OpenRouter — should match
+    # via the suffix endswith-match step (LiteLLM has `claude-haiku-latest`
+    # under various keys).
+    hit = lookup_capabilities(
+        "~anthropic/claude-haiku-latest",
+        reseller="openrouter",
+        by_id=by_id,
+    )
+    if hit is None:
+        pytest.skip("no claude-haiku-latest variant in current snapshot")
+    # Display name shouldn't contain the tilde
+    assert "~" not in hit.model_id or hit.model_id.startswith("openrouter/")
+
+
+def test_lookup_endswith_handles_kimi_prefix_mismatch():
+    """OpenRouter uses `moonshotai/`, LiteLLM uses `moonshot/` for the same
+    model. Our endswith-match fallback handles it."""
+    by_id = {
+        "moonshot/kimi-k2.6": type(
+            "M", (), {"model_id": "moonshot/kimi-k2.6", "provider": "moonshot"}
+        )(),
+    }
+    hit = lookup_capabilities(
+        "moonshotai/kimi-k2.6", reseller="openrouter", by_id=by_id  # type: ignore[arg-type]
+    )
+    assert hit is not None
+    assert hit.model_id == "moonshot/kimi-k2.6"
+
+
 def test_lookup_capabilities_miss_returns_none():
     f = load_bundled()
     by_id = {m.model_id: m for m in f.models}

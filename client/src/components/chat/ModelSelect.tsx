@@ -106,6 +106,23 @@ function fmtContext(ctx: number | null | undefined): string | null {
 	return `${ctx} ctx`;
 }
 
+function pickDisplay(
+	providerId: string,
+	providerName: string | undefined,
+	catalogName: string | undefined,
+): string {
+	const cleanId = providerId.replace(/(^|\/)~/g, "$1");
+	// Prefer the provider's name when it's actually human (different from the
+	// raw id and not just the same string with a leading tilde).
+	const pn = providerName?.trim();
+	if (pn && pn !== providerId && pn !== cleanId) return pn;
+	// Fallback to catalog display when it's at least as informative as the id.
+	const cn = catalogName?.trim();
+	if (cn && cn !== providerId && cn !== cleanId) return cn;
+	// Last resort: the tilde-stripped id.
+	return cleanId;
+}
+
 function buildRows(props: Props): RichRow[] {
 	const { models, catalog, reseller, restrictToIds } = props;
 	const restrict = restrictToIds && restrictToIds.length > 0 ? new Set(restrictToIds) : null;
@@ -120,7 +137,7 @@ function buildRows(props: Props): RichRow[] {
 			if (match?.capabilities?.supports_audio_in) caps.push("audio");
 			return {
 				id: m.id,
-				display: match?.display_name?.trim() || m.display_name?.trim() || m.id,
+				display: pickDisplay(m.id, m.display_name, match?.display_name),
 				price: fmtPrice(
 					match?.input_price_per_million ?? null,
 					match?.output_price_per_million ?? null,
@@ -227,7 +244,21 @@ export function ModelSelect(props: Props) {
 					</Button>
 				</PopoverTrigger>
 				<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-					<Command>
+					<Command
+						filter={(value, search, keywords) => {
+							// cmdk's default fuzzy matcher accepts split-letter matches
+							// across long strings (typing "opus" matches things with no
+							// "opus" substring). Replace with a plain case-insensitive
+							// substring match against value + keywords.
+							const q = search.trim().toLowerCase();
+							if (!q) return 1;
+							const haystack = [value, ...(keywords ?? [])]
+								.filter(Boolean)
+								.join(" ")
+								.toLowerCase();
+							return haystack.includes(q) ? 1 : 0;
+						}}
+					>
 						<CommandInput placeholder="Search models…" />
 						<CommandList className="max-h-72">
 							<CommandEmpty>No matches.</CommandEmpty>

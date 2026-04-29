@@ -94,25 +94,44 @@ def lookup_capabilities(
     Tries, in order:
       1. `<reseller>/<model_id>` exact match (handles OpenRouter/Together/etc.)
       2. `model_id` exact match (handles direct provider calls)
-      3. Suffix-after-last-slash match (handles odd routing forms)
-    Returns None if nothing matches; the caller treats those as Uncategorized.
+      3. Same as 1 + 2 with leading `~` stripped (OpenRouter aliases use `~`)
+      4. Suffix-after-last-slash exact match (odd routing forms)
+      5. Endswith-match: any key whose suffix equals our suffix. Handles
+         OpenRouter `moonshotai/kimi-k2.6` ↔ LiteLLM `moonshot/kimi-k2.6`.
     """
     if by_id is None:
         return None
+
+    # Strip OpenRouter's `~` redirect-marker, both globally (`~author/model`)
+    # and after a slash (`reseller/~author/model`).
+    import re
+
+    clean = re.sub(r"(^|/)~", r"\1", model_id)
+
+    candidates = []
     if reseller:
-        prefixed = f"{reseller}/{model_id}"
-        hit = by_id.get(prefixed)
+        candidates.append(f"{reseller}/{model_id}")
+        if clean != model_id:
+            candidates.append(f"{reseller}/{clean}")
+    candidates.append(model_id)
+    if clean != model_id:
+        candidates.append(clean)
+
+    for k in candidates:
+        hit = by_id.get(k)
         if hit is not None:
             return hit
-    hit = by_id.get(model_id)
-    if hit is not None:
-        return hit
-    # Last resort: match by suffix after the last slash.
-    suffix = model_id.rsplit("/", 1)[-1]
-    if suffix != model_id:
+
+    # Suffix exact, then endswith-any
+    suffix = clean.rsplit("/", 1)[-1]
+    if suffix != clean:
         hit = by_id.get(suffix)
         if hit is not None:
             return hit
+        target = "/" + suffix
+        for k in by_id:
+            if k.endswith(target):
+                return by_id[k]
     return None
 
 

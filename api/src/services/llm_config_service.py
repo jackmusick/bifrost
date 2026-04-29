@@ -283,7 +283,13 @@ class LLMConfigService:
                 all_model_ids: list[str] = []
                 for m in sorted(models_response.data, key=lambda x: x.id):
                     all_model_ids.append(m.id)
-                    model_infos.append(LLMModelInfo(id=m.id, display_name=m.id))
+                    # OpenRouter (and a few other OpenAI-compat endpoints) expose
+                    # a human-friendly `name` field; OpenAI itself doesn't, so
+                    # fall back to the id. Strip leading `~` which OpenRouter
+                    # uses to denote `redirect-to-latest` aliases.
+                    raw_name = getattr(m, "name", None) or m.id
+                    display = raw_name.lstrip("~")
+                    model_infos.append(LLMModelInfo(id=m.id, display_name=display))
 
                 model_available = model in all_model_ids
             except Exception as e:
