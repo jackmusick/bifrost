@@ -302,3 +302,120 @@ class TestBackendSelection:
             else:
                 sys.modules.pop("keyring", None)
         assert isinstance(backend, JsonBackend)
+
+
+# ---------- Legacy migration ----------
+
+class TestLegacyMigration:
+    @pytest.fixture
+    def tmp_creds_path(self, tmp_path, monkeypatch):
+        path = tmp_path / "credentials.json"
+        monkeypatch.setattr(creds_mod, "get_credentials_path", lambda: path)
+        creds_mod._reset_persistent_backend_for_tests()
+        # Clear inherited env vars so EnvBackend doesn't shadow.
+        monkeypatch.delenv("BIFROST_API_URL", raising=False)
+        monkeypatch.delenv("BIFROST_ACCESS_TOKEN", raising=False)
+        monkeypatch.delenv("BIFROST_REFRESH_TOKEN", raising=False)
+        return path
+
+    def _write_legacy(self, path):
+        import json
+        path.write_text(json.dumps({
+            "api_url": "https://prod.example.com",
+            "access_token": "legacy_at",
+            "refresh_token": "legacy_rt",
+            "expires_at": "2030-01-01T00:00:00+00:00",
+        }))
+
+    def test_migrate_legacy_to_json_backend(self, tmp_creds_path, monkeypatch):
+        import json
+        # Force JSON backend
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: JsonBackend())
+        creds_mod._reset_persistent_backend_for_tests()
+        self._write_legacy(tmp_creds_path)
+
+        result = creds_mod.get_credentials("https://prod.example.com")
+        assert result is not None
+        assert result["access_token"] == "legacy_at"
+
+        # The file should now be in dict-of-URLs format
+        data = json.loads(tmp_creds_path.read_text())
+        assert "https://prod.example.com" in data
+        assert data["https://prod.example.com"]["access_token"] == "legacy_at"
+        assert "api_url" not in data  # no top-level legacy keys
+
+    def test_migrate_legacy_to_keyring_backend(self, tmp_creds_path, monkeypatch):
+        import json
+        from bifrost.credentials import KEYRING_SERVICE, KeyringBackend
+        fake = FakeKeyring()
+        monkeypatch.setattr(
+            creds_mod,
+            "_select_persistent_backend",
+            lambda: KeyringBackend(_keyring=fake),
+        )
+        creds_mod._reset_persistent_backend_for_tests()
+        self._write_legacy(tmp_creds_path)
+
+        result = creds_mod.get_credentials("https://prod.example.com")
+        assert result is not None
+        assert result["access_token"] == "legacy_at"
+
+        # Keyring should have the entry
+        raw = fake.get_password(KEYRING_SERVICE, "https://prod.example.com")
+        assert raw is not None
+        assert json.loads(raw)["access_token"] == "legacy_at"
+
+        # JSON file is now an empty dict (marker that migration ran)
+        data = json.loads(tmp_creds_path.read_text())
+        assert data == {}
+
+    def test_migrate_idempotent(self, tmp_creds_path, monkeypatch):
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: JsonBackend())
+        creds_mod._reset_persistent_backend_for_tests()
+        self._write_legacy(tmp_creds_path)
+
+        # First call migrates
+        creds_mod.get_credentials("https://prod.example.com")
+        # Second call should still work, no exceptions
+        result = creds_mod.get_credentials("https://prod.example.com")
+        assert result["access_token"] == "legacy_at"
+
+    def test_migration_failure_preserves_legacy_file(self, tmp_creds_path, monkeypatch):
+        """If the new backend's save fails, the legacy file is untouched."""
+        from bifrost.credentials import KeyringBackend
+
+        class ExplodingKeyring:
+            def get_password(self, *_a, **_kw):
+                return None
+
+            def set_password(self, *_a, **_kw):
+                raise RuntimeError("disk full")
+
+            def delete_password(self, *_a, **_kw):
+                pass
+
+        monkeypatch.setattr(
+            creds_mod,
+            "_select_persistent_backend",
+            lambda: KeyringBackend(_keyring=ExplodingKeyring()),
+        )
+        creds_mod._reset_persistent_backend_for_tests()
+        self._write_legacy(tmp_creds_path)
+        original = tmp_creds_path.read_text()
+
+        # Migration should fail silently and the legacy data should still be returned
+        result = creds_mod.get_credentials("https://prod.example.com")
+        assert result is not None
+        assert result["access_token"] == "legacy_at"
+        # File untouched on failure
+        assert tmp_creds_path.read_text() == original
+
+    def test_no_arg_get_resolves_url_from_legacy(self, tmp_creds_path, monkeypatch):
+        """When no api_url is given AND no env var, falling back through legacy must work."""
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: JsonBackend())
+        creds_mod._reset_persistent_backend_for_tests()
+        self._write_legacy(tmp_creds_path)
+
+        result = creds_mod.get_credentials()  # no args
+        assert result is not None
+        assert result["api_url"] == "https://prod.example.com"

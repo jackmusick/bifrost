@@ -305,30 +305,95 @@ def _resolve_url(api_url: str | None) -> str | None:
     return None
 
 
+def _try_migrate_legacy() -> Credentials | None:
+    """
+    If ~/.bifrost/credentials.json contains the legacy single-record format,
+    migrate it into the active persistent backend and return the parsed
+    record. On failure, leave the legacy file untouched and return the
+    parsed record anyway so callers still get the credentials.
+    """
+    path = get_credentials_path()
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r") as f:
+            raw = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(raw, dict) or "api_url" not in raw or "access_token" not in raw:
+        return None
+    try:
+        legacy = Credentials.from_dict(raw)
+    except KeyError:
+        return None
+
+    # Try to migrate.
+    try:
+        get_persistent_backend().save(legacy)
+    except Exception:
+        # Migration failed (disk full, keyring locked, etc.).
+        # Return the parsed legacy record so the caller still works,
+        # but don't touch the file. Next call will retry migration.
+        return legacy
+
+    # Migration succeeded. If the active backend is JsonBackend, save() already
+    # rewrote the file in dict-of-URLs format — done. If it's KeyringBackend,
+    # the legacy file is still on disk; rewrite it as `{}` (marker that migration ran).
+    try:
+        with open(path, "r") as f:
+            new_contents = json.load(f)
+        if isinstance(new_contents, dict) and "api_url" in new_contents:
+            # Keyring path: legacy file still on disk; clear it.
+            with open(path, "w") as f:
+                json.dump({}, f)
+            if platform.system() != "Windows":
+                path.chmod(0o600)
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    return legacy
+
+
 def get_credentials(api_url: str | None = None) -> dict | None:
     """
     Resolve credentials for a given API URL.
 
-    Resolution order: env vars → persistent backend.
+    Resolution order:
+      1. Env vars (EnvBackend) — for ephemeral sessions.
+      2. Persistent backend (keychain or JSON) — for long-lived sessions.
+      3. Legacy single-record JSON — lazily migrated.
 
-    If api_url is None, the URL is resolved via _resolve_url() — see that
-    function for the no-arg fallback ladder.
+    If api_url is None, the URL is resolved via _resolve_url(). When even
+    that fails, we fall through to the legacy file as a last resort to
+    learn the URL.
 
     Returns: dict with keys api_url/access_token/refresh_token/expires_at,
     or None. Returns dict (not Credentials) for back-compat with existing
     callers in client.py / cli.py.
     """
-    api_url = _resolve_url(api_url)
-    if api_url is None:
-        return None
+    resolved = _resolve_url(api_url)
 
-    env_creds = EnvBackend().get(api_url)
+    if resolved is None:
+        # No URL anywhere; try legacy file as last resort to learn one.
+        legacy = _try_migrate_legacy()
+        if legacy is None:
+            return None
+        return legacy.to_dict()
+
+    # 1. Env vars
+    env_creds = EnvBackend().get(resolved)
     if env_creds is not None:
         return env_creds.to_dict()
 
-    creds = get_persistent_backend().get(api_url)
+    # 2. Persistent backend
+    creds = get_persistent_backend().get(resolved)
     if creds is not None:
         return creds.to_dict()
+
+    # 3. Legacy fallback (and migrate if found)
+    legacy = _try_migrate_legacy()
+    if legacy is not None and legacy.api_url.rstrip("/") == resolved:
+        return legacy.to_dict()
     return None
 
 
