@@ -1391,7 +1391,9 @@ jsonschema-specifications==2025.9.1 \
 keyring==25.7.0 \
     --hash=sha256:be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f \
     --hash=sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b
-    # via py-key-value-aio
+    # via
+    #   bifrost-api (pyproject.toml)
+    #   py-key-value-aio
 libcst==1.8.6 \
     --hash=sha256:04030ea4d39d69a65873b1d4d877def1c3951a7ada1824242539e399b8763d30 \
     --hash=sha256:06fc56335a45d61b7c1b856bfab4587b84cfe31e9d6368f60bb3c9129d900f58 \
