@@ -19,9 +19,7 @@ import json
 import logging
 import os
 import pathlib
-import signal
 import shutil
-import subprocess
 import sys
 import textwrap
 import time
@@ -39,6 +37,7 @@ import httpx
 
 # Import credentials module directly (it's standalone)
 import bifrost.credentials as credentials
+from bifrost._workspace_lock import WorkspaceLock, WorkspaceLockError
 from bifrost.client import BifrostClient
 # Canonical platform export list. Shared with api/src/services/app_bundler.
 # A drift test (tests/unit/test_platform_names_match_runtime.py) keeps this
@@ -1525,23 +1524,34 @@ Examples:
         _print_not_a_workspace_error("push")
         return 1
 
-    # Authenticate BEFORE entering asyncio.run() so token refresh works
-    # (refresh_tokens() uses asyncio.run() internally, which fails inside a running loop)
+    # Block push if a watch (or another sync/push) is already running in
+    # this workspace — see handle_sync for rationale.
     try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        lock = WorkspaceLock(resolved, "push").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
         return 1
 
-    _warn_if_git_workspace(parsed.local_path)
-
     try:
-        return asyncio.run(_sync_files(
-            parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
-            client=client,
-        ))
-    except KeyboardInterrupt:
-        return 130
+        # Authenticate BEFORE entering asyncio.run() so token refresh works
+        # (refresh_tokens() uses asyncio.run() internally, which fails inside a running loop)
+        try:
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        _warn_if_git_workspace(parsed.local_path)
+
+        try:
+            return asyncio.run(_sync_files(
+                parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
+                client=client,
+            ))
+        except KeyboardInterrupt:
+            return 130
+    finally:
+        lock.__exit__()
 
 
 def handle_sync(args: list[str]) -> int:
@@ -1590,81 +1600,34 @@ Examples:
         _print_not_a_workspace_error("sync")
         return 1
 
-    # Authenticate BEFORE entering asyncio.run()
+    # Block sync if a watch (or another sync) is already running in this
+    # workspace — concurrent watch+sync would issue separate session_ids
+    # that the server can't dedupe, ping-ponging each other's writes.
     try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        lock = WorkspaceLock(resolved, "sync").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
         return 1
 
-    _warn_if_git_workspace(parsed.local_path)
-
     try:
-        return asyncio.run(_sync_files(
-            parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
-            client=client,
-        ))
-    except KeyboardInterrupt:
-        return 130
-
-
-def _check_existing_watch() -> list[tuple[int, str]]:
-    """Check for other running 'bifrost watch' processes. Returns list of (pid, cmdline)."""
-    current_pid = os.getpid()
-    parent_pid = os.getppid()
-    results: list[tuple[int, str]] = []
-    try:
-        proc = subprocess.run(
-            ["ps", "ax", "-o", "pid=,args="],
-            capture_output=True, text=True, timeout=5,
-        )
-        for line in proc.stdout.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split(None, 1)
-            if len(parts) < 2:
-                continue
-            try:
-                pid = int(parts[0])
-            except ValueError:
-                continue
-            cmdline = parts[1]
-            if pid in (current_pid, parent_pid):
-                continue
-            if "bifrost" in cmdline and "watch" in cmdline and "grep" not in cmdline:
-                results.append((pid, cmdline))
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-        # ps unavailable (Windows / restricted env) or timed out — skip the check
-        logger.debug(f"could not enumerate existing watch processes: {e}")
-    return results
-
-
-def _kill_watch_processes(processes: list[tuple[int, str]]) -> bool:
-    """Kill watch processes via SIGTERM, wait up to 5s. Returns True if all stopped."""
-    for pid, _cmdline in processes:
+        # Authenticate BEFORE entering asyncio.run()
         try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            continue
-        except PermissionError:
-            print(f"  Permission denied killing PID {pid}. Kill it manually.", file=sys.stderr)
-            return False
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
-    for _ in range(50):  # 5 seconds in 100ms increments
-        time.sleep(0.1)
-        all_dead = True
-        for pid, _ in processes:
-            try:
-                os.kill(pid, 0)  # check if still alive
-                all_dead = False
-            except ProcessLookupError:
-                continue
-            except PermissionError:
-                all_dead = False
-        if all_dead:
-            return True
-    return False
+        _warn_if_git_workspace(parsed.local_path)
+
+        try:
+            return asyncio.run(_sync_files(
+                parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
+                client=client,
+            ))
+        except KeyboardInterrupt:
+            return 130
+    finally:
+        lock.__exit__()
 
 
 def handle_watch(args: list[str]) -> int:
@@ -1700,29 +1663,6 @@ Examples:
 """.strip())
         return 0
 
-    # Check for other running bifrost watch processes
-    existing = _check_existing_watch()
-    if existing:
-        print("\n⚠ Another bifrost watch process is already running:", file=sys.stderr)
-        for pid, cmdline in existing:
-            print(f"  PID {pid} — {cmdline}", file=sys.stderr)
-        print(file=sys.stderr)
-        if not sys.stdin.isatty():
-            print("Cannot prompt in non-interactive mode. Stop the existing watch first.", file=sys.stderr)
-            return 1
-        try:
-            answer = input("Kill and start a new watch session? [y/N]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print(file=sys.stderr)
-            return 1
-        if answer != "y":
-            return 1
-        print("Stopping existing watch...", file=sys.stderr)
-        if not _kill_watch_processes(existing):
-            print("Failed to stop existing watch processes. Kill them manually.", file=sys.stderr)
-            return 1
-        print("Stopped.", file=sys.stderr)
-
     parsed = _parse_push_watch_args(args)
     if parsed is None:
         return 1
@@ -1737,31 +1677,43 @@ Examples:
         _print_not_a_workspace_error("watch")
         return 1
 
-    # Authenticate
+    # Acquire the per-workspace lock. Held for the lifetime of the watch
+    # process; the kernel releases it on any exit (including crashes), so no
+    # cleanup or stale-state recovery is needed.
     try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        lock = WorkspaceLock(resolved, "watch").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
         return 1
 
-    _warn_if_git_workspace(parsed.local_path)
-
-    repo_prefix = _detect_repo_prefix(resolved)
     try:
-        return asyncio.run(_push_with_precheck(
-            parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, watch=True, force=parsed.force,
-            client=client,
-        ))
-    except KeyboardInterrupt:
-        print("\nStopping watch...", flush=True)
+        # Authenticate
         try:
-            client.post_sync("/api/files/watch", json={
-                "action": "stop", "prefix": repo_prefix,
-            })
-        except Exception as e:
-            # Server may already be unreachable — session expires server-side via TTL
-            logger.debug(f"could not notify server of watch stop: {e}")
-        return 130
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        _warn_if_git_workspace(parsed.local_path)
+
+        repo_prefix = _detect_repo_prefix(resolved)
+        try:
+            return asyncio.run(_push_with_precheck(
+                parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, watch=True, force=parsed.force,
+                client=client,
+            ))
+        except KeyboardInterrupt:
+            print("\nStopping watch...", flush=True)
+            try:
+                client.post_sync("/api/files/watch", json={
+                    "action": "stop", "prefix": repo_prefix,
+                })
+            except Exception as e:
+                # Server may already be unreachable — session expires server-side via TTL
+                logger.debug(f"could not notify server of watch stop: {e}")
+            return 130
+    finally:
+        lock.__exit__()
 
 
 def handle_pull(args: list[str]) -> int:
@@ -1836,20 +1788,31 @@ Examples:
         _print_not_a_workspace_error("pull")
         return 1
 
-    # Authenticate
+    # Block pull if a watch (or another sync/push/pull) is already running
+    # in this workspace — see handle_sync for rationale.
     try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        lock = WorkspaceLock(resolved, "pull").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
         return 1
 
     try:
-        return asyncio.run(_sync_files(
-            local_path, mirror=mirror, force=force, client=client,
-        ))
-    except KeyboardInterrupt:
-        print("\nPull cancelled.")
-        return 130
+        # Authenticate
+        try:
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        try:
+            return asyncio.run(_sync_files(
+                local_path, mirror=mirror, force=force, client=client,
+            ))
+        except KeyboardInterrupt:
+            print("\nPull cancelled.")
+            return 130
+    finally:
+        lock.__exit__()
 
 
 
@@ -2505,8 +2468,18 @@ async def _process_incoming(
                         except OSError as e:
                             # Permission / I/O issue reading existing file — fall through to overwrite
                             logger.debug(f"could not byte-compare {local_file}, will overwrite: {e}")
-                    local_file.write_bytes(content)
+                    # Set the cache hash BEFORE the disk write to close the
+                    # race window: watchdog runs in a separate thread and can
+                    # enqueue an event the moment write_bytes flushes — which
+                    # may be before this asyncio task gets to set_known_hash.
+                    # If the write later fails, forget the entry so the next
+                    # cycle re-pushes whatever's on disk.
                     state.set_known_hash(repo_path, content_hash)
+                    try:
+                        local_file.write_bytes(content)
+                    except OSError:
+                        state.forget_known_hash(repo_path)
+                        raise
                     if watch_app:
                         watch_app.log_pull(rel, user=user_name)
                     else:
