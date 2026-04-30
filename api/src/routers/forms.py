@@ -27,6 +27,7 @@ from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
 from src.models import Execution as ExecutionORM
 from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
+from src.models import Role as RoleORM
 from src.models import Workflow as WorkflowORM
 from src.models import FormCreate, FormUpdate, FormPublic
 from src.models.contracts.forms import FormField, FormSchema
@@ -282,6 +283,53 @@ async def list_forms(
     return result
 
 
+async def _replace_form_roles(
+    db: AsyncSession,
+    form_id: UUID,
+    role_ids: list[UUID],
+    assigned_by: str,
+) -> None:
+    """Bulk-replace role assignments on a form.
+
+    Validates every role exists, then deletes existing FormRole rows for the
+    form and inserts the new set. Empty list clears all assignments.
+    """
+    if role_ids:
+        existing = await db.execute(
+            select(RoleORM.id).where(RoleORM.id.in_(role_ids))
+        )
+        found = set(existing.scalars().all())
+        missing = [str(rid) for rid in role_ids if rid not in found]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Role(s) not found: {', '.join(missing)}",
+            )
+
+    await db.execute(
+        delete(FormRoleORM).where(FormRoleORM.form_id == form_id)
+    )
+    now = datetime.now(timezone.utc)
+    for role_id in role_ids:
+        db.add(
+            FormRoleORM(
+                form_id=form_id,
+                role_id=role_id,
+                assigned_by=assigned_by,
+                assigned_at=now,
+            )
+        )
+    await db.flush()
+
+
+async def _load_form_role_ids(db: AsyncSession, form_id: UUID) -> list[UUID]:
+    """Return the role IDs currently assigned to a form."""
+    result = await db.execute(
+        select(FormRoleORM.role_id).where(FormRoleORM.form_id == form_id)
+    )
+    return list(result.scalars().all())
+
+
 @router.post(
     "",
     response_model=FormPublic,
@@ -342,6 +390,10 @@ async def create_form(
 
     await db.flush()
 
+    # Apply role assignments before reloading so the response reflects them
+    if request.role_ids:
+        await _replace_form_roles(db, form.id, request.role_ids, ctx.user.email)
+
     # Reload form with fields eager-loaded
     result = await db.execute(
         select(FormORM)
@@ -360,6 +412,7 @@ async def create_form(
         org_id = str(form.organization_id) if form.organization_id else None
         await invalidate_form(org_id, str(form.id))
 
+    form.role_ids = await _load_form_role_ids(db, form.id)  # type: ignore[attr-defined]
     return FormPublic.model_validate(form)
 
 
@@ -392,9 +445,13 @@ async def get_form(
             detail="Form not found",
         )
 
+    async def _to_public(orm_form: FormORM) -> FormPublic:
+        orm_form.role_ids = await _load_form_role_ids(db, orm_form.id)  # type: ignore[attr-defined]
+        return FormPublic.model_validate(orm_form)
+
     # Check access - admins and embed users can see all forms
     if ctx.user.is_superuser or ctx.user.embed:
-        return FormPublic.model_validate(form)
+        return await _to_public(form)
 
     # Non-admins can only see active forms
     if not form.is_active:
@@ -413,7 +470,7 @@ async def get_form(
     # Check access level
     access_level = form.access_level or "role_based"
     if access_level == "authenticated":
-        return FormPublic.model_validate(form)
+        return await _to_public(form)
 
     # Role-based: check if user has a role assigned to this form
     role_query = select(UserRoleORM.role_id).where(UserRoleORM.user_id == ctx.user.user_id)
@@ -427,7 +484,7 @@ async def get_form(
         )
         form_role_result = await db.execute(form_role_query)
         if form_role_result.scalar_one_or_none() is not None:
-            return FormPublic.model_validate(form)
+            return await _to_public(form)
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -518,11 +575,19 @@ async def update_form(
     if "organization_id" in request.model_fields_set:
         form.organization_id = request.organization_id
 
-    # Clear all role assignments if requested
-    if request.clear_roles:
-        from src.models.orm.forms import FormRole
+    # Role assignment edits. ``role_ids`` (when explicitly provided) bulk-replaces
+    # the assignment set; ``clear_roles`` is the legacy single-purpose flag and
+    # wipes assignments when ``role_ids`` was not supplied. If both are provided,
+    # ``role_ids`` wins because it carries the more specific intent.
+    if request.role_ids is not None:
+        await _replace_form_roles(db, form_id, request.role_ids, ctx.user.email)
+        logger.info(
+            f"Replaced role assignments for form '{log_safe(form.name)}' "
+            f"({len(request.role_ids)} role(s))"
+        )
+    elif request.clear_roles:
         await db.execute(
-            delete(FormRole).where(FormRole.form_id == form_id)
+            delete(FormRoleORM).where(FormRoleORM.form_id == form_id)
         )
         # Also set to role_based access level (effectively no access)
         form.access_level = FormAccessLevel.ROLE_BASED
@@ -550,6 +615,7 @@ async def update_form(
         org_id = str(form.organization_id) if form.organization_id else None
         await invalidate_form(org_id, str(form_id))
 
+    form.role_ids = await _load_form_role_ids(db, form_id)  # type: ignore[attr-defined]
     return FormPublic.model_validate(form)
 
 

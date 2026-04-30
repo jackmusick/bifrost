@@ -241,3 +241,228 @@ def test_reactivate_wf(message: str):
             "/api/files/editor?path=workflows/readme.md",
             headers=platform_admin.headers,
         )
+
+
+@pytest.mark.e2e
+class TestRegisterWorkflowAccess:
+    """``access_level`` + ``role_ids`` on workflow registration (issue #162)."""
+
+    def _write_wf(self, e2e_client, platform_admin, path: str, func: str) -> None:
+        e2e_client.delete(
+            f"/api/files/editor?path={path}",
+            headers=platform_admin.headers,
+        )
+        write_resp = e2e_client.put(
+            "/api/files/editor/content",
+            headers=platform_admin.headers,
+            json={
+                "path": path,
+                "content": (
+                    "from bifrost import workflow\n\n"
+                    f"@workflow(name='{func}')\n"
+                    f"def {func}(message: str):\n"
+                    "    return {'ok': True}\n"
+                ),
+                "encoding": "utf-8",
+            },
+        )
+        assert write_resp.status_code == 200, write_resp.text
+
+    def _make_role(self, e2e_client, platform_admin, name: str) -> dict:
+        resp = e2e_client.post(
+            "/api/roles",
+            headers=platform_admin.headers,
+            json={"name": name, "description": f"role for {name}"},
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def test_register_with_access_level_and_role_ids_persists(
+        self, e2e_client, platform_admin
+    ):
+        path = "workflows/test_reg_access.py"
+        func = "test_reg_access"
+        self._write_wf(e2e_client, platform_admin, path, func)
+        role = self._make_role(e2e_client, platform_admin, "Issue162 RegRoleA")
+        try:
+            reg_resp = e2e_client.post(
+                "/api/workflows/register",
+                headers=platform_admin.headers,
+                json={
+                    "path": path,
+                    "function_name": func,
+                    "access_level": "role_based",
+                    "role_ids": [role["id"]],
+                },
+            )
+            assert reg_resp.status_code == 201, reg_resp.text
+            wf_id = reg_resp.json()["id"]
+
+            # Confirm via the workflow's roles endpoint that the assignment landed.
+            roles_resp = e2e_client.get(
+                f"/api/workflows/{wf_id}/roles",
+                headers=platform_admin.headers,
+            )
+            assert roles_resp.status_code == 200, roles_resp.text
+            assert role["id"] in roles_resp.json().get("role_ids", [])
+
+            # Cleanup workflow
+            e2e_client.delete(
+                f"/api/workflows/{wf_id}",
+                headers=platform_admin.headers,
+            )
+        finally:
+            e2e_client.delete(
+                f"/api/files/editor?path={path}",
+                headers=platform_admin.headers,
+            )
+            e2e_client.delete(
+                f"/api/roles/{role['id']}",
+                headers=platform_admin.headers,
+            )
+
+    def test_register_with_invalid_access_level_returns_400(
+        self, e2e_client, platform_admin
+    ):
+        path = "workflows/test_reg_bad_access.py"
+        func = "test_reg_bad_access"
+        self._write_wf(e2e_client, platform_admin, path, func)
+        try:
+            resp = e2e_client.post(
+                "/api/workflows/register",
+                headers=platform_admin.headers,
+                json={
+                    "path": path,
+                    "function_name": func,
+                    "access_level": "public",  # invalid
+                },
+            )
+            assert resp.status_code == 400, resp.text
+        finally:
+            e2e_client.delete(
+                f"/api/files/editor?path={path}",
+                headers=platform_admin.headers,
+            )
+
+    def test_register_with_unknown_role_returns_404(self, e2e_client, platform_admin):
+        path = "workflows/test_reg_bad_role.py"
+        func = "test_reg_bad_role"
+        self._write_wf(e2e_client, platform_admin, path, func)
+        bogus = "00000000-0000-0000-0000-000000000000"
+        try:
+            resp = e2e_client.post(
+                "/api/workflows/register",
+                headers=platform_admin.headers,
+                json={
+                    "path": path,
+                    "function_name": func,
+                    "role_ids": [bogus],
+                },
+            )
+            assert resp.status_code == 404, resp.text
+            assert bogus in resp.text
+        finally:
+            e2e_client.delete(
+                f"/api/files/editor?path={path}",
+                headers=platform_admin.headers,
+            )
+
+
+@pytest.mark.e2e
+class TestWorkflowUpdateRoleIds:
+    """``role_ids`` bulk-replace on PATCH /api/workflows/{id} (issue #162)."""
+
+    def _write_and_register(self, e2e_client, platform_admin, path: str, func: str) -> str:
+        e2e_client.delete(
+            f"/api/files/editor?path={path}",
+            headers=platform_admin.headers,
+        )
+        write_resp = e2e_client.put(
+            "/api/files/editor/content",
+            headers=platform_admin.headers,
+            json={
+                "path": path,
+                "content": (
+                    "from bifrost import workflow\n\n"
+                    f"@workflow(name='{func}')\n"
+                    f"def {func}(message: str):\n"
+                    "    return {'ok': True}\n"
+                ),
+                "encoding": "utf-8",
+            },
+        )
+        assert write_resp.status_code == 200, write_resp.text
+        reg_resp = e2e_client.post(
+            "/api/workflows/register",
+            headers=platform_admin.headers,
+            json={"path": path, "function_name": func},
+        )
+        assert reg_resp.status_code == 201, reg_resp.text
+        return reg_resp.json()["id"]
+
+    def _make_role(self, e2e_client, platform_admin, name: str) -> dict:
+        resp = e2e_client.post(
+            "/api/roles",
+            headers=platform_admin.headers,
+            json={"name": name, "description": f"role for {name}"},
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def test_update_role_ids_replaces_assignments(self, e2e_client, platform_admin):
+        path = "workflows/test_wf_replace.py"
+        func = "test_wf_replace"
+        wf_id = self._write_and_register(e2e_client, platform_admin, path, func)
+        role_a = self._make_role(e2e_client, platform_admin, "Issue162 WfReplaceA")
+        role_b = self._make_role(e2e_client, platform_admin, "Issue162 WfReplaceB")
+        try:
+            # Seed via the existing batch assign endpoint.
+            seed = e2e_client.post(
+                f"/api/workflows/{wf_id}/roles",
+                headers=platform_admin.headers,
+                json={"role_ids": [role_a["id"]]},
+            )
+            assert seed.status_code == 204, seed.text
+
+            # Bulk-replace with role_b only.
+            patch_resp = e2e_client.patch(
+                f"/api/workflows/{wf_id}",
+                headers=platform_admin.headers,
+                json={"role_ids": [role_b["id"]]},
+            )
+            assert patch_resp.status_code == 200, patch_resp.text
+
+            roles_resp = e2e_client.get(
+                f"/api/workflows/{wf_id}/roles",
+                headers=platform_admin.headers,
+            )
+            assert roles_resp.status_code == 200
+            assigned = set(roles_resp.json().get("role_ids", []))
+            assert assigned == {role_b["id"]}
+
+            # Empty list clears.
+            clear_resp = e2e_client.patch(
+                f"/api/workflows/{wf_id}",
+                headers=platform_admin.headers,
+                json={"role_ids": []},
+            )
+            assert clear_resp.status_code == 200, clear_resp.text
+            roles_resp = e2e_client.get(
+                f"/api/workflows/{wf_id}/roles",
+                headers=platform_admin.headers,
+            )
+            assert roles_resp.json().get("role_ids", []) == []
+        finally:
+            e2e_client.delete(
+                f"/api/workflows/{wf_id}",
+                headers=platform_admin.headers,
+            )
+            e2e_client.delete(
+                f"/api/files/editor?path={path}",
+                headers=platform_admin.headers,
+            )
+            for r in (role_a, role_b):
+                e2e_client.delete(
+                    f"/api/roles/{r['id']}",
+                    headers=platform_admin.headers,
+                )

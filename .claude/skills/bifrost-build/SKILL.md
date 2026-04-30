@@ -45,11 +45,30 @@ Then use `Grep/Read` on `/tmp/bifrost-docs/llms.txt` whenever you need reference
 ### Before Building
 
 1. **Which organization?** Ask the user which organization they're building for (natural language — don't dump a list of UUIDs). Confirm the org name, then resolve the UUID with `bifrost orgs get <name> --json` (or `bifrost orgs list --json` and pick from the list).
-2. **What triggers this?** (webhook, form, schedule, manual)
-3. **If webhook:** Get sample payload from user
-4. **What integrations?** `bifrost integrations list --json` — drill into specific ones with `bifrost integrations get <ref> --json`.
-5. **If migrating from Rewst:** Use `/rewst-migration` skill
-6. **If building something new** (new integration, workflow, app, or shared module — not modifying existing):
+2. **Who should have access?** Confirm the access tuple `(organization, access_level, role_ids)` *before* you scaffold anything, and apply it consistently across the app and every workflow / form it depends on. Mismatched access is the most common reason a working app silently 403s for end users. Compatibility rule of thumb when an app is assigned to roles X (under Org A or global): every supporting workflow and form must satisfy at least one of —
+   - **Global** scope (any org, available to all roles), OR
+   - **Org A scoped + `access_level=authenticated`** (any logged-in user in Org A), OR
+   - **Same role(s) X** assigned to it.
+
+   Example: a Finance app for Org A, role-restricted to `finance`. Every workflow it calls must be either global, Org-A-scoped+authenticated, or role-assigned to `finance` — otherwise users with the `finance` role can't execute the workflows the app depends on. Discover roles with `bifrost roles list --json`. Pass the tuple through every subsequent create/register call so it doesn't drift:
+
+   ```bash
+   # Apps + forms support these flags directly on create/update.
+   bifrost apps create --name "Finance" --slug finance --organization "Org A" \
+     --access-level role_based --role-ids finance
+   bifrost forms create --name "..." --workflow ... --organization "Org A" \
+     --access-level role_based --role-ids finance
+
+   # Workflows: --access-level + --role-ids on register, or update later
+   # via `bifrost workflows update <ref> --role-ids ...` (bulk replace).
+   bifrost workflows register --path workflows/foo.py --function-name foo \
+     --org "Org A" --access-level role_based --role-ids finance
+   ```
+3. **What triggers this?** (webhook, form, schedule, manual)
+4. **If webhook:** Get sample payload from user
+5. **What integrations?** `bifrost integrations list --json` — drill into specific ones with `bifrost integrations get <ref> --json`.
+6. **If migrating from Rewst:** Use `/rewst-migration` skill
+7. **If building something new** (new integration, workflow, app, or shared module — not modifying existing):
    > "It sounds like we're building something new. Would you like me to clone the bifrost-workspace-community repo? It has working examples from the community and might already have what you need."
 
    If the user agrees:

@@ -130,6 +130,23 @@ async def get_workflow(
     default=None,
     help="Organization ref (UUID or name) to scope the workflow to; omit for global.",
 )
+@click.option(
+    "--access-level",
+    "access_level",
+    type=click.Choice(["authenticated", "role_based"]),
+    default=None,
+    help="Access level for the workflow. Omit to leave at default.",
+)
+@click.option(
+    "--role-ids",
+    "role_ids",
+    type=str,
+    multiple=True,
+    help=(
+        "Role refs (UUID or name) for role_based access. Repeat the flag for "
+        "multiple, or pass a comma-separated list."
+    ),
+)
 @click.pass_context
 @pass_resolver
 @run_async
@@ -141,16 +158,35 @@ async def register_workflow(
     path: str,
     function_name: str,
     organization_id: str | None,
+    access_level: str | None,
+    role_ids: tuple[str, ...],
 ) -> None:
     """Register a decorated function from an existing workspace ``.py`` file.
 
     The file must already exist in the workspace (written via ``bifrost push``
     or the file editor). This command indexes a ``@workflow`` / ``@tool`` /
     ``@data_provider`` function so it becomes executable via the API.
+
+    ``--access-level`` and ``--role-ids`` set the workflow's access controls at
+    registration time, mirroring the create-time surface for forms and apps.
+    Role refs accept names or UUIDs and are resolved before the request.
     """
     body: dict[str, Any] = {"path": path, "function_name": function_name}
     if organization_id is not None:
         body["organization_id"] = await resolver.resolve("org", organization_id)
+    if access_level is not None:
+        body["access_level"] = access_level
+
+    # Flatten comma-separated role refs and resolve names → UUIDs.
+    flattened: list[str] = []
+    for raw in role_ids:
+        for piece in raw.split(","):
+            piece = piece.strip()
+            if piece:
+                flattened.append(piece)
+    if flattened:
+        body["role_ids"] = [await resolver.resolve("role", r) for r in flattened]
+
     response = await client.post("/api/workflows/register", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
