@@ -15,6 +15,7 @@ from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -44,8 +45,6 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 # =============================================================================
 # Picker context — what model the picker should show as default + allowlist
 # =============================================================================
-
-from pydantic import BaseModel
 
 
 class ChatModelContext(BaseModel):
