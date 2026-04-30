@@ -13,6 +13,13 @@ Window-function ordering uses (sequence, created_at, id) as a deterministic
 tiebreaker. Message.sequence is non-unique per conversation, so a tie is
 theoretically possible; the extra columns make the backfill reproducible.
 
+Note on the NULL-parent partition: editing the first user message creates
+a sibling with parent_message_id IS NULL (same as the original first
+message). This is intentional — the GET /messages window function
+correctly groups them as siblings. Do NOT add a partial unique index on
+``conversation_id WHERE parent_message_id IS NULL``: it would block
+first-message edits.
+
 Revision ID: 20260429_chat_v2_m3
 Revises: 20260428_chat_v2_m2
 Create Date: 2026-04-29
@@ -114,7 +121,6 @@ def upgrade() -> None:
         WHERE leaves.conversation_id = c.id AND leaves.rn = 1;
         """
     )
-
 
 def downgrade() -> None:
     op.drop_column("conversations", "instructions")
