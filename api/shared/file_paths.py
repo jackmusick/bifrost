@@ -36,14 +36,8 @@ WORKSPACE_PREFIX = "_repo/"
 TEMP_PREFIX = "_tmp/"
 UPLOADS_PREFIX = "uploads/"
 
-RESERVED_LOCATION_NAMES: frozenset[str] = frozenset({
-    "workspace",
-    "uploads",
-    "temp",
-    "_repo",
-    "_tmp",
-    "_apps",
-})
+RESERVED_LOCATIONS: frozenset[str] = frozenset({"workspace", "uploads", "temp"})
+BLOCKED_LOCATION_NAMES: frozenset[str] = frozenset({"_repo", "_tmp", "_apps"})
 
 _FREEFORM_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
@@ -55,9 +49,9 @@ def validate_location_name(location: str) -> None:
     so users can't bypass the `{location}/{scope}/` layout by addressing the underlying
     bucket prefix directly.
     """
-    if location in ("workspace", "uploads", "temp"):
+    if location in RESERVED_LOCATIONS:
         return
-    if location in ("_repo", "_tmp", "_apps"):
+    if location in BLOCKED_LOCATION_NAMES:
         raise ValueError(
             f"Invalid location: '{location}' is a reserved bucket prefix; "
             "use 'workspace', 'temp', or 'uploads' instead."
