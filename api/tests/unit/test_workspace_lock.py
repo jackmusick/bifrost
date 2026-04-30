@@ -192,3 +192,53 @@ def test_concurrent_workspaces_do_not_block(tmp_path: pathlib.Path) -> None:
     with WorkspaceLock(ws_a, "watch"):
         with WorkspaceLock(ws_b, "watch"):
             pass
+
+
+def test_failed_acquire_closes_fd_and_rolls_back_reservation(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Any exception between `open()` and the successful return of
+    `__enter__` must close the FD and roll back the in-process
+    reservation. Otherwise a contended acquire leaks an FD per attempt
+    and a half-failed acquire blocks all future ones in the same process.
+    """
+    ws = _make_workspace(tmp_path)
+
+    # Force `_platform_lock` to raise an unexpected error (not
+    # BlockingIOError) — exercises the catch-all rollback path.
+    import bifrost._workspace_lock as wl
+
+    def boom(_fh: object) -> None:
+        raise RuntimeError("simulated platform lock failure")
+
+    monkeypatch.setattr(wl, "_platform_lock", boom)
+
+    with pytest.raises(RuntimeError, match="simulated"):
+        with WorkspaceLock(ws, "watch"):
+            pass
+
+    # Reservation rolled back: a fresh acquire must succeed.
+    monkeypatch.undo()
+    with WorkspaceLock(ws, "watch"):
+        pass
+
+
+def test_blocking_acquire_does_not_leak_fd_or_reservation(tmp_path: pathlib.Path) -> None:
+    """A BlockingIOError from a cross-process contender must close the
+    contender's FD and roll back the in-process reservation, leaving the
+    workspace acquirable again once the holder releases."""
+    ws = _make_workspace(tmp_path)
+    with WorkspaceLock(ws, "watch"):
+        # First attempt fails as expected.
+        with pytest.raises(WorkspaceLockError):
+            with WorkspaceLock(ws, "sync"):
+                pass
+        # Second attempt also fails — proves the first didn't leave a
+        # stale entry in `_HELD` that would mask the real holder.
+        with pytest.raises(WorkspaceLockError):
+            with WorkspaceLock(ws, "sync"):
+                pass
+    # Holder released; acquire now succeeds.
+    with WorkspaceLock(ws, "sync"):
+        pass

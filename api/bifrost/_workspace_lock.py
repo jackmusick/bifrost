@@ -127,6 +127,15 @@ class WorkspaceLock:
             # Reserve before opening the file so two threads racing through
             # __enter__ can't both observe the empty set.
             _HELD.add(key)
+
+        # `fh` is opened inside the try/except so any failure between
+        # open() and the successful self._fh assignment closes it. The
+        # outer except handles every remaining error path: BlockingIOError
+        # from cross-process contention, OSError from open/seek/truncate,
+        # KeyboardInterrupt mid-json.dump, anything. If we don't reach the
+        # successful return, the FD is closed and the in-process
+        # reservation is rolled back.
+        fh: IO[Any] | None = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             # Open in append mode so we don't truncate before we've
@@ -136,11 +145,12 @@ class WorkspaceLock:
             try:
                 _platform_lock(fh)
             except BlockingIOError:
-                fh.close()
                 holder = _read_metadata(self.path)
                 raise WorkspaceLockError(self.workspace, holder)
 
-            # We hold the lock. Now stamp our metadata.
+            # We hold the lock. Now stamp our metadata. Failure here
+            # doesn't break correctness — the lock is on the FD, not the
+            # metadata. Log and continue.
             try:
                 fh.seek(0)
                 fh.truncate()
@@ -151,16 +161,16 @@ class WorkspaceLock:
                 }, fh)
                 fh.flush()
             except OSError as e:
-                # Failure here doesn't break correctness — the lock is on
-                # the FD, not the metadata. Log and continue.
                 logger.debug(f"could not write lock metadata: {e}")
 
             self._fh = fh
             return self
         except BaseException:
-            # Reservation must roll back if anything fails between the
-            # _HELD.add and the successful return. Includes BlockingIOError
-            # from cross-process contention and any OSError on file open.
+            if fh is not None and self._fh is None:
+                try:
+                    fh.close()
+                except OSError as e:
+                    logger.debug(f"error closing lock file during rollback: {e}")
             with _HELD_LOCK:
                 _HELD.discard(key)
             raise
