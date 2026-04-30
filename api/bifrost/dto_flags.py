@@ -87,6 +87,9 @@ DTO_EXCLUDES: dict[str, set[str]] = {
     # JSON-object flags alongside the flat ones.
     "EventSourceCreate": {"webhook", "schedule"},
     "EventSourceUpdate": {"webhook", "schedule"},
+    # Tables: ``access`` is a nested Pydantic object; CLI surface added in Task 12.
+    "TableCreate": {"access"},
+    "TableUpdate": {"access"},
 }
 
 #: Per-DTO field renames applied to the assembled body.

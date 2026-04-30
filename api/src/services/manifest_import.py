@@ -426,11 +426,29 @@ async def _apply_role_name_resolution(db: AsyncSession, manifest: "Manifest") ->
         else:
             new_apps[key] = mapp
 
+    # Tables: role names live at access.role.role_names → access.role.roles
+    new_tables: dict[str, object] = {}
+    for key, mtable in manifest.tables.items():
+        if (
+            mtable.access is not None
+            and mtable.access.role.role_names is not None
+        ):
+            resolved_ids = await _resolve_role_names(db, list(mtable.access.role.role_names))
+            from uuid import UUID as _UUID
+            new_role = mtable.access.role.model_copy(
+                update={"roles": [_UUID(r) for r in resolved_ids], "role_names": None}
+            )
+            new_access = mtable.access.model_copy(update={"role": new_role})
+            new_tables[key] = mtable.model_copy(update={"access": new_access})
+        else:
+            new_tables[key] = mtable
+
     return manifest.model_copy(update={
         "workflows": new_workflows,
         "forms": new_forms,
         "agents": new_agents,
         "apps": new_apps,
+        "tables": new_tables,
     })
 
 
@@ -2140,6 +2158,8 @@ class ManifestResolver:
             )
             existing_by_natural = (await self.db.execute(natural_q)).scalar_one_or_none()
 
+        access_dict = mtable.access.model_dump(mode="json") if mtable.access else None
+
         if existing_by_natural is not None:
             if existing_by_natural != table_id:
                 # ID mismatch (cross-env) — realign the DB row's ID to the manifest ID.
@@ -2155,6 +2175,7 @@ class ManifestResolver:
                     description=mtable.description,
                     application_id=app_id,
                     schema=mtable.table_schema,
+                    access=access_dict,
                     updated_at=now,
                 )
             )
@@ -2177,6 +2198,7 @@ class ManifestResolver:
                     description=mtable.description,
                     application_id=app_id,
                     schema=mtable.table_schema,
+                    access=access_dict,
                     updated_at=now,
                 )
             )
@@ -2190,6 +2212,7 @@ class ManifestResolver:
             organization_id=org_id,
             application_id=app_id,
             schema=mtable.table_schema,
+            access=access_dict,
             created_by="git-sync",
         ).on_conflict_do_nothing()
         await self.db.execute(stmt)
