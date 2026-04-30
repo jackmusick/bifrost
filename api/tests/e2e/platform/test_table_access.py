@@ -77,7 +77,7 @@ class TestTableAccessMatrix:
             table_id,
             {
                 "everyone": {"read": True, "create": False, "update": False, "delete": False},
-                "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+                "roles": [],
                 "creator": {"read": False, "create": False, "update": False, "delete": False},
             },
         )
@@ -115,7 +115,7 @@ class TestTableAccessMatrix:
             table_id,
             {
                 "everyone": {"read": False, "create": False, "update": False, "delete": False},
-                "role": {"roles": [role_id], "read": True, "create": True, "update": True, "delete": True},
+                "roles": [{"roles": [role_id], "read": True, "create": True, "update": True, "delete": True}],
                 "creator": {"read": False, "create": False, "update": False, "delete": False},
             },
         )
@@ -153,7 +153,7 @@ class TestTableAccessMatrix:
             table_id,
             {
                 "everyone": {"read": False, "create": False, "update": False, "delete": False},
-                "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+                "roles": [],
                 "creator": {"read": True, "create": True, "update": False, "delete": False},
             },
         )

@@ -140,6 +140,11 @@ class TableRepository(OrgScopedRepository[Table]):
             schema=data.schema,
             organization_id=self.org_id,
             created_by=created_by,
+            access=(
+                data.access.model_dump(mode="json")
+                if data.access is not None
+                else None
+            ),
         )
         self.session.add(table)
         await self.session.flush()

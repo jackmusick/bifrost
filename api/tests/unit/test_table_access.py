@@ -15,13 +15,16 @@ from shared.table_access import (
 
 
 def _table_access(**overrides):
-    base = {
+    base: dict = {
         "everyone": {"read": False, "create": False, "update": False, "delete": False},
-        "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+        "roles": [],
         "creator": {"read": False, "create": False, "update": False, "delete": False},
     }
     for scope, flags in overrides.items():
-        base[scope] = {**base[scope], **flags}
+        if scope == "roles":
+            base["roles"] = flags
+        else:
+            base[scope] = {**base[scope], **flags}
     return base
 
 
@@ -74,7 +77,7 @@ def test_everyone_grant_allows(action):
 
 def test_role_grant_requires_membership():
     role = uuid4()
-    access = _table_access(role={"roles": [str(role)], "read": True})
+    access = _table_access(roles=[{"roles": [str(role)], "read": True}])
     member = _user(role_ids=[role])
     non_member = _user(role_ids=[])
     assert check_table_access(action=Action.READ, access=access, caller=member).allow is True
@@ -107,7 +110,7 @@ def test_union_of_grants():
     role = uuid4()
     access = _table_access(
         everyone={"read": True},
-        role={"roles": [str(role)], "update": True},
+        roles=[{"roles": [str(role)], "update": True}],
         creator={"delete": True},
     )
     user_id = uuid4()
@@ -134,3 +137,44 @@ def test_list_filter_signal_everyone_overrides_creator():
     res = check_table_access(action=Action.READ, access=access, caller=_user(), row_created_by=None)
     assert res.allow is True
     assert res.creator_filter_required is False
+
+
+# ---- Multi-role grants ------------------------------------------------------
+
+def test_two_role_grants_both_matched_union():
+    """Caller in both roles gets union of their permissions."""
+    role_a = uuid4()
+    role_b = uuid4()
+    access = _table_access(
+        roles=[
+            {"roles": [str(role_a)], "read": True, "create": True},
+            {"roles": [str(role_b)], "update": True, "delete": True},
+        ]
+    )
+    caller = _user(role_ids=[role_a, role_b])
+    assert check_table_access(action=Action.READ, access=access, caller=caller).allow is True
+    assert check_table_access(action=Action.CREATE, access=access, caller=caller).allow is True
+    assert check_table_access(action=Action.UPDATE, access=access, caller=caller, row_created_by=uuid4()).allow is True
+    assert check_table_access(action=Action.DELETE, access=access, caller=caller, row_created_by=uuid4()).allow is True
+
+
+def test_two_role_grants_only_one_matched():
+    """Caller only in role_a gets role_a's permissions only."""
+    role_a = uuid4()
+    role_b = uuid4()
+    access = _table_access(
+        roles=[
+            {"roles": [str(role_a)], "read": True},
+            {"roles": [str(role_b)], "create": True},
+        ]
+    )
+    caller = _user(role_ids=[role_a])
+    assert check_table_access(action=Action.READ, access=access, caller=caller).allow is True
+    assert check_table_access(action=Action.CREATE, access=access, caller=caller).allow is False
+
+
+def test_empty_roles_list_grants_nothing():
+    """An empty roles list means no role-based permissions."""
+    access = _table_access(roles=[])
+    caller = _user(role_ids=[uuid4()])
+    assert check_table_access(action=Action.READ, access=access, caller=caller).allow is False

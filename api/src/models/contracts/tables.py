@@ -40,7 +40,7 @@ class TableAccess(BaseModel):
     """Table-level access rules. NULL on Table = workflow-only."""
 
     everyone: TableAccessScopeCRUD = Field(default_factory=TableAccessScopeCRUD)
-    role: TableAccessRoleScope = Field(default_factory=TableAccessRoleScope)
+    roles: list[TableAccessRoleScope] = Field(default_factory=list)
     creator: TableAccessScopeCRUD = Field(default_factory=TableAccessScopeCRUD)
 
 

@@ -17,7 +17,6 @@ import sys
 import unittest.mock as mock
 
 import httpx
-import pytest
 from click.testing import CliRunner
 
 # Ensure the standalone bifrost package is importable.
@@ -28,13 +27,12 @@ from bifrost.commands.tables import tables_group  # noqa: E402
 
 _ACCESS_DICT = {
     "everyone": {"read": True, "create": False, "update": False, "delete": False},
-    "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+    "roles": [],
     "creator": {"read": False, "create": False, "update": False, "delete": False},
 }
 _ACCESS_JSON = json.dumps(_ACCESS_DICT)
 
 
-import asyncio  # noqa: E402
 
 _DUMMY_REQUEST = httpx.Request("GET", "https://bifrost.test/api/tables")
 

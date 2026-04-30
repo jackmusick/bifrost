@@ -844,25 +844,53 @@ class TestTableManifest:
         from uuid import UUID, uuid4
         from bifrost.manifest import ManifestTable
 
-        role = str(uuid4())
+        role_a = str(uuid4())
+        role_b = str(uuid4())
         raw = {
             "id": str(uuid4()),
             "name": "t1",
             "description": None,
             "access": {
                 "everyone": {"read": True, "create": False, "update": False, "delete": False},
-                "role": {"roles": [role], "read": False, "create": True, "update": True, "delete": False},
+                "roles": [
+                    {"roles": [role_a], "read": False, "create": True, "update": True, "delete": False},
+                    {"roles": [role_b], "read": True, "create": False, "update": False, "delete": False},
+                ],
                 "creator": {"read": True, "create": True, "update": True, "delete": True},
             },
         }
         m = ManifestTable.model_validate(raw)
         assert m.access is not None
-        assert m.access.role.roles == [UUID(role)]
+        assert len(m.access.roles) == 2
+        assert m.access.roles[0].roles == [UUID(role_a)]
+        assert m.access.roles[1].roles == [UUID(role_b)]
         assert m.access.everyone.read is True
         rt = m.model_dump(mode="json")
         assert rt["access"]["everyone"]["read"] is True
-        assert rt["access"]["role"]["roles"] == [role]
+        assert rt["access"]["roles"][0]["roles"] == [role_a]
+        assert rt["access"]["roles"][1]["roles"] == [role_b]
         assert rt["access"]["creator"]["delete"] is True
+
+    def test_table_access_single_role_grant(self):
+        """Single-entry roles list round-trips correctly."""
+        from uuid import UUID, uuid4
+        from bifrost.manifest import ManifestTable
+
+        role = str(uuid4())
+        raw = {
+            "id": str(uuid4()),
+            "name": "t2",
+            "access": {
+                "everyone": {"read": False, "create": False, "update": False, "delete": False},
+                "roles": [{"roles": [role], "read": True, "create": True, "update": True, "delete": True}],
+                "creator": {"read": False, "create": False, "update": False, "delete": False},
+            },
+        }
+        m = ManifestTable.model_validate(raw)
+        assert m.access is not None
+        assert len(m.access.roles) == 1
+        assert m.access.roles[0].roles == [UUID(role)]
+        assert m.access.roles[0].read is True
 
     def test_table_access_none(self):
         """ManifestTable without access field parses to access=None."""

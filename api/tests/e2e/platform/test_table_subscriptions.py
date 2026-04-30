@@ -51,7 +51,7 @@ def _http(user: E2EUser) -> httpx.AsyncClient:
 
 _DENY_ACCESS = {
     "everyone": {"read": False, "create": False, "update": False, "delete": False},
-    "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+    "roles": [],
     "creator": {"read": False, "create": False, "update": False, "delete": False},
 }
 
@@ -107,7 +107,7 @@ class TestTableWebsocketSubscriptions:
                 json={
                     "access": {
                         "everyone": {"read": True, "create": True, "update": False, "delete": False},
-                        "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+                        "roles": [],
                         "creator": {"read": False, "create": False, "update": False, "delete": False},
                     }
                 },
@@ -153,7 +153,7 @@ class TestTableWebsocketSubscriptions:
                 json={
                     "access": {
                         "everyone": {"read": False, "create": True, "update": False, "delete": False},
-                        "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+                        "roles": [],
                         "creator": {"read": True, "create": True, "update": True, "delete": True},
                     }
                 },
@@ -212,7 +212,7 @@ class TestTableWebsocketSubscriptions:
                 json={
                     "access": {
                         "everyone": {"read": True, "create": False, "update": False, "delete": False},
-                        "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+                        "roles": [],
                         "creator": {"read": False, "create": False, "update": False, "delete": False},
                     }
                 },
@@ -232,7 +232,7 @@ class TestTableWebsocketSubscriptions:
                     json={
                         "access": {
                             "everyone": {"read": False, "create": False, "update": False, "delete": False},
-                            "role": {"roles": [], "read": False, "create": False, "update": False, "delete": False},
+                            "roles": [],
                             "creator": {"read": False, "create": False, "update": False, "delete": False},
                         }
                     },

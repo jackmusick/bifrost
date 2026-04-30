@@ -241,7 +241,7 @@ def _rewrite_role_ids_to_names(
         if rewritten:
             counts[section] = rewritten
 
-    # Tables: role UUIDs live at access.role.roles — rewrite to role_names.
+    # Tables: role UUIDs live at access.roles[].roles — rewrite to role_names.
     tables = manifest.get("tables")
     if isinstance(tables, dict):
         rewritten_tables = 0
@@ -251,26 +251,29 @@ def _rewrite_role_ids_to_names(
             access = tentity.get("access")
             if not isinstance(access, dict):
                 continue
-            role_block = access.get("role")
-            if not isinstance(role_block, dict):
+            role_grants = access.get("roles")
+            if not isinstance(role_grants, list):
                 continue
-            role_ids = role_block.get("roles")
-            if not isinstance(role_ids, list) or not role_ids:
-                continue
-            tnames: list[str] = []
-            tunresolved: list[str] = []
-            for role_id in role_ids:
-                if not isinstance(role_id, str):
+            for role_block in role_grants:
+                if not isinstance(role_block, dict):
                     continue
-                rname = role_names_by_id.get(role_id)
-                if rname is None:
-                    tunresolved.append(role_id)
-                else:
-                    tnames.append(rname)
-            role_block["role_names"] = tnames
-            del role_block["roles"]
-            if tunresolved:
-                role_block["unresolved_role_ids"] = tunresolved
+                role_ids = role_block.get("roles")
+                if not isinstance(role_ids, list) or not role_ids:
+                    continue
+                tnames: list[str] = []
+                tunresolved: list[str] = []
+                for role_id in role_ids:
+                    if not isinstance(role_id, str):
+                        continue
+                    rname = role_names_by_id.get(role_id)
+                    if rname is None:
+                        tunresolved.append(role_id)
+                    else:
+                        tnames.append(rname)
+                role_block["role_names"] = tnames
+                del role_block["roles"]
+                if tunresolved:
+                    role_block["unresolved_role_ids"] = tunresolved
             rewritten_tables += 1
         if rewritten_tables:
             counts["tables"] = rewritten_tables

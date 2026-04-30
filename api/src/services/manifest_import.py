@@ -426,20 +426,29 @@ async def _apply_role_name_resolution(db: AsyncSession, manifest: "Manifest") ->
         else:
             new_apps[key] = mapp
 
-    # Tables: role names live at access.role.role_names → access.role.roles
+    # Tables: role names live at access.roles[].role_names → access.roles[].roles
+    from uuid import UUID as _UUID
     new_tables: dict[str, object] = {}
     for key, mtable in manifest.tables.items():
-        if (
-            mtable.access is not None
-            and mtable.access.role.role_names is not None
-        ):
-            resolved_ids = await _resolve_role_names(db, list(mtable.access.role.role_names))
-            from uuid import UUID as _UUID
-            new_role = mtable.access.role.model_copy(
-                update={"roles": [_UUID(r) for r in resolved_ids], "role_names": None}
-            )
-            new_access = mtable.access.model_copy(update={"role": new_role})
-            new_tables[key] = mtable.model_copy(update={"access": new_access})
+        if mtable.access is not None and mtable.access.roles:
+            new_role_grants = []
+            changed = False
+            for role_grant in mtable.access.roles:
+                if role_grant.role_names is not None:
+                    resolved_ids = await _resolve_role_names(db, list(role_grant.role_names))
+                    new_role_grants.append(
+                        role_grant.model_copy(
+                            update={"roles": [_UUID(r) for r in resolved_ids], "role_names": None}
+                        )
+                    )
+                    changed = True
+                else:
+                    new_role_grants.append(role_grant)
+            if changed:
+                new_access = mtable.access.model_copy(update={"roles": new_role_grants})
+                new_tables[key] = mtable.model_copy(update={"access": new_access})
+            else:
+                new_tables[key] = mtable
         else:
             new_tables[key] = mtable
 

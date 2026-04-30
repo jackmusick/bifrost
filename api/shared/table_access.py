@@ -77,12 +77,17 @@ def check_table_access(
 
     everyone_grants = _scope_flag(access.get("everyone"), action)
 
-    role_block = access.get("role") or {}
-    role_grants_action = _scope_flag(role_block, action)
-    role_ids_raw = role_block.get("roles") or []
-    role_ids = {UUID(r) if isinstance(r, str) else r for r in role_ids_raw}
-    user_in_role = bool(caller.role_ids & role_ids)
-    role_grants = role_grants_action and user_in_role
+    role_grants = False
+    for role_block in (access.get("roles") or []):
+        if not isinstance(role_block, dict):
+            continue
+        if not _scope_flag(role_block, action):
+            continue
+        role_ids_raw = role_block.get("roles") or []
+        role_ids = {UUID(r) if isinstance(r, str) else r for r in role_ids_raw}
+        if caller.role_ids & role_ids:
+            role_grants = True
+            break
 
     creator_grants_action = _scope_flag(access.get("creator"), action)
     if action == Action.CREATE:

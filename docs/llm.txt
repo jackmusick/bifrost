@@ -162,11 +162,14 @@ Non-obvious semantics:
   ```
   {
     "everyone": {"read": bool, "create": bool, "update": bool, "delete": bool},
-    "role":     {"roles": [<role-uuid>...], "read": bool, "create": bool, "update": bool, "delete": bool},
+    "roles": [
+      {"roles": [<role-uuid>...], "read": bool, "create": bool, "update": bool, "delete": bool}
+    ],
     "creator":  {"read": bool, "create": bool, "update": bool, "delete": bool}
   }
   ```
-  Resolution is additive (union of grants); `null` (the default) means workflow-only.
+  `roles` is a list so admins can configure multiple role grants (e.g. Admins: r/c/u/d, Viewers: r-only).
+  Resolution is additive (union of grants across all matching role entries); `null` (the default) means workflow-only.
 - The Creator scope filters reads to rows whose `created_by` matches the caller's user_id when no broader scope grants `read` — useful for "users see only their own submissions" patterns.
 - Browser apps can call tables directly via the platform SDK (`import { tables, useTableSubscription } from "bifrost"`); see `bifrost-build` skill `platform-api.md` for examples. Apps using the SDK do not create execution records.
 - Workflow SDK auto-attributes `created_by` / `updated_by` from `context.user_id`; pass `created_by=` / `updated_by=` to override.

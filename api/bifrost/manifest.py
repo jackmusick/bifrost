@@ -255,7 +255,7 @@ class ManifestTableAccess(BaseModel):
     """Table-level access rules in the manifest."""
 
     everyone: ManifestTableAccessScopeCRUD = Field(default_factory=ManifestTableAccessScopeCRUD)
-    role: ManifestTableAccessRoleScope = Field(default_factory=ManifestTableAccessRoleScope)
+    roles: list[ManifestTableAccessRoleScope] = Field(default_factory=list)
     creator: ManifestTableAccessScopeCRUD = Field(default_factory=ManifestTableAccessScopeCRUD)
 
 
