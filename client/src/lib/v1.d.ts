@@ -3473,22 +3473,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6722,7 +6722,7 @@ export interface paths {
         put?: never;
         /**
          * Insert a document
-         * @description Insert a new document into the table (platform admin only).
+         * @description Insert a new document into the table.
          */
         post: operations["insert_document_api_tables__table_id__documents_post"];
         delete?: never;
@@ -6740,21 +6740,21 @@ export interface paths {
         };
         /**
          * Get a document
-         * @description Get a document by ID (platform admin only).
+         * @description Get a document by ID.
          */
         get: operations["get_document_api_tables__table_id__documents__doc_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete a document
-         * @description Delete a document (platform admin only).
+         * @description Delete a document.
          */
         delete: operations["delete_document_api_tables__table_id__documents__doc_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update a document
-         * @description Update a document (platform admin only, partial update, merges with existing).
+         * @description Update a document (partial update, merges with existing).
          */
         patch: operations["update_document_api_tables__table_id__documents__doc_id__patch"];
         trace?: never;
@@ -6770,7 +6770,7 @@ export interface paths {
         put?: never;
         /**
          * Query documents
-         * @description Query documents with filtering and pagination (platform admin only).
+         * @description Query documents with filtering and pagination.
          *
          *     Returns 404 if the table doesn't exist.
          */
@@ -6790,13 +6790,59 @@ export interface paths {
         };
         /**
          * Count documents
-         * @description Count documents in a table (platform admin only).
+         * @description Count documents in a table.
          *
          *     Returns 404 if the table doesn't exist.
          */
         get: operations["count_documents_api_tables__table_id__documents_count_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{table_id}/documents/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch insert or upsert documents
+         * @description Insert (or upsert) multiple documents in a single request.
+         *
+         *     When `upsert=true`, each item with a provided id will be updated if it
+         *     exists, otherwise inserted. Items without an id are always inserted.
+         */
+        post: operations["batch_documents_api_tables__table_id__documents_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{table_id}/documents/batch-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch delete documents by ID
+         * @description Delete multiple documents by ID.
+         *
+         *     Skips IDs that don't exist. Enforces DELETE access for each row
+         *     (creator-only rules mean rows not owned by the caller are skipped).
+         */
+        post: operations["batch_delete_documents_api_tables__table_id__documents_batch_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11149,6 +11195,72 @@ export interface components {
             message?: string | null;
         };
         /**
+         * DocumentBatchCreate
+         * @description Input for inserting or upserting multiple documents.
+         */
+        DocumentBatchCreate: {
+            /**
+             * Documents
+             * @description Documents to insert or upsert
+             */
+            documents: components["schemas"]["DocumentBatchItem"][];
+            /**
+             * Upsert
+             * @description If true, upsert documents with an id instead of inserting.
+             * @default false
+             */
+            upsert: boolean;
+        };
+        /**
+         * DocumentBatchCreateResponse
+         * @description Response for a batch insert or upsert.
+         */
+        DocumentBatchCreateResponse: {
+            /** Inserted */
+            inserted: number;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * DocumentBatchDeleteRequest
+         * @description Input for deleting multiple documents by ID.
+         */
+        DocumentBatchDeleteRequest: {
+            /**
+             * Ids
+             * @description Document IDs to delete
+             */
+            ids: string[];
+        };
+        /**
+         * DocumentBatchDeleteResponse
+         * @description Response for a batch delete.
+         */
+        DocumentBatchDeleteResponse: {
+            /** Deleted */
+            deleted: number;
+        };
+        /**
+         * DocumentBatchItem
+         * @description A single item in a batch insert or upsert.
+         */
+        DocumentBatchItem: {
+            /**
+             * Id
+             * @description Optional document ID. Auto-generated (UUID) if omitted.
+             */
+            id?: string | null;
+            /**
+             * Data
+             * @description Document data (any JSON-serializable dict)
+             */
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * DocumentCountResponse
          * @description Response for document count.
          */
@@ -11162,12 +11274,23 @@ export interface components {
          */
         DocumentCreate: {
             /**
+             * Id
+             * @description Optional document ID. Auto-generated (UUID) if omitted.
+             */
+            id?: string | null;
+            /**
              * Data
              * @description Document data (any JSON-serializable dict)
              */
             data: {
                 [key: string]: unknown;
             };
+            /**
+             * Upsert
+             * @description If true and id is provided, update the existing document instead of raising a conflict.
+             * @default false
+             */
+            upsert: boolean;
         };
         /**
          * DocumentListResponse
@@ -17430,6 +17553,11 @@ export interface components {
              * @description Application UUID
              */
             app?: string | null;
+            /**
+             * Created By
+             * @description Attribution override; resolved from execution context by SDK when omitted
+             */
+            created_by?: string | null;
         };
         /**
          * SDKDocumentInsertRequest
@@ -17463,6 +17591,11 @@ export interface components {
              * @description Application UUID
              */
             app?: string | null;
+            /**
+             * Created By
+             * @description Attribution override; resolved from execution context by SDK when omitted
+             */
+            created_by?: string | null;
         };
         /**
          * SDKDocumentList
@@ -17587,6 +17720,11 @@ export interface components {
              * @description Application UUID
              */
             app?: string | null;
+            /**
+             * Updated By
+             * @description Attribution override; resolved from execution context by SDK when omitted
+             */
+            updated_by?: string | null;
         };
         /**
          * SDKDocumentUpsertBatchItem
@@ -17631,6 +17769,16 @@ export interface components {
              * @description Application UUID
              */
             app?: string | null;
+            /**
+             * Created By
+             * @description Attribution override for new documents; resolved from execution context by SDK when omitted
+             */
+            created_by?: string | null;
+            /**
+             * Updated By
+             * @description Attribution override for updates; resolved from execution context by SDK when omitted
+             */
+            updated_by?: string | null;
         };
         /**
          * SDKDocumentUpsertRequest
@@ -17664,6 +17812,16 @@ export interface components {
              * @description Application UUID
              */
             app?: string | null;
+            /**
+             * Created By
+             * @description Attribution override for new documents; resolved from execution context by SDK when omitted
+             */
+            created_by?: string | null;
+            /**
+             * Updated By
+             * @description Attribution override for updates; resolved from execution context by SDK when omitted
+             */
+            updated_by?: string | null;
         };
         /**
          * SDKIntegrationsDeleteMappingRequest
@@ -18532,7 +18690,8 @@ export interface components {
          */
         TableAccess: {
             everyone?: components["schemas"]["TableAccessScopeCRUD"];
-            role?: components["schemas"]["TableAccessRoleScope"];
+            /** Roles */
+            roles?: components["schemas"]["TableAccessRoleScope"][];
             creator?: components["schemas"]["TableAccessScopeCRUD"];
         };
         /**
@@ -25851,7 +26010,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -25884,7 +26043,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -25917,7 +26076,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -25950,7 +26109,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -31814,6 +31973,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentCountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_documents_api_tables__table_id__documents_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_delete_documents_api_tables__table_id__documents_batch_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchDeleteResponse"];
                 };
             };
             /** @description Validation Error */

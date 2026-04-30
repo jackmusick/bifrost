@@ -179,7 +179,7 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 
 	return (
 		<Dialog open={open} onOpenChange={onClose}>
-			<DialogContent className="sm:max-w-[500px]">
+			<DialogContent className="sm:max-w-[760px]">
 				<DialogHeader>
 					<DialogTitle>
 						{isEditing ? "Edit Table" : "Create Table"}
