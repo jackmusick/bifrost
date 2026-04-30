@@ -60,14 +60,17 @@ router = APIRouter(prefix="/api/files", tags=["Files"])
 # Request Models with Mode Parameter
 # =============================================================================
 
-Location = Literal["workspace", "temp", "uploads"]
 Mode = Literal["local", "cloud"]
+
+# Location is now a free string; reserved-vs-freeform validation lives in
+# `shared.file_paths.validate_location_name` and is applied by the resolver.
 
 
 class FileReadRequest(BaseModel):
     """Request to read a file."""
     path: str = Field(..., description="File path relative to location root")
-    location: Location = Field(default="workspace", description="Storage location")
+    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
     binary: bool = Field(default=False, description="If true, return base64-encoded content")
 
@@ -76,7 +79,8 @@ class FileWriteRequest(BaseModel):
     """Request to write a file."""
     path: str = Field(..., description="File path relative to location root")
     content: str = Field(..., description="File content (text or base64 for binary)")
-    location: Location = Field(default="workspace", description="Storage location")
+    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
     binary: bool = Field(default=False, description="If true, content is base64-encoded")
 
@@ -84,14 +88,16 @@ class FileWriteRequest(BaseModel):
 class FileDeleteRequest(BaseModel):
     """Request to delete a file."""
     path: str = Field(..., description="File path relative to location root")
-    location: Location = Field(default="workspace", description="Storage location")
+    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
 
 
 class FileListRequest(BaseModel):
     """Request to list files."""
     directory: str = Field(default="", description="Directory path relative to location root")
-    location: Location = Field(default="workspace", description="Storage location")
+    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
     include_metadata: bool = Field(default=False, description="If true, return ETags + last_modified per file")
 
@@ -99,7 +105,8 @@ class FileListRequest(BaseModel):
 class FileExistsRequest(BaseModel):
     """Request to check file existence."""
     path: str = Field(..., description="File path relative to location root")
-    location: Location = Field(default="workspace", description="Storage location")
+    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
 
 
@@ -130,10 +137,11 @@ class FileExistsResponse(BaseModel):
 
 class SignedUrlRequest(BaseModel):
     """Request to generate a presigned S3 URL."""
-    path: str = Field(..., description="File path (scoped automatically by org)")
+    path: str = Field(..., description="File path relative to location root (NOT including scope segment)")
     method: Literal["PUT", "GET"] = Field(default="PUT", description="HTTP method: PUT for upload, GET for download")
     content_type: str = Field(default="application/octet-stream", description="MIME type (only used for PUT)")
-    scope: str | None = Field(default=None, description="Organization scope (auto-resolved from context if None)")
+    location: str = Field(default="uploads", description="Storage location. Defaults to 'uploads' for backwards compatibility with form upload flows.")
+    scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
 
 
 class SignedUrlResponse(BaseModel):
@@ -158,7 +166,7 @@ async def read_file(
     """Read a file from workspace, temp, or uploads."""
     try:
         backend = get_backend(request.mode, db)
-        content = await backend.read(request.path, request.location)
+        content = await backend.read(request.path, request.location, scope=request.scope)
 
         if request.binary:
             return FileReadResponse(content=base64.b64encode(content).decode(), binary=True)
@@ -198,7 +206,16 @@ async def write_file(
             content = request.content.encode("utf-8")
 
         updated_by = user.email if user else "system"
-        await backend.write(request.path, content, request.location, updated_by)
+        if request.location == "workspace" and request.mode == "cloud":
+            if await _is_workspace_git_locked():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Workspace contains a .git directory; writes are blocked when the "
+                        "workspace is git-controlled."
+                    ),
+                )
+        await backend.write(request.path, content, request.location, updated_by, scope=request.scope)
 
         logger.info(f"Wrote file: {log_safe(request.path)} ({len(content)} bytes, mode={log_safe(request.mode)}, location={log_safe(request.location)})")
 
@@ -219,7 +236,7 @@ async def delete_file(
     """Delete a file from workspace, temp, or uploads."""
     try:
         backend = get_backend(request.mode, db)
-        await backend.delete(request.path, request.location)
+        await backend.delete(request.path, request.location, scope=request.scope)
 
         logger.info(f"Deleted file: {log_safe(request.path)} (mode={log_safe(request.mode)}, location={log_safe(request.location)})")
 
@@ -280,7 +297,7 @@ async def list_files_simple(
             )
 
         backend = get_backend(request.mode, db)
-        files = await backend.list(request.directory, request.location)
+        files = await backend.list(request.directory, request.location, scope=request.scope)
         return FileListResponse(files=files)
 
     except ValueError as e:
@@ -300,7 +317,7 @@ async def file_exists(
     """Check if a file exists."""
     try:
         backend = get_backend(request.mode, db)
-        exists = await backend.exists(request.path, request.location)
+        exists = await backend.exists(request.path, request.location, scope=request.scope)
         return FileExistsResponse(exists=exists)
 
     except ValueError as e:
@@ -310,8 +327,6 @@ async def file_exists(
         )
 
 
-RESERVED_PREFIXES = ("_repo/", "_apps/", "_tmp/")
-
 @router.post("/signed-url", response_model=SignedUrlResponse)
 async def get_signed_url(
     request: SignedUrlRequest,
@@ -319,25 +334,29 @@ async def get_signed_url(
     user: CurrentSuperuser,
     db: AsyncSession = Depends(get_db),
 ) -> SignedUrlResponse:
-    """Generate a presigned S3 URL for direct file upload or download."""
-    # Validate path - no traversal
-    if ".." in request.path or request.path.startswith("/"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid path: must be relative and cannot contain '..'",
-        )
+    """Generate a presigned S3 URL for direct file upload or download.
 
-    # Block reserved prefixes
-    for prefix in RESERVED_PREFIXES:
-        if request.path.startswith(prefix):
+    Path resolution goes through `shared.file_paths.resolve_s3_key`, so the
+    URL targets the same key as a `files.read`/`files.write` to the same
+    `(location, scope, path)`. For workspace writes, requires the workspace
+    to not be a checked-out git repo (`_repo/.git/` absent).
+    """
+    from shared.file_paths import resolve_s3_key
+
+    try:
+        s3_path = resolve_s3_key(request.location, request.scope, request.path)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    if request.location == "workspace" and request.method == "PUT":
+        if await _is_workspace_git_locked():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid path: '{prefix}' is a reserved prefix",
+                detail=(
+                    "Workspace contains a .git directory; signed-url uploads to workspace "
+                    "are blocked when the workspace is git-controlled."
+                ),
             )
-
-    # Build scoped S3 path
-    scope = request.scope or "global"
-    s3_path = f"uploads/{scope}/{request.path}"
 
     file_storage = FileStorageService(db)
 
@@ -355,6 +374,14 @@ async def get_signed_url(
         url=url,
         path=s3_path,
     )
+
+
+async def _is_workspace_git_locked() -> bool:
+    """Return True if `_repo/.git/` exists in the bucket — workspace is git-controlled."""
+    from src.services.repo_storage import RepoStorage
+    repo = RepoStorage()
+    children = await repo.list(".git/")
+    return len(children) > 0
 
 
 # =============================================================================

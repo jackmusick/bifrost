@@ -1,7 +1,8 @@
 """
 Unit tests for POST /api/files/signed-url endpoint.
 
-Tests path validation, scope resolution, and presigned URL generation.
+Tests path validation, location/scope handling, and presigned URL generation.
+Path resolution is delegated to `shared.file_paths.resolve_s3_key`.
 """
 
 import pytest
@@ -10,7 +11,6 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from src.routers.files import (
     SignedUrlRequest,
     SignedUrlResponse,
-    RESERVED_PREFIXES,
     get_signed_url,
 )
 
@@ -22,14 +22,19 @@ class TestSignedUrlRequestModel:
         req = SignedUrlRequest(path="invoices/report.pdf")
         assert req.method == "PUT"
         assert req.content_type == "application/octet-stream"
+        assert req.location == "uploads"  # backwards-compat default
         assert req.scope is None
 
     def test_explicit_get(self):
         req = SignedUrlRequest(path="data.csv", method="GET")
         assert req.method == "GET"
 
+    def test_explicit_location(self):
+        req = SignedUrlRequest(path="file.txt", location="workspace")
+        assert req.location == "workspace"
+
     def test_explicit_scope(self):
-        req = SignedUrlRequest(path="file.txt", scope="org-123")
+        req = SignedUrlRequest(path="file.txt", location="temp", scope="org-123")
         assert req.scope == "org-123"
 
 
@@ -37,121 +42,150 @@ class TestSignedUrlResponseModel:
     """Test SignedUrlResponse shape."""
 
     def test_fields(self):
-        resp = SignedUrlResponse(url="https://s3/presigned", path="uploads/global/file.txt")
+        resp = SignedUrlResponse(url="https://s3/presigned", path="uploads/org-a/file.txt")
         assert resp.url == "https://s3/presigned"
-        assert resp.path == "uploads/global/file.txt"
+        assert resp.path == "uploads/org-a/file.txt"
         assert resp.expires_in == 600
 
 
-class TestReservedPrefixes:
-    """Test reserved prefix constants."""
+class TestPathResolution:
+    """Test that the handler delegates to shared.file_paths.resolve_s3_key."""
 
-    def test_reserved_prefixes_includes_repo(self):
-        assert "_repo/" in RESERVED_PREFIXES
+    @pytest.mark.asyncio
+    @patch("src.routers.files.FileStorageService")
+    async def test_uploads_scoped(self, mock_fss_class):
+        mock_fss = MagicMock()
+        mock_fss.generate_presigned_upload_url = AsyncMock(return_value="https://s3/url")
+        mock_fss_class.return_value = mock_fss
 
-    def test_reserved_prefixes_includes_apps(self):
-        assert "_apps/" in RESERVED_PREFIXES
+        req = SignedUrlRequest(path="report.pdf", scope="org-a")
+        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert result.path == "uploads/org-a/report.pdf"
 
-    def test_reserved_prefixes_includes_tmp(self):
-        assert "_tmp/" in RESERVED_PREFIXES
+    @pytest.mark.asyncio
+    async def test_uploads_requires_scope(self):
+        from fastapi import HTTPException
+
+        req = SignedUrlRequest(path="report.pdf")  # default location=uploads, no scope
+        with pytest.raises(HTTPException) as exc_info:
+            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert exc_info.value.status_code == 400
+        assert "scope" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    @patch("src.routers.files._is_workspace_git_locked", new_callable=AsyncMock, return_value=False)
+    @patch("src.routers.files.FileStorageService")
+    async def test_workspace_unscoped(self, mock_fss_class, _git_lock):
+        mock_fss = MagicMock()
+        mock_fss.generate_presigned_upload_url = AsyncMock(return_value="https://s3/url")
+        mock_fss_class.return_value = mock_fss
+
+        req = SignedUrlRequest(path="report.pdf", location="workspace")
+        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert result.path == "_repo/report.pdf"
+
+    @pytest.mark.asyncio
+    @patch("src.routers.files.FileStorageService")
+    async def test_temp_scoped(self, mock_fss_class):
+        mock_fss = MagicMock()
+        mock_fss.generate_presigned_download_url = AsyncMock(return_value="https://s3/url")
+        mock_fss_class.return_value = mock_fss
+
+        req = SignedUrlRequest(path="x.bin", location="temp", scope="org-a", method="GET")
+        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert result.path == "_tmp/org-a/x.bin"
+
+    @pytest.mark.asyncio
+    @patch("src.routers.files.FileStorageService")
+    async def test_freeform_scoped(self, mock_fss_class):
+        mock_fss = MagicMock()
+        mock_fss.generate_presigned_download_url = AsyncMock(return_value="https://s3/url")
+        mock_fss_class.return_value = mock_fss
+
+        req = SignedUrlRequest(path="q1.pdf", location="reports", scope="org-a", method="GET")
+        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert result.path == "reports/org-a/q1.pdf"
 
 
 class TestPathValidation:
-    """Test path validation logic in the endpoint."""
+    """Test that handler returns 400 on resolver-rejected inputs."""
 
     @pytest.mark.asyncio
     async def test_rejects_path_traversal(self):
-        """Paths containing '..' should be rejected."""
         from fastapi import HTTPException
 
-        req = SignedUrlRequest(path="../etc/passwd")
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
+        req = SignedUrlRequest(path="../etc/passwd", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, ctx, user, db)
+            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
-        assert "must be relative" in str(exc_info.value.detail)
+        assert "traversal" in str(exc_info.value.detail).lower()
 
     @pytest.mark.asyncio
     async def test_rejects_absolute_path(self):
-        """Paths starting with '/' should be rejected."""
         from fastapi import HTTPException
 
-        req = SignedUrlRequest(path="/absolute/path")
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
+        req = SignedUrlRequest(path="/absolute/path", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, ctx, user, db)
+            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_rejects_reserved_prefix_repo(self):
-        """Paths starting with _repo/ should be rejected."""
+    async def test_rejects_reserved_location_name(self):
         from fastapi import HTTPException
 
-        req = SignedUrlRequest(path="_repo/secret.py")
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
+        req = SignedUrlRequest(path="x.txt", location="_repo", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, ctx, user, db)
+            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
-        assert "reserved prefix" in str(exc_info.value.detail)
+        assert "reserved bucket prefix" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
-    async def test_rejects_reserved_prefix_apps(self):
-        """Paths starting with _apps/ should be rejected."""
+    async def test_rejects_invalid_freeform_name(self):
         from fastapi import HTTPException
 
-        req = SignedUrlRequest(path="_apps/my-app/index.tsx")
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
+        req = SignedUrlRequest(path="x.txt", location="Bad Name!", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, ctx, user, db)
+            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_temp_requires_scope(self):
+        from fastapi import HTTPException
 
-class TestScopeResolution:
-    """Test scope resolution in S3 path construction."""
+        req = SignedUrlRequest(path="x.txt", location="temp", scope=None)
+        with pytest.raises(HTTPException) as exc_info:
+            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert exc_info.value.status_code == 400
+        assert "scope" in str(exc_info.value.detail).lower()
+
+
+class TestWorkspaceGitLock:
+    """Test that workspace PUTs are blocked when _repo/.git/ exists."""
 
     @pytest.mark.asyncio
+    @patch("src.routers.files._is_workspace_git_locked", new_callable=AsyncMock, return_value=True)
     @patch("src.routers.files.FileStorageService")
-    async def test_global_scope_when_none(self, mock_fss_class):
-        """Scope defaults to 'global' when not provided."""
+    async def test_workspace_put_rejected_when_git_locked(self, _fss, _git_lock):
+        from fastapi import HTTPException
+
+        req = SignedUrlRequest(path="x.txt", location="workspace", method="PUT")
+        with pytest.raises(HTTPException) as exc_info:
+            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert exc_info.value.status_code == 400
+        assert ".git" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    @patch("src.routers.files._is_workspace_git_locked", new_callable=AsyncMock, return_value=True)
+    @patch("src.routers.files.FileStorageService")
+    async def test_workspace_get_allowed_when_git_locked(self, mock_fss_class, _git_lock):
+        # GETs (downloads) of existing files shouldn't be blocked by the .git lock.
         mock_fss = MagicMock()
-        mock_fss.generate_presigned_upload_url = AsyncMock(return_value="https://s3/url")
+        mock_fss.generate_presigned_download_url = AsyncMock(return_value="https://s3/url")
         mock_fss_class.return_value = mock_fss
 
-        req = SignedUrlRequest(path="report.pdf", scope=None)
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
-        result = await get_signed_url(req, ctx, user, db)
-        assert result.path == "uploads/global/report.pdf"
-
-    @pytest.mark.asyncio
-    @patch("src.routers.files.FileStorageService")
-    async def test_explicit_scope(self, mock_fss_class):
-        """Explicit scope is used in path construction."""
-        mock_fss = MagicMock()
-        mock_fss.generate_presigned_upload_url = AsyncMock(return_value="https://s3/url")
-        mock_fss_class.return_value = mock_fss
-
-        req = SignedUrlRequest(path="report.pdf", scope="org-abc")
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
-        result = await get_signed_url(req, ctx, user, db)
-        assert result.path == "uploads/org-abc/report.pdf"
+        req = SignedUrlRequest(path="x.txt", location="workspace", method="GET")
+        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        assert result.url == "https://s3/url"
 
 
 class TestPresignedUrlGeneration:
@@ -160,38 +194,28 @@ class TestPresignedUrlGeneration:
     @pytest.mark.asyncio
     @patch("src.routers.files.FileStorageService")
     async def test_put_calls_upload(self, mock_fss_class):
-        """PUT method generates upload URL."""
         mock_fss = MagicMock()
         mock_fss.generate_presigned_upload_url = AsyncMock(return_value="https://s3/put-url")
         mock_fss_class.return_value = mock_fss
 
-        req = SignedUrlRequest(path="file.pdf", method="PUT", content_type="application/pdf")
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
-        result = await get_signed_url(req, ctx, user, db)
+        req = SignedUrlRequest(path="file.pdf", method="PUT", content_type="application/pdf", scope="org-a")
+        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
         assert result.url == "https://s3/put-url"
         mock_fss.generate_presigned_upload_url.assert_awaited_once_with(
-            path="uploads/global/file.pdf",
+            path="uploads/org-a/file.pdf",
             content_type="application/pdf",
         )
 
     @pytest.mark.asyncio
     @patch("src.routers.files.FileStorageService")
     async def test_get_calls_download(self, mock_fss_class):
-        """GET method generates download URL."""
         mock_fss = MagicMock()
         mock_fss.generate_presigned_download_url = AsyncMock(return_value="https://s3/get-url")
         mock_fss_class.return_value = mock_fss
 
-        req = SignedUrlRequest(path="file.pdf", method="GET")
-        ctx = MagicMock()
-        user = MagicMock()
-        db = AsyncMock()
-
-        result = await get_signed_url(req, ctx, user, db)
+        req = SignedUrlRequest(path="file.pdf", method="GET", scope="org-a")
+        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
         assert result.url == "https://s3/get-url"
         mock_fss.generate_presigned_download_url.assert_awaited_once_with(
-            path="uploads/global/file.pdf",
+            path="uploads/org-a/file.pdf",
         )

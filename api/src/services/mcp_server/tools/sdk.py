@@ -16,6 +16,64 @@ from src.services.mcp_server.tool_result import error_result, success_result
 logger = logging.getLogger(__name__)
 
 
+_FILE_LOCATIONS_DOCS = """## File Locations
+
+The `files` module resolves every operation as `{location}/{scope}/{path}`,
+with `scope` derived from the current execution's organization. `workspace`
+is the only unscoped location.
+
+**Reserved locations:**
+
+| Location | Usage | Example |
+|----------|-------|---------|
+| `"workspace"` (default) | Platform codebase, shared across orgs | `files.read("data/report.csv")` |
+| `"uploads"` | Files uploaded via form file fields | `files.read(path, location="uploads")` |
+| `"temp"` | Ephemeral scratch space | `files.write("scratch.txt", content, location="temp")` |
+
+**Freeform locations** are user-defined (e.g. `"reports"`, `"exports"`) and
+resolve as `{location}/{scope}/{path}`. Names must match `^[a-z0-9][a-z0-9-]*$`.
+
+```python
+await files.write_bytes("q1.pdf", pdf, location="reports")
+# stored at reports/{your_org_id}/q1.pdf
+```
+
+### Form file upload pattern
+
+When a form has a `file` field, the workflow parameter receives a path that is
+relative to the `uploads` location (e.g. `{form_id}/{uuid}/{filename}`). Pass it
+straight to `files.read(..., location="uploads")` — the SDK adds the scope.
+
+```python
+from bifrost import workflow, files
+
+@workflow
+async def handle_upload(resume: str, cover_letters: list[str]) -> dict:
+    resume_bytes = await files.read(resume, location="uploads")
+    letters = []
+    for path in cover_letters:
+        letters.append(await files.read(path, location="uploads"))
+    return {"resume_size": len(resume_bytes), "letter_count": len(letters)}
+```
+
+### Signed URLs for direct browser access
+
+`files.get_signed_url(path, location=..., method="GET"|"PUT")` produces a
+presigned S3 URL targeting the same key as `files.read`/`files.write` for the
+same `(location, path)`. Useful for generating PDFs, CSVs, or other files in a
+workflow and handing the browser a direct download URL.
+
+```python
+await files.write_bytes("report.pdf", pdf_bytes, location="workspace")
+signed = await files.get_signed_url(
+    "report.pdf", method="GET", location="workspace",
+    content_type="application/pdf",
+)
+return {"download_url": signed["url"]}
+```
+"""
+
+
 def _extract_class_methods(cls: type) -> list[dict[str, Any]]:
     """Extract method signatures and docstrings from a class."""
     methods = []
@@ -356,34 +414,7 @@ async def get_sdk_schema(context: Any) -> ToolResult:  # noqa: ARG001
             if doc:
                 lines.append(doc)
 
-        # File locations documentation
-        lines.append("## File Locations")
-        lines.append("")
-        lines.append("The `files` module operates on three storage locations:")
-        lines.append("")
-        lines.append("| Location | Usage | Example |")
-        lines.append("|----------|-------|---------|")
-        lines.append('| `"workspace"` (default) | General-purpose file storage for workflows | `files.read("data/report.csv")` |')
-        lines.append('| `"temp"` | Temporary files scoped to a single execution | `files.write("scratch.txt", content, location="temp")` |')
-        lines.append('| `"uploads"` | Files uploaded via form file fields (read-only) | `files.read(path, location="uploads")` |')
-        lines.append("")
-        lines.append("### Form file upload pattern")
-        lines.append("")
-        lines.append("When a form has a `file` field, the workflow parameter receives the S3 path as a string")
-        lines.append("(or a list of strings if `multiple: true`). Read the file with `location=\"uploads\"`:")
-        lines.append("")
-        lines.append("```python")
-        lines.append("from bifrost import workflow, files")
-        lines.append("")
-        lines.append("@workflow")
-        lines.append("async def handle_upload(resume: str, cover_letters: list[str]) -> dict:")
-        lines.append('    resume_bytes = await files.read(resume, location="uploads")')
-        lines.append("    letters = []")
-        lines.append("    for path in cover_letters:")
-        lines.append('        letters.append(await files.read(path, location="uploads"))')
-        lines.append('    return {"resume_size": len(resume_bytes), "letter_count": len(letters)}')
-        lines.append("```")
-        lines.append("")
+        lines.append(_FILE_LOCATIONS_DOCS)
 
         # Generate models docs
         lines.append(_generate_models_docs())
