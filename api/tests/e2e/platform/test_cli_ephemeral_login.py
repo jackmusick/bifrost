@@ -1,9 +1,9 @@
-"""End-to-end test: bifrost login --ephemeral against the real test API.
+"""End-to-end test: bifrost password-grant login against the real test API.
 
-This is the load-bearing real-world validation that --ephemeral actually
-works — the CLI is invoked as a real subprocess (no in-process shortcuts)
-that hits the test stack's /auth/login endpoint and then uses the returned
-tokens, via env vars, in a second subprocess invocation of `bifrost api`.
+Validates the password-grant CLI path (`bifrost login --email --password`):
+the CLI is invoked as a real subprocess (no in-process shortcuts) that hits
+the test stack's /auth/login endpoint and then uses the returned tokens, via
+env vars, in a second subprocess invocation of `bifrost api`.
 
 Two paths are exercised, gated on whether the test stack has global MFA
 enabled (probed via /auth/status). Exactly one of the two tests is
@@ -35,30 +35,29 @@ def _bifrost_cli() -> list[str]:
 
 
 def test_ephemeral_login_round_trip(e2e_api_url):
-    """Full path: --ephemeral login, parse env-style output, use tokens via env vars in a child `bifrost api` call.
+    """Full path: password-grant login, parse env-style output, use tokens via env vars in a child `bifrost api` call.
 
     Skips if the test stack has global MFA enabled (the default), since
-    --ephemeral by design refuses on instances with MFA on. Run with
+    the password path by design refuses on instances with MFA on. Run with
     BIFROST_MFA_ENABLED=false on the API to exercise this end-to-end.
     """
     if _mfa_required_for_password(e2e_api_url):
         pytest.skip(
-            "Test stack has global MFA enabled; --ephemeral refuses by design. "
+            "Test stack has global MFA enabled; password-grant refuses by design. "
             "Set BIFROST_MFA_ENABLED=false on the test stack's api service to "
             "exercise the round-trip."
         )
 
     # The seed user (BIFROST_DEFAULT_USER_EMAIL/PASSWORD) is the only user
     # we know exists with mfa_enabled=False on a stack configured for
-    # ephemeral. If it isn't seeded, skip.
+    # password grant. If it isn't seeded, skip.
     email = os.environ.get("BIFROST_DEFAULT_USER_EMAIL", "dev@gobifrost.com")
     password = os.environ.get("BIFROST_DEFAULT_USER_PASSWORD", "password")
 
-    # Step 1: --ephemeral login.
+    # Step 1: password-grant login.
     result = subprocess.run(
         _bifrost_cli() + [
             "login",
-            "--ephemeral",
             "--email", email,
             "--password", password,
             "--url", e2e_api_url,
@@ -101,7 +100,7 @@ def test_ephemeral_login_round_trip(e2e_api_url):
 
 
 def test_ephemeral_login_refuses_mfa_required(e2e_api_url, platform_admin):
-    """When the stack has MFA on, --ephemeral against an MFA-enrolled user must exit 2.
+    """When the stack has MFA on, password-grant against an MFA-enrolled user must exit 2.
 
     Uses the platform_admin fixture (which has MFA enrolled) to provoke
     the mfa_required branch. Skips when the stack has global MFA off,
@@ -109,14 +108,13 @@ def test_ephemeral_login_refuses_mfa_required(e2e_api_url, platform_admin):
     """
     if not _mfa_required_for_password(e2e_api_url):
         pytest.skip(
-            "Test stack has global MFA disabled; ephemeral path returns "
+            "Test stack has global MFA disabled; password-grant returns "
             "tokens directly and never reaches the refusal branch."
         )
 
     result = subprocess.run(
         _bifrost_cli() + [
             "login",
-            "--ephemeral",
             "--email", platform_admin.email,
             "--password", platform_admin.password,
             "--url", e2e_api_url,

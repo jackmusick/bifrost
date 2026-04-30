@@ -286,9 +286,12 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
         return False
 
 
-async def ephemeral_login_flow(api_url: str, email: str, password: str) -> tuple[int, dict | None]:
+async def password_login_flow(api_url: str, email: str, password: str) -> tuple[int, dict | None]:
     """
-    Password-grant login that does NOT persist tokens.
+    Password-grant login. Tokens are returned to the caller; the caller decides
+    whether to persist them. The CLI's `bifrost login` command does NOT persist
+    them — the three BIFROST_* env-var lines printed to stdout are the entire
+    contract. Suitable only for isolated development stacks with MFA disabled.
 
     Returns (exit_code, payload). On success, payload is the parsed JSON
     response from /auth/login containing access_token / refresh_token.
@@ -334,21 +337,112 @@ async def ephemeral_login_flow(api_url: str, email: str, password: str) -> tuple
         return 1, None
 
 
-def logout_flow() -> bool:
+def logout_flow(api_url: str | None = None) -> tuple[bool, str | None]:
     """
-    Logout by clearing stored credentials.
+    Logout by clearing stored credentials for one URL.
+
+    Args:
+        api_url: URL to log out from. If None, resolves the same way
+            get_credentials() does (env var, then first stored URL).
 
     Returns:
-        True if credentials were cleared, False if no credentials existed
+        (cleared, url) — cleared is True if a record was removed; url is
+        the URL whose record was removed (so callers can prompt about .env).
     """
-    creds = credentials.get_credentials()
+    creds = credentials.get_credentials(api_url)
     if creds:
-        credentials.clear_credentials()
-        print("Logged out successfully.")
-        return True
-    else:
-        print("No active session found.")
+        target_url = creds.get("api_url") or api_url
+        credentials.clear_credentials(target_url)
+        print(f"Logged out from {target_url}.")
+        return True, target_url
+    print("No active session found.")
+    return False, None
+
+
+def _read_env_file(path: pathlib.Path) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        return path.read_text().splitlines(keepends=True)
+    except OSError:
+        return []
+
+
+def _write_env_url(api_url: str) -> None:
+    """
+    Write or update `BIFROST_API_URL=<api_url>` in CWD's .env.
+
+    Updates an existing `BIFROST_API_URL=` line if present; otherwise appends.
+    Adds `.env` to .gitignore if it isn't already gitignored.
+    """
+    cwd = pathlib.Path.cwd()
+    env_path = cwd / ".env"
+    lines = _read_env_file(env_path)
+
+    new_line = f"BIFROST_API_URL={api_url}\n"
+    found = False
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("BIFROST_API_URL=") or stripped.startswith("export BIFROST_API_URL="):
+            lines[i] = new_line
+            found = True
+            break
+    if not found:
+        # Ensure file ends with newline before appending
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] = lines[-1] + "\n"
+        lines.append(new_line)
+
+    env_path.write_text("".join(lines))
+    print(f"Updated {env_path} with BIFROST_API_URL={api_url}")
+
+    # gitignore .env if we're in a git repo and it isn't already ignored
+    gitignore = cwd / ".gitignore"
+    if gitignore.exists():
+        try:
+            existing = gitignore.read_text()
+            already_ignored = any(
+                stripped.strip().rstrip("/") == ".env"
+                for stripped in existing.splitlines()
+            )
+            if not already_ignored:
+                with open(gitignore, "a") as f:
+                    if not existing.endswith("\n"):
+                        f.write("\n")
+                    f.write(".env\n")
+                print(f"Added .env to {gitignore}")
+        except OSError:
+            pass
+
+
+def _remove_env_url_line(api_url: str) -> bool:
+    """
+    Remove a `BIFROST_API_URL=<api_url>` line from CWD's .env, if present.
+
+    Returns True if a line was removed.
+    """
+    env_path = pathlib.Path.cwd() / ".env"
+    lines = _read_env_file(env_path)
+    if not lines:
         return False
+    target = api_url.rstrip("/")
+    kept: list[str] = []
+    removed = False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("BIFROST_API_URL=") or stripped.startswith("export BIFROST_API_URL="):
+            value = line.split("=", 1)[1].strip().strip('"').strip("'").rstrip("/")
+            if value == target:
+                removed = True
+                continue
+        kept.append(line)
+    if not removed:
+        return False
+    if all(not line.strip() for line in kept):
+        env_path.unlink()
+    else:
+        env_path.write_text("".join(kept))
+    return True
 
 
 def main(args: list[str] | None = None) -> int:
@@ -389,6 +483,9 @@ def main(args: list[str] | None = None) -> int:
 
         if command == "logout":
             return handle_logout(args[1:])
+
+        if command == "auth":
+            return handle_auth(args[1:])
 
         if command == "run":
             return handle_run(args[1:])
@@ -456,8 +553,9 @@ Commands:
   watch       Watch for file changes and auto-push
   api         Generic authenticated API request
   migrate-imports  Rewrite "bifrost" imports into user/lucide/router imports
-  login       Authenticate with device authorization flow
-  logout      Clear stored credentials and sign out
+  login       Authenticate (browser device-code by default; password-grant with --email/--password)
+  logout      Clear stored credentials for one URL
+  auth        Inspect stored credentials (auth list)
   help        Show this help message
 
 Flags:
@@ -509,7 +607,6 @@ def handle_login(args: list[str]) -> int:
     """Handle 'bifrost login' command."""
     api_url = None
     auto_open = True
-    ephemeral = False
     email: str | None = None
     password: str | None = None
 
@@ -525,9 +622,6 @@ def handle_login(args: list[str]) -> int:
             i += 2
         elif arg in ("--no-browser", "-n"):
             auto_open = False
-            i += 1
-        elif arg == "--ephemeral":
-            ephemeral = True
             i += 1
         elif arg == "--email":
             if i + 1 >= len(args):
@@ -547,44 +641,48 @@ Usage: bifrost login [options]
 
 Authenticate with Bifrost. Two modes:
 
-Persistent (default): Browser device-code flow; tokens stored in OS keychain.
-Ephemeral: Password-grant flow; tokens printed to stdout, never persisted.
-           For isolated debug stacks only — refuses if MFA is enabled.
+Browser (default): Device-code flow; tokens stored in OS keychain (with JSON
+                   fallback on headless Linux). Multiple URLs can coexist.
+                   On success, writes BIFROST_API_URL=<url> to .env in the
+                   current directory so subsequent CLI commands target this
+                   instance.
+Password: When --email and --password are passed, performs an ephemeral
+          password-grant login and prints BIFROST_* env-var lines to stdout.
+          Tokens are NOT persisted. For isolated dev stacks only — refuses
+          if MFA is enabled on the instance.
 
 Options:
   --url, -u URL         API URL (default: BIFROST_API_URL or http://localhost:8000)
-  --no-browser, -n      Don't automatically open browser (persistent mode only)
-  --ephemeral           Use password-grant flow; requires --email and --password
-  --email EMAIL         Email for ephemeral login
-  --password PASSWORD   Password for ephemeral login
+  --no-browser, -n      Don't automatically open browser (browser mode only)
+  --email EMAIL         Email for ephemeral password-grant login
+  --password PASSWORD   Password for ephemeral password-grant login
   --help, -h            Show this help message
 
 Examples:
   bifrost login
   bifrost login --url https://app.gobifrost.com
-  bifrost login --ephemeral --email dev@gobifrost.com --password password \\
-                --url http://localhost:38421
+  bifrost login --url http://localhost:38421 \\
+                --email dev@gobifrost.com --password password
 """.strip())
             return 0
         else:
             print(f"Unknown option: {arg}", file=sys.stderr)
             return 1
 
-    # Validate flag combinations.
-    if ephemeral and (email is None or password is None):
-        print("Error: --ephemeral requires both --email and --password", file=sys.stderr)
-        return 1
-    if (email is not None or password is not None) and not ephemeral:
-        print("Error: --email and --password require --ephemeral", file=sys.stderr)
+    # --email and --password go together. Either both or neither.
+    if (email is None) != (password is None):
+        print("Error: --email and --password must be used together", file=sys.stderr)
         return 1
 
-    if ephemeral:
-        # Resolve URL: --url > BIFROST_API_URL env var > error.
+    is_password_grant = email is not None and password is not None
+
+    if is_password_grant:
+        # Resolve URL: --url > BIFROST_API_URL env var > error. No default.
         if not api_url:
             api_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
         if not api_url:
             print(
-                "Error: ephemeral login requires --url or BIFROST_API_URL env var "
+                "Error: password-grant login requires --url or BIFROST_API_URL env var "
                 "(no fallback default to avoid logging into the wrong stack)",
                 file=sys.stderr,
             )
@@ -593,43 +691,144 @@ Examples:
         # email and password are guaranteed non-None by the validation above
         assert email is not None
         assert password is not None
-        rc, data = asyncio.run(ephemeral_login_flow(api_url, email, password))
+        rc, data = asyncio.run(password_login_flow(api_url, email, password))
         if rc == 0 and data is not None:
             print(f"BIFROST_API_URL={api_url}")
             print(f"BIFROST_ACCESS_TOKEN={data['access_token']}")
             print(f"BIFROST_REFRESH_TOKEN={data['refresh_token']}")
         return rc
 
-    # Persistent (browser) flow.
+    # Browser device-code flow (persistent → keychain or JSON fallback).
     success = asyncio.run(login_flow(api_url=api_url, auto_open=auto_open))
-    return 0 if success else 1
+    if not success:
+        return 1
+
+    # Wire up the CWD .env so subsequent commands in this folder target this URL.
+    # The token lives in the keychain keyed by URL; .env just carries the URL.
+    resolved_url = (api_url or os.environ.get("BIFROST_API_URL") or "").rstrip("/")
+    if not resolved_url:
+        # login_flow's default — match what login_flow used so the .env line agrees
+        # with where the token landed.
+        resolved_url = "http://localhost:8000"
+    try:
+        _write_env_url(resolved_url)
+    except OSError as e:
+        print(f"Warning: could not update .env in current directory: {e}", file=sys.stderr)
+    return 0
 
 
 def handle_logout(args: list[str]) -> int:
-    """
-    Handle 'bifrost logout' command.
+    """Handle 'bifrost logout' command."""
+    api_url: str | None = None
+    no_prompt = False
+    yes = False
 
-    Args:
-        args: Additional arguments (e.g., --help)
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--url", "-u"):
+            if i + 1 >= len(args):
+                print("Error: --url requires a value", file=sys.stderr)
+                return 1
+            api_url = args[i + 1]
+            i += 2
+        elif arg == "--yes" or arg == "-y":
+            yes = True
+            i += 1
+        elif arg == "--no-prompt":
+            no_prompt = True
+            i += 1
+        elif arg in ("--help", "-h"):
+            print("""
+Usage: bifrost logout [options]
 
-    Returns:
-        Exit code (0 for success, 1 for error)
-    """
-    if args and args[0] in ("--help", "-h"):
-        print("""
-Usage: bifrost logout
+Clear stored credentials for one Bifrost URL.
 
-Clear stored credentials and sign out.
-This removes the credentials file from your system.
+If --url is omitted, logs out from the URL resolved by the same rules as
+`bifrost api ...` (BIFROST_API_URL env var, then the first stored URL).
+
+After clearing the keychain entry, if the current directory's .env contains
+a BIFROST_API_URL line for that URL, you'll be prompted to remove it.
+
+Options:
+  --url, -u URL   Specific URL to log out from
+  --yes, -y       Auto-confirm the .env removal prompt
+  --no-prompt     Skip the .env prompt entirely (leaves it as-is)
+  --help, -h      Show this help message
 
 Examples:
   bifrost logout
+  bifrost logout --url https://app.gobifrost.com
 """.strip())
+            return 0
+        else:
+            print(f"Unknown option: {arg}", file=sys.stderr)
+            return 1
+
+    cleared, target_url = logout_flow(api_url)
+    if not cleared or target_url is None:
         return 0
 
-    # Run logout
-    logout_flow()
+    # Prompt to remove the matching .env line, if present
+    if no_prompt:
+        return 0
+    env_path = pathlib.Path.cwd() / ".env"
+    if not env_path.exists():
+        return 0
+    has_match = any(
+        line.lstrip().startswith(("BIFROST_API_URL=", "export BIFROST_API_URL="))
+        and line.split("=", 1)[1].strip().strip('"').strip("'").rstrip("/") == target_url.rstrip("/")
+        for line in _read_env_file(env_path)
+    )
+    if not has_match:
+        return 0
+
+    if yes:
+        confirm = "y"
+    else:
+        try:
+            confirm = input(f"Remove BIFROST_API_URL={target_url} from {env_path}? [y/N] ").strip().lower()
+        except EOFError:
+            confirm = "n"
+    if confirm in ("y", "yes"):
+        if _remove_env_url_line(target_url):
+            print(f"Removed BIFROST_API_URL line from {env_path}")
     return 0
+
+
+def handle_auth(args: list[str]) -> int:
+    """Handle 'bifrost auth' subcommands."""
+    if not args or args[0] in ("--help", "-h", "help"):
+        print("""
+Usage: bifrost auth <subcommand>
+
+Subcommands:
+  list, ls    List all Bifrost URLs with stored credentials
+
+Examples:
+  bifrost auth list
+""".strip())
+        return 0 if args else 1
+
+    sub = args[0].lower()
+    if sub in ("list", "ls"):
+        urls = credentials.list_credentials()
+        if not urls:
+            print("No stored credentials.")
+            return 0
+        # Resolve which URL the CLI would currently use, to mark it.
+        env_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
+        for url in urls:
+            marker = ""
+            if env_url and url.rstrip("/") == env_url:
+                marker = "  (current — from BIFROST_API_URL)"
+            elif not env_url and url == urls[0]:
+                marker = "  (current — first stored)"
+            print(f"  {url}{marker}")
+        return 0
+
+    print(f"Unknown auth subcommand: {sub}", file=sys.stderr)
+    return 1
 
 
 def _extract_workflow_parameters(func: Any) -> list[dict[str, Any]]:
