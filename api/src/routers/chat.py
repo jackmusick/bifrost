@@ -328,9 +328,14 @@ async def update_conversation(
 ) -> ConversationPublic:
     """Update mutable fields on a conversation.
 
-    Today the only editable field is ``workspace_id``: this powers the
-    "Move to workspace" affordance. Set ``workspace_id`` to ``null`` to move
-    the chat back to the general pool.
+    Editable fields:
+    - ``workspace_id``: "Move to workspace" affordance. Null = general pool.
+    - ``current_model``: per-conversation model selection set by the picker.
+    - ``instructions``: per-conversation custom instructions appended to
+      the system prompt. Null clears.
+
+    Fields use ``model_dump(exclude_unset=True)`` semantics: a field absent
+    from the request body is preserved; ``null`` in the body clears it.
     """
     result = await db.execute(
         select(Conversation)
@@ -525,6 +530,11 @@ async def get_messages(
         )
 
     # Get messages with sibling metadata via window functions.
+    # Note: NULL parent_message_id is treated as a single partition by Postgres,
+    # which is the intended behavior. Editing the first user message creates a
+    # second NULL-parent row in the same conversation — those rows ARE siblings
+    # of each other (a fresh start on the conversation), and the window function
+    # correctly counts them together.
     sibling_count_col = func.count("*").over(
         partition_by=Message.parent_message_id
     ).label("sibling_count")
