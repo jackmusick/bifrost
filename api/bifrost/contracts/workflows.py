@@ -17,6 +17,7 @@ class WorkflowUpdateRequest(BaseModel):
     organization_id: str | None = Field(default=None)
     access_level: str | None = Field(default=None)
     clear_roles: bool = Field(default=False)
+    role_ids: list[str] | None = Field(default=None)
     display_name: str | None = Field(default=None, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     category: str | None = Field(default=None, max_length=100)
