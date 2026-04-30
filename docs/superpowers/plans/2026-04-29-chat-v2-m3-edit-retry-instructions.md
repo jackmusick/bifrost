@@ -12,6 +12,49 @@
 
 ---
 
+## Status (2026-04-29)
+
+**M3 split into two stacked PRs to mirror M2's pattern.**
+
+### M3-backend (this PR — almost ready to ship)
+
+Tasks 1–9 are merged on branch `147-m3-edit-retry-instructions`:
+
+- ✅ Task 1: migration (parent_message_id, active_leaf_message_id, instructions; backfill)
+- ✅ Task 2: ORM fields with self-FK relationship disambiguation
+- ✅ Task 3: `_load_active_branch` walks parent chain; warnings on cycle/missing-row
+- ✅ Task 4: `_save_message` advances active leaf; `parent_message_id_override` with typed `_Unset` sentinel
+- ✅ Task 5: system prompt = agent + workspace.instructions + conversation.instructions
+- ✅ Task 6: `edit_user_message` + `retry_assistant_message` + `_walk_leaf_to_assistant_parent`; `chat()` gains `_skip_save_user_message` / `_user_message_id` private flags
+- ✅ Task 7: Pydantic contracts — sibling metadata on `MessagePublic`, `active_leaf_message_id`/`instructions` on `ConversationPublic`/`ConversationUpdate`, three new request models
+- ✅ Task 8: HTTP — instructions PATCH, `POST /active-leaf` endpoint, sibling metadata via window functions
+- ✅ Task 9: WebSocket — `edit_message` + `retry_message` dispatch arms + `_process_*` helpers; cancel emits `done` frame; whitespace-only edits rejected
+
+15 unit tests passing in `api/tests/unit/test_message_branching.py`. 1423 services unit tests still passing.
+
+**Still to do for M3-backend (Tasks 10, 18-20):**
+
+- ⏳ Task 10: backend e2e tests (`api/tests/e2e/test_chat_branching.py`).
+- ⏳ Task 18 (partial): update spec doc (`docs/superpowers/specs/2026-04-27-chat-ux-design.md`) and master plan decisions log.
+- ⏳ Task 19: pre-completion verification (pyright, ruff, full test suite — frontend checks NOT applicable to this backend-only PR).
+- ⏳ Task 20: open PR titled "Chat V2 / M3 (backend) — branching + per-conversation instructions" into `feature/chat-v2`.
+
+### M3-frontend (follow-up stacked PR)
+
+Tasks 11–17 are deferred to a separate PR stacked on top of M3-backend (or branched from `feature/chat-v2` after M3-backend merges):
+
+- Task 11: type generation
+- Task 12: chat store branching state (`resolveActivePath`, `editMessage`/`retryMessage`/`switchBranch`)
+- Task 13: `MessageBranchNav` component
+- Task 14: ChatMessage hover affordances (Pencil + RotateCcw + sibling nav)
+- Task 15: ChatWindow wiring
+- Task 16: "Customize this chat" instructions dialog
+- Task 17: Playwright happy-path e2e
+
+Why split: backend is reviewable in isolation, the frontend tasks benefit from a live debug stack for iteration, and it mirrors the M2 (PR #146) backend/frontend split that worked well.
+
+---
+
 ## Context the implementer needs
 
 ### How the chat loop works today
