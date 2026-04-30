@@ -21,7 +21,6 @@ informational metadata only — the lock itself is the FD, not the file.
 """
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import os
@@ -48,14 +47,6 @@ _HELD_LOCK = threading.Lock()
 
 def _lock_path(workspace: pathlib.Path) -> pathlib.Path:
     return workspace / ".bifrost" / _LOCK_NAME
-
-
-def _release_held(key: str) -> None:
-    """Drop the in-process reservation for `key`. Idempotent — running
-    twice is harmless. Used as an ExitStack callback so the reservation
-    rolls back automatically on failure during acquire."""
-    with _HELD_LOCK:
-        _HELD.discard(key)
 
 
 def _platform_lock(fh: IO[Any]) -> None:
@@ -123,83 +114,74 @@ class WorkspaceLock:
         self.command = command
         self.path = _lock_path(self.workspace)
         self._fh: IO[Any] | None = None
-        self._stack: contextlib.ExitStack | None = None
 
     def __enter__(self) -> "WorkspaceLock":
-        # Use an ExitStack so any failure between resource acquisition and
-        # the successful return unwinds in reverse order: close the FD,
-        # roll back the _HELD reservation. On success we hand the stack's
-        # cleanup callbacks to `self._stack` so __exit__ runs them later.
-        # This makes the cleanup invariant local and statically obvious
-        # (CodeQL recognizes the with-open-as pattern as guaranteed-close).
-        stack = contextlib.ExitStack()
-        try:
-            # In-process check first. POSIX flock is advisory and lets
-            # the same process flock one path twice — without this guard,
-            # two sessions in the same Python process would both succeed
-            # and ping-pong each other.
-            key = str(self.path)
-            with _HELD_LOCK:
-                if key in _HELD:
-                    raise WorkspaceLockError(self.workspace, _read_metadata(self.path))
-                # Reserve before opening the file so two threads racing
-                # through __enter__ can't both observe the empty set.
-                _HELD.add(key)
-            stack.callback(_release_held, key)
+        # In-process check first. POSIX flock is advisory and lets the
+        # same process flock one path twice — without this guard, two
+        # sessions in the same Python process would both succeed and
+        # ping-pong each other.
+        key = str(self.path)
+        with _HELD_LOCK:
+            if key in _HELD:
+                raise WorkspaceLockError(self.workspace, _read_metadata(self.path))
+            # Reserve before opening the file so two threads racing
+            # through __enter__ can't both observe the empty set.
+            _HELD.add(key)
 
+        # Assign the open FD directly to self._fh so the close path is
+        # local to this class — `self._fh.close()` runs in `_release()`,
+        # which both `__exit__` and the failure-path catch-all invoke.
+        # Any failure during enter calls `_release()` to close the FD
+        # and roll back the in-process reservation in one place.
+        try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             # Open in append mode so we don't truncate before we've
             # acquired the lock — if someone else holds it, we'd
-            # otherwise wipe their metadata. We seek+truncate AFTER
-            # acquiring. `enter_context` hands the FD's lifetime to the
-            # stack: stack unwind closes it (failure path), or self._stack
-            # runs the close on __exit__ (success path).
-            fh = stack.enter_context(open(self.path, "a+", encoding="utf-8"))
+            # otherwise wipe their metadata. seek+truncate runs AFTER
+            # acquiring.
+            self._fh = open(self.path, "a+", encoding="utf-8")
             try:
-                _platform_lock(fh)
+                _platform_lock(self._fh)
             except BlockingIOError:
-                holder = _read_metadata(self.path)
-                raise WorkspaceLockError(self.workspace, holder)
+                raise WorkspaceLockError(self.workspace, _read_metadata(self.path))
 
-            # We hold the lock. Now stamp our metadata. Failure here
-            # doesn't break correctness — the lock is on the FD, not the
-            # metadata. Log and continue.
+            # We hold the lock. Stamp metadata. Failure here doesn't
+            # break correctness — the lock is on the FD, not the file —
+            # so log and continue.
             try:
-                fh.seek(0)
-                fh.truncate()
+                self._fh.seek(0)
+                self._fh.truncate()
                 json.dump({
                     "pid": os.getpid(),
                     "command": self.command,
                     "started_at": datetime.now(timezone.utc).isoformat(),
-                }, fh)
-                fh.flush()
+                }, self._fh)
+                self._fh.flush()
             except OSError as e:
                 logger.debug(f"could not write lock metadata: {e}")
 
-            # Success: transfer the cleanup chain to self for __exit__.
-            self._fh = fh
-            self._stack = stack.pop_all()
             return self
         except BaseException:
-            # Any failure unwinds the stack: closes fh if opened, releases
-            # the _HELD reservation if added.
-            stack.close()
+            self._release()
             raise
 
     def __exit__(self, *exc: Any) -> None:
-        # Unwind the stack from __enter__: closes the FD (releasing the
-        # kernel-level lock) and discards the _HELD reservation, in that
-        # order. The lock file is intentionally NOT deleted — leaving it
-        # lets the next holder write fresh metadata, and a stale file
-        # with no FD holder doesn't block anyone (the next acquire just
-        # claims it).
-        if self._stack is not None:
+        self._release()
+
+    def _release(self) -> None:
+        # Closing the FD releases the kernel-level lock. The lock file
+        # is intentionally NOT deleted — a stale file with no FD holder
+        # doesn't block anyone (next acquire claims it and overwrites
+        # the metadata). Idempotent: __exit__ on a never-entered lock,
+        # or after a failed __enter__, is a no-op.
+        if self._fh is not None:
             try:
-                self._stack.close()
+                self._fh.close()
             except OSError as e:
-                logger.debug(f"error releasing workspace lock: {e}")
-            self._stack = None
-        self._fh = None
+                logger.debug(f"error closing lock file: {e}")
+            self._fh = None
+        with _HELD_LOCK:
+            _HELD.discard(str(self.path))
 
 
 

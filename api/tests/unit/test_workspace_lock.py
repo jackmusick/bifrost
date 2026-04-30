@@ -32,10 +32,8 @@ import time
 
 import pytest
 
-from bifrost._workspace_lock import (
-    WorkspaceLock,
-    WorkspaceLockError,
-)
+from bifrost import _workspace_lock
+from bifrost._workspace_lock import WorkspaceLock, WorkspaceLockError
 
 
 def _make_workspace(tmp_path: pathlib.Path) -> pathlib.Path:
@@ -207,12 +205,10 @@ def test_failed_acquire_closes_fd_and_rolls_back_reservation(
 
     # Force `_platform_lock` to raise an unexpected error (not
     # BlockingIOError) — exercises the catch-all rollback path.
-    import bifrost._workspace_lock as wl
-
     def boom(_fh: object) -> None:
         raise RuntimeError("simulated platform lock failure")
 
-    monkeypatch.setattr(wl, "_platform_lock", boom)
+    monkeypatch.setattr(_workspace_lock, "_platform_lock", boom)
 
     with pytest.raises(RuntimeError, match="simulated"):
         with WorkspaceLock(ws, "watch"):
