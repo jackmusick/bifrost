@@ -273,7 +273,7 @@ class TestBackendSelection:
         import keyring
         import keyring.errors
 
-        monkeypatch.setattr(keyring, "get_keyring", lambda: FakeFailKeyring())
+        monkeypatch.setattr(keyring, "get_keyring", FakeFailKeyring)
 
         def fake_get_password(_s, _u):
             raise keyring.errors.NoKeyringError("no backend")
@@ -330,7 +330,7 @@ class TestLegacyMigration:
     def test_migrate_legacy_to_json_backend(self, tmp_creds_path, monkeypatch):
         import json
         # Force JSON backend
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
         self._write_legacy(tmp_creds_path)
 
@@ -340,9 +340,8 @@ class TestLegacyMigration:
 
         # The file should now be in dict-of-URLs format
         data = json.loads(tmp_creds_path.read_text())
-        assert "https://prod.example.com" in data
+        assert list(data.keys()) == ["https://prod.example.com"]
         assert data["https://prod.example.com"]["access_token"] == "legacy_at"
-        assert "api_url" not in data  # no top-level legacy keys
 
     def test_migrate_legacy_to_keyring_backend(self, tmp_creds_path, monkeypatch):
         import json
@@ -370,7 +369,7 @@ class TestLegacyMigration:
         assert data == {}
 
     def test_migrate_idempotent(self, tmp_creds_path, monkeypatch):
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
         self._write_legacy(tmp_creds_path)
 
@@ -412,7 +411,7 @@ class TestLegacyMigration:
 
     def test_no_arg_get_resolves_url_from_legacy(self, tmp_creds_path, monkeypatch):
         """When no api_url is given AND no env var, falling back through legacy must work."""
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
         self._write_legacy(tmp_creds_path)
 

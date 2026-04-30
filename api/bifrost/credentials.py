@@ -70,10 +70,17 @@ def get_credentials_path() -> Path:
 # --------------------------------------------------------------------------- #
 
 class Backend(Protocol):
-    def get(self, api_url: str) -> Credentials | None: ...
-    def save(self, creds: Credentials) -> None: ...
-    def clear(self, api_url: str) -> None: ...
-    def list_urls(self) -> list[str]: ...
+    def get(self, api_url: str) -> Credentials | None:
+        ...
+
+    def save(self, creds: Credentials) -> None:
+        ...
+
+    def clear(self, api_url: str) -> None:
+        ...
+
+    def list_urls(self) -> list[str]:
+        ...
 
 
 class EnvBackend:
@@ -349,6 +356,9 @@ def _try_migrate_legacy() -> Credentials | None:
             if platform.system() != "Windows":
                 path.chmod(0o600)
     except (json.JSONDecodeError, OSError):
+        # Best-effort cleanup of the legacy marker file. If we can't read it
+        # back or rewrite it, the migration has already succeeded into the
+        # backend, so the credential is safe and the marker is non-critical.
         pass
 
     return legacy

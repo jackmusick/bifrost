@@ -8,8 +8,6 @@ Two login modes:
     printed to stdout, never persisted. Refuses MFA-enabled instances.
 """
 
-import pytest
-
 from bifrost import cli
 
 
@@ -81,7 +79,7 @@ class TestPasswordLoginSuccess:
         assert rc == 0
 
         captured = capsys.readouterr()
-        out_lines = [l for l in captured.out.splitlines() if l.strip()]
+        out_lines = [line for line in captured.out.splitlines() if line.strip()]
         assert "BIFROST_API_URL=http://localhost:38421" in out_lines
         assert "BIFROST_ACCESS_TOKEN=at_value" in out_lines
         assert "BIFROST_REFRESH_TOKEN=rt_value" in out_lines
@@ -241,7 +239,7 @@ class TestLogoutClearsKeychainAndPromptsEnv:
             lambda: tmp_path / "credentials.json",
         )
         creds_mod._reset_persistent_backend_for_tests()
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: creds_mod.JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", creds_mod.JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
         monkeypatch.delenv("BIFROST_API_URL", raising=False)
         monkeypatch.delenv("BIFROST_ACCESS_TOKEN", raising=False)
@@ -264,7 +262,7 @@ class TestLogoutClearsKeychainAndPromptsEnv:
             lambda: tmp_path / "credentials.json",
         )
         creds_mod._reset_persistent_backend_for_tests()
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: creds_mod.JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", creds_mod.JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
         monkeypatch.delenv("BIFROST_API_URL", raising=False)
         monkeypatch.delenv("BIFROST_ACCESS_TOKEN", raising=False)
@@ -293,7 +291,7 @@ class TestLogoutClearsKeychainAndPromptsEnv:
             lambda: tmp_path / "credentials.json",
         )
         creds_mod._reset_persistent_backend_for_tests()
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: creds_mod.JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", creds_mod.JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
         monkeypatch.delenv("BIFROST_API_URL", raising=False)
         monkeypatch.chdir(tmp_path)
@@ -318,7 +316,7 @@ class TestAuthList:
             lambda: tmp_path / "credentials.json",
         )
         creds_mod._reset_persistent_backend_for_tests()
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: creds_mod.JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", creds_mod.JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
 
         rc = cli.handle_auth(["list"])
@@ -333,7 +331,7 @@ class TestAuthList:
             lambda: tmp_path / "credentials.json",
         )
         creds_mod._reset_persistent_backend_for_tests()
-        monkeypatch.setattr(creds_mod, "_select_persistent_backend", lambda: creds_mod.JsonBackend())
+        monkeypatch.setattr(creds_mod, "_select_persistent_backend", creds_mod.JsonBackend)
         creds_mod._reset_persistent_backend_for_tests()
         monkeypatch.delenv("BIFROST_ACCESS_TOKEN", raising=False)
         monkeypatch.delenv("BIFROST_REFRESH_TOKEN", raising=False)
@@ -344,13 +342,18 @@ class TestAuthList:
 
         rc = cli.handle_auth(["list"])
         assert rc == 0
-        out = capsys.readouterr().out
-        assert "https://prod.example.com" in out
-        assert "http://localhost:38421" in out
-        # The current one (env-var match) is marked
-        for line in out.splitlines():
-            if "http://localhost:38421" in line:
-                assert "current" in line
-                break
-        else:
-            pytest.fail("expected the current URL to be flagged")
+        listed_urls = []
+        current_urls = []
+        for raw_line in capsys.readouterr().out.splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            url_part = stripped.split()[0]
+            listed_urls.append(url_part)
+            if "current" in raw_line:
+                current_urls.append(url_part)
+        assert "https://prod.example.com" in listed_urls
+        assert "http://localhost:38421" in listed_urls
+        assert current_urls == ["http://localhost:38421"], (
+            f"expected only the env-var URL flagged, got {current_urls}"
+        )

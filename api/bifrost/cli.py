@@ -412,6 +412,9 @@ def _write_env_url(api_url: str) -> None:
                     f.write(".env\n")
                 print(f"Added .env to {gitignore}")
         except OSError:
+            # Best-effort: failing to update .gitignore doesn't affect the
+            # token's correctness, only its discoverability. Don't let a
+            # permission error break a successful login.
             pass
 
 
