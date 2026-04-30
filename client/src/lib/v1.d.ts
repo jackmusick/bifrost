@@ -2365,6 +2365,11 @@ export interface paths {
         /**
          * Get Signed Url
          * @description Generate a presigned S3 URL for direct file upload or download.
+         *
+         *     Path resolution goes through `shared.file_paths.resolve_s3_key`, so the
+         *     URL targets the same key as a `files.read`/`files.write` to the same
+         *     `(location, scope, path)`. For workspace writes, requires the workspace
+         *     to not be a checked-out git repo (`_repo/.git/` absent).
          */
         post: operations["get_signed_url_api_files_signed_url_post"];
         delete?: never;
@@ -12425,11 +12430,15 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12486,11 +12495,15 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12537,11 +12550,15 @@ export interface components {
             directory: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12681,11 +12698,15 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12789,11 +12810,15 @@ export interface components {
             content: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -18318,7 +18343,7 @@ export interface components {
         SignedUrlRequest: {
             /**
              * Path
-             * @description File path (scoped automatically by org)
+             * @description File path relative to location root (NOT including scope segment)
              */
             path: string;
             /**
@@ -18335,8 +18360,14 @@ export interface components {
              */
             content_type: string;
             /**
+             * Location
+             * @description Storage location. Defaults to 'uploads' for backwards compatibility with form upload flows.
+             * @default uploads
+             */
+            location: string;
+            /**
              * Scope
-             * @description Organization scope (auto-resolved from context if None)
+             * @description Org scope. Required for non-workspace, non-uploads locations.
              */
             scope?: string | null;
         };
@@ -18884,7 +18915,11 @@ export interface components {
         };
         /**
          * UploadedFileMetadata
-         * @description Metadata for uploaded file that workflows can use to access the file
+         * @description Metadata for uploaded file that workflows can use to access the file.
+         *
+         *     `path` is relative to the `uploads` location: pass it directly to
+         *     `files.read(path, location="uploads")` in a workflow and the SDK handles
+         *     scoping. The full S3 key is `uploads/{scope}/{path}`.
          */
         UploadedFileMetadata: {
             /**
@@ -18899,7 +18934,7 @@ export interface components {
             container: string;
             /**
              * Path
-             * @description Blob path within container
+             * @description Path relative to uploads/ (e.g., '{form_id}/{uuid}/{filename}')
              */
             path: string;
             /**

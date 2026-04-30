@@ -259,6 +259,7 @@ class TestCLIFileOperations:
                 "path": test_path,
                 "content": test_content,
                 "location": "temp",
+                "scope": "test-scope",
                 "mode": "cloud",
             },
             headers=headers,
@@ -271,6 +272,7 @@ class TestCLIFileOperations:
             json={
                 "path": test_path,
                 "location": "temp",
+                "scope": "test-scope",
                 "mode": "cloud",
             },
             headers=headers,
@@ -282,7 +284,7 @@ class TestCLIFileOperations:
         # Cleanup
         e2e_client.post(
             "/api/files/delete",
-            json={"path": test_path, "location": "temp", "mode": "cloud"},
+            json={"path": test_path, "location": "temp", "scope": "test-scope", "mode": "cloud"},
             headers=headers,
         )
 
@@ -301,6 +303,7 @@ class TestCLIFileOperations:
                 "path": "list-test.txt",
                 "content": "test content",
                 "location": "temp",
+                "scope": "test-scope",
                 "mode": "cloud",
             },
             headers=headers,
@@ -313,6 +316,7 @@ class TestCLIFileOperations:
             json={
                 "directory": "",
                 "location": "temp",
+                "scope": "test-scope",
                 "mode": "cloud",
             },
             headers=headers,
@@ -324,7 +328,7 @@ class TestCLIFileOperations:
         # Cleanup
         e2e_client.post(
             "/api/files/delete",
-            json={"path": "list-test.txt", "location": "temp", "mode": "cloud"},
+            json={"path": "list-test.txt", "location": "temp", "scope": "test-scope", "mode": "cloud"},
             headers=headers,
         )
 
@@ -344,6 +348,7 @@ class TestCLIFileOperations:
                 "path": test_path,
                 "content": "to be deleted",
                 "location": "temp",
+                "scope": "test-scope",
                 "mode": "cloud",
             },
             headers=headers,
@@ -353,7 +358,7 @@ class TestCLIFileOperations:
         # Delete file
         response = e2e_client.post(
             "/api/files/delete",
-            json={"path": test_path, "location": "temp", "mode": "cloud"},
+            json={"path": test_path, "location": "temp", "scope": "test-scope", "mode": "cloud"},
             headers=headers,
         )
         assert response.status_code == 204, f"Delete failed: {response.text}"
@@ -361,7 +366,7 @@ class TestCLIFileOperations:
         # Verify deleted
         response = e2e_client.post(
             "/api/files/read",
-            json={"path": test_path, "location": "temp", "mode": "cloud"},
+            json={"path": test_path, "location": "temp", "scope": "test-scope", "mode": "cloud"},
             headers=headers,
         )
         assert response.status_code == 404
@@ -379,6 +384,7 @@ class TestCLIFileOperations:
             json={
                 "path": "nonexistent-file-12345.txt",
                 "location": "temp",
+                "scope": "test-scope",
                 "mode": "cloud",
             },
             headers=headers,
@@ -399,6 +405,7 @@ class TestCLIFileOperations:
             json={
                 "path": "../../../etc/passwd",
                 "location": "temp",
+                "scope": "test-scope",
                 "mode": "cloud",
             },
             headers=headers,

@@ -4,47 +4,50 @@ File Backend Abstraction
 Provides unified interface for file operations with two backends:
 - LocalBackend: Local filesystem (for CLI mode)
 - S3Backend: S3 storage (for cloud/platform mode)
+
+S3 key resolution is delegated to `shared.file_paths.resolve_s3_key`.
 """
 
 import asyncio
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.file_paths import resolve_s3_key
 from src.core.paths import TEMP_PATH, UPLOADS_PATH
 from src.services.file_storage import FileStorageService
-from src.services.repo_storage import REPO_PREFIX
 
-Location = Literal["workspace", "temp", "uploads"]
+# Location is now a free string validated by `shared.file_paths`. Keep the type
+# alias for callers that want documentation, but allow any string at runtime.
+Location = str
 
 
 class FileBackend(ABC):
     """Abstract backend for file operations."""
 
     @abstractmethod
-    async def read(self, path: str, location: Location) -> bytes:
+    async def read(self, path: str, location: Location, scope: str | None = None) -> bytes:
         """Read file content."""
         ...
 
     @abstractmethod
-    async def write(self, path: str, content: bytes, location: Location, updated_by: str = "system") -> None:
+    async def write(self, path: str, content: bytes, location: Location, updated_by: str = "system", scope: str | None = None) -> None:
         """Write file content."""
         ...
 
     @abstractmethod
-    async def delete(self, path: str, location: Location) -> None:
+    async def delete(self, path: str, location: Location, scope: str | None = None) -> None:
         """Delete a file."""
         ...
 
     @abstractmethod
-    async def list(self, directory: str, location: Location) -> list[str]:
+    async def list(self, directory: str, location: Location, scope: str | None = None) -> list[str]:
         """List files in a directory."""
         ...
 
     @abstractmethod
-    async def exists(self, path: str, location: Location) -> bool:
+    async def exists(self, path: str, location: Location, scope: str | None = None) -> bool:
         """Check if a file exists."""
         ...
 
@@ -63,13 +66,19 @@ class LocalBackend(FileBackend):
         self.uploads_root.mkdir(parents=True, exist_ok=True)
 
     def _resolve_path(self, path: str, location: Location) -> Path:
-        """Resolve path to absolute filesystem path with sandboxing."""
+        """Resolve path to absolute filesystem path with sandboxing.
+
+        Local mode is unscoped — used for CLI development without multi-tenancy.
+        """
         if location == "temp":
             base_dir = self.temp_root
         elif location == "uploads":
             base_dir = self.uploads_root
-        else:
+        elif location == "workspace":
             base_dir = self.workspace_root
+        else:
+            # Freeform local locations are siblings of workspace_root.
+            base_dir = self.workspace_root.parent / location
 
         # Resolve the path
         p = Path(path)
@@ -92,27 +101,27 @@ class LocalBackend(FileBackend):
 
         return p
 
-    async def read(self, path: str, location: Location) -> bytes:
-        """Read file from local filesystem."""
+    async def read(self, path: str, location: Location, scope: str | None = None) -> bytes:
+        """Read file from local filesystem. Scope is ignored in local mode."""
         resolved = self._resolve_path(path, location)
         if not resolved.exists():
             raise FileNotFoundError(f"File not found: {path}")
         return await asyncio.to_thread(resolved.read_bytes)
 
-    async def write(self, path: str, content: bytes, location: Location, updated_by: str = "system") -> None:
-        """Write file to local filesystem."""
+    async def write(self, path: str, content: bytes, location: Location, updated_by: str = "system", scope: str | None = None) -> None:
+        """Write file to local filesystem. Scope is ignored in local mode."""
         resolved = self._resolve_path(path, location)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(resolved.write_bytes, content)
 
-    async def delete(self, path: str, location: Location) -> None:
-        """Delete file from local filesystem."""
+    async def delete(self, path: str, location: Location, scope: str | None = None) -> None:
+        """Delete file from local filesystem. Scope is ignored in local mode."""
         resolved = self._resolve_path(path, location)
         if resolved.exists():
             await asyncio.to_thread(resolved.unlink)
 
-    async def list(self, directory: str, location: Location) -> list[str]:
-        """List files in a local directory."""
+    async def list(self, directory: str, location: Location, scope: str | None = None) -> list[str]:
+        """List files in a local directory. Scope is ignored in local mode."""
         resolved = self._resolve_path(directory, location)
         if not resolved.exists():
             return []
@@ -128,8 +137,8 @@ class LocalBackend(FileBackend):
 
         return await asyncio.to_thread(_list_dir)
 
-    async def exists(self, path: str, location: Location) -> bool:
-        """Check if file exists on local filesystem."""
+    async def exists(self, path: str, location: Location, scope: str | None = None) -> bool:
+        """Check if file exists on local filesystem. Scope is ignored in local mode."""
         try:
             resolved = self._resolve_path(path, location)
             return await asyncio.to_thread(resolved.exists)
@@ -144,36 +153,18 @@ class S3Backend(FileBackend):
         self.db = db
         self.storage = FileStorageService(db)
 
-    def _validate_path(self, path: str) -> None:
-        """Validate path doesn't contain traversal patterns."""
-        # Reject paths with .. or absolute paths
-        if ".." in path or path.startswith("/"):
-            raise ValueError(f"Invalid path: path traversal not allowed: {path}")
-
-    def _resolve_path(self, path: str, location: Location) -> str:
-        """Resolve path to S3 key with location prefix."""
-        self._validate_path(path)
-        if location == "temp":
-            return f"_tmp/{path}"
-        elif location == "uploads":
-            return f"uploads/{path}"
-        return f"{REPO_PREFIX}{path}"  # workspace: _repo/ prefix in bucket
-
-    async def read(self, path: str, location: Location) -> bytes:
+    async def read(self, path: str, location: Location, scope: str | None = None) -> bytes:
         """Read file from S3."""
-        self._validate_path(path)
         try:
-            if location in ("temp", "uploads"):
-                # Direct S3 read — temp/uploads don't go through workspace index
-                s3_path = self._resolve_path(path, location)
-                return await self.storage.read_uploaded_file(s3_path)
-            # Workspace: pass raw path — read_file adds _repo/ prefix internally
-            content, _ = await self.storage.read_file(path)
-            return content
+            if location == "workspace":
+                # Workspace goes through the indexed read path so file_index stays in sync.
+                content, _ = await self.storage.read_file(path)
+                return content
+            s3_path = resolve_s3_key(location, scope, path)
+            return await self.storage.read_uploaded_file(s3_path)
         except (FileNotFoundError, ValueError):
             raise
         except Exception as e:
-            # Convert S3 errors to appropriate exceptions
             error_msg = str(e).lower()
             if "not found" in error_msg or "nosuchkey" in error_msg:
                 raise FileNotFoundError(f"File not found: {path}")
@@ -181,43 +172,37 @@ class S3Backend(FileBackend):
                 raise ValueError(f"Invalid path: {path}")
             raise
 
-    async def write(self, path: str, content: bytes, location: Location, updated_by: str = "system") -> None:
+    async def write(self, path: str, content: bytes, location: Location, updated_by: str = "system", scope: str | None = None) -> None:
         """Write file to S3."""
-        self._validate_path(path)
-        if location in ("temp", "uploads"):
-            # No workspace indexing for temp/uploads - write directly to S3
-            s3_path = self._resolve_path(path, location)
-            await self.storage.write_raw_to_s3(s3_path, content)
-        else:
-            # Workspace: pass raw path — write_file adds _repo/ prefix internally
+        if location == "workspace":
             await self.storage.write_file(path, content, updated_by)
+            return
+        s3_path = resolve_s3_key(location, scope, path)
+        await self.storage.write_raw_to_s3(s3_path, content)
 
-    async def delete(self, path: str, location: Location) -> None:
+    async def delete(self, path: str, location: Location, scope: str | None = None) -> None:
         """Delete file from S3."""
-        self._validate_path(path)
-        if location in ("temp", "uploads"):
-            # Direct S3 delete for temp/uploads
-            s3_path = self._resolve_path(path, location)
-            await self.storage.delete_raw_from_s3(s3_path)
-        else:
-            # Workspace: pass raw path — delete_file adds _repo/ prefix internally
+        if location == "workspace":
             await self.storage.delete_file(path)
+            return
+        s3_path = resolve_s3_key(location, scope, path)
+        await self.storage.delete_raw_from_s3(s3_path)
 
-    async def list(self, directory: str, location: Location) -> list[str]:
+    async def list(self, directory: str, location: Location, scope: str | None = None) -> list[str]:
         """List files in S3 directory."""
-        self._validate_path(directory)
-        if location in ("temp", "uploads"):
-            # Direct S3 listing for temp/uploads
-            s3_dir = self._resolve_path(directory, location)
-            return await self.storage.list_raw_s3(s3_dir)
-        else:
-            # Workspace: pass raw path — list_files adds _repo/ prefix internally
+        if location == "workspace":
             files = await self.storage.list_files(directory)
             return [f.path for f in files]
+        s3_dir = resolve_s3_key(location, scope, directory)
+        return await self.storage.list_raw_s3(s3_dir)
 
-    async def exists(self, path: str, location: Location) -> bool:
+    async def exists(self, path: str, location: Location, scope: str | None = None) -> bool:
         """Check if file exists in S3."""
-        s3_path = self._resolve_path(path, location)
+        if location == "workspace":
+            from src.services.repo_storage import REPO_PREFIX
+            s3_path = f"{REPO_PREFIX}{path.lstrip('/')}"
+        else:
+            s3_path = resolve_s3_key(location, scope, path)
         return await self.storage.file_exists(s3_path)
 
 
