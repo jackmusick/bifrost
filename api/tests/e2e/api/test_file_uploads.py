@@ -74,9 +74,14 @@ class TestFileUploads:
         assert "expires_at" in data, "Missing expires_at"
         assert "file_metadata" in data, "Missing file_metadata"
 
-        # Verify blob_uri format
-        assert data["blob_uri"].startswith("uploads/"), (
+        # blob_uri is now the path relative to the uploads/ location:
+        # `{form_id}/{uuid}/{filename}`. The full S3 key is
+        # `uploads/{scope}/{blob_uri}` and the SDK handles that translation.
+        assert "/" in data["blob_uri"], (
             f"Invalid blob_uri: {data['blob_uri']}"
+        )
+        assert not data["blob_uri"].startswith("uploads/"), (
+            f"blob_uri should be location-relative, got: {data['blob_uri']}"
         )
 
         # Verify file metadata
@@ -142,7 +147,10 @@ class TestFileUploads:
         )
         upload_data = response.json()
         upload_url = upload_data["upload_url"]
-        blob_uri = upload_data["blob_uri"]
+        # blob_uri is the path relative to the `uploads` location — pass it
+        # straight to `files.read(..., location="uploads")` and the SDK adds
+        # the `uploads/{scope}/` prefix.
+        file_path_for_workflow = upload_data["blob_uri"]
 
         # Upload file content
         file_content = b"Test file content for E2E upload test.\nLine 2."
@@ -155,11 +163,6 @@ class TestFileUploads:
         assert s3_response.status_code in [200, 201, 204], (
             f"S3 upload failed: {s3_response.status_code}"
         )
-
-        # Strip the "uploads/" prefix since location="uploads" adds it
-        # blob_uri is like "uploads/form_id/uuid/filename.txt"
-        # but files.read with location="uploads" expects "form_id/uuid/filename.txt"
-        file_path_for_workflow = blob_uri.removeprefix("uploads/")
 
         # Create workflow that reads the file
         workflow_content = '''"""E2E File Read Test Workflow"""

@@ -1126,16 +1126,24 @@ async def generate_upload_url(
                         detail=f"File size {request.file_size} bytes exceeds maximum {field.max_size_mb}MB",
                     )
 
-    # Generate unique path for upload
+    # Generate the upload's relative path. The full S3 key is built by the
+    # unified files resolver: `uploads/{scope}/{relative_path}`. Scope is the
+    # caller's effective org (matches what the workflow's SDK will resolve to
+    # when it reads the file with `location="uploads"` and no explicit scope).
+    from shared.file_paths import resolve_s3_key
     file_uuid = str(uuid4())
     sanitized_name = _sanitize_filename(request.file_name)
-    path = f"uploads/{form_id}/{file_uuid}/{sanitized_name}"
+    relative_path = f"{form_id}/{file_uuid}/{sanitized_name}"
+    upload_scope = str(ctx.org_id) if ctx.org_id else "global"
+    s3_key = resolve_s3_key("uploads", upload_scope, relative_path)
 
-    # Generate presigned URL
+    # Generate presigned URL against the full S3 key, but surface the
+    # location-relative path to callers so workflows can use
+    # `files.read(blob_uri, location="uploads")` without prefix-stripping.
     storage = FileStorageService(db)
     try:
         upload_url = await storage.generate_presigned_upload_url(
-            path=path,
+            path=s3_key,
             content_type=request.content_type,
             expires_in=600,  # 10 minutes
         )
@@ -1151,12 +1159,12 @@ async def generate_upload_url(
 
     return FileUploadResponse(
         upload_url=upload_url,
-        blob_uri=path,
+        blob_uri=relative_path,
         expires_at=expires_at,
         file_metadata=UploadedFileMetadata(
             name=request.file_name,
-            container="uploads",  # Root folder prefix
-            path=path,
+            container="uploads",
+            path=relative_path,
             content_type=request.content_type,
             size=request.file_size,
         ),
