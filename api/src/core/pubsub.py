@@ -895,3 +895,47 @@ async def publish_file_activity(
     if data is not None:
         payload["data"] = data
     await manager.broadcast("file-activity", payload)
+
+
+# =============================================================================
+# Table Pub/Sub
+# =============================================================================
+
+
+async def publish_document_change(
+    table_id: UUID,
+    action: str,
+    doc: Any,
+) -> None:
+    """Broadcast a document change to the table's channel.
+
+    `doc` may be a SQLAlchemy Document or a plain dict. Only id, data, and
+    created_by are propagated (plus the action).
+    """
+    if hasattr(doc, "id"):
+        payload_id = doc.id
+        payload_data = doc.data
+        created_by = doc.created_by
+    else:
+        payload_id = doc.get("id")
+        payload_data = doc.get("data")
+        created_by = doc.get("created_by")
+
+    message = {
+        "type": "document_change",
+        "table_id": str(table_id),
+        "action": action,
+        "id": payload_id,
+        "created_by": created_by,
+        "data": payload_data,
+    }
+    await manager.broadcast(f"table:{table_id}", message)
+
+
+async def publish_table_access_changed(table_id: UUID) -> None:
+    """Notify subscribers that the table's access rules have changed."""
+    message = {
+        "type": "table_access_changed",
+        "table_id": str(table_id),
+    }
+    await manager.broadcast(f"table:{table_id}", message)

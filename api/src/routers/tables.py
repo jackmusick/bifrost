@@ -37,6 +37,7 @@ from src.models.orm.tables import Document, Table
 from src.models.orm.users import UserRole as UserRoleORM
 from src.repositories.org_scoped import OrgScopedRepository
 from shared.table_access import Action, Caller, check_table_access
+from src.core.pubsub import publish_document_change, publish_table_access_changed
 
 logger = logging.getLogger(__name__)
 
@@ -667,6 +668,9 @@ async def update_table(
             detail=f"Table '{table_id}' not found",
         )
 
+    if "access" in data.model_fields_set:
+        await publish_table_access_changed(table_id)
+
     return TablePublic.model_validate(table)
 
 
@@ -717,7 +721,7 @@ async def insert_document(
     repo = DocumentRepository(ctx.db, table)
     doc = await repo.insert(body.data, created_by=str(ctx.user.user_id))
     await ctx.db.commit()
-    # TODO Task 7: publish_document_change(table_id, "insert", doc)
+    await publish_document_change(table_id, "insert", doc)
     return DocumentPublic.model_validate(doc)
 
 
@@ -777,7 +781,7 @@ async def update_document(
         # Lost a race with a concurrent delete after we fetched + access-checked.
         raise HTTPException(status_code=404, detail="Document not found")
     await ctx.db.commit()
-    # TODO Task 7: publish_document_change(table_id, "update", doc)
+    await publish_document_change(table_id, "update", doc)
     return DocumentPublic.model_validate(doc)
 
 
@@ -807,8 +811,7 @@ async def delete_document(
     deleted = await repo.delete(doc_id)
     await ctx.db.commit()
     if deleted:
-        # TODO Task 7: publish_document_change(table_id, "delete", existing)
-        pass
+        await publish_document_change(table_id, "delete", existing)
 
 
 @router.post(
