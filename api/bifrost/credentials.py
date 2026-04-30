@@ -70,17 +70,23 @@ def get_credentials_path() -> Path:
 # --------------------------------------------------------------------------- #
 
 class Backend(Protocol):
+    """Storage backend for per-URL credentials (env / keychain / JSON)."""
+
     def get(self, api_url: str) -> Credentials | None:
-        ...
+        """Return credentials for the given URL, or None if absent."""
+        raise NotImplementedError
 
     def save(self, creds: Credentials) -> None:
-        ...
+        """Persist credentials, replacing any existing entry for that URL."""
+        raise NotImplementedError
 
     def clear(self, api_url: str) -> None:
-        ...
+        """Remove credentials for the given URL. No-op if absent."""
+        raise NotImplementedError
 
     def list_urls(self) -> list[str]:
-        ...
+        """Return all URLs that currently have stored credentials."""
+        raise NotImplementedError
 
 
 class EnvBackend:

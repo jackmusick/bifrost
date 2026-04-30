@@ -352,8 +352,10 @@ class TestAuthList:
             listed_urls.append(url_part)
             if "current" in raw_line:
                 current_urls.append(url_part)
-        assert "https://prod.example.com" in listed_urls
-        assert "http://localhost:38421" in listed_urls
+        assert sorted(listed_urls) == sorted([
+            "https://prod.example.com",
+            "http://localhost:38421",
+        ])
         assert current_urls == ["http://localhost:38421"], (
             f"expected only the env-var URL flagged, got {current_urls}"
         )
