@@ -533,6 +533,98 @@ async def websocket_connect(
                     if task and not task.done():
                         task.cancel()
 
+            elif data.get("type") == "edit_message":
+                conversation_id = data.get("conversation_id")
+                target_message_id = data.get("target_message_id")
+                new_text = data.get("content", "")
+                local_id = data.get("local_id")
+
+                if not conversation_id or not target_message_id or not new_text or not new_text.strip():
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Missing conversation_id, target_message_id, or content",
+                    })
+                    continue
+
+                has_access, conversation = await can_access_conversation(user, conversation_id)
+                if not has_access or not conversation:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Conversation not found or access denied",
+                    })
+                    continue
+
+                existing_task = active_chat_tasks.get(conversation_id)
+                if existing_task and not existing_task.done():
+                    await websocket.send_json({
+                        "type": "error",
+                        "conversation_id": conversation_id,
+                        "error": "Another turn is in flight for this conversation",
+                    })
+                    continue
+
+                t = asyncio.create_task(
+                    _process_edit_message(
+                        websocket=websocket,
+                        user=user,
+                        conversation_id=conversation_id,
+                        target_message_id=target_message_id,
+                        new_text=new_text,
+                        local_id=local_id,
+                    )
+                )
+                active_chat_tasks[conversation_id] = t
+
+                def _on_edit_done(_t: asyncio.Task, _cid: str = conversation_id) -> None:
+                    active_chat_tasks.pop(_cid, None)
+
+                t.add_done_callback(_on_edit_done)
+
+            elif data.get("type") == "retry_message":
+                conversation_id = data.get("conversation_id")
+                target_message_id = data.get("target_message_id")
+                local_id = data.get("local_id")
+
+                if not conversation_id or not target_message_id:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Missing conversation_id or target_message_id",
+                    })
+                    continue
+
+                has_access, conversation = await can_access_conversation(user, conversation_id)
+                if not has_access or not conversation:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Conversation not found or access denied",
+                    })
+                    continue
+
+                existing_task = active_chat_tasks.get(conversation_id)
+                if existing_task and not existing_task.done():
+                    await websocket.send_json({
+                        "type": "error",
+                        "conversation_id": conversation_id,
+                        "error": "Another turn is in flight for this conversation",
+                    })
+                    continue
+
+                t = asyncio.create_task(
+                    _process_retry_message(
+                        websocket=websocket,
+                        user=user,
+                        conversation_id=conversation_id,
+                        target_message_id=target_message_id,
+                        local_id=local_id,
+                    )
+                )
+                active_chat_tasks[conversation_id] = t
+
+                def _on_retry_done(_t: asyncio.Task, _cid: str = conversation_id) -> None:
+                    active_chat_tasks.pop(_cid, None)
+
+                t.add_done_callback(_on_retry_done)
+
     except WebSocketDisconnect:
         # Cancel all active chat tasks for this connection
         pending_messages.clear()
@@ -775,3 +867,204 @@ async def _process_chat_message(
             })
         except Exception:
             pass  # WebSocket may be closed
+
+
+async def _process_edit_message(
+    websocket: WebSocket,
+    user: UserPrincipal,
+    conversation_id: str,
+    target_message_id: str,
+    new_text: str,
+    local_id: str | None = None,
+) -> None:
+    """Process an edit_message dispatch — sibling user message + fresh turn."""
+    from src.core.database import get_session_factory
+    from src.services.agent_executor import AgentExecutor
+
+    try:
+        session_factory = get_session_factory()
+        conv_uuid = UUID(conversation_id)
+        target_uuid = UUID(target_message_id)
+
+        async with session_factory() as db:
+            result = await db.execute(
+                select(Conversation)
+                .options(
+                    selectinload(Conversation.agent).selectinload(Agent.tools),
+                    selectinload(Conversation.agent).selectinload(Agent.delegated_agents),
+                    selectinload(Conversation.user),
+                )
+                .where(Conversation.id == conv_uuid)
+            )
+            conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            await websocket.send_json({
+                "type": "error",
+                "conversation_id": conversation_id,
+                "error": "Conversation not found",
+            })
+            return
+
+        executor = AgentExecutor(session_factory)
+        streamed_content = ""
+        assistant_message_id: str | None = None
+
+        try:
+            async for chunk in executor.edit_user_message(
+                agent=conversation.agent,
+                conversation=conversation,
+                target_message_id=target_uuid,
+                new_text=new_text,
+                local_id=local_id,
+            ):
+                if chunk.type == "delta" and chunk.content:
+                    streamed_content += chunk.content
+                elif chunk.type == "message_start" and chunk.assistant_message_id:
+                    assistant_message_id = chunk.assistant_message_id
+                elif chunk.type == "assistant_message_end":
+                    streamed_content = ""
+                    assistant_message_id = None
+
+                chunk_data = chunk.model_dump(exclude_none=True)
+                chunk_data["conversation_id"] = conversation_id
+                await websocket.send_json(chunk_data)
+        except asyncio.CancelledError:
+            logger.info(f"Edit processing cancelled for conversation {log_safe(conversation_id)}")
+            if streamed_content:
+                from src.models.enums import MessageRole
+
+                await executor._save_message(
+                    conversation_id=conv_uuid,
+                    role=MessageRole.ASSISTANT,
+                    content=streamed_content,
+                    message_id=UUID(assistant_message_id) if assistant_message_id else None,
+                )
+
+            # Match chat's cancel semantics: emit a terminal "done" frame so
+            # the client clears its in-flight indicator. Swallowing the
+            # CancelledError (no re-raise) matches _process_chat_message.
+            try:
+                await websocket.send_json({
+                    "type": "done",
+                    "conversation_id": conversation_id,
+                })
+            except Exception:
+                pass  # WebSocket may already be closed
+            return
+        except ValueError as e:
+            await websocket.send_json({
+                "type": "error",
+                "conversation_id": conversation_id,
+                "error": str(e),
+            })
+            return
+    except Exception as e:
+        logger.error(f"Error processing edit_message: {e}", exc_info=True)
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "conversation_id": conversation_id,
+                "error": "Internal error processing edit",
+            })
+        except Exception:
+            pass
+
+
+async def _process_retry_message(
+    websocket: WebSocket,
+    user: UserPrincipal,
+    conversation_id: str,
+    target_message_id: str,
+    local_id: str | None = None,
+) -> None:
+    """Process a retry_message dispatch — sibling assistant message + fresh turn."""
+    from src.core.database import get_session_factory
+    from src.services.agent_executor import AgentExecutor
+
+    try:
+        session_factory = get_session_factory()
+        conv_uuid = UUID(conversation_id)
+        target_uuid = UUID(target_message_id)
+
+        async with session_factory() as db:
+            result = await db.execute(
+                select(Conversation)
+                .options(
+                    selectinload(Conversation.agent).selectinload(Agent.tools),
+                    selectinload(Conversation.agent).selectinload(Agent.delegated_agents),
+                    selectinload(Conversation.user),
+                )
+                .where(Conversation.id == conv_uuid)
+            )
+            conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            await websocket.send_json({
+                "type": "error",
+                "conversation_id": conversation_id,
+                "error": "Conversation not found",
+            })
+            return
+
+        executor = AgentExecutor(session_factory)
+        streamed_content = ""
+        assistant_message_id: str | None = None
+
+        try:
+            async for chunk in executor.retry_assistant_message(
+                agent=conversation.agent,
+                conversation=conversation,
+                target_message_id=target_uuid,
+                local_id=local_id,
+            ):
+                if chunk.type == "delta" and chunk.content:
+                    streamed_content += chunk.content
+                elif chunk.type == "message_start" and chunk.assistant_message_id:
+                    assistant_message_id = chunk.assistant_message_id
+                elif chunk.type == "assistant_message_end":
+                    streamed_content = ""
+                    assistant_message_id = None
+
+                chunk_data = chunk.model_dump(exclude_none=True)
+                chunk_data["conversation_id"] = conversation_id
+                await websocket.send_json(chunk_data)
+        except asyncio.CancelledError:
+            logger.info(f"Retry processing cancelled for conversation {log_safe(conversation_id)}")
+            if streamed_content:
+                from src.models.enums import MessageRole
+
+                await executor._save_message(
+                    conversation_id=conv_uuid,
+                    role=MessageRole.ASSISTANT,
+                    content=streamed_content,
+                    message_id=UUID(assistant_message_id) if assistant_message_id else None,
+                )
+
+            # Match chat's cancel semantics: emit a terminal "done" frame so
+            # the client clears its in-flight indicator.
+            try:
+                await websocket.send_json({
+                    "type": "done",
+                    "conversation_id": conversation_id,
+                })
+            except Exception:
+                pass  # WebSocket may already be closed
+            return
+        except ValueError as e:
+            await websocket.send_json({
+                "type": "error",
+                "conversation_id": conversation_id,
+                "error": str(e),
+            })
+            return
+    except Exception as e:
+        logger.error(f"Error processing retry_message: {e}", exc_info=True)
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "conversation_id": conversation_id,
+                "error": "Internal error processing retry",
+            })
+        except Exception:
+            pass

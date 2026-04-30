@@ -34,7 +34,7 @@ from src.models.contracts.agents import (
     ToolResult,
 )
 from src.models.enums import MessageRole
-from src.models.orm import Agent, Conversation, Message, User, Workflow
+from src.models.orm import Agent, Conversation, Message, User, Workflow, Workspace
 from src.services.llm import (
     LLMMessage,
     ToolCallRequest,
@@ -45,6 +45,24 @@ from src.services.execution.agent_helpers import find_delegated_agent, resolve_a
 from src.services.execution.autonomous_agent_executor import AutonomousAgentExecutor
 
 logger = logging.getLogger(__name__)
+
+
+class _Unset:
+    """Sentinel type for "kwarg not provided" vs explicit None.
+
+    `_save_message`'s `parent_message_id_override` accepts three states:
+    - `_UNSET` — caller didn't provide a value; use the conversation's leaf.
+    - `None` — caller explicitly wants a NULL parent (root sibling for an
+      edit of the first user message).
+    - `UUID` — caller wants this exact parent (retry under a specific user
+      message).
+
+    Using a typed sentinel (rather than `object()`) lets pyright check that
+    every call site passes a member of `UUID | None | _Unset`.
+    """
+
+
+_UNSET = _Unset()
 
 
 def _serialize_for_json(value: Any) -> str:
@@ -148,6 +166,8 @@ class AgentExecutor:
         stream: bool = True,
         enable_routing: bool = True,
         local_id: str | None = None,
+        _skip_save_user_message: bool = False,
+        _user_message_id: UUID | None = None,
     ) -> AsyncIterator[ChatStreamChunk]:
         """
         Process a user message and generate a response.
@@ -196,19 +216,23 @@ class AgentExecutor:
                             yield chunk
                         agent = routed_agent
 
-            # 3. Save user message
-            user_msg = await self._save_message(
-                conversation_id=conversation.id,
-                role=MessageRole.USER,
-                content=user_message,
-                local_id=local_id,
-            )
+            # 3. Save user message — unless caller already created one (edit/retry path).
+            if _skip_save_user_message:
+                user_msg_id = _user_message_id
+            else:
+                user_msg = await self._save_message(
+                    conversation_id=conversation.id,
+                    role=MessageRole.USER,
+                    content=user_message,
+                    local_id=local_id,
+                )
+                user_msg_id = user_msg.id
 
             # 3b. Generate assistant message ID upfront and send message_start
             assistant_message_id = uuid4()
             yield ChatStreamChunk(
                 type="message_start",
-                user_message_id=str(user_msg.id),
+                user_message_id=str(user_msg_id) if user_msg_id else None,
                 assistant_message_id=str(assistant_message_id),
                 local_id=local_id,
             )
@@ -622,6 +646,184 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             # Don't fail the agent execution just because notification failed
             logger.warning(f"Failed to create tool conflict notification: {e}")
 
+    async def _load_active_branch(
+        self, conversation: Conversation
+    ) -> list[Message]:
+        """Resolve the active branch as a chronological list of messages.
+
+        Walks from `active_leaf_message_id` back through `parent_message_id`
+        until NULL, then reverses. Falls back to MAX(sequence) when the
+        leaf is NULL (legacy rows the M3 migration's backfill couldn't reach,
+        plus brand-new conversations with no leaf set yet).
+        """
+        async with self._db() as session:
+            leaf_id = conversation.active_leaf_message_id
+            if leaf_id is None:
+                # Fall back: pick the row with the highest sequence.
+                fallback = (
+                    await session.execute(
+                        select(Message)
+                        .where(Message.conversation_id == conversation.id)
+                        .order_by(Message.sequence.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if fallback is None:
+                    return []
+                leaf_id = fallback.id
+
+            # Walk parent chain from leaf to root.
+            # TODO(perf): if median chain length grows past ~50, replace this
+            # N+1 walk with a single recursive CTE.
+            chain: list[Message] = []
+            current_id: UUID | None = leaf_id
+            seen: set[UUID] = set()
+            while current_id is not None:
+                if current_id in seen:
+                    # Defensive cycle break — should be impossible given FK
+                    # acyclicity but guards against bad data.
+                    logger.warning(
+                        "Active branch walk hit a cycle at %s for conversation %s",
+                        current_id, conversation.id,
+                    )
+                    break
+                seen.add(current_id)
+                msg = await session.get(Message, current_id)
+                if msg is None:
+                    logger.warning(
+                        "Active branch walk truncated at %s for conversation %s — "
+                        "parent_message_id points at a missing row",
+                        current_id, conversation.id,
+                    )
+                    break
+                chain.append(msg)
+                current_id = msg.parent_message_id
+
+            chain.reverse()
+            return chain
+
+    async def _walk_leaf_to_assistant_parent(
+        self, conversation: Conversation, assistant_message_id: UUID
+    ) -> UUID:
+        """Move active_leaf to the parent of an assistant message; return that parent id.
+
+        Used by retry_assistant_message: we need the leaf to point at the
+        user message that prompted the assistant reply, so the next turn's
+        history loader returns the path up-to-but-not-including the
+        assistant message being retried, and the next saved assistant
+        message becomes a sibling of the original.
+        """
+        async with self._db() as session:
+            target = await session.get(Message, assistant_message_id)
+            if target is None or target.conversation_id != conversation.id:
+                raise ValueError("target message not in this conversation")
+            if target.role != MessageRole.ASSISTANT:
+                raise ValueError("retry_assistant_message: can only retry assistant messages")
+            parent_id = target.parent_message_id
+            if parent_id is None:
+                raise ValueError("assistant message has no parent — nothing to retry from")
+
+            conv = await session.get(Conversation, conversation.id)
+            assert conv is not None
+            conv.active_leaf_message_id = parent_id
+            # commit on context exit
+        return parent_id
+
+    async def edit_user_message(
+        self,
+        agent: Agent | None,
+        conversation: Conversation,
+        target_message_id: UUID,
+        new_text: str,
+        *,
+        local_id: str | None = None,
+    ) -> AsyncIterator[ChatStreamChunk]:
+        """Edit a user message — create a sibling and dispatch a fresh turn.
+
+        Note on validation: this is an async generator, so the validation
+        below runs on the first ``__anext__()`` (not when the method is
+        called). Callers must iterate (e.g. ``async for chunk in …``) to
+        observe a ValueError raised before the first yield.
+        """
+        # Validate target.
+        async with self._db() as session:
+            target = await session.get(Message, target_message_id)
+            if target is None or target.conversation_id != conversation.id:
+                raise ValueError("target message not in this conversation")
+            if target.role != MessageRole.USER:
+                raise ValueError("edit_user_message: can only edit user messages")
+            parent_of_target = target.parent_message_id
+
+        # Save the new user message as a sibling under the same parent.
+        # _save_message advances the active leaf to the new sibling.
+        new_user = await self._save_message(
+            conversation_id=conversation.id,
+            role=MessageRole.USER,
+            content=new_text,
+            local_id=local_id,
+            parent_message_id_override=parent_of_target,
+        )
+
+        # Re-fetch the conversation so chat() reads the freshly-advanced leaf.
+        async with self._db() as session:
+            fresh = await session.get(Conversation, conversation.id)
+        if fresh is None:
+            raise ValueError(f"conversation {conversation.id} not found")
+
+        # enable_routing=False — edits stay on the current agent. We don't
+        # re-parse @mentions on edit; users wanting to switch agents can do
+        # so via the agent selector. This avoids edits silently changing
+        # routing semantics.
+        async for chunk in self.chat(
+            agent=agent,
+            conversation=fresh,
+            user_message=new_text,
+            stream=True,
+            enable_routing=False,
+            local_id=local_id,
+            _skip_save_user_message=True,
+            _user_message_id=new_user.id,
+        ):
+            yield chunk
+
+    async def retry_assistant_message(
+        self,
+        agent: Agent | None,
+        conversation: Conversation,
+        target_message_id: UUID,
+        *,
+        local_id: str | None = None,
+    ) -> AsyncIterator[ChatStreamChunk]:
+        """Retry an assistant message — back the leaf up, dispatch a fresh turn.
+
+        Note on validation: this is an async generator. Validation in
+        ``_walk_leaf_to_assistant_parent`` runs on the first ``__anext__()``
+        — callers must iterate to observe a ValueError.
+        """
+        parent_user_id = await self._walk_leaf_to_assistant_parent(
+            conversation, target_message_id
+        )
+
+        async with self._db() as session:
+            fresh = await session.get(Conversation, conversation.id)
+            user_msg = await session.get(Message, parent_user_id)
+        if fresh is None or user_msg is None:
+            raise ValueError("conversation or parent user message not found")
+
+        # enable_routing=False — retries stay on the current agent. See
+        # edit_user_message for the same rationale.
+        async for chunk in self.chat(
+            agent=agent,
+            conversation=fresh,
+            user_message=user_msg.content or "",
+            stream=True,
+            enable_routing=False,
+            local_id=local_id,
+            _skip_save_user_message=True,
+            _user_message_id=parent_user_id,
+        ):
+            yield chunk
+
     async def _build_message_history(
         self, agent: Agent | None, conversation: Conversation
     ) -> list[LLMMessage]:
@@ -634,6 +836,27 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             system_prompt = build_agent_system_prompt(agent, execution_context={"mode": "chat"})
         else:
             system_prompt = await self._get_default_system_prompt()
+
+        # M3: append workspace + per-conversation instructions when present.
+        # TODO(perf): the websocket handler and chat router both load
+        # Conversation already; if they switch to selectinload(Conversation.workspace)
+        # we can drop this round-trip and read conversation.workspace directly.
+        extra_blocks: list[str] = []
+        if conversation.workspace_id is not None:
+            async with self._db() as _ws_session:
+                ws = await _ws_session.get(Workspace, conversation.workspace_id)
+            if ws is None:
+                logger.warning(
+                    "Conversation %s references missing workspace %s",
+                    conversation.id, conversation.workspace_id,
+                )
+            elif ws.instructions:
+                extra_blocks.append(ws.instructions.strip())
+        if conversation.instructions:
+            extra_blocks.append(conversation.instructions.strip())
+        if extra_blocks:
+            system_prompt = "\n\n".join([system_prompt.strip(), *extra_blocks])
+
         messages.append(
             LLMMessage(
                 role="system",
@@ -641,14 +864,8 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             )
         )
 
-        # Get conversation messages in order
-        async with self._db() as session:
-            result = await session.execute(
-                select(Message)
-                .where(Message.conversation_id == conversation.id)
-                .order_by(Message.sequence)
-            )
-            db_messages = result.scalars().all()
+        # Get the active branch path (chronological).
+        db_messages = await self._load_active_branch(conversation)
 
         # Track seen tool_call IDs to handle providers (e.g. Minimax) that
         # reuse the same IDs across turns. When a collision is detected, remap
@@ -1095,8 +1312,9 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
         tool_input: dict[str, Any] | None = None,
         # Client-generated ID for optimistic update reconciliation
         local_id: str | None = None,
+        parent_message_id_override: UUID | None | _Unset = _UNSET,
     ) -> Message:
-        """Save a message to the conversation."""
+        """Save a message to the conversation, advancing the active branch leaf."""
         msg_id = message_id if message_id else uuid4()
 
         async with self._db() as session:
@@ -1107,6 +1325,18 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
             )
             max_sequence = result.scalar() or 0
             next_sequence = max_sequence + 1
+
+            # Load conversation to read current leaf and update it after insert.
+            conversation_result = await session.execute(
+                select(Conversation).where(Conversation.id == conversation_id)
+            )
+            conversation = conversation_result.scalar_one()
+
+            parent_id: UUID | None
+            if isinstance(parent_message_id_override, _Unset):
+                parent_id = conversation.active_leaf_message_id
+            else:
+                parent_id = parent_message_id_override
 
             message = Message(
                 id=msg_id,
@@ -1122,6 +1352,7 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 model=model,
                 duration_ms=duration_ms,
                 sequence=next_sequence,
+                parent_message_id=parent_id,
                 # New fields for TOOL_CALL messages
                 tool_state=tool_state,
                 tool_result=tool_result,
@@ -1130,12 +1361,14 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
                 local_id=local_id,
             )
             session.add(message)
+            # Force the INSERT to land before the conversations UPDATE below.
+            # The FK constraint fk_conversations_active_leaf_message_id is
+            # checked at statement time, so we need the message row in the
+            # database before pointing the conversation at it.
+            await session.flush()
 
-            # Update conversation updated_at
-            conversation_result = await session.execute(
-                select(Conversation).where(Conversation.id == conversation_id)
-            )
-            conversation = conversation_result.scalar_one()
+            # Advance the active branch leaf.
+            conversation.active_leaf_message_id = message.id
             conversation.updated_at = datetime.now(timezone.utc)
             # commit happens on context manager exit
 
