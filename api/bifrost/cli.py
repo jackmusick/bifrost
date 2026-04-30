@@ -2505,8 +2505,18 @@ async def _process_incoming(
                         except OSError as e:
                             # Permission / I/O issue reading existing file — fall through to overwrite
                             logger.debug(f"could not byte-compare {local_file}, will overwrite: {e}")
-                    local_file.write_bytes(content)
+                    # Set the cache hash BEFORE the disk write to close the
+                    # race window: watchdog runs in a separate thread and can
+                    # enqueue an event the moment write_bytes flushes — which
+                    # may be before this asyncio task gets to set_known_hash.
+                    # If the write later fails, forget the entry so the next
+                    # cycle re-pushes whatever's on disk.
                     state.set_known_hash(repo_path, content_hash)
+                    try:
+                        local_file.write_bytes(content)
+                    except OSError:
+                        state.forget_known_hash(repo_path)
+                        raise
                     if watch_app:
                         watch_app.log_pull(rel, user=user_name)
                     else:

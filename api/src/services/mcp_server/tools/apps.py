@@ -619,6 +619,7 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
     from src.models.orm.applications import Application
     from src.models.orm.file_index import FileIndex
     from src.models.orm.workflows import Workflow
+    from src.routers.applications import extract_external_deps
 
     logger.info(f"MCP validate_app called with id={app_id}")
 
@@ -692,16 +693,8 @@ async def validate_app(context: Any, app_id: str) -> ToolResult:
                         if "{children}" in content and "Outlet" not in content:
                             errors.append({"severity": "error", "file": rel_path, "message": "Layout uses {children} but should use <Outlet /> for page routing. Replace {children} with <Outlet />."})
 
-                    # Extract external import references (non-bifrost)
-                    for match in re.finditer(
-                        r'^\s*import\s+.*?\s+from\s+["\']([^"\']+)["\']\s*;?\s*$',
-                        content,
-                        re.MULTILINE,
-                    ):
-                        pkg = match.group(1)
-                        if pkg != "bifrost":
-                            # Handle scoped packages: @scope/pkg → @scope/pkg
-                            referenced_deps.add(pkg)
+                    # Handle scoped packages: @scope/pkg → @scope/pkg
+                    referenced_deps |= extract_external_deps(content)
 
                     # Check workflow IDs
                     wf_refs = re.findall(r'(?:useWorkflowQuery|useWorkflowMutation)\s*\(\s*["\']([^"\']+)["\']', content)

@@ -60,6 +60,31 @@ class AppValidationResponse(BaseModel):
     warnings: list[AppValidationIssue] = []
 
 
+_IMPORT_RE = re.compile(
+    r'^\s*import\s+.*?\s+from\s+["\']([^"\']+)["\']\s*;?\s*$',
+    re.MULTILINE,
+)
+
+
+def extract_external_deps(content: str) -> set[str]:
+    """Extract bare-specifier import targets from a TS/TSX source.
+
+    Excludes:
+    - the bifrost runtime (resolved by the bundler)
+    - relative imports (./, ../) and absolute paths (/) — these resolve
+      within the app and are not external dependencies
+
+    Used by the validator to flag undeclared external deps.
+    """
+    deps: set[str] = set()
+    for match in _IMPORT_RE.finditer(content):
+        pkg = match.group(1)
+        if pkg == "bifrost" or pkg.startswith((".", "/")):
+            continue
+        deps.add(pkg)
+    return deps
+
+
 # =============================================================================
 # Repository
 # =============================================================================
@@ -1148,15 +1173,7 @@ async def validate_application(
                             line=i,
                         ))
 
-            # Extract external import references (non-bifrost) for dependency checking
-            for match in re.finditer(
-                r'^\s*import\s+.*?\s+from\s+["\']([^"\']+)["\']\s*;?\s*$',
-                content,
-                re.MULTILINE,
-            ):
-                pkg = match.group(1)
-                if pkg != "bifrost":
-                    referenced_deps.add(pkg)
+            referenced_deps |= extract_external_deps(content)
 
             # Check workflow IDs
             # Match useWorkflowQuery("...") and useWorkflowMutation("...")

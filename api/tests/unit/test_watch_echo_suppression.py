@@ -262,6 +262,95 @@ async def test_seeded_cache_drops_identical_local_file_push(tmp_path: pathlib.Pa
 
 
 @pytest.mark.asyncio
+async def test_cache_is_set_before_disk_write(tmp_path: pathlib.Path) -> None:
+    """Watchdog runs in a separate thread and can enqueue an observer event
+    the moment write_bytes flushes — which may be before this asyncio task
+    gets to set_known_hash. Setting the cache *before* the write closes the
+    race so a concurrent push-batch lookup sees a hit.
+
+    We can't directly observe "set_known_hash before write_bytes" without
+    monkey-patching, so this test substitutes Path.write_bytes with a probe
+    that asserts the cache is already populated when the write fires.
+    """
+    repo_path = "apps/demo/race.tsx"
+    content = b"export default () => null\n"
+
+    state = _WatchState(tmp_path)
+    client: Any = _RecordingClient(server_files={repo_path: content})
+
+    abs_path = tmp_path / repo_path
+    cache_at_write_time: list[str | None] = []
+
+    real_write_bytes = pathlib.Path.write_bytes
+
+    def probing_write_bytes(self: pathlib.Path, data: bytes) -> int:
+        if str(self) == str(abs_path):
+            cache_at_write_time.append(state.get_known_hash(repo_path))
+        return real_write_bytes(self, data)
+
+    pathlib.Path.write_bytes = probing_write_bytes  # type: ignore[method-assign]
+    try:
+        await _process_incoming(
+            client,
+            files=[([repo_path], "user_a")],
+            deletes=[],
+            base_path=tmp_path,
+            repo_prefix="",
+            state=state,
+        )
+    finally:
+        pathlib.Path.write_bytes = real_write_bytes  # type: ignore[method-assign]
+
+    assert len(cache_at_write_time) == 1, (
+        "Probe should have observed exactly one write to the target path"
+    )
+    assert cache_at_write_time[0] == _hash_for_cache(content), (
+        "Cache must be populated BEFORE the disk write so a concurrent "
+        "watchdog observer event finds a hit on lookup. "
+        f"Saw cache={cache_at_write_time[0]!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pull_write_failure_clears_cache(tmp_path: pathlib.Path) -> None:
+    """If the disk write fails after the cache has been pre-set, the cache
+    entry must be cleared so the next observer event for whatever IS on disk
+    re-pushes (rather than being silently suppressed by a hash that no longer
+    matches local content)."""
+    repo_path = "apps/demo/fails.tsx"
+    content = b"never landed\n"
+
+    state = _WatchState(tmp_path)
+    client: Any = _RecordingClient(server_files={repo_path: content})
+
+    real_write_bytes = pathlib.Path.write_bytes
+
+    def failing_write_bytes(self: pathlib.Path, data: bytes) -> int:
+        raise OSError("disk full")
+
+    pathlib.Path.write_bytes = failing_write_bytes  # type: ignore[method-assign]
+    try:
+        # _process_incoming wraps each path in a try/except and logs — it
+        # does not propagate the inner OSError. We just need to confirm the
+        # cache rollback ran.
+        await _process_incoming(
+            client,
+            files=[([repo_path], "user_a")],
+            deletes=[],
+            base_path=tmp_path,
+            repo_prefix="",
+            state=state,
+        )
+    finally:
+        pathlib.Path.write_bytes = real_write_bytes  # type: ignore[method-assign]
+
+    assert state.get_known_hash(repo_path) is None, (
+        "Failed write must roll back the optimistic cache entry so future "
+        "observer events for the un-updated local file are not suppressed."
+    )
+
+
+@pytest.mark.asyncio
 async def test_incoming_delete_evicts_cache(tmp_path: pathlib.Path) -> None:
     """A delete event from another user must remove the cache entry so a
     later recreation of the file with the same bytes still pushes."""
