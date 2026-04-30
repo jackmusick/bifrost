@@ -352,6 +352,17 @@ export declare function useAppState<T>(
 ): [T, (value: T) => void];
 
 // =============================================================================
+// Table Access SDK
+// =============================================================================
+
+export type { TableChangeEvent } from "./app-sdk/tables";
+export declare const tables: typeof import("./app-sdk/tables").tables;
+export declare function useTableSubscription(
+	tableId: string,
+	onEvent: (evt: import("./app-sdk/tables").TableChangeEvent) => void,
+): void;
+
+// =============================================================================
 // Platform Utilities
 // =============================================================================
 
@@ -686,6 +697,10 @@ export interface PlatformScope {
 	useNavigate: typeof useNavigate;
 	useAppState: typeof useAppState;
 	useLocation: typeof useLocation;
+
+	// Table access
+	tables: typeof import("./app-sdk/tables").tables;
+	useTableSubscription: typeof useTableSubscription;
 
 	// Platform utilities
 	navigate: typeof navigate;
