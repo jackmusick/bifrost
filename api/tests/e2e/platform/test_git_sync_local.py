@@ -2024,6 +2024,100 @@ class TestSplitManifestFormat:
         assert table.schema is not None
         assert len(table.schema["columns"]) == 2
 
+    async def test_pull_table_with_policies_round_trip(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Pull a table with non-trivial policies → DB row has policies in `access`,
+        and the AST round-trips back to the YAML manifest unchanged.
+
+        Covers Task F: prove that table policies survive a full manifest cycle
+        (manifest → DB → manifest), including a role-gated policy authored with
+        a role NAME (which `has_role` accepts directly per the function registry).
+        """
+        from uuid import UUID as UUIDType
+
+        from src.models.orm.tables import Table
+
+        work_dir = Path(working_clone.working_dir)
+        table_id = str(uuid4())
+
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
+            "tables": {
+                "with_policies": {
+                    "id": table_id,
+                    "description": "Table with non-trivial policies",
+                    "policies": {
+                        "policies": [
+                            {
+                                "name": "admin_bypass",
+                                "actions": ["read", "create", "update", "delete"],
+                                "when": {"user": "is_platform_admin"},
+                            },
+                            {
+                                "name": "own_row",
+                                "actions": ["read", "update", "delete"],
+                                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+                            },
+                            {
+                                "name": "support_read",
+                                "actions": ["read"],
+                                "when": {"has_role": "support"},
+                            },
+                        ],
+                    },
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/tables.yaml"])
+        working_clone.index.commit("table with policies")
+        working_clone.remotes.origin.push()
+
+        result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert result.success is True
+
+        # 1) DB row carries the policies in `access` JSONB
+        table = await db_session.get(Table, UUIDType(table_id))
+        assert table is not None
+        assert table.access is not None
+        policy_names = [p["name"] for p in table.access["policies"]]
+        assert "admin_bypass" in policy_names
+        assert "own_row" in policy_names
+        assert "support_read" in policy_names
+
+        # AST is preserved verbatim — the row-vs-user equality check
+        own = next(p for p in table.access["policies"] if p["name"] == "own_row")
+        assert own["when"] == {"eq": [{"row": "created_by"}, {"user": "user_id"}]}
+        assert sorted(own["actions"]) == ["delete", "read", "update"]
+
+        # The role-name reference survives import as a plain string —
+        # `has_role` matches against role_names OR role_ids at evaluation time.
+        support = next(p for p in table.access["policies"] if p["name"] == "support_read")
+        assert support["when"] == {"has_role": "support"}
+        assert support["actions"] == ["read"]
+
+        # 2) Round-trip back to manifest: serialize the DB row and verify the
+        # policies block survives unchanged.
+        from src.services.manifest_generator import serialize_table
+
+        round_tripped = serialize_table(table)
+        assert round_tripped.policies is not None
+        rt_dump = round_tripped.policies.model_dump(mode="json")
+        rt_names = [p["name"] for p in rt_dump["policies"]]
+        assert rt_names == ["admin_bypass", "own_row", "support_read"]
+
+        rt_own = next(p for p in rt_dump["policies"] if p["name"] == "own_row")
+        assert rt_own["when"] == {"eq": [{"row": "created_by"}, {"user": "user_id"}]}
+        assert sorted(rt_own["actions"]) == ["delete", "read", "update"]
+
+        rt_support = next(p for p in rt_dump["policies"] if p["name"] == "support_read")
+        assert rt_support["when"] == {"has_role": "support"}
+
     async def test_pull_event_source_from_manifest(
         self,
         db_session: AsyncSession,
