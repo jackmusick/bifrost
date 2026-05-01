@@ -347,6 +347,9 @@ async def _stream_execution_logs(
                             break
                     # Ignore connected / pong / unrelated message types.
             except ConnectionClosed:
+                # Server closes the WS after the terminal execution_update
+                # — expected end of stream, not an error. The final GET below
+                # picks up the result.
                 pass
     except OSError as exc:
         raise click.ClickException(
