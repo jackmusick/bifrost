@@ -119,8 +119,11 @@ def test_load_policies_corruption_returns_empty(caplog):
         access = {"policies": [{"name": "p", "actions": ["read"], "when": {"INVALID_OP": []}}]}
         id = "fake-id"
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger="src.routers.tables"):
         result = _load_policies(FakeTable())  # type: ignore[arg-type]
 
     assert result.policies == []  # default deny
-    assert any("malformed policies" in rec.message for rec in caplog.records)
+    assert any(
+        rec.name == "src.routers.tables" and "malformed policies" in rec.message
+        for rec in caplog.records
+    )
