@@ -118,10 +118,10 @@ def _validate_op_node(op: str, value: Any, depth: int, path: str) -> None:
             raise ValueError(
                 f"{path}.{op}: in requires a non-empty literal list as second arg"
             )
-        for item in right:
+        for i, item in enumerate(right):
             if not isinstance(item, (str, int, float, bool)) and item is not None:
                 raise ValueError(
-                    f"{path}.{op}: in literal list items must be scalars or null"
+                    f"{path}.{op}[1][{i}]: in literal list items must be scalars or null"
                 )
         return
     if op == "is_null":
