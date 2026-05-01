@@ -131,6 +131,7 @@ describe("TableDialog — create mode", () => {
 			name: "tickets",
 			description: "Support tickets",
 			schema: { type: "object" },
+			policies: null,
 		});
 		// Non-admin default org is "org-1" → scope should be set.
 		expect(call.params.query).toEqual({ scope: "org-1" });
@@ -178,6 +179,7 @@ describe("TableDialog — edit mode", () => {
 			body: {
 				description: "Updated",
 				schema: { type: "object" },
+				policies: null,
 			},
 		});
 	});
