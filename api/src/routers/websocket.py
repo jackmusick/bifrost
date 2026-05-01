@@ -7,22 +7,238 @@ Replaces Azure Web PubSub with native FastAPI WebSockets.
 
 import asyncio
 import logging
-from typing import Annotated
+from dataclasses import dataclass
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from shared.policies.probe import is_subscribe_authorized
+from shared.policies.subscription import decide_visibility_change
 from src.core.auth import UserPrincipal, get_current_user_ws
 from src.core.database import get_db_context
 from src.core.log_safety import log_safe
 from src.core.pubsub import manager
 from src.models import Conversation, Execution
+from src.models.contracts.policies import Expr, TablePolicies
 from src.models.orm import Agent
 from src.models.orm.applications import Application
+from src.models.orm.tables import Table as TableOrm
+from src.models.orm.users import Role, UserRole
 
 logger = logging.getLogger(__name__)
+
+
+class WSError(Exception):
+    """Subscribe-protocol error surfaced as an `error` ack to the client."""
+
+
+@dataclass
+class ChannelSpec:
+    """Parsed channel-subscription request.
+
+    `name` is the channel name (e.g. `table:<uuid>`). `filter` is an optional
+    user-supplied filter expression that further narrows visibility on `table:`
+    channels; it is ignored on other channels.
+    """
+
+    name: str
+    filter: Expr | None
+
+
+def _parse_channels(channels_raw: list) -> list[ChannelSpec]:
+    """Accept either string or {name, filter} channel specs."""
+    out: list[ChannelSpec] = []
+    for ch in channels_raw:
+        if isinstance(ch, str):
+            out.append(ChannelSpec(name=ch, filter=None))
+        elif isinstance(ch, dict) and "name" in ch:
+            filter_dict = ch.get("filter")
+            filter_expr: Expr | None = None
+            if filter_dict is not None:
+                try:
+                    filter_expr = Expr.model_validate(filter_dict)
+                except ValidationError as e:
+                    raise WSError(f"invalid filter: {e}")
+            out.append(ChannelSpec(name=ch["name"], filter=filter_expr))
+        else:
+            raise WSError("channel must be a string or {name, filter} object")
+    return out
+
+
+async def _load_policies_for_table(table_id: str) -> TablePolicies | None:
+    """Load policies for a table, or None if the table doesn't exist."""
+    try:
+        table_uuid = UUID(table_id)
+    except ValueError:
+        return None
+    async with get_db_context() as db:
+        result = await db.execute(
+            select(TableOrm.access).where(TableOrm.id == table_uuid)
+        )
+        row = result.one_or_none()
+        if row is None:
+            return None
+        access = row[0]
+        if access is None:
+            return TablePolicies()
+        return TablePolicies.model_validate(access)
+
+
+async def _populate_user_roles(user: UserPrincipal) -> None:
+    """Hydrate `role_ids` / `role_names` on the principal if not already loaded.
+
+    `get_current_user_ws` does not hit the DB for roles (the JWT carries only
+    the `roles` claim, not the `user_roles` rows the policy evaluator's
+    `has_role` reads). Call this once per connection before the first
+    table-subscription policy check.
+    """
+    if user.role_ids or user.role_names:
+        return
+    async with get_db_context() as db:
+        result = await db.execute(
+            select(Role.id, Role.name)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == user.user_id)
+        )
+        rows = result.all()
+        user.role_ids = [r.id for r in rows]
+        user.role_names = [r.name for r in rows]
+
+
+def _make_table_dispatcher(websocket: WebSocket, user: UserPrincipal) -> Any:
+    """Return an async dispatcher that filters table-channel messages for this WS.
+
+    Attached to the WebSocket as `_table_dispatcher` and invoked by the pubsub
+    manager's `_send_local` for every `table:` message destined for this
+    connection. The dispatcher consults the per-connection
+    `table_subscriptions` state to decide what (if anything) to forward.
+    """
+
+    async def dispatcher(channel_name: str, payload: dict[str, Any]) -> None:
+        await _handle_table_message(websocket, user, channel_name, payload)
+
+    return dispatcher
+
+
+async def _handle_table_message(
+    websocket: WebSocket,
+    user: UserPrincipal,
+    channel_name: str,
+    payload: dict[str, Any],
+) -> None:
+    """Apply the four-way visibility decision and emit the right action.
+
+    `policy_changed` triggers a re-evaluation; if the user no longer satisfies
+    `is_subscribe_authorized`, a `subscription_revoked` notice is sent and the
+    subscription state is cleared.
+    """
+    table_id = channel_name.split(":", 1)[1]
+    table_subs: dict[str, dict[str, Any]] = getattr(websocket.state, "table_subscriptions", {})
+    sub = table_subs.get(table_id)
+    if sub is None:
+        return  # no longer subscribed
+
+    msg_type = payload.get("type")
+
+    if msg_type == "policy_changed":
+        await _re_evaluate_subscription(websocket, user, table_id)
+        return
+
+    if msg_type != "document_change":
+        return
+
+    policies = await _load_policies_for_table(table_id)
+    if policies is None:
+        return
+
+    decision = decide_visibility_change(
+        old_row=payload.get("old_row"),
+        new_row=payload.get("new_row"),
+        policies=policies,
+        user=user,
+        user_filter=sub.get("filter"),
+    )
+    if decision is None:
+        return
+
+    action, body = decision
+    if action == "delete":
+        await websocket.send_json({
+            "type": "document_change",
+            "action": "delete",
+            "table_id": table_id,
+            "row_id": body,
+        })
+    else:
+        await websocket.send_json({
+            "type": "document_change",
+            "action": action,
+            "table_id": table_id,
+            "row": body,
+        })
+
+
+async def _re_evaluate_subscription(
+    websocket: WebSocket,
+    user: UserPrincipal,
+    table_id: str,
+) -> None:
+    """Re-run subscribe-time authorization after a policy edit; revoke if no."""
+    policies = await _load_policies_for_table(table_id)
+    if policies is None or not is_subscribe_authorized(policies, user):
+        await websocket.send_json({
+            "type": "subscription_revoked",
+            "channel": f"table:{table_id}",
+        })
+        table_subs: dict[str, dict[str, Any]] = getattr(websocket.state, "table_subscriptions", {})
+        table_subs.pop(table_id, None)
+        # The pubsub manager unsubscribes on disconnect; for a partial revoke,
+        # we just stop processing future messages on this table by clearing
+        # the per-connection subscription state. The dispatcher early-exits
+        # for unknown table_ids.
+
+
+async def _authorize_table_subscribe(
+    websocket: WebSocket,
+    user: UserPrincipal,
+    spec: ChannelSpec,
+) -> bool:
+    """Run the subscribe-time policy probe and register per-connection state.
+
+    Returns True if the subscription is allowed. On success, populates
+    `websocket.state.table_subscriptions[table_id]` with `{filter, channel_name}`.
+    On failure, sends an `error` ack and returns False.
+    """
+    table_id = spec.name.split(":", 1)[1]
+    policies = await _load_policies_for_table(table_id)
+    if policies is None:
+        await websocket.send_json({
+            "type": "error",
+            "channel": spec.name,
+            "message": "Table not found",
+        })
+        return False
+
+    await _populate_user_roles(user)
+    if not is_subscribe_authorized(policies, user):
+        await websocket.send_json({
+            "type": "error",
+            "channel": spec.name,
+            "message": "Access denied",
+        })
+        return False
+
+    table_subs: dict[str, dict[str, Any]] = getattr(websocket.state, "table_subscriptions", None) or {}
+    table_subs[table_id] = {"filter": spec.filter, "channel_name": spec.name}
+    websocket.state.table_subscriptions = table_subs
+
+    if not hasattr(websocket, "_table_dispatcher"):
+        websocket._table_dispatcher = _make_table_dispatcher(websocket, user)  # type: ignore[attr-defined]
+    return True
 
 
 async def can_access_conversation(user: UserPrincipal, conversation_id: str) -> tuple[bool, Conversation | None]:
@@ -271,9 +487,10 @@ async def websocket_connect(
             if user.is_superuser:
                 allowed_channels.append(channel)
         elif channel.startswith("table:"):
-            # Table channels — policy enforcement reintroduced in Tasks 11-12.
-            # For now, any authenticated user may subscribe.
-            allowed_channels.append(channel)
+            # Table channels carry a per-connection user filter that cannot be
+            # expressed in a query string. Require runtime `subscribe` messages
+            # for table channels — query-string subscription is rejected.
+            continue
         elif channel == "system":
             allowed_channels.append(channel)
         elif channel.startswith("agent-run:"):
@@ -301,6 +518,10 @@ async def websocket_connect(
     active_chat_tasks: dict[str, asyncio.Task] = {}
     pending_messages: dict[str, tuple[str, str | None]] = {}  # conversation_id -> (message, local_id)
 
+    # Per-connection state for policy-driven table subscriptions.
+    # Populated by `_authorize_table_subscribe`; consulted by the dispatcher.
+    websocket.state.table_subscriptions = {}
+
     try:
         await manager.connect(websocket, allowed_channels)
         logger.info(f"WebSocket connected for user {user.user_id}, channels: {log_safe(allowed_channels)}")
@@ -318,8 +539,17 @@ async def websocket_connect(
 
             # Handle subscription changes
             if data.get("type") == "subscribe":
-                new_channels = data.get("channels", [])
-                for channel in new_channels:
+                new_channels_raw = data.get("channels", [])
+                try:
+                    parsed_specs = _parse_channels(new_channels_raw)
+                except WSError as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": str(e),
+                    })
+                    continue
+                for spec in parsed_specs:
+                    channel = spec.name
                     # Validate and add subscription
                     if channel.startswith("execution:"):
                         # Validate execution access before subscribing
@@ -462,8 +692,10 @@ async def websocket_connect(
                                 "message": "Access denied"
                             })
                     elif channel.startswith("table:"):
-                        # Table channels — policy enforcement reintroduced in Tasks 11-12.
-                        # For now, any authenticated user may subscribe.
+                        # Policy-driven subscribe: probe authorization, register
+                        # per-connection state for the four-way fanout filter.
+                        if not await _authorize_table_subscribe(websocket, user, spec):
+                            continue
                         if channel not in manager.connections:
                             manager.connections[channel] = set()
                         manager.connections[channel].add(websocket)
@@ -476,6 +708,11 @@ async def websocket_connect(
                 channel = data.get("channel")
                 if channel and channel in manager.connections:
                     manager.connections[channel].discard(websocket)
+                    if channel.startswith("table:"):
+                        table_id = channel.split(":", 1)[1]
+                        table_subs = getattr(websocket.state, "table_subscriptions", None)
+                        if table_subs is not None:
+                            table_subs.pop(table_id, None)
                     await websocket.send_json({
                         "type": "unsubscribed",
                         "channel": channel

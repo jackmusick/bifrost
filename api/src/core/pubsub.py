@@ -95,16 +95,32 @@ class ConnectionManager:
             await self._send_local(channel, message)
 
     async def _send_local(self, channel: str, message: dict[str, Any]) -> None:
-        """Send message to local WebSocket connections."""
+        """Send message to local WebSocket connections.
+
+        For `table:` channels, the connection MUST have a per-message dispatcher
+        attached (via the websocket router for policy-driven filtering). The
+        dispatcher receives the raw message and decides what — if anything — to
+        deliver to the client. Without a dispatcher, the connection simply does
+        not receive table updates: subscribing to `table:` outside the
+        policy-aware router is not supported.
+        """
         if channel not in self.connections:
             return
 
         dead_connections = set()
-        message_json = json.dumps(message)
+        is_table_channel = channel.startswith("table:")
+        message_json = json.dumps(message) if not is_table_channel else None
 
         for websocket in self.connections[channel]:
             try:
-                await websocket.send_text(message_json)
+                if is_table_channel:
+                    dispatcher = getattr(websocket, "_table_dispatcher", None)
+                    if dispatcher is None:
+                        continue
+                    await dispatcher(channel, message)
+                else:
+                    assert message_json is not None
+                    await websocket.send_text(message_json)
             except Exception:
                 dead_connections.add(websocket)
 
