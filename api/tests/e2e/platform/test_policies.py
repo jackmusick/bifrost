@@ -271,6 +271,396 @@ class TestPoliciesMatrix:
         assert entry["details"]["table_id"] == table_id
         assert set(entry["details"].keys()) == {"policy_action", "table_id", "table_name"}
 
+    def test_cross_org_isolation_via_org_policy(
+        self, e2e_client, platform_admin, alice_user, org2_user
+    ):
+        """Alice (org1) and org2_user (org2) share the same global table; an
+        ``own_org`` policy keyed off ``user.organization_id`` must filter rows
+        denormalized with the inserter's org. Alice MUST NOT see org2's row,
+        and org2_user MUST NOT see Alice's row — same table, same policy.
+
+        Security boundary: a single policy clause is the entire org-isolation
+        mechanism (the document data path has no implicit org filter). If the
+        evaluator/compiler ever stops resolving ``{user: organization_id}``
+        correctly, both users see both rows.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers,
+            f"orgiso_{uuid.uuid4().hex[:8]}",
+        )
+        # Policy:
+        #   - admin_bypass keeps admin able to seed/inspect
+        #   - everyone may insert rows for THEIR OWN org (so alice and
+        #     org2_user can both populate)
+        #   - reads are gated to rows whose data.organization_id matches the
+        #     caller's user.organization_id
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "create_for_own_org",
+                "actions": ["create"],
+                "when": {
+                    "eq": [
+                        {"row": "organization_id"},
+                        {"user": "organization_id"},
+                    ]
+                },
+            },
+            {
+                "name": "own_org_read",
+                "actions": ["read"],
+                "when": {
+                    "eq": [
+                        {"row": "organization_id"},
+                        {"user": "organization_id"},
+                    ]
+                },
+            },
+        ]})
+
+        alice_org = str(alice_user.organization_id)
+        org2_org = str(org2_user.organization_id)
+        assert alice_org != org2_org, "fixture sanity: orgs must differ"
+
+        # Alice (org1) inserts; row data carries her org id
+        ar = _insert(
+            e2e_client, alice_user.headers, table_id,
+            {"who": "alice", "organization_id": alice_org},
+        )
+        assert ar.status_code == 201, ar.text
+
+        # org2_user (org2) inserts; row data carries org2's id
+        br = _insert(
+            e2e_client, org2_user.headers, table_id,
+            {"who": "org2", "organization_id": org2_org},
+        )
+        assert br.status_code == 201, br.text
+
+        # Alice queries — sees ONLY her org's row
+        aq = _query(e2e_client, alice_user.headers, table_id).json()["documents"]
+        assert len(aq) == 1, f"alice should see 1 row, saw {len(aq)}: {aq}"
+        assert aq[0]["data"]["who"] == "alice"
+
+        # org2_user queries — sees ONLY org2's row
+        bq = _query(e2e_client, org2_user.headers, table_id).json()["documents"]
+        assert len(bq) == 1, f"org2_user should see 1 row, saw {len(bq)}: {bq}"
+        assert bq[0]["data"]["who"] == "org2"
+
+        # Alice cannot insert a row claiming org2 — create-time policy denies
+        cross = _insert(
+            e2e_client, alice_user.headers, table_id,
+            {"who": "alice_lying", "organization_id": org2_org},
+        )
+        assert cross.status_code == 403, (
+            f"alice should not be able to forge a row for org2; got {cross.text}"
+        )
+
+    def test_single_doc_get_enforces_policy(
+        self, e2e_client, platform_admin, alice_user, bob_user
+    ):
+        """A row filtered out of the LIST must also be unreachable via
+        GET /tables/{id}/documents/{doc_id}.
+
+        Security boundary: same policy gate on both endpoints. If the single-doc
+        handler skipped the policy check, an attacker who guesses or otherwise
+        learns a doc_id could read across the row-level boundary.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers,
+            f"singleget_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "own_row_read",
+                "actions": ["read", "create"],
+                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+            },
+        ]})
+
+        # Bob inserts — this row is filtered out for alice in any list query.
+        br = _insert(e2e_client, bob_user.headers, table_id, {"secret": "bobs"})
+        assert br.status_code == 201, br.text
+        bob_doc_id = br.json()["id"]
+
+        # Sanity: alice's list query does NOT include bob's row.
+        aq = _query(e2e_client, alice_user.headers, table_id).json()["documents"]
+        assert all(d["id"] != bob_doc_id for d in aq), aq
+
+        # Direct single-doc GET MUST be blocked. The handler returns 403 via
+        # `_check_action_or_403` (the row is fetched first, then the policy
+        # check runs against it — see api/src/routers/tables.py::get_document).
+        r = e2e_client.get(
+            f"/api/tables/{table_id}/documents/{bob_doc_id}",
+            headers=alice_user.headers,
+        )
+        assert r.status_code == 403, (
+            f"single-doc GET must apply read policy; got {r.status_code} "
+            f"body={r.text}"
+        )
+
+    def test_additive_or_across_multiple_policies(
+        self, e2e_client, platform_admin, alice_user, bob_user
+    ):
+        """Two read rules compose with OR semantics: alice should see a row
+        owned by Bob if she has the role granted by the second rule.
+
+        Security boundary inverse: removing the role assignment must collapse
+        her view back to the own_row rule alone. Tests the OR composition that
+        users will actually rely on for "self OR support team" patterns.
+        """
+        # 1. Create a role and assign Alice to it.
+        role_resp = e2e_client.post(
+            "/api/roles", headers=platform_admin.headers,
+            json={"name": f"or_role_{uuid.uuid4().hex[:6]}", "description": "OR test role"},
+        )
+        assert role_resp.status_code == 201, role_resp.text
+        role_id = role_resp.json()["id"]
+        e2e_client.post(
+            f"/api/roles/{role_id}/users", headers=platform_admin.headers,
+            json={"user_ids": [str(alice_user.user_id)]},
+        )
+
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, f"or_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "everyone_create",
+                "actions": ["create"],
+                "when": None,
+            },
+            {
+                "name": "own_row_read",
+                "actions": ["read"],
+                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+            },
+            {
+                "name": "support_role_read",
+                "actions": ["read"],
+                "when": {"call": "has_role", "args": [role_id]},
+            },
+        ]})
+
+        # Bob inserts a row Alice does NOT own.
+        br = _insert(e2e_client, bob_user.headers, table_id, {"who": "bobs_row"})
+        assert br.status_code == 201, br.text
+        bob_doc_id = br.json()["id"]
+
+        # Alice queries — she has the role, so support_role_read OR own_row_read
+        # grants visibility on Bob's row even though created_by != alice.
+        aq = _query(e2e_client, alice_user.headers, table_id).json()["documents"]
+        assert any(d["id"] == bob_doc_id for d in aq), (
+            f"OR-composed policy failed: alice (with support role) cannot see "
+            f"bob's row. saw: {aq}"
+        )
+
+    def test_delete_action_independent_of_update(
+        self, e2e_client, platform_admin, alice_user
+    ):
+        """``actions: [read, update]`` on the own_row rule MUST NOT imply delete.
+
+        Security boundary: each action is evaluated independently. If the
+        evaluator ever folded delete into a generic "write" check, a
+        permission-by-mistake would silently expand alice's authority on every
+        table that names update without delete.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, f"deltest_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                # Note: NO "delete" in the actions list.
+                "name": "own_row_no_delete",
+                "actions": ["read", "create", "update"],
+                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+            },
+        ]})
+
+        # Alice inserts and confirms read+update are allowed
+        ins = _insert(e2e_client, alice_user.headers, table_id, {"v": "hers"})
+        assert ins.status_code == 201, ins.text
+        doc_id = ins.json()["id"]
+
+        upd = e2e_client.patch(
+            f"/api/tables/{table_id}/documents/{doc_id}",
+            headers=alice_user.headers,
+            json={"data": {"v": "edited"}},
+        )
+        assert upd.status_code == 200, upd.text
+
+        # Alice tries to DELETE → must be denied even though she owns the row.
+        dele = e2e_client.delete(
+            f"/api/tables/{table_id}/documents/{doc_id}",
+            headers=alice_user.headers,
+        )
+        assert dele.status_code == 403, (
+            f"delete must be gated independently of update; got {dele.status_code}"
+        )
+
+    def test_update_gates_on_pre_image_only(
+        self, e2e_client, platform_admin, alice_user
+    ):
+        """OBSERVED BEHAVIOR (not aspirational): the PATCH handler runs the
+        ``update`` policy check against the PRE-update row only.
+
+        See ``api/src/routers/tables.py::update_document``: ``old_row`` is
+        passed to ``_check_action_or_403("update", ...)``; the post-image is
+        not re-checked. As a consequence, a user with update permission on a
+        row they own can mutate it into a row that ``read`` would no longer
+        permit them to see. The user then loses visibility of their own row.
+
+        This test pins that behavior. If the handler ever starts re-checking
+        the post-image, this test must be updated and the change advertised
+        — the new semantics may break apps that rely on "self-hide on close."
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, f"posthide_{uuid.uuid4().hex[:8]}",
+        )
+        # Read+update gated on created_by==self. Post-update, alice can flip
+        # `created_by` in the JSONB data — but the policy resolves
+        # `row.created_by` to the COLUMN, not the JSONB. So actually the
+        # COLUMN-level created_by stays alice's, the policy still matches,
+        # and the row remains visible. The drift surface this test pins is
+        # different: alice can mutate `data.status` such that a hypothetical
+        # "read where status==open" policy would hide it post-update — but
+        # the update was already authorized, and the row is now invisible to
+        # her on subsequent reads.
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "owner_open_only",
+                "actions": ["read", "create", "update"],
+                "when": {
+                    "and": [
+                        {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+                        {"eq": [{"row": "status"}, "open"]},
+                    ]
+                },
+            },
+        ]})
+
+        # Alice creates an open row she can read.
+        ar = _insert(
+            e2e_client, alice_user.headers, table_id,
+            {"status": "open", "v": "hers"},
+        )
+        assert ar.status_code == 201, ar.text
+        doc_id = ar.json()["id"]
+
+        # Sanity: alice sees the row via list.
+        aq = _query(e2e_client, alice_user.headers, table_id).json()["documents"]
+        assert any(d["id"] == doc_id for d in aq)
+
+        # Alice flips status to "closed" — pre-image had status==open and
+        # created_by==alice, so the update is authorized and succeeds.
+        upd = e2e_client.patch(
+            f"/api/tables/{table_id}/documents/{doc_id}",
+            headers=alice_user.headers,
+            json={"data": {"status": "closed", "v": "hers"}},
+        )
+        assert upd.status_code == 200, upd.text
+
+        # Post-update, the row no longer satisfies `status==open`, so alice's
+        # read filter excludes it. She has just made one of her own rows
+        # invisible to herself. This is the observed semantics — the test
+        # exists to lock it in, not endorse it.
+        aq2 = _query(e2e_client, alice_user.headers, table_id).json()["documents"]
+        assert all(d["id"] != doc_id for d in aq2), (
+            f"post-update read filter should now exclude doc {doc_id}; saw {aq2}"
+        )
+
+        # Admin can still see the row (admin_bypass) — the row was not deleted.
+        admin_q = _query(
+            e2e_client, platform_admin.headers, table_id,
+        ).json()["documents"]
+        assert any(d["id"] == doc_id for d in admin_q), (
+            f"admin should still see the closed row; saw {admin_q}"
+        )
+
+    def test_cannot_patch_to_make_visible_to_self(
+        self, e2e_client, platform_admin, alice_user
+    ):
+        """Pre-update gating: alice cannot PATCH a row she cannot read into a
+        row she could read.
+
+        Concretely: a row with ``created_by=admin`` is invisible to alice under
+        ``own_row``. She tries to PATCH that row's data — the handler fetches
+        the OLD row, runs ``_check_action_or_403("update", old_row, ...)``,
+        which fails because no rule grants alice update on a row she does not
+        own. She cannot mutate the row to flip ownership.
+
+        Security boundary: prevents "write-via-update" exfiltration where
+        unauthorized writes would otherwise mutate a row to satisfy a read
+        policy on the post-image.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, f"flip_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "own_row_full",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+            },
+        ]})
+
+        # Admin creates a row alice does NOT own. created_by is auto-stamped
+        # to the admin's user id by the handler.
+        ar = _insert(e2e_client, platform_admin.headers, table_id, {"v": "secret"})
+        assert ar.status_code == 201, ar.text
+        admin_doc_id = ar.json()["id"]
+
+        # Alice tries to PATCH it — pre-update row's created_by is admin, so
+        # own_row_full does not match her, and she has no other update rule.
+        # The fact that she might claim her own user_id in the patch body is
+        # irrelevant: PATCH gates on the PRE-image only.
+        flip = e2e_client.patch(
+            f"/api/tables/{table_id}/documents/{admin_doc_id}",
+            headers=alice_user.headers,
+            json={"data": {"created_by": str(alice_user.user_id), "v": "flipped"}},
+        )
+        assert flip.status_code == 403, (
+            f"PATCH must gate on pre-image; got {flip.status_code} body={flip.text}"
+        )
+
+        # Sanity: the row was NOT mutated. Admin re-reads via list (admin_bypass).
+        admin_q = _query(
+            e2e_client, platform_admin.headers, table_id,
+        ).json()["documents"]
+        target = next((d for d in admin_q if d["id"] == admin_doc_id), None)
+        assert target is not None, admin_q
+        assert target["data"].get("v") == "secret", (
+            f"row should be untouched; got {target['data']}"
+        )
+
     def test_batch_all_or_nothing(self, e2e_client, platform_admin, alice_user):
         """Batch insert: any single denial rejects the whole batch (transactional)."""
         table_id = _create_table(e2e_client, platform_admin.headers, f"batch_{uuid.uuid4().hex[:8]}")

@@ -7,10 +7,119 @@
  * - edit-mode: name is disabled + pre-filled, submit sends update with table_id
  * - invalid schema JSON blocks submit and surfaces an error
  * - OrganizationSelect only renders for platform admins
+ * - PolicyEditor → mutate round-trip: a policy authored in the embedded
+ *   PolicyEditor reaches the create/update mutation body verbatim, including
+ *   the `when` JSON expression. This is the security-critical integration
+ *   point: any drift between what the editor emits and what the API receives
+ *   would let users save a policy that does not match what the UI told them.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderWithProviders, screen, waitFor, fireEvent } from "@/test-utils";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+	renderWithProviders,
+	screen,
+	waitFor,
+	fireEvent,
+	within,
+} from "@/test-utils";
+import type { ReactNode } from "react";
+
+// Stub Monaco to a textarea labelled by the editor's `path` prop. The
+// PolicyEditorRow uses path=`policy-${rowKey}.json`; PolicyEditor passes
+// rowKey down so we can find the editor for a specific row. This is the same
+// stub used in PolicyEditor.test.tsx / PolicyEditorRow.test.tsx.
+vi.mock("@monaco-editor/react", () => ({
+	default: ({
+		value,
+		onChange,
+		path,
+	}: {
+		value?: string;
+		onChange?: (v: string | undefined) => void;
+		path?: string;
+	}) => (
+		<textarea
+			aria-label={path ?? "monaco-editor"}
+			value={value ?? ""}
+			onChange={(e) => onChange?.(e.target.value)}
+		/>
+	),
+}));
+
+vi.mock("@/contexts/ThemeContext", () => ({
+	useTheme: () => ({ theme: "light" }),
+}));
+
+// Radix Select uses pointer events that jsdom doesn't fully implement; swap
+// for a native <select>. Children (SelectItem) register their values into a
+// shared context so the parent <select> shows them as <option>s.
+vi.mock("@/components/ui/select", async () => {
+	const React = await import("react");
+	type Item = { value: string; label: string };
+	const Ctx = React.createContext<{
+		register: (it: Item) => void;
+	} | null>(null);
+
+	function Select({
+		value,
+		onValueChange,
+		children,
+	}: {
+		value?: string;
+		onValueChange?: (v: string) => void;
+		children: ReactNode;
+	}) {
+		const [items, setItems] = React.useState<Item[]>([]);
+		const register = React.useCallback((it: Item) => {
+			setItems((prev) =>
+				prev.some((p) => p.value === it.value) ? prev : [...prev, it],
+			);
+		}, []);
+		return (
+			<Ctx.Provider value={{ register }}>
+				<select
+					aria-label="Insert template"
+					value={value ?? ""}
+					onChange={(e) => onValueChange?.(e.target.value)}
+				>
+					<option value="">Insert template...</option>
+					{items.map((it) => (
+						<option key={it.value} value={it.value}>
+							{it.label}
+						</option>
+					))}
+				</select>
+				<div style={{ display: "none" }}>{children}</div>
+			</Ctx.Provider>
+		);
+	}
+	const Pass = ({ children }: { children: ReactNode }) => <>{children}</>;
+	function SelectItem({
+		value,
+		children,
+	}: {
+		value: string;
+		children: ReactNode;
+	}) {
+		const ctx = React.useContext(Ctx);
+		React.useEffect(() => {
+			ctx?.register({ value, label: String(children) });
+		}, [ctx, value, children]);
+		return null;
+	}
+	return {
+		Select,
+		SelectContent: Pass,
+		SelectGroup: Pass,
+		SelectItem,
+		SelectLabel: Pass,
+		SelectScrollDownButton: () => null,
+		SelectScrollUpButton: () => null,
+		SelectSeparator: () => null,
+		SelectTrigger: Pass,
+		SelectValue: () => null,
+	};
+});
 
 const mockCreateMutate = vi.fn();
 const mockUpdateMutate = vi.fn();
@@ -182,6 +291,138 @@ describe("TableDialog — edit mode", () => {
 				policies: null,
 			},
 		});
+	});
+});
+
+describe("TableDialog — PolicyEditor save round-trip (security)", () => {
+	it("creates a table whose policies body matches what the user authored", async () => {
+		const onClose = vi.fn();
+		const { user } = renderWithProviders(
+			<TableDialog open={true} onClose={onClose} />,
+		);
+
+		// Author a name and a custom policy.
+		await user.type(screen.getByLabelText(/table name/i), "secrets");
+
+		// Insert the `own_row` template — this exercises the Select binding
+		// inside PolicyEditor and adds a row with a baseline `when` expression.
+		const selectTrigger = screen.getByLabelText(
+			/insert template/i,
+		) as HTMLSelectElement;
+		selectTrigger.value = "own_row";
+		selectTrigger.dispatchEvent(new Event("change", { bubbles: true }));
+
+		// Find the policy row that was just added and overwrite its `when`
+		// expression with one we picked here. The path the PolicyEditorRow
+		// passes to Monaco starts with `policy-` and is unique per row, so
+		// match by regex against any policy row's editor.
+		const policyRow = await screen.findByTestId(/^policy-row-/);
+		const customWhen = JSON.stringify(
+			{ user: "is_platform_admin" },
+			null,
+			2,
+		);
+		const editor = within(policyRow).getByLabelText(
+			/^policy-.+\.json$/,
+		) as HTMLTextAreaElement;
+		fireEvent.change(editor, { target: { value: customWhen } });
+
+		// Also rename the policy so the test can assert the full shape.
+		const nameInput = within(policyRow).getByLabelText(/^name$/i);
+		await user.clear(nameInput);
+		await user.type(nameInput, "audit_only_admin");
+
+		await user.click(screen.getByRole("button", { name: /^create$/i }));
+
+		await waitFor(() => expect(mockCreateMutate).toHaveBeenCalled());
+		const call = mockCreateMutate.mock.calls[0]![0];
+		// The body's `policies` MUST contain the row the user authored, with
+		// the exact `when` they typed. Drift here = silent policy bypass.
+		expect(call.body.policies).not.toBeNull();
+		const policies = call.body.policies as {
+			policies: Array<{
+				name: string;
+				actions: string[];
+				when: unknown;
+			}>;
+		};
+		expect(policies.policies).toHaveLength(1);
+		expect(policies.policies[0]!.name).toBe("audit_only_admin");
+		expect(policies.policies[0]!.when).toEqual({
+			user: "is_platform_admin",
+		});
+		// Template seeded actions are read/update/delete — the row is preserved
+		// through the dialog submit unchanged.
+		expect(policies.policies[0]!.actions).toEqual([
+			"read",
+			"update",
+			"delete",
+		]);
+	});
+
+	it("edit-mode: pre-filled policies round-trip through update mutation when modified", async () => {
+		const table = {
+			id: "tbl-policy",
+			name: "existing_table",
+			description: "",
+			schema: null,
+			organization_id: "org-1",
+			policies: {
+				policies: [
+					{
+						name: "everyone_read",
+						actions: ["read"] as Array<
+							"read" | "create" | "update" | "delete"
+						>,
+						when: null as unknown,
+					},
+				],
+			},
+			created_at: "2026-04-20T00:00:00Z",
+			updated_at: "2026-04-20T00:00:00Z",
+		};
+
+		const { user } = renderWithProviders(
+			<TableDialog
+				table={
+					table as unknown as Parameters<
+						typeof TableDialog
+					>[0]["table"]
+				}
+				open={true}
+				onClose={vi.fn()}
+			/>,
+		);
+
+		// Pre-existing policy is rendered.
+		expect(screen.getByDisplayValue("everyone_read")).toBeInTheDocument();
+
+		// User restricts the policy by typing a new `when`.
+		const policyRow = screen.getByTestId(/^policy-row-/);
+		const restrictedWhen = JSON.stringify(
+			{ eq: [{ row: "created_by" }, { user: "user_id" }] },
+			null,
+			2,
+		);
+		const editor = within(policyRow).getByLabelText(
+			/^policy-.+\.json$/,
+		) as HTMLTextAreaElement;
+		fireEvent.change(editor, { target: { value: restrictedWhen } });
+
+		await user.click(screen.getByRole("button", { name: /^update$/i }));
+
+		await waitFor(() => expect(mockUpdateMutate).toHaveBeenCalled());
+		const call = (mockUpdateMutate as Mock).mock.calls[0]![0];
+		// Update body MUST carry the new tighter policy. If the dialog ever
+		// dropped local PolicyEditor state on submit, the user would think
+		// they restricted access but the table would stay open.
+		const updatedPolicies = call.body.policies as {
+			policies: Array<{ when: unknown; actions: string[] }>;
+		};
+		expect(updatedPolicies.policies[0]!.when).toEqual({
+			eq: [{ row: "created_by" }, { user: "user_id" }],
+		});
+		expect(updatedPolicies.policies[0]!.actions).toEqual(["read"]);
 	});
 });
 
