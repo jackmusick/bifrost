@@ -153,14 +153,11 @@ class TestInvalidateUser:
 
     @pytest.mark.asyncio
     async def test_invalidate_user_role_cache_clears_entry(self):
-        """Populate -> invalidate -> next read re-hydrates from DB."""
+        """Invalidate -> next read sees miss and re-hydrates from DB."""
         user_id = uuid4()
         role_id = uuid4()
 
-        # Stage 1: simulate populated cache
-        cached = json.dumps(
-            {"role_ids": [str(role_id)], "role_names": ["admin"], "v": 1}
-        )
+        # Stage 1: invalidate issues a redis DELETE for this user's key
         mock_redis = AsyncMock()
         mock_redis.delete = AsyncMock()
 
@@ -180,9 +177,6 @@ class TestInvalidateUser:
         db.execute.assert_called_once()
         assert role_ids == [role_id]
         assert role_names == ["admin"]
-        # We don't read `cached` at the get step, this just demonstrates the
-        # flow is independent of the original cached value.
-        del cached
 
     @pytest.mark.asyncio
     async def test_invalidate_user_handles_redis_error(self):

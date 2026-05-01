@@ -38,6 +38,14 @@ from src.models import (
     AssignAgentsToRoleRequest,
 )
 
+# Per-user role cache (Redis-backed, used by table-policy `has_role` lookups
+# in `get_execution_context` / WS `_populate_user_roles`). Aliased on import
+# because `invalidate_role` collides with the same-named function in
+# `src.core.cache.invalidation` (which clears the global roles list, a
+# different cache).
+from shared.role_cache import invalidate_role as invalidate_user_role_cache_for_role
+from shared.role_cache import invalidate_user as invalidate_user_role_cache
+
 # Import cache invalidation
 try:
     from src.core.cache import (
@@ -61,13 +69,6 @@ try:
 except ImportError:
     AGENT_CACHE_INVALIDATION_AVAILABLE = False
     invalidate_role_agents = None  # type: ignore
-
-# Per-user role cache (Redis-backed, used by table-policy `has_role` lookups
-# in `get_execution_context` / WS `_populate_user_roles`). Distinct from the
-# `invalidate_role` above, which clears a different cache (the global roles
-# list). Aliased to avoid the name clash.
-from shared.role_cache import invalidate_role as invalidate_user_role_cache_for_role
-from shared.role_cache import invalidate_user as invalidate_user_role_cache
 
 logger = logging.getLogger(__name__)
 

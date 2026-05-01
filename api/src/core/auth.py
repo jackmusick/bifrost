@@ -15,6 +15,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.core.database import DbSession
 from src.core.security import decode_token
+from shared.role_cache import get_user_roles
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -343,8 +344,6 @@ async def get_execution_context(
     # token role assignments needed by row-level policies). Reads go through
     # the per-user role cache (Redis); DB is fallback on miss.
     if not user.role_ids and not user.role_names:
-        from shared.role_cache import get_user_roles
-
         role_ids, role_names = await get_user_roles(user.user_id, db)
         user.role_ids = role_ids
         user.role_names = role_names

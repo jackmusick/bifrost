@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.policies.probe import is_subscribe_authorized
 from shared.policies.subscription import decide_visibility_change
+from shared.role_cache import get_user_roles
 from src.core.auth import UserPrincipal, get_current_user_ws
 from src.core.database import get_db_context
 from src.core.log_safety import log_safe
@@ -127,7 +128,6 @@ async def _populate_user_roles(user: UserPrincipal) -> None:
     """
     if user.role_ids or user.role_names:
         return
-    from shared.role_cache import get_user_roles
 
     async with get_db_context() as db:
         role_ids, role_names = await get_user_roles(user.user_id, db)
