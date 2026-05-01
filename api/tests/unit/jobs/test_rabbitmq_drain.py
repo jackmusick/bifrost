@@ -89,12 +89,11 @@ class TestDrainRespectsDeadline:
         assert elapsed < 1.0, f"drain blocked too long: {elapsed}s"
         assert any("deadline exceeded" in r.message for r in caplog.records)
 
-        # Cleanup so the test runner doesn't see a pending task.
+        # Cleanup so the test runner doesn't see a pending task. gather
+        # with return_exceptions absorbs the expected CancelledError without
+        # the awkward try/except-and-discard pattern.
         task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await asyncio.gather(task, return_exceptions=True)
 
 
 class TestDrainIdempotent:
@@ -148,9 +147,9 @@ class TestOnMessageTracksTasks:
         assert len(consumer._inflight) == 1
         task = next(iter(consumer._inflight))
 
-        # Wait for the task to finish; done_callback should remove it.
-        await task
-        # Yield once so the done_callback runs.
+        # Wait for the task to finish, then yield once so the done_callback
+        # registered by _on_message runs and discards the task from _inflight.
+        await asyncio.wait([task])
         await asyncio.sleep(0)
 
         assert len(consumer._inflight) == 0
