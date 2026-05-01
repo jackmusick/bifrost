@@ -201,6 +201,45 @@ Tables created via UI / CLI / manifest get the seed automatically. Tables create
 
 The "update checks pre-update state" choice is intentional. If the policy is `not: {eq: [{row: finalized}, true]}` and the row is currently `finalized=false`, the user can submit an update that sets `finalized=true`. This matches Firestore semantics. To prevent state transitions ("can't move from finalized=true to finalized=false"), an app must use a workflow.
 
+## SDK surface alignment
+
+The REST + SDK methods established on the in-flight branch are kept, with one realignment to match Supabase's "arrays as first-class" batch convention:
+
+| Method | Signature | Notes |
+|---|---|---|
+| `get(table, id)` | `→ DocumentPublic \| null` | 404/403 collapsed to null; same as today |
+| `insert(table, data \| data[])` | `→ DocumentPublic \| DocumentPublic[]` | Single-or-array; was `insert` + `insert_batch`, merged |
+| `upsert(table, item \| item[])` | `→ DocumentPublic \| DocumentPublic[]` | Same merge |
+| `update(table, id, data)` | `→ DocumentPublic \| null` | By-id only — no filter-driven update; if the caller needs multi-row mutation, they `query` then loop |
+| `delete(table, id \| id[])` | `→ boolean \| {deleted: number}` | Single-or-array |
+| `query(table, q?)` | `→ DocumentListResponse` | Filters via JSON AST, optional sort/limit/offset |
+| `count(table)` | `→ number` | Convenience wrapper around the count endpoint |
+| `subscribe(tableId, filter, onEvent)` | `→ () => void` | Lower-level non-React primitive; `useTable` builds on it |
+
+What changed from the in-flight branch:
+
+- `insert_batch`, `upsert_batch`, `delete_batch` are removed. The single methods accept arrays.
+- Single-input → single-output, array-input → array-output. Predictable for callers.
+
+What didn't change:
+
+- Filter-driven update/delete (Supabase-style) is **not** added. We stay by-id for mutations because Postgres + PostgREST gives Supabase its filter-driven shape cheaply; for a JSONB document store, by-id is the simpler primitive and `query` already covers "find by predicate."
+- `count` stays as a method (vs. Supabase's count-as-flag-on-select). Less ceremony for the common "how many rows can I see" question.
+- Method names track Firestore/Convex conventions. We don't go all-in on PostgREST.
+
+### Batch behavior under policies
+
+When `insert([row1, row2, row3])` is called:
+
+1. The server validates the batch shape (Pydantic).
+2. For each row, the server builds the candidate row and runs the `create` policies.
+3. If ALL rows pass, the server inserts them in a single transaction and returns `[doc1, doc2, doc3]`.
+4. If ANY row fails, the server inserts NONE and returns 403 with a body identifying the row index that failed but **not** the policy name (denials must not leak policy details to callers; a malicious caller could otherwise probe policies row-by-row).
+
+Same pattern for `upsert(array)` and `delete(array)`.
+
+The "all-or-nothing" choice is deliberate. The in-flight branch's `*_batch` returned `{inserted, errors[]}` (partial success). Under policies, partial success creates a probing surface. Transactional all-or-nothing is the correct default; callers who genuinely want partial success can submit single calls in a loop and decide what to do per-row.
+
 ## Data shape
 
 ```python
@@ -231,7 +270,7 @@ Kept from the current branch:
 - Manifest scaffolding (the round-trip plumbing — the inner shape changes)
 - Web SDK structure (`tables.{get, insert, update, upsert, delete, query, count, *_batch, subscribe}` — surface unchanged)
 - Websocket `table:` channel + per-message filter scaffolding (the filter logic generalizes)
-- REST endpoints, batch endpoints, CSRF wiring
+- REST endpoints, batch endpoints (server-side; merged with singles on the SDK surface), CSRF wiring
 - Platform-scope SDK injection (`tables` exported to apps; `useTable` replaces the old `useTableSubscription` export)
 - Workflow SDK auto-attribution (`created_by`/`updated_by` resolved from execution context)
 - E2E test infrastructure: `alice_user` / `bob_user` fixtures, the websocket fixture pattern, the Playwright app fixture for tables
