@@ -232,7 +232,7 @@ Kept from the current branch:
 - Web SDK structure (`tables.{get, insert, update, upsert, delete, query, count, *_batch, subscribe}` — surface unchanged)
 - Websocket `table:` channel + per-message filter scaffolding (the filter logic generalizes)
 - REST endpoints, batch endpoints, CSRF wiring
-- Platform-scope SDK injection (`tables` and `useTableSubscription` exported to apps)
+- Platform-scope SDK injection (`tables` exported to apps; `useTable` replaces the old `useTableSubscription` export)
 - Workflow SDK auto-attribution (`created_by`/`updated_by` resolved from execution context)
 - E2E test infrastructure: `alice_user` / `bob_user` fixtures, the websocket fixture pattern, the Playwright app fixture for tables
 
@@ -347,33 +347,48 @@ for each active subscription:
 
 The probe-row check is conservative: it asks "could this user receive ANY message on this table now?" If the new policies are row-data-aware (e.g., creator-only) the probe-row check returns true (some rows could match) and the subscription stays open. The per-message filter then drops irrelevant rows individually. This matches the existing creator-filter behavior in the in-flight branch — the policy version generalizes the same logic.
 
-### Hook surface
+### SDK surface
+
+Only **one** React-level entry point for live table data. `useTable` is the primary surface; `useTableSubscription` from the in-flight branch is removed before merge.
 
 ```ts
-// Already shipped — keep, but it now reflects policy-filtered events
-useTableSubscription(tableId, (evt) => { ... })
-
-// New v1 hooks
 useTable(name: string, query?: { where?: Expr; limit?: number; offset?: number }): {
   rows: Row[]
   loading: boolean
   error: Error | null
 }
-
-useTableRow(name: string, id: string): {
-  row: Row | null
-  loading: boolean
-  error: Error | null
-}
 ```
 
-Both new hooks:
-1. Fetch the initial snapshot via `tables.query` / `tables.get`
-2. Open a websocket subscription with the same filter (or row-id filter for `useTableRow`)
-3. Reconcile insert/update/delete events into local state
-4. Return reactive state plus loading/error
+The hook:
+1. Fetches the initial snapshot via `tables.query(name, query)`
+2. Opens a websocket subscription with `query.where` as the server-side filter
+3. Reconciles insert/update/delete events from the visibility-change fanout into a local Map keyed by row id
+4. Returns reactive `rows` (sorted by `updated_at desc` by default; future enhancement for explicit sort), `loading`, `error`
 
-`query.where` for `useTable` accepts the same JSON AST as policies. `useTableRow` builds an internal `eq[row.id, <id>]` filter.
+For the single-row case, `useTable` with an `eq[row.id, ...]` filter and `[0]` works fine:
+
+```ts
+const { rows, loading } = useTable("reviews", { where: { eq: [{ row: "id" }, reviewId] } });
+const review = rows[0] ?? null;
+```
+
+A dedicated single-row hook is not part of v1. We follow the Firestore/Supabase/Convex pattern of one query surface; apps that want a helper can wrap `useTable` themselves.
+
+The lower-level non-React primitive stays available:
+
+```ts
+tables.subscribe(
+  tableId: string,
+  filter: Expr | null,
+  onEvent: (evt: TableChangeEvent) => void,
+): () => void  // unsubscribe
+```
+
+Useful for:
+- Non-component code (workers, services, ad-hoc subscriptions outside React lifecycle)
+- The rare "raw events" use case (analytics counters, toast on someone else's change) — call from a `useEffect`
+
+`tables.subscribe` is what `useTable` is built on. Apps that need raw events can use it directly; apps that need a reactive list use `useTable`.
 
 ### What's deferred
 
@@ -383,9 +398,11 @@ Both new hooks:
 
 ## Web SDK
 
-No surface change to `client/src/lib/app-sdk/tables.ts` REST methods. Same methods, same return types. Behavior changes only in *what gets allowed*: the SDK calls return whatever the policy evaluator allows.
+No surface change to the REST methods on `client/src/lib/app-sdk/tables.ts`. Same `get/insert/update/upsert/delete/query/count/*_batch` signatures and return types. Behavior changes only in *what gets allowed*: REST calls return whatever the policy evaluator allows.
 
-The `subscribe()` method gains an optional `filter` parameter (forwarded to the websocket protocol). The two new hooks (`useTable`, `useTableRow`) ship in the same module.
+The `subscribe()` method gains an optional `filter: Expr | null` parameter (forwarded to the websocket protocol).
+
+The `useTableSubscription` hook from the in-flight branch is **removed** before merge and replaced by `useTable`. Apps that need raw event streams call `tables.subscribe` directly from a `useEffect`. This keeps the React surface to a single `useTable` hook — the same shape every comparable provider (Firestore `onSnapshot`, Supabase `useQuery`, Convex `useQuery`, PowerSync `usePowerSyncWatchedQuery`) settled on.
 
 ## Manifest round-trip
 
