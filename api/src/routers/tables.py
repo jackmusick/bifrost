@@ -47,6 +47,7 @@ from src.models.orm.applications import Application
 from src.models.orm.tables import Document, Table
 from src.repositories.org_scoped import OrgScopedRepository
 from src.core.pubsub import publish_document_change, publish_policy_changed
+from src.services.audit import emit_audit
 
 logger = logging.getLogger(__name__)
 
@@ -81,22 +82,57 @@ def _row_from_doc(doc: Document) -> dict[str, Any]:
     }
 
 
-def _check_action_or_403(
+async def _check_action_or_403(
     action: str,
     table: Table,
     row: dict[str, Any],
     user: UserPrincipal,
+    *,
+    db: AsyncSession,
 ) -> None:
     """Run evaluate_action; raise 403 with a generic message on deny.
 
-    The detail is intentionally generic — denials must not leak policy names.
+    On denial, emits a `policy.deny` audit row before raising so policy
+    authors can debug "why can't user X read row Y?" via the audit log.
+    The audit record carries actor + table + action metadata only — never
+    the row body or policy names (no info leak via audit). The detail
+    returned to the caller stays intentionally generic.
     """
     policies = _load_policies(table)
-    if not evaluate_action(action, policies, row, user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
-        )
+    if evaluate_action(action, policies, row, user):
+        return
+
+    # Resolve the row id only when it's actually a UUID. The row dict
+    # comes from either an existing Document (UUID id) or a candidate
+    # body (str | None). AuditLog.resource_id is UUID | None.
+    raw_id = row.get("id")
+    resource_id: UUID | None = None
+    if raw_id is not None:
+        try:
+            resource_id = raw_id if isinstance(raw_id, UUID) else UUID(str(raw_id))
+        except (ValueError, TypeError):
+            resource_id = None
+
+    await emit_audit(
+        db,
+        "policy.deny",
+        resource_type="table_document",
+        resource_id=resource_id,
+        outcome="failure",
+        details={
+            "policy_action": action,
+            "table_id": str(table.id),
+            "table_name": table.name,
+        },
+    )
+    # Commit the audit row now — if we let the HTTPException propagate
+    # without committing, the request-scoped session rolls back and the
+    # audit trail is lost.
+    await db.commit()
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied",
+    )
 
 
 # =============================================================================
@@ -786,7 +822,7 @@ async def insert_document(
         existing = await repo.get(body.id)
         if existing is not None:
             old_row = _row_from_doc(existing)
-            _check_action_or_403("update", table, old_row, ctx.user)
+            await _check_action_or_403("update", table, old_row, ctx.user, db=ctx.db)
             doc = await repo.update(body.id, body.data, updated_by=created_by)
             if doc is None:
                 raise HTTPException(status_code=404, detail="Document not found")
@@ -805,7 +841,7 @@ async def insert_document(
         "created_by": created_by,
         "updated_by": created_by,
     }
-    _check_action_or_403("create", table, candidate_row, ctx.user)
+    await _check_action_or_403("create", table, candidate_row, ctx.user, db=ctx.db)
     doc = await repo.insert(body.data, created_by=created_by, doc_id=body.id)
     await ctx.db.commit()
     await publish_document_change(
@@ -833,7 +869,7 @@ async def get_document(
     doc = await repo.get(doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    _check_action_or_403("read", table, _row_from_doc(doc), ctx.user)
+    await _check_action_or_403("read", table, _row_from_doc(doc), ctx.user, db=ctx.db)
     return DocumentPublic.model_validate(doc)
 
 
@@ -855,7 +891,7 @@ async def update_document(
     if existing is None:
         raise HTTPException(status_code=404, detail="Document not found")
     old_row = _row_from_doc(existing)
-    _check_action_or_403("update", table, old_row, ctx.user)
+    await _check_action_or_403("update", table, old_row, ctx.user, db=ctx.db)
     doc = await repo.update(doc_id, body.data, updated_by=str(ctx.user.user_id))
     if doc is None:
         # Lost a race with a concurrent delete after we fetched + access-checked.
@@ -887,7 +923,7 @@ async def delete_document(
     if existing is None:
         raise HTTPException(status_code=404, detail="Document not found")
     old_row = _row_from_doc(existing)
-    _check_action_or_403("delete", table, old_row, ctx.user)
+    await _check_action_or_403("delete", table, old_row, ctx.user, db=ctx.db)
     deleted = await repo.delete(doc_id)
     await ctx.db.commit()
     if deleted:

@@ -240,6 +240,33 @@ class TestPoliciesMatrix:
         r = _insert(e2e_client, platform_admin.headers, table_id, {"x": 1})
         assert r.status_code == 403, r.text
 
+    def test_denial_writes_audit_row(self, e2e_client, platform_admin, alice_user):
+        """A 403 from policy denial writes an audit row that the admin can query."""
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, f"audit_{uuid.uuid4().hex[:8]}",
+        )  # seeded admin_bypass only — Alice will be denied
+
+        # Alice tries to insert (denied)
+        r = _insert(e2e_client, alice_user.headers, table_id, {"x": 1})
+        assert r.status_code == 403
+
+        # Admin queries the audit log
+        audit = e2e_client.get(
+            "/api/audit",
+            headers=platform_admin.headers,
+            params={"action": "policy.deny", "limit": 50},
+        )
+        assert audit.status_code == 200, audit.text
+        rows = audit.json()["entries"]
+        matching = [r for r in rows if r["actor"]["user_id"] == str(alice_user.user_id)]
+        assert len(matching) >= 1, f"no policy.deny for alice in {[r['actor'] for r in rows]}"
+        entry = matching[0]
+        assert entry["action"] == "policy.deny"
+        assert entry["resource_type"] == "table_document"
+        assert entry["outcome"] == "failure"
+        assert entry["details"]["policy_action"] == "create"
+        assert entry["details"]["table_id"] == table_id
+
     def test_batch_all_or_nothing(self, e2e_client, platform_admin, alice_user):
         """Batch insert: any single denial rejects the whole batch (transactional)."""
         table_id = _create_table(e2e_client, platform_admin.headers, f"batch_{uuid.uuid4().hex[:8]}")
