@@ -9,7 +9,14 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+)
 
 from src.models.contracts.policies import TablePolicies
 
@@ -83,34 +90,13 @@ class TablePublic(TableBase):
     id: UUID
     organization_id: UUID | None
     application_id: UUID | None
-    policies: TablePolicies | None = None
+    policies: TablePolicies | None = Field(
+        default=None,
+        validation_alias=AliasChoices("policies", "access"),
+    )
     created_at: datetime
     updated_at: datetime
     created_by: str | None
-
-    @model_validator(mode="before")
-    @classmethod
-    def _adapt_access_to_policies(cls, data):
-        # ORM-to-public: source dict has `access`, target field is `policies`.
-        # Also handle ORM objects (from_attributes=True) — convert the `access`
-        # attribute into a `policies` key so the rename takes effect.
-        if isinstance(data, dict):
-            if "access" in data and "policies" not in data:
-                data = {**data, "policies": data["access"]}
-        elif hasattr(data, "access") and not hasattr(data, "policies"):
-            data = {
-                "id": data.id,
-                "name": data.name,
-                "description": data.description,
-                "schema": data.schema,
-                "organization_id": data.organization_id,
-                "application_id": data.application_id,
-                "policies": data.access,
-                "created_at": data.created_at,
-                "updated_at": data.updated_at,
-                "created_by": data.created_by,
-            }
-        return data
 
     @field_serializer("created_at", "updated_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
