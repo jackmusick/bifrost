@@ -195,36 +195,38 @@ class BaseConsumer(ABC):
             return  # idempotent
         self._draining = True
 
-        # Cancel the consumer: stops new deliveries, keeps channel open.
-        if self._queue is not None and self._consumer_tag is not None:
-            try:
-                await self._queue.cancel(self._consumer_tag)
-                logger.info(f"Cancelled consumer for {self.queue_name}")
-            except Exception as e:
-                logger.warning(f"Error cancelling consumer for {self.queue_name}: {e}")
+        try:
+            # Cancel the consumer: stops new deliveries, keeps channel open.
+            if self._queue is not None and self._consumer_tag is not None:
+                try:
+                    await self._queue.cancel(self._consumer_tag)
+                    logger.info(f"Cancelled consumer for {self.queue_name}")
+                except Exception as e:
+                    logger.warning(f"Error cancelling consumer for {self.queue_name}: {e}")
 
-        # Wait for in-flight tasks to finish.
-        if self._inflight:
-            logger.info(
-                f"Draining {len(self._inflight)} in-flight on {self.queue_name} "
-                f"(deadline={deadline}s)"
-            )
-            pending = list(self._inflight)
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*pending, return_exceptions=True),
-                    timeout=deadline,
+            # Snapshot is intentional: any message that races past the _draining
+            # flag gets nacked + requeued in _on_message and never enters _inflight.
+            if self._inflight:
+                pending = list(self._inflight)
+                logger.info(
+                    f"Draining {len(pending)} in-flight on {self.queue_name} "
+                    f"(deadline={deadline}s)"
                 )
-                logger.info(f"Drain complete for {self.queue_name}")
-            except asyncio.TimeoutError:
-                still_running = [t for t in pending if not t.done()]
-                logger.warning(
-                    f"Drain deadline exceeded on {self.queue_name}: "
-                    f"{len(still_running)} task(s) still running"
-                )
-
-        # Close channel + connection (the existing stop() logic).
-        await self.stop()
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*pending, return_exceptions=True),
+                        timeout=deadline,
+                    )
+                    logger.info(f"Drain complete for {self.queue_name}")
+                except asyncio.TimeoutError:
+                    still_running = [t for t in pending if not t.done()]
+                    logger.warning(
+                        f"Drain deadline exceeded on {self.queue_name}: "
+                        f"{len(still_running)} task(s) still running"
+                    )
+        finally:
+            # Always close channel + connection, even if cancelled mid-drain.
+            await self.stop()
 
     async def _on_message(self, message: IncomingMessage) -> None:
         """
@@ -393,36 +395,38 @@ class BroadcastConsumer(ABC):
             return  # idempotent
         self._draining = True
 
-        # Cancel the consumer: stops new deliveries, keeps channel open.
-        if self._queue is not None and self._consumer_tag is not None:
-            try:
-                await self._queue.cancel(self._consumer_tag)
-                logger.info(f"Cancelled consumer for {self.queue_name}")
-            except Exception as e:
-                logger.warning(f"Error cancelling consumer for {self.queue_name}: {e}")
+        try:
+            # Cancel the consumer: stops new deliveries, keeps channel open.
+            if self._queue is not None and self._consumer_tag is not None:
+                try:
+                    await self._queue.cancel(self._consumer_tag)
+                    logger.info(f"Cancelled consumer for {self.queue_name}")
+                except Exception as e:
+                    logger.warning(f"Error cancelling consumer for {self.queue_name}: {e}")
 
-        # Wait for in-flight tasks to finish.
-        if self._inflight:
-            logger.info(
-                f"Draining {len(self._inflight)} in-flight on {self.queue_name} "
-                f"(deadline={deadline}s)"
-            )
-            pending = list(self._inflight)
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*pending, return_exceptions=True),
-                    timeout=deadline,
+            # Snapshot is intentional: any message that races past the _draining
+            # flag gets nacked + requeued in _on_message and never enters _inflight.
+            if self._inflight:
+                pending = list(self._inflight)
+                logger.info(
+                    f"Draining {len(pending)} in-flight on {self.queue_name} "
+                    f"(deadline={deadline}s)"
                 )
-                logger.info(f"Drain complete for {self.queue_name}")
-            except asyncio.TimeoutError:
-                still_running = [t for t in pending if not t.done()]
-                logger.warning(
-                    f"Drain deadline exceeded on {self.queue_name}: "
-                    f"{len(still_running)} task(s) still running"
-                )
-
-        # Close channel + connection (the existing stop() logic).
-        await self.stop()
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*pending, return_exceptions=True),
+                        timeout=deadline,
+                    )
+                    logger.info(f"Drain complete for {self.queue_name}")
+                except asyncio.TimeoutError:
+                    still_running = [t for t in pending if not t.done()]
+                    logger.warning(
+                        f"Drain deadline exceeded on {self.queue_name}: "
+                        f"{len(still_running)} task(s) still running"
+                    )
+        finally:
+            # Always close channel + connection, even if cancelled mid-drain.
+            await self.stop()
 
     async def _on_message(self, message: IncomingMessage) -> None:
         """Handle incoming message.

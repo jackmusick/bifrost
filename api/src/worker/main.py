@@ -162,7 +162,17 @@ class Worker:
 
         # Drain consumers in parallel — each cancels its consumer tag, waits on
         # its in-flight tasks, then closes its channel.
-        drain_deadline = float(os.environ.get("BIFROST_DRAIN_DEADLINE_SECONDS", "300"))
+        deadline_str = os.environ.get("BIFROST_DRAIN_DEADLINE_SECONDS", "300")
+        try:
+            drain_deadline = float(deadline_str)
+            if drain_deadline <= 0:
+                raise ValueError(f"must be positive, got {drain_deadline}")
+        except ValueError as e:
+            logger.warning(
+                f"Invalid BIFROST_DRAIN_DEADLINE_SECONDS={deadline_str!r}: {e}; "
+                f"falling back to 300s"
+            )
+            drain_deadline = 300.0
         results = await asyncio.gather(
             *(self._drain_consumer(consumer, drain_deadline) for consumer in self._consumers),
             return_exceptions=True,
