@@ -27,7 +27,6 @@ from src.models.contracts.policies import Expr, TablePolicies
 from src.models.orm import Agent
 from src.models.orm.applications import Application
 from src.models.orm.tables import Table as TableOrm
-from src.models.orm.users import Role, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -123,19 +122,17 @@ async def _populate_user_roles(user: UserPrincipal) -> None:
     `get_current_user_ws` does not hit the DB for roles (the JWT carries only
     the `roles` claim, not the `user_roles` rows the policy evaluator's
     `has_role` reads). Call this once per connection before the first
-    table-subscription policy check.
+    table-subscription policy check. Reads go through the per-user role cache
+    (Redis); DB is fallback on miss.
     """
     if user.role_ids or user.role_names:
         return
+    from shared.role_cache import get_user_roles
+
     async with get_db_context() as db:
-        result = await db.execute(
-            select(Role.id, Role.name)
-            .join(UserRole, UserRole.role_id == Role.id)
-            .where(UserRole.user_id == user.user_id)
-        )
-        rows = result.all()
-        user.role_ids = [r.id for r in rows]
-        user.role_names = [r.name for r in rows]
+        role_ids, role_names = await get_user_roles(user.user_id, db)
+        user.role_ids = role_ids
+        user.role_names = role_names
 
 
 def _make_table_dispatcher(websocket: WebSocket, user: UserPrincipal) -> Any:

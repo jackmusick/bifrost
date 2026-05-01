@@ -338,21 +338,16 @@ async def get_execution_context(
     Returns:
         ExecutionContext with user and organization scope
     """
-    # Populate role_ids / role_names from the DB. The table-policy evaluator's
+    # Populate role_ids / role_names. The table-policy evaluator's
     # `has_role` function reads these (the JWT claims do not carry the post-
-    # token role assignments needed by row-level policies).
+    # token role assignments needed by row-level policies). Reads go through
+    # the per-user role cache (Redis); DB is fallback on miss.
     if not user.role_ids and not user.role_names:
-        from sqlalchemy import select
-        from src.models.orm.users import Role, UserRole
+        from shared.role_cache import get_user_roles
 
-        result = await db.execute(
-            select(Role.id, Role.name)
-            .join(UserRole, UserRole.role_id == Role.id)
-            .where(UserRole.user_id == user.user_id)
-        )
-        rows = result.all()
-        user.role_ids = [r.id for r in rows]
-        user.role_names = [r.name for r in rows]
+        role_ids, role_names = await get_user_roles(user.user_id, db)
+        user.role_ids = role_ids
+        user.role_names = role_names
 
     return ExecutionContext(
         user=user,
