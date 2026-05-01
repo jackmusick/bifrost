@@ -2123,6 +2123,7 @@ class ManifestResolver:
         from sqlalchemy.dialects.postgresql import insert
 
         from shared.policies.probe import make_seed_admin_bypass
+        from src.models.contracts.policies import TablePolicies
         from src.models.orm.tables import Table
         from src.services.sync_ops import SyncOp  # noqa: F401
 
@@ -2135,9 +2136,20 @@ class ManifestResolver:
         # entry has no policies (older bundles, or hand-authored YAML that
         # omits the field), seed the admin_bypass default so platform admins
         # aren't locked out — same default the REST create path uses.
-        access = (
-            mtable.policies.model_dump(mode="json") if mtable.policies else make_seed_admin_bypass()
-        )
+        #
+        # SECURITY: ManifestPolicy.when is typed as `dict | None` (permissive),
+        # so the manifest model alone does NOT validate the AST. Re-validate
+        # through TablePolicies before persisting, mirroring the REST create /
+        # update path. ValidationError propagates to the import caller so a
+        # malformed tables.yaml fails loudly rather than landing an
+        # unparseable AST in the DB. Pattern: fail loud at the writer, fail
+        # closed at the reader (see _load_policies in src/routers/tables.py).
+        if mtable.policies is not None:
+            policies_dict = mtable.policies.model_dump(mode="json")
+            TablePolicies(**policies_dict)  # raises ValidationError on bad AST
+            access = policies_dict
+        else:
+            access = make_seed_admin_bypass()
 
         # 1. Look up by natural key (name + org) — use cache if available
         if cache is not None:

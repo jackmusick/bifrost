@@ -2034,8 +2034,12 @@ class TestSplitManifestFormat:
         and the AST round-trips back to the YAML manifest unchanged.
 
         Covers Task F: prove that table policies survive a full manifest cycle
-        (manifest → DB → manifest), including a role-gated policy authored with
-        a role NAME (which `has_role` accepts directly per the function registry).
+        (manifest → DB → manifest), including a role-gated policy authored
+        with the canonical ``{"call": "has_role", "args": [...]}`` form. The
+        manifest import path validates the AST through ``TablePolicies``
+        before persisting, so non-canonical shorthand (e.g. ``{"has_role":
+        "support"}``) is rejected — see the parallel
+        ``test_pull_table_with_invalid_policy_when_clause_is_rejected``.
         """
         from uuid import UUID as UUIDType
 
@@ -2066,7 +2070,7 @@ class TestSplitManifestFormat:
                             {
                                 "name": "support_read",
                                 "actions": ["read"],
-                                "when": {"has_role": "support"},
+                                "when": {"call": "has_role", "args": ["support"]},
                             },
                         ],
                     },
@@ -2095,10 +2099,11 @@ class TestSplitManifestFormat:
         assert own["when"] == {"eq": [{"row": "created_by"}, {"user": "user_id"}]}
         assert sorted(own["actions"]) == ["delete", "read", "update"]
 
-        # The role-name reference survives import as a plain string —
-        # `has_role` matches against role_names OR role_ids at evaluation time.
+        # The has_role call form is what the evaluator/compiler accepts;
+        # the function registry matches the literal arg against role_names
+        # OR role_ids at evaluation time.
         support = next(p for p in table.access["policies"] if p["name"] == "support_read")
-        assert support["when"] == {"has_role": "support"}
+        assert support["when"] == {"call": "has_role", "args": ["support"]}
         assert support["actions"] == ["read"]
 
         # 2) Round-trip back to manifest: serialize the DB row and verify the
@@ -2116,7 +2121,80 @@ class TestSplitManifestFormat:
         assert sorted(rt_own["actions"]) == ["delete", "read", "update"]
 
         rt_support = next(p for p in rt_dump["policies"] if p["name"] == "support_read")
-        assert rt_support["when"] == {"has_role": "support"}
+        assert rt_support["when"] == {"call": "has_role", "args": ["support"]}
+
+    async def test_pull_table_with_invalid_policy_when_clause_is_rejected(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Manifest carrying an unparseable policy AST is rejected at import.
+
+        Security boundary: ``ManifestPolicy.when`` is ``dict | None`` — the
+        manifest model does NOT validate the AST. Without revalidation at the
+        DB-write boundary, a malformed ``tables.yaml`` would land an
+        unparseable policy in ``Table.access`` (later crashing the evaluator
+        or — worse — being silently treated as deny-all). The import path
+        revalidates through ``TablePolicies`` so this fails loudly with
+        ``success=False``, and the table is NOT created.
+        """
+        from uuid import UUID as UUIDType
+
+        from src.models.orm.tables import Table
+
+        work_dir = Path(working_clone.working_dir)
+        table_id = str(uuid4())
+
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
+            "tables": {
+                "bad_policy": {
+                    "id": table_id,
+                    "description": "Has an unparseable when AST",
+                    "policies": {
+                        "policies": [
+                            {
+                                "name": "broken",
+                                "actions": ["read"],
+                                # INVALID_OP is not a known operator — the
+                                # AST validator must reject this.
+                                "when": {"INVALID_OP": []},
+                            },
+                        ],
+                    },
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/tables.yaml"])
+        working_clone.index.commit("table with bad policy")
+        working_clone.remotes.origin.push()
+
+        result = await sync_service.desktop_sync(confirm_deletes=True)
+
+        # Sync as a whole must fail — no silent success that landed bad data.
+        assert result.success is False, (
+            f"Malformed policy must be rejected; got success result: {result}"
+        )
+        # Error string mentions either the unknown operator or validation.
+        err = (result.error or "").lower()
+        assert (
+            "invalid_op" in err
+            or "unknown operator" in err
+            or "validation error" in err
+        ), f"Error should identify the AST problem; got: {result.error!r}"
+
+        # Side-effect check: the table was NOT created in the DB. Sync uses a
+        # nested transaction around _import_all_entities (see desktop_sync
+        # step 4); the ValidationError raised inside that block aborts the
+        # whole import — so the bad row never lands.
+        await db_session.rollback()
+        table = await db_session.get(Table, UUIDType(table_id))
+        assert table is None, (
+            f"Bad policy must not produce a Table row; found {table!r}"
+        )
 
     async def test_pull_event_source_from_manifest(
         self,

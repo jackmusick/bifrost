@@ -877,6 +877,37 @@ async def insert_document(
 
 
 @router.get(
+    "/{table_id}/documents/count",
+    response_model=DocumentCountResponse,
+    summary="Count documents",
+)
+async def count_documents(
+    table_id: str,
+    ctx: Context,
+) -> DocumentCountResponse:
+    """Count documents in a table.
+
+    Returns 404 if the table doesn't exist.
+
+    NOTE: This route is declared BEFORE ``GET /{table_id}/documents/{doc_id}``
+    so the literal ``/count`` segment matches first. Reversing the order makes
+    FastAPI bind ``doc_id="count"`` and return 404, silently disabling the
+    count endpoint.
+    """
+    table = await get_table_or_404(ctx, table_id)
+
+    policies = _load_policies(table)
+    read_filter = compile_read_filter(policies, ctx.user)
+    if read_filter is None:
+        # No rule grants read → count zero. Same existence-leak rationale
+        # as `query_documents`.
+        return DocumentCountResponse(count=0)
+
+    repo = DocumentRepository(ctx.db, table)
+    return DocumentCountResponse(count=await repo.count(extra_where=read_filter))
+
+
+@router.get(
     "/{table_id}/documents/{doc_id}",
     response_model=DocumentPublic,
     summary="Get a document",
@@ -994,32 +1025,6 @@ async def query_documents(
         limit=query_params.limit,
         offset=query_params.offset,
     )
-
-
-@router.get(
-    "/{table_id}/documents/count",
-    response_model=DocumentCountResponse,
-    summary="Count documents",
-)
-async def count_documents(
-    table_id: str,
-    ctx: Context,
-) -> DocumentCountResponse:
-    """Count documents in a table.
-
-    Returns 404 if the table doesn't exist.
-    """
-    table = await get_table_or_404(ctx, table_id)
-
-    policies = _load_policies(table)
-    read_filter = compile_read_filter(policies, ctx.user)
-    if read_filter is None:
-        # No rule grants read → count zero. Same existence-leak rationale
-        # as `query_documents`.
-        return DocumentCountResponse(count=0)
-
-    repo = DocumentRepository(ctx.db, table)
-    return DocumentCountResponse(count=await repo.count(extra_where=read_filter))
 
 
 @router.post(

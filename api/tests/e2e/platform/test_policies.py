@@ -660,6 +660,16 @@ class TestPoliciesMatrix:
         assert target["data"].get("v") == "secret", (
             f"row should be untouched; got {target['data']}"
         )
+        # Tightened post-state check: nothing from alice's PATCH leaked into
+        # ``data`` — not the forged ``created_by`` field, not the new ``v``,
+        # nothing. The only key in the original insert was ``v: secret``;
+        # any extra key here would mean the denial wrote partial state.
+        assert target["data"] == {"v": "secret"}, (
+            f"PATCH body leaked into row data despite 403; got {target['data']!r}"
+        )
+        assert "created_by" not in target["data"], (
+            f"forged created_by leaked into row data: {target['data']!r}"
+        )
 
     def test_batch_all_or_nothing(self, e2e_client, platform_admin, alice_user):
         """Batch insert: any single denial rejects the whole batch (transactional)."""
@@ -699,3 +709,368 @@ class TestPoliciesMatrix:
             assert "denied_row_indices" in body["detail"]
             # No mention of policy "name" leaks
             assert "name" not in str(body["detail"])
+
+    def test_cross_org_isolation_blocks_update(
+        self, e2e_client, platform_admin, alice_user, org2_user
+    ):
+        """Alice (org1) cannot UPDATE a doc whose data.organization_id == org2.
+
+        Security boundary: same row-level org policy that gates READ also
+        gates UPDATE. The handler runs ``_check_action_or_403("update", ...)``
+        against the PRE-image; alice is from org1, the row carries org2's id,
+        so own_org_full does NOT match her — even though both users are on
+        the same global table.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers,
+            f"orgupd_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "own_org_full",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {
+                    "eq": [
+                        {"row": "organization_id"},
+                        {"user": "organization_id"},
+                    ]
+                },
+            },
+        ]})
+
+        org2_org = str(org2_user.organization_id)
+        alice_org = str(alice_user.organization_id)
+        assert alice_org != org2_org, "fixture sanity: orgs must differ"
+
+        # org2 inserts a row carrying its org id
+        ins = _insert(
+            e2e_client, org2_user.headers, table_id,
+            {"who": "org2", "secret": "org2-secret", "organization_id": org2_org},
+        )
+        assert ins.status_code == 201, ins.text
+        org2_doc_id = ins.json()["id"]
+
+        # Alice (org1) tries to PATCH org2's row — denied at pre-image check.
+        flip = e2e_client.patch(
+            f"/api/tables/{table_id}/documents/{org2_doc_id}",
+            headers=alice_user.headers,
+            json={"data": {"secret": "alice-pwned", "organization_id": org2_org}},
+        )
+        assert flip.status_code == 403, (
+            f"cross-org UPDATE must be denied; got {flip.status_code} body={flip.text}"
+        )
+
+        # Side-effect check: admin reads the row and confirms it's untouched.
+        admin_q = _query(
+            e2e_client, platform_admin.headers, table_id,
+        ).json()["documents"]
+        target = next((d for d in admin_q if d["id"] == org2_doc_id), None)
+        assert target is not None, admin_q
+        assert target["data"].get("secret") == "org2-secret", (
+            f"row mutated by cross-org PATCH; got {target['data']!r}"
+        )
+        assert target["data"].get("who") == "org2"
+
+    def test_cross_org_isolation_blocks_delete(
+        self, e2e_client, platform_admin, alice_user, org2_user
+    ):
+        """Alice (org1) cannot DELETE a doc whose data.organization_id == org2.
+
+        Security boundary: row-level org isolation also covers delete. Without
+        this test, a delete-only regression would not be caught by the
+        existing READ/CREATE org-isolation test.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers,
+            f"orgdel_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "own_org_full",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {
+                    "eq": [
+                        {"row": "organization_id"},
+                        {"user": "organization_id"},
+                    ]
+                },
+            },
+        ]})
+
+        org2_org = str(org2_user.organization_id)
+
+        # org2 inserts a row carrying its org id
+        ins = _insert(
+            e2e_client, org2_user.headers, table_id,
+            {"who": "org2", "organization_id": org2_org},
+        )
+        assert ins.status_code == 201, ins.text
+        org2_doc_id = ins.json()["id"]
+
+        # Alice (org1) tries to DELETE org2's row — denied.
+        dele = e2e_client.delete(
+            f"/api/tables/{table_id}/documents/{org2_doc_id}",
+            headers=alice_user.headers,
+        )
+        assert dele.status_code == 403, (
+            f"cross-org DELETE must be denied; got {dele.status_code} body={dele.text}"
+        )
+
+        # Side-effect check: admin verifies the row is still there.
+        admin_q = _query(
+            e2e_client, platform_admin.headers, table_id,
+        ).json()["documents"]
+        assert any(d["id"] == org2_doc_id for d in admin_q), (
+            f"row missing after denied delete; admin sees {admin_q}"
+        )
+
+    def test_count_documents_enforces_policy(
+        self, e2e_client, platform_admin, alice_user
+    ):
+        """``GET /tables/{id}/documents/count`` applies the same read filter
+        as query — no count leak.
+
+        Security boundary: a count endpoint that bypassed the read filter
+        would leak existence/cardinality of private rows. Specifically, if
+        the handler ever stops calling ``compile_read_filter`` and short-
+        circuiting on ``read_filter is None`` to 0, alice would see admin's
+        private row count.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers,
+            f"count_{uuid.uuid4().hex[:8]}",
+        )
+        # Default seeded admin_bypass — only admin can read; alice has no rule.
+        # Admin inserts 3 rows.
+        for i in range(3):
+            r = _insert(e2e_client, platform_admin.headers, table_id, {"i": i})
+            assert r.status_code == 201, r.text
+
+        # Admin's count == 3 (sanity)
+        ar = e2e_client.get(
+            f"/api/tables/{table_id}/documents/count",
+            headers=platform_admin.headers,
+        )
+        assert ar.status_code == 200, ar.text
+        assert ar.json()["count"] == 3, ar.json()
+
+        # Alice's count == 0 — count_documents short-circuits when no rule
+        # grants read; the handler returns DocumentCountResponse(count=0)
+        # without running an unfiltered SQL count.
+        br = e2e_client.get(
+            f"/api/tables/{table_id}/documents/count",
+            headers=alice_user.headers,
+        )
+        assert br.status_code == 200, br.text
+        assert br.json()["count"] == 0, (
+            f"count_documents leaked private row count: {br.json()}"
+        )
+
+    def test_batch_delete_all_or_nothing(
+        self, e2e_client, platform_admin, alice_user, bob_user
+    ):
+        """``POST /tables/{id}/documents/batch-delete`` denies the whole batch
+        if ANY row fails its delete policy. Neither row is removed.
+
+        Security boundary: the pre-flight loop in batch_delete_documents must
+        check every row before deleting any. A regression that ran deletes in
+        the same loop as the policy check would leave partial state (alice's
+        row gone, bob's row still there) on a 403.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers,
+            f"bdel_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                # everyone can read so admin/alice/bob can list + verify
+                "name": "everyone_read",
+                "actions": ["read", "create"],
+                "when": None,
+            },
+            {
+                "name": "own_row_delete",
+                "actions": ["delete"],
+                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+            },
+        ]})
+
+        # Alice and Bob each insert a row.
+        ar = _insert(e2e_client, alice_user.headers, table_id, {"who": "alice"})
+        assert ar.status_code == 201, ar.text
+        alice_doc_id = ar.json()["id"]
+        br = _insert(e2e_client, bob_user.headers, table_id, {"who": "bob"})
+        assert br.status_code == 201, br.text
+        bob_doc_id = br.json()["id"]
+
+        # Alice batch-deletes BOTH ids. own_row_delete grants alice on her
+        # row but NOT bob's → denied row index = 1, whole batch aborts.
+        r = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch-delete",
+            headers=alice_user.headers,
+            json={"ids": [alice_doc_id, bob_doc_id]},
+        )
+        assert r.status_code == 403, r.text
+        body = r.json()
+        if isinstance(body.get("detail"), dict):
+            assert body["detail"].get("denied_row_indices") == [1], body
+
+        # Side-effect check: admin lists the table — BOTH rows still exist.
+        admin_q = _query(
+            e2e_client, platform_admin.headers, table_id,
+        ).json()["documents"]
+        ids_present = {d["id"] for d in admin_q}
+        assert alice_doc_id in ids_present, (
+            f"alice's row was deleted on a denied batch (partial state leak); "
+            f"admin sees {admin_q}"
+        )
+        assert bob_doc_id in ids_present, (
+            f"bob's row missing after denied batch; admin sees {admin_q}"
+        )
+
+    def test_additive_or_negative_arm_without_role(
+        self, e2e_client, platform_admin, alice_user, bob_user
+    ):
+        """Without the role assignment, alice does NOT see bob's row.
+
+        Inverse of ``test_additive_or_across_multiple_policies``: proves
+        ``support_role_read`` is the SOLE grant on bob's row, not a phantom
+        always-true that happens to be true for alice. If ``has_role`` ever
+        evaluates to True without the role assignment (e.g. a regression
+        treating an unknown role as a no-op), this test catches it.
+        """
+        # Create the role but DO NOT assign alice to it.
+        role_resp = e2e_client.post(
+            "/api/roles", headers=platform_admin.headers,
+            json={"name": f"or_neg_{uuid.uuid4().hex[:6]}", "description": "neg arm"},
+        )
+        assert role_resp.status_code == 201, role_resp.text
+        role_id = role_resp.json()["id"]
+        # NOTE: deliberately omitting the POST /api/roles/{id}/users step.
+
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, f"orneg_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                "name": "everyone_create",
+                "actions": ["create"],
+                "when": None,
+            },
+            {
+                "name": "own_row_read",
+                "actions": ["read"],
+                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+            },
+            {
+                "name": "support_role_read",
+                "actions": ["read"],
+                "when": {"call": "has_role", "args": [role_id]},
+            },
+        ]})
+
+        # Bob inserts; alice does NOT own it.
+        br = _insert(e2e_client, bob_user.headers, table_id, {"who": "bobs_row"})
+        assert br.status_code == 201, br.text
+        bob_doc_id = br.json()["id"]
+
+        # Alice queries — own_row fails (not hers), support_role fails (no
+        # role assignment). She must NOT see bob's row.
+        aq = _query(e2e_client, alice_user.headers, table_id).json()["documents"]
+        assert all(d["id"] != bob_doc_id for d in aq), (
+            f"alice (NO role) saw bob's row — has_role returned true without "
+            f"the role assignment: {aq}"
+        )
+
+        # Admin still sees the row (admin_bypass) — sanity check it exists.
+        admin_q = _query(
+            e2e_client, platform_admin.headers, table_id,
+        ).json()["documents"]
+        assert any(d["id"] == bob_doc_id for d in admin_q), admin_q
+
+    def test_upsert_existing_id_gates_on_update_action(
+        self, e2e_client, platform_admin, alice_user
+    ):
+        """``POST /tables/{id}/documents`` with ``upsert=True`` against an
+        existing id runs the UPDATE policy check, not CREATE. A user with
+        create-only access cannot upsert-update.
+
+        Security boundary: see ``insert_document`` in
+        ``api/src/routers/tables.py`` — the upsert branch fetches the
+        existing row and calls ``_check_action_or_403("update", ...)`` on
+        the pre-image. If that gate were removed, a "create-only" grant
+        would silently allow row mutation.
+        """
+        table_id = _create_table(
+            e2e_client, platform_admin.headers,
+            f"upsert_{uuid.uuid4().hex[:8]}",
+        )
+        _set_policies(e2e_client, platform_admin.headers, table_id, {"policies": [
+            {
+                "name": "admin_bypass",
+                "actions": ["read", "create", "update", "delete"],
+                "when": {"user": "is_platform_admin"},
+            },
+            {
+                # alice is granted CREATE only — no update, no read.
+                "name": "alice_create_only",
+                "actions": ["create"],
+                "when": None,
+            },
+        ]})
+
+        # Admin pre-creates a row at a known id.
+        admin_doc_id = str(uuid.uuid4())
+        cr = e2e_client.post(
+            f"/api/tables/{table_id}/documents",
+            headers=platform_admin.headers,
+            json={"id": admin_doc_id, "data": {"v": "admin-original"}},
+        )
+        assert cr.status_code == 201, cr.text
+
+        # Alice POSTs with upsert=True at the same id → update path runs;
+        # alice has no update grant → 403.
+        flip = e2e_client.post(
+            f"/api/tables/{table_id}/documents",
+            headers=alice_user.headers,
+            json={
+                "id": admin_doc_id,
+                "upsert": True,
+                "data": {"v": "alice-pwned"},
+            },
+        )
+        assert flip.status_code == 403, (
+            f"upsert against existing id must gate on UPDATE; "
+            f"got {flip.status_code} body={flip.text}"
+        )
+
+        # Side-effect check: admin reads the row, confirms unchanged.
+        admin_q = _query(
+            e2e_client, platform_admin.headers, table_id,
+        ).json()["documents"]
+        target = next((d for d in admin_q if d["id"] == admin_doc_id), None)
+        assert target is not None, admin_q
+        assert target["data"].get("v") == "admin-original", (
+            f"row mutated via upsert despite update being denied; "
+            f"got {target['data']!r}"
+        )
