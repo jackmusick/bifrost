@@ -47,6 +47,11 @@ class UserPrincipal:
     is_superuser: bool = False
     is_verified: bool = False
     roles: list[str] = field(default_factory=list)
+    # Role identity used by table-policy `has_role` evaluator. Populated by
+    # `get_execution_context` from the `user_roles` table; empty for token-only
+    # principals (e.g. system accounts) and embed sessions.
+    role_ids: list[UUID] = field(default_factory=list)
+    role_names: list[str] = field(default_factory=list)
     embed: bool = False  # True for embed session tokens (scoped to app_id)
     jti: str | None = None  # JWT ID for embed tokens (used for execution scoping)
     app_id: str | None = None  # App ID for embed tokens
@@ -333,6 +338,22 @@ async def get_execution_context(
     Returns:
         ExecutionContext with user and organization scope
     """
+    # Populate role_ids / role_names from the DB. The table-policy evaluator's
+    # `has_role` function reads these (the JWT claims do not carry the post-
+    # token role assignments needed by row-level policies).
+    if not user.role_ids and not user.role_names:
+        from sqlalchemy import select
+        from src.models.orm.users import Role, UserRole
+
+        result = await db.execute(
+            select(Role.id, Role.name)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == user.user_id)
+        )
+        rows = result.all()
+        user.role_ids = [r.id for r in rows]
+        user.role_names = [r.name for r in rows]
+
     return ExecutionContext(
         user=user,
         org_id=user.organization_id,
