@@ -47,8 +47,17 @@ router = APIRouter(prefix="/api/tables", tags=["Tables"])
 
 
 def _check_action(action: str, table: Table, ctx: Context, doc: Document | None = None) -> None:
-    """Stub access check — allows all callers. Replaced in Task 8 with policy enforcement."""
-    return None
+    """Stub access check during the policy reset window.
+
+    Tightened to admin-only until Task 9 wires in policy enforcement —
+    matches the docs/llm.txt 'workflow-only by default' contract for
+    non-admin callers. Workflow-attributed traffic goes through the
+    `/api/cli/tables/...` routes, not these REST endpoints, so blocking
+    non-admins here does not affect SDK callers running inside workflows.
+    Replaced in Task 8/9 with policy evaluation.
+    """
+    if not ctx.user.is_platform_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
 # =============================================================================
