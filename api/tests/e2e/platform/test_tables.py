@@ -147,6 +147,48 @@ class TestDocumentScopeQueryParam:
         assert len(body["documents"]) == 1
         assert body["documents"][0]["data"] == {"hello": "org2"}
 
+    def test_provider_admin_can_reach_all_new_endpoints_cross_org(
+        self, e2e_client, platform_admin, org2
+    ):
+        """Sibling check to ``test_provider_admin_targets_other_org_via_scope``
+        for the endpoints added in the consolidation work — upsert + the two
+        batch verbs. A provider admin (superuser) targeting another org via
+        UUID lookup must hit each endpoint successfully.
+        """
+        org2_id = org2["id"]
+        name = f"prov_admin_new_{uuid4().hex[:8]}"
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, name, organization_id=org2_id,
+        )
+
+        # Upsert verb against an org2 table by UUID — superuser-bypass on the org gate.
+        doc_id = f"k-{uuid4().hex[:8]}"
+        up = e2e_client.post(
+            f"/api/tables/{table_id}/documents/upsert",
+            headers=platform_admin.headers,
+            json={"id": doc_id, "data": {"v": 1}},
+        )
+        assert up.status_code == 200, up.text
+
+        # Batch insert.
+        b = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch",
+            headers=platform_admin.headers,
+            json={"documents": [{"data": {"v": 2}}, {"data": {"v": 3}}]},
+        )
+        assert b.status_code == 200, b.text
+        assert b.json()["inserted"] == 2
+
+        # Batch delete (the original upsert row).
+        bd = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch-delete",
+            headers=platform_admin.headers,
+            json={"ids": [doc_id]},
+        )
+        assert bd.status_code == 200, bd.text
+        assert bd.json()["deleted"] == 1
+        assert bd.json()["deleted_ids"] == [doc_id]
+
     def test_non_superuser_scope_silently_ignored(
         self, e2e_client, platform_admin, alice_user, org2
     ):
@@ -404,7 +446,11 @@ class TestDocumentScopeQueryParam:
         doc_id = ins.json()["id"]
 
         # Every document endpoint must 404 (or 403 for body-bearing rejects).
-        # All four CRUD verbs against the UUID, with and without scope.
+        # All CRUD verbs against the UUID, with and without scope. Includes
+        # the upsert and batch endpoints added in the consolidation work —
+        # they share get_table_or_404, so the gate covers them too, but
+        # this asserts that explicitly so a future refactor that bypasses
+        # the gate on one verb breaks the test loud.
         for params in ({}, {"scope": org2_id}, {"scope": "global"}):
             q = e2e_client.post(
                 f"/api/tables/{table_id}/documents/query",
@@ -450,6 +496,33 @@ class TestDocumentScopeQueryParam:
                 params=params,
             )
             assert c.status_code == 404, f"count {params} leaked: {c.status_code}"
+
+            # Upsert verb (new in consolidation).
+            up = e2e_client.post(
+                f"/api/tables/{table_id}/documents/upsert",
+                headers=alice_user.headers,
+                params=params,
+                json={"id": "k1", "data": {"x": 1}},
+            )
+            assert up.status_code == 404, f"upsert {params} leaked: {up.status_code}"
+
+            # Batch insert/upsert.
+            b = e2e_client.post(
+                f"/api/tables/{table_id}/documents/batch",
+                headers=alice_user.headers,
+                params=params,
+                json={"documents": [{"data": {"x": 1}}]},
+            )
+            assert b.status_code == 404, f"batch {params} leaked: {b.status_code}"
+
+            # Batch delete.
+            bd = e2e_client.post(
+                f"/api/tables/{table_id}/documents/batch-delete",
+                headers=alice_user.headers,
+                params=params,
+                json={"ids": [doc_id]},
+            )
+            assert bd.status_code == 404, f"batch-delete {params} leaked: {bd.status_code}"
 
         # Same checks via NAME (the existing _resolve_target_org_safe path
         # already 404s here because the resolved org is alice's, and her org
