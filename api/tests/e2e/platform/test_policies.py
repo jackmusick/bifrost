@@ -5,8 +5,16 @@ import uuid
 import pytest
 
 
-def _create_table(e2e_client, headers, name: str, policies=None) -> str:
-    body = {"name": name, "description": "policy test table"}
+def _create_table(e2e_client, headers, name: str, policies=None, organization_id=None) -> str:
+    """Create a table for policy testing.
+
+    Defaults to a GLOBAL table (organization_id=None) so the org gate in
+    get_table_or_404 doesn't confound the policy-layer assertions. Tests
+    that specifically need an org-scoped table can pass organization_id.
+    """
+    # Explicitly mark as global so the platform-admin's home org doesn't
+    # leak into the table's org_id when caller didn't specify one.
+    body = {"name": name, "description": "policy test table", "organization_id": organization_id}
     if policies is not None:
         body["policies"] = policies
     resp = e2e_client.post("/api/tables", headers=headers, json=body)

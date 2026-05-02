@@ -577,15 +577,6 @@ class DocumentRepository:
 # =============================================================================
 
 
-async def _get_table_or_404(ctx: Context, table_id: UUID) -> Table:
-    """Get table by UUID, raise 404 if not found."""
-    result = await ctx.db.execute(select(Table).where(Table.id == table_id))
-    table = result.scalar_one_or_none()
-    if table is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
-    return table
-
-
 def _resolve_target_org_safe(ctx: Context, scope: str | None) -> UUID | None:
     """Resolve the target organization ID from scope parameter (with auth check)."""
     try:
@@ -602,23 +593,29 @@ async def get_table_or_404(
     name_or_id: str,
     scope: str | None = None,
 ) -> Table:
-    """Get table by name or UUID, raise 404 if not found."""
-    target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
+    """Get table by name or UUID, raise 404 if not found.
 
-    # Try UUID lookup first
+    Routes both UUID and name lookups through ``OrgScopedRepository.get``,
+    which already enforces the org gate (its ID-lookup branch returns None
+    for non-superusers reaching outside their own-or-global scope). Avoids
+    bypassing the gate with raw SELECT.
+    """
+    target_org_id = _resolve_target_org_safe(ctx, scope)
+    repo = TableRepository(
+        ctx.db, target_org_id, is_superuser=ctx.user.is_superuser
+    )
+
+    # Try UUID lookup first — repo.get(id=...) enforces the org gate for
+    # non-superusers (returns None if entity is in a different org).
     table: Table | None = None
     try:
         table_uuid = UUID(name_or_id)
-        result = await ctx.db.execute(
-            select(Table).where(Table.id == table_uuid)
-        )
-        table = result.scalar_one_or_none()
+        table = await repo.get(id=table_uuid)
     except ValueError:
         # Not a UUID — fall through to name-based lookup
         logger.debug(f"table identifier {name_or_id!r} is not a UUID, falling back to name lookup")
 
-    # Fall back to name lookup
+    # Fall back to name lookup (cascade scoping: org-specific then global)
     if not table:
         table = await repo.get_by_name(name_or_id)
 
@@ -627,47 +624,6 @@ async def get_table_or_404(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Table '{name_or_id}' not found",
         )
-
-    return table
-
-
-async def get_or_create_table(
-    ctx: Context,
-    name_or_id: str,
-    scope: str | None = None,
-    created_by: str | None = None,
-) -> Table:
-    """Get table by name or UUID, auto-creating if it doesn't exist.
-
-    This is used by insert/upsert/query operations to enable
-    schema-less table usage without explicit table creation.
-    """
-    target_org_id = _resolve_target_org_safe(ctx, scope)
-    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
-
-    # Try UUID lookup first
-    table: Table | None = None
-    try:
-        table_uuid = UUID(name_or_id)
-        result = await ctx.db.execute(
-            select(Table).where(Table.id == table_uuid)
-        )
-        table = result.scalar_one_or_none()
-    except ValueError:
-        # Not a UUID — fall through to name-based lookup / auto-create
-        logger.debug(f"table identifier {name_or_id!r} is not a UUID, falling back to name lookup")
-
-    # Fall back to name lookup
-    if not table:
-        table = await repo.get_by_name(name_or_id)
-
-    if not table:
-        # Auto-create table with minimal defaults (only for name-based access)
-        from src.models.contracts.tables import TableCreate
-
-        table_data = TableCreate(name=name_or_id)
-        table = await repo.create_table(table_data, created_by=created_by or "system")
-        logger.info(f"Auto-created table '{name_or_id}' in org {target_org_id}")
 
     return table
 

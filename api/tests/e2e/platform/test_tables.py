@@ -118,12 +118,24 @@ class TestTableUpdatePublic:
 class TestTableDefaultDeny:
     """Non-admin users are denied by default when only the seeded admin_bypass policy applies."""
 
-    def test_default_deny_non_superuser(self, e2e_client, platform_admin, non_admin_user):
-        """A freshly-created table only grants admins; non-admins see empty reads and 403 writes."""
+    def test_default_deny_non_superuser_in_same_org(
+        self, e2e_client, platform_admin, non_admin_user, org1
+    ):
+        """A freshly-created table in non-admin's org only grants admins;
+        non-admins in the same org see empty reads and 403 writes from the
+        policy layer (admin_bypass-only seed)."""
+        org1_id = org1["id"]
         table_name = f"default_deny_{uuid4().hex[:8]}"
-        table_id = _create_table(e2e_client, platform_admin.headers, table_name)
+        # Create the table IN non-admin's org, otherwise the org gate (not
+        # the policy gate) kicks in and produces 404 instead of 403.
+        table_id = _create_table(
+            e2e_client,
+            platform_admin.headers,
+            table_name,
+            organization_id=org1_id,
+        )
 
-        # Non-admin insert → 403
+        # Non-admin insert → 403 (policy denies)
         insert_resp = e2e_client.post(
             f"/api/tables/{table_id}/documents",
             headers=non_admin_user.headers,
@@ -146,18 +158,17 @@ class TestDocumentScopeQueryParam:
     """`?scope=` query param on /tables/{table_id}/documents/* endpoints.
 
     Mirrors the Python SDK's `tables.*` scope semantics on the REST surface
-    consumed by the web SDK. The server uses ``_resolve_target_org_safe`` →
-    ``resolve_target_org`` from ``src.core.org_filter``, which keys off
-    ``user.is_superuser``:
+    consumed by the web SDK. Two layers of enforcement:
 
-    - Superusers (= provider admins) may target any org via ``?scope=<uuid>``,
-      ``?scope=global``, or omit the param.
-    - Non-superusers always resolve to their own org; ``scope`` is silently
-      ignored at this layer (it is *not* a 422). Cross-org *enforcement* for
-      non-providers lives in the SDK's ``ExecutionContext.set_scope`` /
-      ``resolve_scope`` (see ``tests/unit/test_scope_override.py``); the
-      REST endpoint just refuses to leak data because the resolved org is
-      always the caller's own.
+    - ``_resolve_target_org_safe`` (silent fallback): non-superuser scope is
+      ignored, returning their own org for the name-based lookup path.
+    - ``get_table_or_404`` org gate (hard 404): after fetching by UUID or
+      name, if the table's ``organization_id`` is neither None (global) nor
+      the caller's home org, raise 404. Non-superusers cannot reach another
+      org's table at any document endpoint regardless of scope.
+
+    Superusers (= provider admins) bypass the gate; ``scope`` selects which
+    org their request targets.
     """
 
     def test_provider_admin_targets_other_org_via_scope(
@@ -425,27 +436,23 @@ class TestDocumentScopeQueryParam:
         )
         assert q.status_code == 422, q.text
 
-    def test_uuid_lookup_does_not_leak_other_org_rows(
+    def test_non_superuser_cannot_reach_other_org_table_by_uuid(
         self, e2e_client, platform_admin, alice_user, org2
     ):
-        """A non-superuser who learns another org's table UUID cannot read its rows.
+        """Hard rule: non-superuser + non-self-org + non-global = 404 at every endpoint.
 
-        get_table_or_404's UUID branch fetches the Table row without an org
-        filter (pre-existing behavior). The defense is the policy gate, not
-        the table lookup. Verify the policy gate holds: alice (org1) targets
-        an org2 table by UUID + scope, gets the table object back, but the
-        rows are policy-filtered to empty.
+        The org gate fires before the policy layer in get_table_or_404. UUID
+        lookup is org-blind, so the gate runs after fetch — alice cannot reach
+        an org2 table at any document endpoint regardless of method or scope.
         """
         org2_id = org2["id"]
-        name = f"uuid_leak_{uuid4().hex[:8]}"
-        # Org2 table with admin_bypass only — no read for non-org2 users.
+        name = f"hardgate_{uuid4().hex[:8]}"
         table_id = _create_table(
             e2e_client,
             platform_admin.headers,
             name,
             organization_id=org2_id,
         )
-        # Provider admin inserts a row into org2.
         ins = e2e_client.post(
             f"/api/tables/{name}/documents",
             headers=platform_admin.headers,
@@ -453,29 +460,111 @@ class TestDocumentScopeQueryParam:
             json={"data": {"secret": "org2-only"}},
         )
         assert ins.status_code == 201, ins.text
+        doc_id = ins.json()["id"]
 
-        # Alice (org1) hits the org2 table BY UUID with ?scope=org2_id.
-        # Scope is silently ignored for non-superusers, but the UUID lookup
-        # at line 614 of tables.py finds the table regardless. The policy
-        # gate must filter the read to empty.
+        # Every document endpoint must 404 (or 403 for body-bearing rejects).
+        # All four CRUD verbs against the UUID, with and without scope.
+        for params in ({}, {"scope": org2_id}, {"scope": "global"}):
+            q = e2e_client.post(
+                f"/api/tables/{table_id}/documents/query",
+                headers=alice_user.headers,
+                params=params,
+                json={},
+            )
+            assert q.status_code == 404, f"query {params} leaked: {q.status_code} {q.text}"
+
+            g = e2e_client.get(
+                f"/api/tables/{table_id}/documents/{doc_id}",
+                headers=alice_user.headers,
+                params=params,
+            )
+            assert g.status_code == 404, f"get {params} leaked: {g.status_code}"
+
+            i = e2e_client.post(
+                f"/api/tables/{table_id}/documents",
+                headers=alice_user.headers,
+                params=params,
+                json={"data": {"x": 1}},
+            )
+            assert i.status_code == 404, f"insert {params} succeeded: {i.status_code}"
+
+            p = e2e_client.patch(
+                f"/api/tables/{table_id}/documents/{doc_id}",
+                headers=alice_user.headers,
+                params=params,
+                json={"data": {"x": 1}},
+            )
+            assert p.status_code == 404, f"patch {params} leaked: {p.status_code}"
+
+            d = e2e_client.delete(
+                f"/api/tables/{table_id}/documents/{doc_id}",
+                headers=alice_user.headers,
+                params=params,
+            )
+            assert d.status_code == 404, f"delete {params} leaked: {d.status_code}"
+
+            c = e2e_client.get(
+                f"/api/tables/{table_id}/documents/count",
+                headers=alice_user.headers,
+                params=params,
+            )
+            assert c.status_code == 404, f"count {params} leaked: {c.status_code}"
+
+        # Same checks via NAME (the existing _resolve_target_org_safe path
+        # already 404s here because the resolved org is alice's, and her org
+        # has no table by this name; included for completeness).
+        q_by_name = e2e_client.post(
+            f"/api/tables/{name}/documents/query",
+            headers=alice_user.headers,
+            json={},
+        )
+        assert q_by_name.status_code == 404
+
+    def test_non_superuser_can_reach_global_tables(
+        self, e2e_client, platform_admin, alice_user
+    ):
+        """Global tables (organization_id IS NULL) ARE accessible to all users.
+
+        The org gate allows: superuser, OR table.organization_id is None,
+        OR table.organization_id == user.organization_id.
+        """
+        name = f"global_access_{uuid4().hex[:8]}"
+        # Create a global table with everyone_read so alice can see rows.
+        resp = e2e_client.post(
+            "/api/tables",
+            headers=platform_admin.headers,
+            json={
+                "name": name,
+                "description": "global",
+                "organization_id": None,
+                "policies": {
+                    "policies": [
+                        {
+                            "name": "admin_bypass",
+                            "actions": ["read", "create", "update", "delete"],
+                            "when": {"user": "is_platform_admin"},
+                        },
+                        {"name": "everyone_read", "actions": ["read"], "when": None},
+                    ],
+                },
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        table_id = resp.json()["id"]
+
+        ins = e2e_client.post(
+            f"/api/tables/{name}/documents",
+            headers=platform_admin.headers,
+            json={"data": {"public": True}},
+        )
+        assert ins.status_code == 201
+
+        # Alice can read via UUID
         q = e2e_client.post(
             f"/api/tables/{table_id}/documents/query",
             headers=alice_user.headers,
-            params={"scope": org2_id},
             json={},
         )
         assert q.status_code == 200, q.text
-        body = q.json()
-        assert body["table_id"] == table_id
-        assert body["documents"] == [], (
-            f"LEAK: alice saw org2 rows via UUID + scope: {body['documents']}"
-        )
-
-        # Direct GET by doc_id is also gated.
-        doc_id = ins.json()["id"]
-        get_one = e2e_client.get(
-            f"/api/tables/{table_id}/documents/{doc_id}",
-            headers=alice_user.headers,
-            params={"scope": org2_id},
-        )
-        assert get_one.status_code == 403, get_one.text
+        assert q.json()["table_id"] == table_id
+        assert len(q.json()["documents"]) == 1
