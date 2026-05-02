@@ -1237,6 +1237,7 @@ async def batch_documents(
 
     inserted = 0
     errors: list[dict[str, Any]] = []
+    written: list[Document] = []
 
     for i, item in enumerate(body.documents):
         item_created_by, item_updated_by = attribution[i]
@@ -1251,6 +1252,7 @@ async def batch_documents(
                         old_row=old_row,
                         new_row=_row_from_doc(doc),
                     )
+                    written.append(doc)
                 inserted += 1
                 continue
             doc = await repo.insert(
@@ -1265,12 +1267,17 @@ async def batch_documents(
                 old_row=None,
                 new_row=_row_from_doc(doc),
             )
+            written.append(doc)
             inserted += 1
         except Exception as exc:
             errors.append({"id": item.id, "error": str(exc)})
 
     await ctx.db.commit()
-    return DocumentBatchCreateResponse(inserted=inserted, errors=errors)
+    return DocumentBatchCreateResponse(
+        inserted=inserted,
+        errors=errors,
+        documents=[DocumentPublic.model_validate(d) for d in written],
+    )
 
 
 @router.post(
@@ -1318,6 +1325,7 @@ async def batch_delete_documents(
         )
 
     deleted = 0
+    deleted_ids: list[str] = []
     for i, doc_id in enumerate(body.ids):
         existing = existing_by_index.get(i)
         if existing is None:
@@ -1332,6 +1340,7 @@ async def batch_delete_documents(
                 new_row=None,
             )
             deleted += 1
+            deleted_ids.append(doc_id)
 
     await ctx.db.commit()
-    return DocumentBatchDeleteResponse(deleted=deleted)
+    return DocumentBatchDeleteResponse(deleted=deleted, deleted_ids=deleted_ids)

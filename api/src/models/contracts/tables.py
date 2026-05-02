@@ -203,6 +203,13 @@ class DocumentBatchCreateResponse(BaseModel):
 
     inserted: int
     errors: list[dict[str, Any]] = Field(default_factory=list)
+    documents: list["DocumentPublic"] = Field(
+        default_factory=list,
+        description=(
+            "Inserted/updated documents in submission order. Lets SDK callers "
+            "use auto-generated ids without a follow-up fetch."
+        ),
+    )
 
 
 class DocumentBatchUpsertResponse(BaseModel):
@@ -222,6 +229,10 @@ class DocumentBatchDeleteResponse(BaseModel):
     """Response for a batch delete."""
 
     deleted: int
+    deleted_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of documents that were actually deleted (in submission order, skipping ids that didn't exist).",
+    )
 
 
 class DocumentUpdate(BaseModel):
@@ -453,3 +464,7 @@ class SDKDocumentCountRequest(BaseModel):
     where: dict[str, Any] | None = None
     scope: str | None = None
     app: str | None = None
+
+
+# Resolve forward reference (DocumentBatchCreateResponse → DocumentPublic).
+DocumentBatchCreateResponse.model_rebuild()
