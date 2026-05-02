@@ -3473,22 +3473,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6731,6 +6731,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/{table_id}/documents/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count documents
+         * @description Count documents in a table.
+         *
+         *     Returns 404 if the table doesn't exist.
+         *
+         *     NOTE: This route is declared BEFORE ``GET /{table_id}/documents/{doc_id}``
+         *     so the literal ``/count`` segment matches first. Reversing the order makes
+         *     FastAPI bind ``doc_id="count"`` and return 404, silently disabling the
+         *     count endpoint.
+         */
+        get: operations["count_documents_api_tables__table_id__documents_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{table_id}/documents/{doc_id}": {
         parameters: {
             query?: never;
@@ -6781,28 +6808,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{table_id}/documents/count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Count documents
-         * @description Count documents in a table.
-         *
-         *     Returns 404 if the table doesn't exist.
-         */
-        get: operations["count_documents_api_tables__table_id__documents_count_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/tables/{table_id}/documents/batch": {
         parameters: {
             query?: never;
@@ -6818,6 +6823,9 @@ export interface paths {
          *
          *     When `upsert=true`, each item with a provided id will be updated if it
          *     exists, otherwise inserted. Items without an id are always inserted.
+         *
+         *     All-or-nothing on policy denials: any denied row aborts the whole batch
+         *     with a 403 listing every denied index.
          */
         post: operations["batch_documents_api_tables__table_id__documents_batch_post"];
         delete?: never;
@@ -6839,7 +6847,8 @@ export interface paths {
          * Batch delete documents by ID
          * @description Delete multiple documents by ID.
          *
-         *     Skips IDs that don't exist.
+         *     Skips IDs that don't exist. All-or-nothing on policy denials: any
+         *     denied row aborts the whole batch with a 403 listing every denied index.
          */
         post: operations["batch_delete_documents_api_tables__table_id__documents_batch_delete_post"];
         delete?: never;
@@ -11296,6 +11305,11 @@ export interface components {
          * @description Response for document queries.
          */
         DocumentListResponse: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
             /** Documents */
             documents: components["schemas"]["DocumentPublic"][];
             /** Total */
@@ -25969,7 +25983,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26002,7 +26016,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26035,7 +26049,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26068,7 +26082,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -31748,7 +31762,10 @@ export interface operations {
     };
     insert_document_api_tables__table_id__documents_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31781,9 +31798,46 @@ export interface operations {
             };
         };
     };
+    count_documents_api_tables__table_id__documents_count_get: {
+        parameters: {
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_tables__table_id__documents__doc_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31815,7 +31869,10 @@ export interface operations {
     };
     delete_document_api_tables__table_id__documents__doc_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31845,7 +31902,10 @@ export interface operations {
     };
     update_document_api_tables__table_id__documents__doc_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31881,7 +31941,10 @@ export interface operations {
     };
     query_documents_api_tables__table_id__documents_query_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31914,40 +31977,12 @@ export interface operations {
             };
         };
     };
-    count_documents_api_tables__table_id__documents_count_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                table_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentCountResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     batch_documents_api_tables__table_id__documents_batch_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31982,7 +32017,10 @@ export interface operations {
     };
     batch_delete_documents_api_tables__table_id__documents_batch_delete_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;

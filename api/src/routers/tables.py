@@ -833,9 +833,13 @@ async def insert_document(
     table_id: str,
     body: DocumentCreate,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> DocumentPublic:
     """Insert a new document into the table."""
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     created_by = str(ctx.user.user_id)
 
@@ -884,6 +888,10 @@ async def insert_document(
 async def count_documents(
     table_id: str,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> DocumentCountResponse:
     """Count documents in a table.
 
@@ -894,7 +902,7 @@ async def count_documents(
     FastAPI bind ``doc_id="count"`` and return 404, silently disabling the
     count endpoint.
     """
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
 
     policies = _load_policies(table)
     read_filter = compile_read_filter(policies, ctx.user)
@@ -916,9 +924,13 @@ async def get_document(
     table_id: str,
     doc_id: str,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> DocumentPublic:
     """Get a document by ID."""
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     doc = await repo.get(doc_id)
     if doc is None:
@@ -937,9 +949,13 @@ async def update_document(
     doc_id: str,
     body: DocumentUpdate,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> DocumentPublic:
     """Update a document (partial update, merges with existing)."""
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     existing = await repo.get(doc_id)
     if existing is None:
@@ -969,9 +985,13 @@ async def delete_document(
     table_id: str,
     doc_id: str,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> None:
     """Delete a document."""
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     existing = await repo.get(doc_id)
     if existing is None:
@@ -998,12 +1018,16 @@ async def query_documents(
     table_id: str,
     query_params: DocumentQuery,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> DocumentListResponse:
     """Query documents with filtering and pagination.
 
     Returns 404 if the table doesn't exist.
     """
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
 
     policies = _load_policies(table)
     read_filter = compile_read_filter(policies, ctx.user)
@@ -1011,6 +1035,7 @@ async def query_documents(
         # No rule grants read → empty result. Don't 403 to avoid leaking
         # the table's existence to unauthorized callers.
         return DocumentListResponse(
+            table_id=table.id,
             documents=[],
             total=0,
             limit=query_params.limit,
@@ -1020,6 +1045,7 @@ async def query_documents(
     repo = DocumentRepository(ctx.db, table)
     documents, total = await repo.query(query_params, extra_where=read_filter)
     return DocumentListResponse(
+        table_id=table.id,
         documents=[DocumentPublic.model_validate(d) for d in documents],
         total=total,
         limit=query_params.limit,
@@ -1036,6 +1062,10 @@ async def batch_documents(
     table_id: str,
     body: DocumentBatchCreate,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> DocumentBatchCreateResponse:
     """Insert (or upsert) multiple documents in a single request.
 
@@ -1045,7 +1075,7 @@ async def batch_documents(
     All-or-nothing on policy denials: any denied row aborts the whole batch
     with a 403 listing every denied index.
     """
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     created_by = str(ctx.user.user_id)
     policies = _load_policies(table)
@@ -1120,13 +1150,17 @@ async def batch_delete_documents(
     table_id: str,
     body: DocumentBatchDeleteRequest,
     ctx: Context,
+    scope: str | None = Query(
+        None,
+        description="Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs.",
+    ),
 ) -> DocumentBatchDeleteResponse:
     """Delete multiple documents by ID.
 
     Skips IDs that don't exist. All-or-nothing on policy denials: any
     denied row aborts the whole batch with a 403 listing every denied index.
     """
-    table = await get_table_or_404(ctx, table_id)
+    table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     policies = _load_policies(table)
 

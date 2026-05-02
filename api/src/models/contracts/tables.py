@@ -294,6 +294,7 @@ class DocumentQuery(BaseModel):
 class DocumentListResponse(BaseModel):
     """Response for document queries."""
 
+    table_id: UUID
     documents: list[DocumentPublic]
     total: int
     limit: int
