@@ -357,6 +357,12 @@ async def _get_cli_org_id(
 
     Returns:
         Organization UUID string, or None for global scope
+
+    Raises:
+        HTTPException 422: If ``scope`` is a non-empty string that is
+            neither ``"global"`` nor a valid UUID. Without this gate the
+            value flows into raw SQL and surfaces as a downstream
+            asyncpg type error (500).
     """
     # "global" scope means no org resolution
     if scope == "global":
@@ -364,6 +370,13 @@ async def _get_cli_org_id(
 
     # If scope is a UUID, use it directly as the org_id
     if scope:
+        try:
+            UUID(scope)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"scope must be 'global', a UUID, or null; got {scope!r}",
+            ) from None
         return scope
 
     # Fall back to developer context default org
