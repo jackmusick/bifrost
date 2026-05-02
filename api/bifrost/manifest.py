@@ -262,7 +262,6 @@ class ManifestTable(BaseModel):
     name: str = Field(default="", description="Table display name")
     description: str | None = Field(default=None, description="Table description")
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)")
-    application_id: str | None = Field(default=None, description="App UUID (for app-scoped tables)")
     table_schema: dict | None = Field(default=None, alias="schema", description="Column definitions and validation hints")
     policies: list[ManifestPolicy] | None = Field(
         default=None,
@@ -491,7 +490,6 @@ def validate_manifest(manifest: Manifest) -> list[str]:
     role_ids = {role.id for role in manifest.roles}
     wf_ids = {wf.id for wf in manifest.workflows.values()}
     integration_ids = {integ.id for integ in manifest.integrations.values()}
-    app_ids = {app.id for app in manifest.apps.values()}
     agent_ids = {a.id for a in manifest.agents.values()}
 
     # Check organization references
@@ -549,13 +547,11 @@ def validate_manifest(manifest: Manifest) -> list[str]:
         if cfg.organization_id and cfg.organization_id not in org_ids:
             errors.append(f"Config '{key}' references unknown organization: {cfg.organization_id}")
 
-    # Tables: organization_id and application_id
+    # Tables: organization_id only (Table.application_id was removed)
     for _key, table in manifest.tables.items():
         table_label = table.name or table.id
         if table.organization_id and table.organization_id not in org_ids:
             errors.append(f"Table '{table_label}' references unknown organization: {table.organization_id}")
-        if table.application_id and table.application_id not in app_ids:
-            errors.append(f"Table '{table_label}' references unknown application: {table.application_id}")
 
     # Events: source + subscription refs
     for _key, evt in manifest.events.items():

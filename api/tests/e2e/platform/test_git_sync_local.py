@@ -4145,71 +4145,6 @@ class TestRoleAssignmentSync:
 class TestImportOrder:
     """Dependency chain correctness."""
 
-    async def test_table_with_application_id(
-        self, db_session: AsyncSession, sync_service, working_clone,
-    ):
-        """Table refs app, both in manifest → no FK error (apps before tables)."""
-        from src.models.orm.tables import Table
-
-        org_id = uuid4()
-        app_id = str(uuid4())
-        table_id = str(uuid4())
-
-        from src.models.orm.organizations import Organization
-        db_session.add(Organization(id=org_id, name="TableOrg", is_active=True, created_by="git-sync"))
-        await db_session.commit()
-
-        work_dir = Path(working_clone.working_dir)
-        bifrost_dir = work_dir / ".bifrost"
-        bifrost_dir.mkdir(exist_ok=True)
-
-        # Write app layout file
-        app_dir = work_dir / "apps" / "testapp"
-        app_dir.mkdir(parents=True, exist_ok=True)
-        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
-
-        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
-            "organizations": [{"id": str(org_id), "name": "TableOrg"}]
-        }, default_flow_style=False))
-        (bifrost_dir / "apps.yaml").write_text(yaml.dump({
-            "apps": {
-                "testapp": {
-                    "id": app_id,
-                    "path": "apps/testapp",
-                    "slug": "testapp",
-                    "name": "TestApp",
-                    "organization_id": str(org_id),
-                }
-            }
-        }, default_flow_style=False))
-        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
-            "tables": {
-                "TestTable": {
-                    "id": table_id,
-                    "organization_id": str(org_id),
-                    "application_id": app_id,
-                }
-            }
-        }, default_flow_style=False))
-
-        working_clone.index.add([
-            "apps/testapp/_layout.tsx",
-            ".bifrost/organizations.yaml",
-            ".bifrost/apps.yaml",
-            ".bifrost/tables.yaml",
-        ])
-        working_clone.index.commit("Table with app ref")
-        working_clone.remotes.origin.push("main")
-
-        result = await sync_service.desktop_sync(confirm_deletes=True)
-        assert result.success, f"Sync failed: {result.error}"
-
-        row = (await db_session.execute(
-            select(Table).where(Table.id == table_id)
-        )).scalar_one_or_none()
-        assert row is not None, "Table not created"
-        assert str(row.application_id) == app_id
-
     async def test_event_sub_workflow_ref_by_path(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
@@ -4467,7 +4402,6 @@ class TestImportOrder:
                 "FullTable": {
                     "id": table_id,
                     "organization_id": org_id,
-                    "application_id": app_id,
                 }
             }
         }, default_flow_style=False))
@@ -4544,7 +4478,6 @@ class TestImportOrder:
             select(Table).where(Table.id == table_id)
         )).scalar_one_or_none()
         assert table is not None, "Table not created"
-        assert str(table.application_id) == app_id
 
 
 @pytest.mark.e2e

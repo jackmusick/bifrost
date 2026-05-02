@@ -461,7 +461,6 @@ class SDKTableCreateRequest(BaseModel):
         default=None,
         description="Scope: None=context org, 'global'=global, UUID=specific org",
     )
-    app: str | None = Field(default=None, description="Application UUID to scope table to an app")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -469,7 +468,6 @@ class SDKTableCreateRequest(BaseModel):
 class SDKTableListRequest(BaseModel):
     """SDK request for listing tables."""
     scope: str | None = Field(default=None, description="Organization scope")
-    app: str | None = Field(default=None, description="Filter by application UUID")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -480,7 +478,6 @@ class SDKTableInfo(BaseModel):
     id: str = Field(..., description="Table UUID")
     name: str = Field(..., description="Table name")
     organization_id: str | None = Field(None, description="Organization UUID or null for global")
-    application_id: str | None = Field(None, description="Application UUID if app-scoped")
     table_schema: dict[str, Any] | None = Field(None, description="Schema hints")
     description: str | None = Field(None, description="Table description")
     created_at: str = Field(..., description="Creation timestamp (ISO format)")

@@ -2491,13 +2491,11 @@ async def cli_create_table(
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
-    app_uuid = UUID(request.app) if request.app else None
 
-    # Check if table exists (same name, org, and app)
+    # Check if table exists in the same scope.
     stmt = select(Table).where(
         Table.name == request.name,
         Table.organization_id == org_uuid,
-        Table.application_id == app_uuid,
     )
     result = await db.execute(stmt)
     existing = result.scalar_one_or_none()
@@ -2518,7 +2516,6 @@ async def cli_create_table(
         description=request.description,
         schema=request.table_schema,
         organization_id=org_uuid,
-        application_id=app_uuid,
         created_by=current_user.email,
         access=make_seed_admin_bypass(),
     )
@@ -2532,7 +2529,6 @@ async def cli_create_table(
         id=str(table.id),
         name=table.name,
         organization_id=str(table.organization_id) if table.organization_id else None,
-        application_id=str(table.application_id) if table.application_id else None,
         table_schema=table.schema,
         description=table.description,
         created_at=table.created_at.isoformat(),
@@ -2555,7 +2551,6 @@ async def cli_list_tables(
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
-    app_uuid = UUID(request.app) if request.app else None
 
     # Build query with cascade scoping (org + global)
     stmt = select(Table)
@@ -2569,10 +2564,6 @@ async def cli_list_tables(
     else:
         stmt = stmt.where(Table.organization_id.is_(None))
 
-    # Filter by application if specified
-    if app_uuid:
-        stmt = stmt.where(Table.application_id == app_uuid)
-
     stmt = stmt.order_by(Table.name)
     result = await db.execute(stmt)
     tables = result.scalars().all()
@@ -2582,7 +2573,6 @@ async def cli_list_tables(
             id=str(t.id),
             name=t.name,
             organization_id=str(t.organization_id) if t.organization_id else None,
-            application_id=str(t.application_id) if t.application_id else None,
             table_schema=t.schema,
             description=t.description,
             created_at=t.created_at.isoformat(),

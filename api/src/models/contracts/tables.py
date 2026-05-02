@@ -72,7 +72,6 @@ class TableUpdate(BaseModel):
     )
     description: str | None = None
     schema: dict[str, Any] | None = None
-    application_id: UUID | None = None
     policies: TablePolicies | None = Field(
         default=None,
         description=(
@@ -89,7 +88,6 @@ class TablePublic(TableBase):
 
     id: UUID
     organization_id: UUID | None
-    application_id: UUID | None
     policies: TablePolicies | None = Field(
         default=None,
         validation_alias=AliasChoices("policies", "access"),

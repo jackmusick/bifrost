@@ -2129,7 +2129,6 @@ class ManifestResolver:
 
         table_id = UUID(mtable.id)
         org_id = UUID(mtable.organization_id) if mtable.organization_id else None
-        app_id = UUID(mtable.application_id) if mtable.application_id else None
         now = datetime.now(timezone.utc)
 
         # Manifest-carried policies → Table.access JSONB. The manifest stores
@@ -2176,7 +2175,6 @@ class ManifestResolver:
                 .values(
                     id=table_id,
                     description=mtable.description,
-                    application_id=app_id,
                     schema=mtable.table_schema,
                     access=access,
                     updated_at=now,
@@ -2199,7 +2197,6 @@ class ManifestResolver:
                 .values(
                     name=table_name,
                     description=mtable.description,
-                    application_id=app_id,
                     schema=mtable.table_schema,
                     access=access,
                     updated_at=now,
@@ -2213,7 +2210,6 @@ class ManifestResolver:
             name=table_name,
             description=mtable.description,
             organization_id=org_id,
-            application_id=app_id,
             schema=mtable.table_schema,
             access=access,
             created_by="git-sync",

@@ -532,7 +532,6 @@ def full_manifest_data():
                     "name": "ticket_cache",
                     "description": "Cached ticket data",
                     "organization_id": org_id,
-                    "application_id": app_id,
                     "schema": {
                         "columns": [
                             {"name": "ticket_id", "type": "string"},
@@ -791,7 +790,6 @@ class TestTableManifest:
         assert table.name == "ticket_cache"
         assert table.description == "Cached ticket data"
         assert table.organization_id == full_manifest_data["org_id"]
-        assert table.application_id == full_manifest_data["app_id"]
         assert table.table_schema is not None
         assert "columns" in table.table_schema
         assert len(table.table_schema["columns"]) == 2
@@ -1264,17 +1262,6 @@ class TestValidateManifestNewTypes:
         manifest = parse_manifest(yaml_str)
         errors = validate_manifest(manifest)
         assert any("organization" in e.lower() for e in errors)
-
-    def test_table_bad_app_ref(self, full_manifest_data):
-        """Table referencing unknown application is caught."""
-        from bifrost.manifest import parse_manifest, validate_manifest
-
-        data = full_manifest_data["manifest"]
-        data["tables"][full_manifest_data["table_id"]]["application_id"] = str(uuid4())
-        yaml_str = yaml.dump(data, default_flow_style=False)
-        manifest = parse_manifest(yaml_str)
-        errors = validate_manifest(manifest)
-        assert any("application" in e.lower() for e in errors)
 
     def test_event_bad_org_ref(self, full_manifest_data):
         """Event source referencing unknown org is caught."""

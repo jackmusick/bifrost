@@ -23,7 +23,6 @@ def test_public_maps_access_to_policies():
         "id": "00000000-0000-0000-0000-000000000001",
         "name": "t1",
         "organization_id": None,
-        "application_id": None,
         "schema": None,
         "description": None,
         "access": {  # ORM column name
@@ -54,7 +53,6 @@ def test_public_maps_access_to_policies_from_orm_object():
             self.id = uuid4()
             self.name = "t1"
             self.organization_id = None
-            self.application_id = None
             self.schema = None
             self.description = None
             self.access = {  # ORM column name
@@ -96,7 +94,6 @@ def test_public_outputs_policies_field_name():
         "id": uuid4(),
         "name": "t1",
         "organization_id": None,
-        "application_id": None,
         "schema": None,
         "description": None,
         "access": {"policies": [{"name": "p1", "actions": ["read"], "when": None}]},

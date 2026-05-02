@@ -16,7 +16,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.models.orm.base import Base
 
 if TYPE_CHECKING:
-    from src.models.orm.applications import Application
     from src.models.orm.organizations import Organization
 
 
@@ -26,7 +25,6 @@ class Table(Base):
     Tables are flexible document stores similar to Dataverse/Airtable.
     - organization_id = NULL: Global table (platform-wide)
     - organization_id = UUID: Organization-scoped table
-    - application_id = UUID: Optional app association
 
     The schema field is optional and provides hints for validation/UI,
     but is not enforced at the database level.
@@ -38,9 +36,6 @@ class Table(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), default=None
-    )
-    application_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("applications.id", ondelete="SET NULL", onupdate="CASCADE"), default=None
     )
     schema: Mapped[dict | None] = mapped_column(JSONB, default=None)
     # Stores the policies block per
@@ -63,9 +58,6 @@ class Table(Base):
     # Relationships
     organization: Mapped["Organization | None"] = relationship(
         "Organization", back_populates="tables"
-    )
-    application: Mapped["Application | None"] = relationship(
-        "Application", back_populates="tables"
     )
     documents: Mapped[list["Document"]] = relationship(
         "Document", back_populates="table", cascade="all, delete-orphan"

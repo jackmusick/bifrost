@@ -283,7 +283,6 @@ def serialize_table(table: Table) -> ManifestTable:
         name=table.name,
         description=table.description,
         organization_id=str(table.organization_id) if table.organization_id else None,
-        application_id=str(table.application_id) if table.application_id else None,
         policies=policies,
         **{"schema": table.schema},  # type: ignore[arg-type]  # alias for table_schema
     )

@@ -34,5 +34,4 @@ class TableUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255, pattern=r"^[a-z][a-z0-9_-]*$")
     description: str | None = None
     schema: dict[str, Any] | None = None
-    application_id: UUID | None = None
     policies: dict[str, Any] | None = None

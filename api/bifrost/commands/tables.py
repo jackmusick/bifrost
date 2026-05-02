@@ -18,7 +18,6 @@ Implements Task 5i of the CLI mutation surface plan:
 Ref-lookup fields surface as user-friendly flags:
 
 * ``--organization`` (org ref) — ``TableCreate``
-* ``--application`` (app ref, UUID or slug) — ``TableUpdate``
 
 Rename safety: ``update`` fetches the current table first and, if ``--name``
 changes it, emits a prominent warning to stderr telling the user to grep

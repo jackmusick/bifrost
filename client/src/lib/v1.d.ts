@@ -3473,22 +3473,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -17546,11 +17546,6 @@ export interface components {
              * @description Scope: None=context org, 'global'=global, UUID=specific org
              */
             scope?: string | null;
-            /**
-             * App
-             * @description Application UUID to scope table to an app
-             */
-            app?: string | null;
         };
         /**
          * SDKTableInfo
@@ -17572,11 +17567,6 @@ export interface components {
              * @description Organization UUID or null for global
              */
             organization_id?: string | null;
-            /**
-             * Application Id
-             * @description Application UUID if app-scoped
-             */
-            application_id?: string | null;
             /**
              * Table Schema
              * @description Schema hints
@@ -17610,11 +17600,6 @@ export interface components {
              * @description Organization scope
              */
             scope?: string | null;
-            /**
-             * App
-             * @description Filter by application UUID
-             */
-            app?: string | null;
         };
         /**
          * ScheduleOverlapPolicy
@@ -18170,8 +18155,6 @@ export interface components {
             id: string;
             /** Organization Id */
             organization_id: string | null;
-            /** Application Id */
-            application_id: string | null;
             policies?: components["schemas"]["TablePolicies"] | null;
             /** Created At */
             created_at: string | null;
@@ -18196,8 +18179,6 @@ export interface components {
             schema?: {
                 [key: string]: unknown;
             } | null;
-            /** Application Id */
-            application_id?: string | null;
             /** @description Optional row-level access policies. See docs/superpowers/specs/2026-04-30-table-policies-design.md. */
             policies?: components["schemas"]["TablePolicies"] | null;
         };
@@ -25365,7 +25346,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25398,7 +25379,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25431,7 +25412,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25464,7 +25445,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
