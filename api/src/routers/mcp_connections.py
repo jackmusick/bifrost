@@ -28,7 +28,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete
+from sqlalchemy import delete, select
+from sqlalchemy.orm import joinedload
 
 from src.config import get_settings
 from src.core.auth import Context
@@ -38,9 +39,10 @@ from src.models.contracts.external_mcp import (
     MCPConnectionPublic,
     MCPConnectionSummary,
     MCPConnectionToolPublic,
+    UserMCPCredentialPublic,
 )
-from src.models.orm.external_mcp import MCPConnection
-from src.models.orm.oauth import OAuthProvider
+from src.models.orm.external_mcp import MCPConnection, UserMCPCredential
+from src.models.orm.oauth import OAuthProvider, OAuthToken
 from src.repositories.external_mcp import (
     MCPConnectionRepository,
     MCPServerRepository,
@@ -560,4 +562,65 @@ async def connect_user_credential(
     return MCPConnectAuthorizeResponse(
         authorization_url=authorization_url,
         state=state_token,
+    )
+
+
+# =============================================================================
+# Per-user credentials enumeration / disconnect
+# =============================================================================
+
+
+@me_router.get(
+    "",
+    response_model=list[UserMCPCredentialPublic],
+    summary="List the caller's per-user MCP credentials",
+    description=(
+        "Returns one row per MCP connection the caller has personally "
+        "OAuth'd. Includes the OAuth token's expiry so the UI can render "
+        "'expires in N days'. Does not return the bearer token itself."
+    ),
+)
+async def list_user_credentials(ctx: Context) -> list[UserMCPCredentialPublic]:
+    stmt = (
+        select(UserMCPCredential)
+        .options(joinedload(UserMCPCredential.oauth_token))
+        .where(UserMCPCredential.user_id == ctx.user.user_id)
+    )
+    rows = (await ctx.db.execute(stmt)).scalars().all()
+    return [UserMCPCredentialPublic.model_validate(r) for r in rows]
+
+
+@me_router.delete(
+    "/{connection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Disconnect (forget) the caller's per-user credential",
+    description=(
+        "Deletes the caller's user_mcp_credentials row for this connection "
+        "and the underlying oauth_tokens row. Idempotent — returns 204 "
+        "whether or not a credential existed."
+    ),
+)
+async def disconnect_user_credential(connection_id: UUID, ctx: Context) -> None:
+    cred_q = (
+        select(UserMCPCredential)
+        .where(UserMCPCredential.user_id == ctx.user.user_id)
+        .where(UserMCPCredential.connection_id == connection_id)
+    )
+    cred = (await ctx.db.execute(cred_q)).scalar_one_or_none()
+    if cred is None:
+        return  # idempotent: nothing to do
+
+    token_id = cred.oauth_token_id
+    await ctx.db.execute(
+        delete(UserMCPCredential).where(UserMCPCredential.id == cred.id)
+    )
+    # Tokens are CASCADE-deleted from credentials, but we own the lifecycle
+    # for the per-user case: drop the token explicitly so it doesn't linger
+    # if some future schema change drops the cascade.
+    await ctx.db.execute(delete(OAuthToken).where(OAuthToken.id == token_id))
+    await ctx.db.commit()
+    logger.info(
+        "user mcp credential disconnected: user=%s connection=%s",
+        log_safe(str(ctx.user.user_id)),
+        log_safe(str(connection_id)),
     )

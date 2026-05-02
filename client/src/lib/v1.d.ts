@@ -8082,6 +8082,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/mcp-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's per-user MCP credentials
+         * @description Returns one row per MCP connection the caller has personally OAuth'd. Includes the OAuth token's expiry so the UI can render 'expires in N days'. Does not return the bearer token itself.
+         */
+        get: operations["list_user_credentials_api_me_mcp_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mcp-connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect (forget) the caller's per-user credential
+         * @description Deletes the caller's user_mcp_credentials row for this connection and the underlying oauth_tokens row. Idempotent — returns 204 whether or not a credential existed.
+         */
+        delete: operations["disconnect_user_credential_api_me_mcp_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -19635,6 +19675,51 @@ export interface components {
              * @description List of form IDs user can access (empty if has_access_to_all_forms=true)
              */
             form_ids?: string[];
+        };
+        /**
+         * UserMCPCredentialPublic
+         * @description Per-user credential response. Does not embed the OAuth tokens.
+         */
+        UserMCPCredentialPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /**
+             * Oauth Token Id
+             * Format: uuid
+             */
+            oauth_token_id: string;
+            /**
+             * Consent Granted At
+             * Format: date-time
+             */
+            consent_granted_at: string;
+            /** Consent Expires At */
+            consent_expires_at: string | null;
+            /** Granted Scopes */
+            granted_scopes: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * UserPublic
@@ -34846,6 +34931,55 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MCPConnectAuthorizeResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_credentials_api_me_mcp_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMCPCredentialPublic"][];
+                };
+            };
+        };
+    };
+    disconnect_user_credential_api_me_mcp_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -7,18 +7,15 @@
  * back via window.opener.postMessage({type: "mcp_oauth_success", ...})
  * and we invalidate the connection list query.
  *
- * Backend gaps (flagged for follow-up — see report):
- *   - No GET /api/me/mcp-credentials endpoint exists yet, so we can't
- *     show per-user connect status (since/expires) authoritatively. We
- *     currently display "Connect" on every row and let the popup flow
- *     drive state. After connect, the toast confirms; the list refreshes
- *     on focus.
- *   - No DELETE /api/me/mcp-connections/{id} endpoint exists for the
- *     "forget my personal credential" flow. The Disconnect button is
- *     rendered disabled with a tooltip explaining "coming soon".
+ * Backend endpoints:
+ *   - GET /api/me/mcp-connections lists the caller's per-user credentials
+ *     (consent_granted_at, consent_expires_at, granted_scopes) so the row
+ *     can show Connected / Not connected and expiration timing.
+ *   - DELETE /api/me/mcp-connections/{id} forgets a user_mcp_credentials
+ *     row (idempotent: returns 204 whether or not it existed).
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plug, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -35,12 +32,6 @@ import {
 	DataTableRow,
 } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { $api, apiClient } from "@/lib/api-client";
 
 interface ConnectionRow {
@@ -50,6 +41,22 @@ interface ConnectionRow {
 	available_in_chat: boolean;
 	available_to_autonomous: boolean;
 	has_service_token: boolean;
+	connected: boolean;
+	consent_granted_at: string | null;
+	consent_expires_at: string | null;
+}
+
+function formatRelativeFromNow(iso: string | null, kind: "since" | "in"): string | null {
+	if (!iso) return null;
+	const t = new Date(iso).getTime();
+	const now = Date.now();
+	const deltaMs = kind === "since" ? now - t : t - now;
+	if (deltaMs < 0) return kind === "in" ? "expired" : null;
+	const days = Math.round(deltaMs / 86400000);
+	if (days >= 2) return kind === "since" ? `since ${days}d ago` : `in ${days}d`;
+	const hours = Math.round(deltaMs / 3600000);
+	if (hours >= 2) return kind === "since" ? `since ${hours}h ago` : `in ${hours}h`;
+	return kind === "since" ? "moments ago" : "soon";
 }
 
 export function UserMCPConnections() {
@@ -71,20 +78,36 @@ export function UserMCPConnections() {
 		{ params: { query: { active_only: false } } },
 	);
 
-	const isLoading = connsLoading || serversLoading;
+	// The caller's per-user credentials (one row per connection they've connected).
+	const { data: credentials = [], isLoading: credsLoading } = $api.useQuery(
+		"get",
+		"/api/me/mcp-connections",
+	);
+
+	const [pendingDisconnect, setPendingDisconnect] = useState<string | null>(null);
+
+	const isLoading = connsLoading || serversLoading || credsLoading;
 
 	const rows: ConnectionRow[] = useMemo(() => {
 		const serverById = new Map<string, string>();
 		for (const s of servers) serverById.set(s.id, s.name);
-		return connections.map((c) => ({
-			connection_id: c.id,
-			server_id: c.server_id,
-			server_name: serverById.get(c.server_id) ?? "Unknown service",
-			available_in_chat: c.available_in_chat,
-			available_to_autonomous: c.available_to_autonomous,
-			has_service_token: c.service_oauth_token_id != null,
-		}));
-	}, [connections, servers]);
+		const credByConn = new Map<string, (typeof credentials)[number]>();
+		for (const c of credentials) credByConn.set(c.connection_id, c);
+		return connections.map((c) => {
+			const cred = credByConn.get(c.id);
+			return {
+				connection_id: c.id,
+				server_id: c.server_id,
+				server_name: serverById.get(c.server_id) ?? "Unknown service",
+				available_in_chat: c.available_in_chat,
+				available_to_autonomous: c.available_to_autonomous,
+				has_service_token: c.service_oauth_token_id != null,
+				connected: cred != null,
+				consent_granted_at: cred?.consent_granted_at ?? null,
+				consent_expires_at: cred?.consent_expires_at ?? null,
+			};
+		});
+	}, [connections, servers, credentials]);
 
 	// Listen for the popup's success message and invalidate the list. The
 	// callback page (api/src/routers/mcp_oauth_callback.py) posts a
@@ -98,6 +121,9 @@ export function UserMCPConnections() {
 				toast.success("Connected — your personal access is now linked");
 				queryClient.invalidateQueries({
 					queryKey: ["get", "/api/mcp-connections"],
+				});
+				queryClient.invalidateQueries({
+					queryKey: ["get", "/api/me/mcp-connections"],
 				});
 			} else if (data.type === "mcp_oauth_error") {
 				toast.error(
@@ -140,6 +166,26 @@ export function UserMCPConnections() {
 		}
 	}
 
+	async function handleDisconnect(connectionId: string, serverName: string) {
+		setPendingDisconnect(connectionId);
+		try {
+			const { error } = await apiClient.DELETE(
+				"/api/me/mcp-connections/{connection_id}",
+				{ params: { path: { connection_id: connectionId } } },
+			);
+			if (error) {
+				toast.error(`Failed to disconnect ${serverName}`);
+				return;
+			}
+			toast.success(`Disconnected from ${serverName}`);
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/me/mcp-connections"],
+			});
+		} finally {
+			setPendingDisconnect(null);
+		}
+	}
+
 	function fallbackLabel(row: ConnectionRow) {
 		if (row.available_in_chat && row.has_service_token) {
 			return (
@@ -164,7 +210,6 @@ export function UserMCPConnections() {
 	}
 
 	return (
-		<TooltipProvider>
 			<Card>
 				<CardContent className="py-6 space-y-4">
 					<div className="flex items-center justify-between">
@@ -222,16 +267,30 @@ export function UserMCPConnections() {
 											{row.server_name}
 										</DataTableCell>
 										<DataTableCell>
-											{/*
-											 * Backend gap: no GET endpoint for the caller's
-											 * user_mcp_credentials yet, so we display a
-											 * neutral status. Connect/Reconnect drives the
-											 * actual link.
-											 */}
-											<Badge variant="secondary">Status unknown</Badge>
-											<div className="text-xs text-muted-foreground mt-1">
-												Click Connect to (re)link your account
-											</div>
+											{row.connected ? (
+												<>
+													<Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700">
+														Connected
+													</Badge>
+													<div className="text-xs text-muted-foreground mt-1">
+														{[
+															formatRelativeFromNow(row.consent_granted_at, "since"),
+															row.consent_expires_at
+																? `expires ${formatRelativeFromNow(row.consent_expires_at, "in")}`
+																: null,
+														]
+															.filter(Boolean)
+															.join(" · ")}
+													</div>
+												</>
+											) : (
+												<>
+													<Badge variant="secondary">Not connected</Badge>
+													<div className="text-xs text-muted-foreground mt-1">
+														Click Connect to link your account
+													</div>
+												</>
+											)}
 										</DataTableCell>
 										<DataTableCell>{fallbackLabel(row)}</DataTableCell>
 										<DataTableCell className="text-right">
@@ -245,34 +304,23 @@ export function UserMCPConnections() {
 														)
 													}
 												>
-													Connect
+													{row.connected ? "Reconnect" : "Connect"}
 												</Button>
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<span tabIndex={0}>
-															<Button
-																variant="outline"
-																size="sm"
-																disabled
-																className="text-rose-600"
-																onClick={() => {
-																	// TODO(phase4-gap): backend
-																	// has no DELETE endpoint for
-																	// user_mcp_credentials. Wire
-																	// this up once that ships.
-																	console.warn(
-																		"[UserMCPConnections] disconnect not implemented — backend DELETE missing",
-																	);
-																}}
-															>
-																Disconnect
-															</Button>
-														</span>
-													</TooltipTrigger>
-													<TooltipContent>
-														Disconnect endpoint coming soon
-													</TooltipContent>
-												</Tooltip>
+												<Button
+													variant="outline"
+													size="sm"
+													disabled={!row.connected || pendingDisconnect === row.connection_id}
+													className="text-rose-600 disabled:text-muted-foreground"
+													onClick={() =>
+														handleDisconnect(row.connection_id, row.server_name)
+													}
+												>
+													{pendingDisconnect === row.connection_id ? (
+														<Loader2 className="h-3 w-3 animate-spin" />
+													) : (
+														"Disconnect"
+													)}
+												</Button>
 											</div>
 										</DataTableCell>
 									</DataTableRow>
@@ -281,19 +329,8 @@ export function UserMCPConnections() {
 						</DataTable>
 					)}
 
-					{/*
-					 * Faint hint that we're aware of the per-user status gap. Once
-					 * GET /api/me/mcp-credentials lands we replace the column with
-					 * Connected (since…) / Not connected.
-					 */}
-					<p className="text-xs text-muted-foreground/80">
-						Status display is best-effort while the per-user credential
-						listing endpoint is being added. After you connect, the org
-						admin can confirm in the MCP Servers admin view.
-					</p>
 				</CardContent>
 			</Card>
-		</TooltipProvider>
 	);
 }
 
