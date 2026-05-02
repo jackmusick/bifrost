@@ -51,23 +51,29 @@ The system principal is **bounded**: it can do whatever the workflow's org could
 
 This addresses the "what's the user for a scheduled workflow that fires at 3am" question: the user is the workflow's organization, represented as a synthetic principal. The same authorization rules apply.
 
-### Caller-scoped vs worker-trusted endpoint classes
+### Endpoint classes encoded as FastAPI dependencies
 
 Even after the caller principal reaches the API, some operations should *not* be authorized against the caller — operations the workflow needs to do as part of being a workflow, that the caller wouldn't have permission to do directly. Examples: writing to a global knowledge namespace, upserting an integration's OAuth mapping, reading internal files. The platform's trust model is "an admin wrote the workflow, so the workflow is trusted to do these things."
 
-We split endpoints into two classes, **per-endpoint at the API**, not per-workflow:
+The split is **encoded in the route signature** as typed dependencies, not documented in prose. Each endpoint declares its bucket; the type system and CI enforce that every endpoint declares one. This replaces the existing `CurrentUser` / `CurrentSuperuser` pair with a richer set:
 
-| Class | Authorization | Examples |
-|---|---|---|
-| **Caller-scoped** | API enforces against the caller principal (org gate, policies, role checks) | `tables.documents.*`, `ai.*`, `executions.*`, `forms.*`, user-facing things |
-| **Worker-trusted** | API requires only that the request comes from a real worker (engine token valid); the workflow author's deploy was the authorization | `integrations.upsert_mapping`, `integrations.delete_mapping`, `knowledge.store` (global), `files.write`, `email.send`, system-side effects |
+| Marker | Principal returned by `Depends` | Allowed callers | Use for |
+|---|---|---|---|
+| `CurrentBrowserSession` | bearer-token user | human sessions only; engine-attested requests rejected | Login, MFA, session-mgmt — anything a workflow should never invoke |
+| `CurrentCallerScoped` | caller principal (`X-Bifrost-On-Behalf-Of` header preferred; falls back to bearer-token user when absent) | both human sessions and workflow requests | The user-facing REST surface — table docs, AI, executions, forms, anything where caller policy applies |
+| `CurrentEngineOnly` | the engine principal (or the workflow's engine attestation, depending on transport choice) | workflow requests only; human sessions rejected | Privileged side effects — integrations mapping management, global knowledge writes, internal file ops, system email |
+| `CurrentSuperuser` | bearer-token user, must be `is_superuser` | unchanged | Existing platform-admin operations; consolidates with `CurrentCallerScoped` + caller `is_provider` check in Phase 4 |
 
-**There is no per-workflow flag.** The split is drawn once, at API design time, by which endpoint is which. Caller-scoped endpoints are the user-facing REST surface (the `/api/...` paths that the web UI also hits). Worker-trusted endpoints are a privileged subset (probably under `/api/internal/` or kept under `/api/cli/` for now), accessible only to authenticated worker requests.
+`CurrentCallerScoped` is the most common marker after migration. Most user-facing endpoints (which today take `CurrentUser`) become `CurrentCallerScoped`. The principal it returns has the same `UserPrincipal` shape they already use, so existing handler logic — role checks, `is_provider` checks, policy evaluation — keeps working unchanged. The dependency just changes *which* `UserPrincipal` flows in for workflow-driven requests.
+
+**There is no per-workflow flag.** The bucket is a property of the endpoint, drawn once when the route is written.
+
+A CI-enforced invariant: every handler in `api/src/routers/` must declare exactly one of the four markers. A unit test grep'ing for handlers without one fails the build. Drift between intended and actual bucket becomes impossible by construction; the route signature is the truth.
 
 This means the SDK gets a clean answer to the question "what does X do when called from a workflow":
 
-- `tables.documents.insert("customers", {...})` — caller-scoped. Caller's table policies apply. If the caller can't insert into this table, the workflow can't insert on their behalf, and the workflow author needs to either re-think the operation or do it via a worker-trusted method (like a privileged "system insert" that bypasses caller policy with audit).
-- `integrations.upsert_mapping(...)` — worker-trusted. The workflow can do it regardless of caller, because the workflow author's act of writing the code was the authorization.
+- `tables.documents.insert("customers", {...})` — caller-scoped. Caller's table policies apply. If the caller can't insert into this table, the workflow can't insert on their behalf, and the workflow author needs to either re-think the operation or do it via an engine-only method (a privileged "system insert" that bypasses caller policy with audit, if such a thing exists).
+- `integrations.upsert_mapping(...)` — engine-only. The workflow can do it regardless of caller, because the workflow author's act of writing the code was the authorization.
 
 The trust model **doesn't move**. What moves is which endpoints honor caller policy and which don't. Today everything bypasses caller policy because the API never sees the caller.
 
@@ -126,11 +132,15 @@ Additive, surface-by-surface, with a divergence log between the additive change 
 - Replace `resolve_target_org` and `resolve_org_filter` internals with `can_target_org`. Add divergence logging: log a warning if the new gate would have produced a different answer than the old gate (it shouldn't, given the safety bridge).
 - Run for a stretch (a week, or until divergence logs go quiet). The safety bridge means nothing breaks; the new rule is a strict superset of the old.
 
-### Phase 2: Caller-identity propagation
+### Phase 2: Caller-identity propagation + dependency markers
 
+- Introduce the four FastAPI dependency markers (`CurrentBrowserSession`, `CurrentCallerScoped`, `CurrentEngineOnly`, `CurrentSuperuser`).
+- Add CI test that fails if any handler in `api/src/routers/` doesn't declare exactly one marker. New endpoints can't ship without picking a bucket.
 - Worker mints a per-execution caller JWT at workflow start. Attaches it on every SDK call as `X-Bifrost-On-Behalf-Of`.
-- API parses the header (when present + engine-token-attested), constructs the caller `UserPrincipal`, uses it for authorization.
-- Caller-scoped endpoints (the user-facing REST surface) start enforcing caller policies on workflow-driven requests. This is the breaking change for workflows that were inadvertently relying on engine-superuser to bypass caller policy. Roll out behind a feature flag; monitor; fix.
+- `CurrentCallerScoped` reads the header when present + engine-token-attested; otherwise falls back to bearer-token user.
+- `CurrentEngineOnly` rejects non-engine requests; the existing CLI handlers move under this marker.
+- Migrate existing handlers handler-by-handler: `CurrentUser` → `CurrentCallerScoped` for user-facing endpoints, `CurrentEngineOnly` for the privileged set the SDK currently calls. The set of `CurrentEngineOnly` endpoints is the existing `/api/cli/*` worker-trusted subset minus the ones moving to caller-scoped (table docs, AI, executions, forms — see Phase 3).
+- Caller-scoped endpoints start enforcing caller policies on workflow-driven requests. This is the breaking change for workflows that were inadvertently relying on engine-superuser to bypass caller policy. Roll out behind a feature flag; monitor; fix.
 - System-triggered workflows construct their synthetic system principal at trigger time. Cron, webhooks, agent runs each get their `trigger_type` claim.
 
 ### Phase 3: CLI/REST consolidation
@@ -198,7 +208,7 @@ Three load-bearing claims:
 
 1. **Engine token = transport, on-behalf-of = authorization.** This separation has to be airtight. Verify by checking that no API code path reads engine-token superuser status to make an authorization decision after Phase 2 lands. The grep test: `grep -n "is_superuser" api/src/` should not show authorization checks against the engine token's identity; it should only show checks against caller principals.
 
-2. **The caller-vs-worker endpoint split is well-defined.** Each `/api/...` path is in exactly one bucket. The worker-trusted bucket is a finite, hand-curated list, documented at the API level. New endpoints get assigned at PR time. Verify by reviewing the bucket list during the design pass and confirming each entry's rationale.
+2. **The endpoint bucket is encoded in the route signature, not in prose.** Every handler declares exactly one of `CurrentBrowserSession` / `CurrentCallerScoped` / `CurrentEngineOnly` / `CurrentSuperuser`. CI fails if a handler is missing a marker. Verify by running the CI test on the migrated codebase — the test passing is the proof that no endpoint silently lives in the wrong bucket.
 
 3. **The migration is reversible at every phase.** Each of Phase 1-4 can be reverted with a single PR if something breaks in production. The additive shim ensures Phase 1 changes nothing observable; the on-behalf-of header in Phase 2 falls back to engine-only behavior if absent; Phase 3 is a routing change; Phase 4 narrows safely after divergence logs go quiet.
 
