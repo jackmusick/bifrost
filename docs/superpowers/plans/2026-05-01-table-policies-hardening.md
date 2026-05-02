@@ -582,4 +582,146 @@ cd /home/jack/GitHub/bifrost/.worktrees/table-access
 
 Expected: all green except the pre-existing `test_package_available_after_installation` flake.
 
+---
+
+# Session findings (2026-05-01) — extras landed + open blocker
+
+## What landed beyond Tasks A–G
+
+Three significant pieces of work landed in the same session as the original 7-task plan. They were prompted by user feedback during execution and ended up tightly coupled to the policy hardening, so they shipped on the same branch:
+
+### Extra 1: Web SDK `scope` parity with Python SDK (commits `15147584`, `a9f187ac`, `8d24f467`)
+- 8 document endpoints (`POST/GET/PATCH/DELETE` on `/api/tables/{id}/documents/*`) accept `?scope=<...>` query param via `_resolve_target_org_safe`. Provider admins can target other orgs; non-superusers' scope is silently ignored at this layer (matches Python SDK semantics — confirmed during implementation, NOT a 422).
+- `DocumentListResponse.table_id: UUID` added — populated unconditionally in `query_documents`. Lets the web SDK subscribe by UUID after a name-based query.
+- `client/src/lib/app-sdk/tables.ts`: every method gains `scope?: string` trailing arg. `withScope(path, scope)` helper handles URL encoding.
+- `useTable(name, { scope })` plumbs scope to the snapshot, then subscribes by `snap.table_id` (UUID, sidesteps cross-org name ambiguity).
+- 7 new e2e tests in `test_tables.py::TestDocumentScopeQueryParam` covering provider cross-org, name-collision disambiguation, `?scope=global`, and the `table_id` contract.
+
+### Extra 2: Hard org gate at REST and WS surfaces (commits `4eda5a33`, `5361148d`)
+**Discovered**: a non-superuser who learned another org's table UUID could reach `_check_action_or_403`, and any permissive policy (e.g. `everyone_read`) would let them read rows. The user's hard rule:
+
+> "If you're not an admin and the org isn't your org or global, you can't access it in any way."
+
+**Fix at REST**: `get_table_or_404` now routes both UUID and name lookups through `OrgScopedRepository.get(id=...)`, whose ID-lookup branch (lines 145–154 of `api/src/repositories/org_scoped.py`) already returns None for non-superuser cross-org access. Removed `is_superuser=True` override and the raw `select(Table).where(Table.id == ...)` bypass.
+
+**Fix at WS**: `_resolve_table_id` in `websocket.py` now takes `user: UserPrincipal`, does the same gate (UUID lookup org-checked; name lookup filtered by `organization_id IN (user_org, NULL)`). Surfaces "Table not found" to avoid cross-org existence leaks.
+
+**Performance fix bundled with the WS gate**: In-process `_table_policy_cache` for `_load_policies_for_table` in `websocket.py`. Was running a fresh DB load + Pydantic validate per subscriber per `document_change` event (O(subs × updates)). Now collapsed to one load per generation per process. Invalidation paths: `policy_changed` events drop entries on processes with active subs; subscribe-time also invalidates to close the staleness window between disconnect and re-subscribe.
+
+**Tests**: `test_non_superuser_cannot_reach_other_org_table_by_uuid` (every CRUD verb × every scope variation = 404), `test_non_superuser_can_reach_global_tables`, `test_subscribe_to_other_org_table_rejected` (WS by name AND UUID).
+
+### Extra 3: Manifest format flatten (commit `d0df4e5b`)
+The `.bifrost/tables.yaml` had redundant `policies.policies` nesting (DB JSONB shape leaking into the YAML). Flattened to `policies: [...]` at the manifest level; serializer wraps to `{"policies": [...]}` when writing to `Table.access`, importer unwraps on export. DB JSONB shape unchanged (forward-compat). Removed `ManifestTablePolicies` model.
+
+### Other notable changes
+- Removed dead helpers `_get_table_or_404` and `get_or_create_table` from `tables.py` (zero callers).
+- Route ordering bug fix: `GET /tables/{id}/documents/count` was being shadowed by `/{doc_id}` and silently 404'd. Reordered with an explicit comment noting the FastAPI binding hazard.
+
+## Final test state at end of session
+
+- Backend platform e2e: **283 passed, 3 skipped, 0 failed**
+- Backend full e2e: **1135 passed, 1 known pre-existing flake** (`test_package_available_after_installation`)
+- Backend unit: **3347 passed**
+- Client unit: **passed** (32 in app-sdk alone)
+- pyright: **0 errors / 0 warnings** on API
+- ruff: **clean**
+- Docs PR: **https://github.com/jackmusick/bifrost-integrations-docs/pull/3**
+
+## OPEN BLOCKER — do NOT merge this branch yet
+
+While building the demo POC at `/tmp/bifrost-poc/` (workflow + app + table), we discovered a fundamental architectural split that blocks shipping: **two parallel, divergent table-document API paths.**
+
+### The split
+
+| Path | Used by | Endpoint prefix | Publishes WS events? | Applies policies? | Audits denial? |
+|---|---|---|---|---|---|
+| REST | Web SDK / UI | `/api/tables/{id}/documents/*` | ✅ | ✅ | ✅ |
+| CLI | Python SDK / workflows | `/api/cli/tables/documents/*` | ❌ | ❌ | ❌ |
+
+The CLI path lives in `api/src/routers/cli.py` lines 2815–3346 (10 endpoints: insert, upsert, get, update, delete, insert/batch, upsert/batch, delete/batch, query, count). It's a parallel reimplementation that:
+
+1. **Does NOT call `publish_document_change`** → WebSocket subscribers (incl. `useTable`) don't see workflow-driven mutations in real time. The visible symptom: clicking "Run workflow" in the demo app inserts rows into the DB, but the live UI doesn't update. Manual REST-driven mutations (UI clicks) work fine.
+2. **Does NOT call `_check_action_or_403`** → workflows can read/write any table regardless of the table's policies. This is a security gap: a malicious or buggy workflow can exfiltrate or modify data the calling user wouldn't be authorized to touch via the UI.
+3. **Does NOT emit `policy.deny` audit events** → no trail when a policy would have rejected the operation (because no policy is consulted).
+
+This is the same class of drift CLAUDE.md warns about for MCP tools:
+
+> **MCP vs REST routers (existing drift):** the MCP tools for `agents`, `forms`, `tables`, `apps`, `events` re-implement router logic and have diverged (different permission models, missing side effects, divergent validation). See `docs/plans/2026-04-18-mcp-router-reconciliation.md` for the catalog and reconciliation sequence. **New MCP tools must be thin HTTP wrappers that call the REST endpoints**.
+
+The CLI path predates the policy hardening work, but the gap matters more now that policies are the security boundary.
+
+### What the consolidation needs to address
+
+This is a separate workstream — not a 30-line patch — because the auth model is fundamentally different between the two paths.
+
+**Auth model questions:**
+- The CLI path uses `CurrentUser` (the workflow's calling user), but workflows often run as system / scheduled / webhook-triggered context. What's "the user" for a scheduled workflow that fires at 3am with no human attached?
+- Workflows can be triggered via a form by user A but execute as user A's session — should the policy check use A's identity? What about workflows that intentionally do administrative work that A couldn't do directly (a typical pattern)?
+- The Python SDK has a "system trust" model where workflows are admin-curated code that's expected to do whatever its author intended. Is forcing per-row policy checks on workflows the right answer, or do we need a "system context" that bypasses policies (with audit) when the workflow is running as a system actor?
+- `tables.set_scope("provider-org")` exists on the Python SDK for provider admins; how does that interact with row-level policies?
+
+**Implementation paths:**
+
+#### Option A: Thin HTTP wrappers (the CLAUDE.md-blessed pattern)
+Each CLI handler becomes a forward to the REST endpoint, preserving the auth context. Roughly:
+
+```python
+@router.post("/tables/documents/insert")
+async def cli_insert_document(request, current_user, db):
+    response = await http_bridge.post(
+        f"/api/tables/{request.table}/documents",
+        body={"data": request.data, "id": request.id},
+        params={"scope": request.scope} if request.scope else {},
+        user=current_user,
+    )
+    return response
+```
+
+Pros: zero divergence by construction; both paths share policy + WS publish + audit.
+Cons: forces a "user" context on workflows even when they run as system. Need a clean way to mark workflow execution as a privileged caller (e.g. `X-Bifrost-Workflow-Execution: <id>` header that the policy layer recognizes and either bypasses or applies a workflow-specific policy to).
+
+#### Option B: Shared service module
+Extract document mutation logic into `api/shared/document_service.py`. Both REST router and CLI router call into it. Service handles policy checks, WS publish, and audit; routers just translate request/response shapes.
+
+Pros: keeps performance characteristics in-process (no internal HTTP hop); easier to thread workflow-execution context as a typed param.
+Cons: more upfront refactor; two callers means policy/audit drift can recur if a future contributor only touches one router.
+
+**Recommended: A.** Matches the project's existing direction (MCP reconciliation plan) and makes drift structurally impossible.
+
+### Sub-tasks to plan in the new session
+
+1. **Inventory** — confirm exact list of CLI table endpoints + which the Python SDK actually calls (some batch variants may be CLI-only). Confirm whether MCP tools (`api/src/services/mcp_server/tools/tables.py`) is a third path that needs the same treatment.
+2. **Auth design decision** — system-context vs. forced-user semantics for workflow execution. Brainstorm.
+3. **HTTP bridge or service module** — pick A vs. B.
+4. **Implement** — replace each CLI handler with the chosen pattern. Each replacement is testable in isolation.
+5. **Policy enforcement on workflows** — write the test matrix: a workflow that tries to read/write a table whose policies don't allow its calling user. Decide enforcement vs. bypass-with-audit.
+6. **WS publish on workflow mutations** — verify the demo POC's Run-workflow button now drives live updates in the UI.
+7. **Audit on workflow-driven denial** — verify `policy.deny` rows appear with correct actor (the workflow's calling user, not the platform admin).
+8. **MCP tools** — fold into the same consolidation if the same gap exists there.
+9. **Performance check** — internal HTTP hops add latency; if it's a problem in the workflow-write hot path, fall back to Option B for the in-process call.
+10. **Tests** — every test that uses `bifrost.tables.*` from a workflow path needs a sibling assertion that the policy was checked AND the WS event fired. The demo POC at `/tmp/bifrost-poc/` is a good integration check.
+
+### Demo POC artifacts (sanity-check substrate for the new branch)
+
+Files at `/tmp/bifrost-poc/`:
+- `apps/progress-demo/_layout.tsx` and `pages/index.tsx` — uses `useTable` + `useWorkflowMutation`
+- `workflows/progress_demo.py` — workflow that inserts 5 rows over 5 seconds via `bifrost.tables.insert`
+- `policies.yaml`, `schema.yaml`, `create_table.json`
+
+In the current debug stack the demo:
+- ✅ Renders correctly
+- ✅ Run-workflow button triggers the workflow and writes 5 rows
+- ❌ Rows do NOT appear live (the bug — CLI path doesn't publish)
+- ❌ Workflow can write to any table regardless of policy (the security gap — CLI path doesn't enforce)
+
+Once the CLI/REST consolidation lands, the same POC should show all rows arriving live as the workflow runs, AND a workflow attempting to write to a denying table should fail with 403 + audit row.
+
+### What to do with this branch in the meantime
+
+The hardening on this branch (Tasks A–G + Extras 1–3) is correct for the REST/UI surface. None of it regresses anything. But it can't ship to main until the CLI path also enforces — otherwise we'd be in a state where the policy engine is rigorously enforced for one code path and silently bypassed for another, which is worse than uniformly enforced everywhere or uniformly absent everywhere.
+
+Branch state: 21 commits on `feat/table-access`, all tests green, ready for the user to either:
+- Hold the branch and start the consolidation work in a fresh session, OR
+- Cherry-pick the manifest format flatten + e2e test additions onto a parallel branch if those are wanted independently of the CLI consolidation.
+
 Then proceed to `superpowers:finishing-a-development-branch`.
