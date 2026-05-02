@@ -26,6 +26,12 @@ from src.models.orm.config import Config, SystemConfig
 from src.models.orm.developer import DeveloperContext
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, WebhookSource
 from src.models.orm.executions import Execution, ExecutionLog
+from src.models.orm.external_mcp import (
+    MCPConnection,
+    MCPConnectionTool,
+    MCPServer,
+    UserMCPCredential,
+)
 from src.models.orm.forms import Form, FormField, FormRole
 from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
 from src.models.orm.knowledge import KnowledgeStore
@@ -124,6 +130,11 @@ __all__ = [
     "EventSubscription",
     "Event",
     "EventDelivery",
+    # External MCP (client)
+    "MCPServer",
+    "MCPConnection",
+    "MCPConnectionTool",
+    "UserMCPCredential",
     # Tables (App Builder)
     "Table",
     "Document",

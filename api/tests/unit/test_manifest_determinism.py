@@ -193,6 +193,9 @@ def _build_side_effects(
         _make_result([ss]),           # schedule_sources
         empty,                        # webhook_sources
         _make_result(subs_order or []),   # event_subscriptions
+        empty,                        # mcp_servers
+        empty,                        # mcp_connections
+        empty,                        # mcp_connection_tools
     ]
 
 

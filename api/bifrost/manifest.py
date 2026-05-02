@@ -36,6 +36,7 @@ MANIFEST_FILES: dict[str, str] = {
     "forms": "forms.yaml",
     "agents": "agents.yaml",
     "apps": "apps.yaml",
+    "mcp_servers": "mcp-servers.yaml",
 }
 MANIFEST_LEGACY_FILE = "metadata.yaml"
 
@@ -280,6 +281,51 @@ class ManifestEventSource(BaseModel):
     subscriptions: list[ManifestEventSubscription] = Field(default_factory=list, description="Workflow subscriptions")
 
 
+class ManifestMCPConnectionTool(BaseModel):
+    """Tool catalog row inside an MCP connection.
+
+    Populated from the vendor's ``tools/list`` and synced into the manifest
+    so an importing environment knows the schema of every tool the connection
+    is bound to (without re-calling the vendor at import time).
+    """
+    tool_name: str = Field(description="Tool name as published by the vendor")
+    tool_schema: dict = Field(default_factory=dict, description="JSON schema for the tool")
+    enabled: bool = Field(default=True, description="Whether the tool is enabled in this connection")
+    disabled_reason: str | None = Field(default=None, description="Reason the tool is disabled (admin-set or auto-set)")
+
+
+class ManifestMCPConnection(BaseModel):
+    """Per-org MCP connection nested under a server template.
+
+    Carries the per-org OAuth client_id and the visibility flags. The
+    encrypted client_secret is intentionally NOT serialized — secrets stay
+    out of the manifest, in the same way ``Config`` values do.
+    """
+    organization_id: str = Field(description="Organization UUID this connection belongs to")
+    client_id: str = Field(description="Vendor-issued OAuth client_id for this org")
+    server_url_override: str | None = Field(default=None, description="Per-org URL override (regional/sovereign)")
+    available_in_chat: bool = Field(default=False, description="Chat fallback to shared service token when user not connected")
+    available_to_autonomous: bool = Field(default=False, description="Autonomous runs may use shared service token")
+    service_oauth_token_id: str | None = Field(default=None, description="FK to oauth_tokens for shared service token")
+    tools: list[ManifestMCPConnectionTool] = Field(default_factory=list, description="Per-connection tool catalog")
+
+
+class ManifestMCPServer(BaseModel):
+    """External MCP server template (top-level manifest entry)."""
+    id: str = Field(description="Server template UUID")
+    name: str = Field(description="Display name (unique)")
+    server_url: str = Field(description="MCP server URL (Streamable HTTP endpoint)")
+    oauth_provider_id: str | None = Field(default=None, description="OAuthProvider UUID; absent for unauthenticated servers")
+    redirect_url: str | None = Field(default=None, description="Deterministic redirect URL for OAuth callback")
+    discovery_metadata: dict | None = Field(default=None, description="Snapshot of /.well-known payloads at create time")
+    organization_id: str | None = Field(default=None, description="Org UUID (null = platform-level template)")
+    is_active: bool = Field(default=True, description="Active flag")
+    connections: dict[str, ManifestMCPConnection] = Field(
+        default_factory=dict,
+        description="Per-org connections keyed by connection UUID",
+    )
+
+
 class Manifest(BaseModel):
     """The complete workspace manifest."""
     organizations: list[ManifestOrganization] = Field(default_factory=list)
@@ -292,6 +338,7 @@ class Manifest(BaseModel):
     forms: dict[str, ManifestForm] = Field(default_factory=dict)
     agents: dict[str, ManifestAgent] = Field(default_factory=dict)
     apps: dict[str, ManifestApp] = Field(default_factory=dict)
+    mcp_servers: dict[str, ManifestMCPServer] = Field(default_factory=dict)
 
 
 # =============================================================================
@@ -340,6 +387,7 @@ def filter_manifest_by_ids(manifest: Manifest, entity_ids: set[str]) -> Manifest
         forms={k: v for k, v in manifest.forms.items() if k in entity_ids},
         agents={k: v for k, v in manifest.agents.items() if k in entity_ids},
         apps={k: v for k, v in manifest.apps.items() if k in entity_ids},
+        mcp_servers={k: v for k, v in manifest.mcp_servers.items() if k in entity_ids},
     )
 
 
@@ -530,6 +578,21 @@ def validate_manifest(manifest: Manifest) -> list[str]:
         if table.application_id and table.application_id not in app_ids:
             errors.append(f"Table '{table_label}' references unknown application: {table.application_id}")
 
+    # MCP Servers: organization_id refs and per-connection org refs
+    for _key, server in manifest.mcp_servers.items():
+        server_label = server.name or server.id
+        if server.organization_id and server.organization_id not in org_ids:
+            errors.append(
+                f"MCP server '{server_label}' references unknown organization: "
+                f"{server.organization_id}"
+            )
+        for conn_id, conn in server.connections.items():
+            if conn.organization_id not in org_ids:
+                errors.append(
+                    f"MCP connection '{conn_id}' (under server '{server_label}') "
+                    f"references unknown organization: {conn.organization_id}"
+                )
+
     # Events: source + subscription refs
     for _key, evt in manifest.events.items():
         evt_label = evt.name or evt.id
@@ -583,6 +646,10 @@ def get_all_entity_ids(manifest: Manifest) -> set[str]:
         ids.add(agent.id)
     for app in manifest.apps.values():
         ids.add(app.id)
+    for server in manifest.mcp_servers.values():
+        ids.add(server.id)
+        for connection_id in server.connections.keys():
+            ids.add(connection_id)
     return ids
 
 
