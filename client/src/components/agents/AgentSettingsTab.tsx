@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -86,6 +87,7 @@ import { useKnowledgeNamespaces } from "@/hooks/useKnowledge";
 import { useLLMModels } from "@/hooks/useLLMConfig";
 import { useRoles } from "@/hooks/useRoles";
 import { useToolsGrouped } from "@/hooks/useTools";
+import { $api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
@@ -944,6 +946,20 @@ export function AgentSettingsTab({
 						</FormDescription>
 					</FormItem>
 
+					{/*
+					 * MCP auth-context badges + publish-warning panel
+					 * (mockup §8). Per-tool badges expose whether each
+					 * selected tool needs per-user delegation, falls back
+					 * to the shared service token, or is admin-disabled.
+					 * The warning panel fires when the agent is bound to a
+					 * chat-only MCP tool while also (potentially) being
+					 * invoked autonomously.
+					 */}
+					<AgentToolAuthSummary
+						systemToolIds={systemTools ?? []}
+						workflowToolIds={toolIds ?? []}
+					/>
+
 					<FormField
 						control={form.control}
 						name="delegated_agent_ids"
@@ -1262,5 +1278,343 @@ export function AgentSettingsTab({
 				</div>
 			</form>
 		</Form>
+	);
+}
+
+
+/**
+ * AgentToolAuthSummary — mockup §8.
+ *
+ * Renders auth-context badges for each selected tool and a publish-time
+ * warning panel covering chat-only MCP tools on (potentially) autonomous
+ * agents.
+ *
+ * Tool source detection (in priority order):
+ *   1. system_tools entries starting with `mcp__` are MCP tools — look up
+ *      the connection via mcp_connection_tools.tool_name and read flags.
+ *   2. system_tools without that prefix are built-in / system tools —
+ *      `Service auth` badge.
+ *   3. workflow tool_ids — `Service auth` badge (workflows always run with
+ *      the platform service identity).
+ *
+ * Backend gap: agent runs do not yet expose schedule / webhook trigger
+ * subscriptions through the API surface. Until that lands, the warning
+ * panel fires whenever the agent has chat-only MCP tools — call out to
+ * the user that autonomous runs MAY break, rather than asserting that
+ * they will. See report for follow-up endpoint shape.
+ */
+function AgentToolAuthSummary({
+	systemToolIds,
+	workflowToolIds,
+}: {
+	systemToolIds: string[];
+	workflowToolIds: string[];
+}) {
+	// Pull connections + their tool catalogs. The list endpoint returns
+	// summaries (no nested tools), so we follow up with per-connection
+	// detail fetches for any connections that surface MCP tools the agent
+	// uses. The enabled list is small in practice (1–3 connections).
+	const { data: connections = [] } = $api.useQuery(
+		"get",
+		"/api/mcp-connections",
+		{ params: { query: {} } },
+	);
+	const { data: servers = [] } = $api.useQuery(
+		"get",
+		"/api/mcp-servers",
+		{ params: { query: { active_only: false } } },
+	);
+
+	const serverNameById = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const s of servers) map.set(s.id, s.name);
+		return map;
+	}, [servers]);
+
+	// Identify mcp__-prefixed system tool entries.
+	const mcpToolNames = useMemo(
+		() => systemToolIds.filter((t) => t.startsWith("mcp__")),
+		[systemToolIds],
+	);
+
+	// We don't have a single backend endpoint that lists "tools available
+	// to this agent's org with their flags" — see the report. As a
+	// reasonable approximation we union all visible connections' tool
+	// catalogs (fetched on demand via `$api.queryOptions` + tanstack
+	// `useQueries`) and look the tool up by name. Cheap because react-query
+	// caches.
+	const connectionDetails = useQueries({
+		queries: connections.map((c) =>
+			$api.queryOptions("get", "/api/mcp-connections/{connection_id}", {
+				params: { path: { connection_id: c.id } },
+			}),
+		),
+	});
+
+	// Build a map: tool_name -> { connection, tool, server }. Used both for
+	// per-tool badges and the warning panel.
+	type Resolution = {
+		connectionId: string;
+		serverId: string;
+		serverName: string;
+		availableInChat: boolean;
+		availableToAutonomous: boolean;
+		hasServiceToken: boolean;
+		toolEnabled: boolean;
+		toolDisabledReason: string | null;
+	};
+	const mcpToolResolutions = useMemo(() => {
+		const out = new Map<string, Resolution>();
+		for (const q of connectionDetails) {
+			const conn = q.data;
+			if (!conn) continue;
+			for (const tool of conn.tools ?? []) {
+				// Convention: a system_tools entry of "mcp__<server>__<tool>"
+				// matches a connection tool with tool_name "<tool>" served by
+				// the server. We accept either the bare tool_name OR the full
+				// mcp__-prefixed key for robustness — early phases may emit
+				// either.
+				const directKey = tool.tool_name;
+				const prefixedKey = `mcp__${
+					serverNameById.get(conn.server_id) ?? "unknown"
+				}__${tool.tool_name}`;
+				const payload: Resolution = {
+					connectionId: conn.id,
+					serverId: conn.server_id,
+					serverName: serverNameById.get(conn.server_id) ?? "MCP",
+					availableInChat: conn.available_in_chat,
+					availableToAutonomous: conn.available_to_autonomous,
+					hasServiceToken: conn.service_oauth_token_id != null,
+					toolEnabled: tool.enabled,
+					toolDisabledReason: tool.disabled_reason ?? null,
+				};
+				out.set(directKey, payload);
+				out.set(prefixedKey, payload);
+			}
+		}
+		return out;
+	}, [connectionDetails, serverNameById]);
+
+	// Decide whether the warning panel should fire. Conditions:
+	//   - At least one selected MCP tool whose connection is chat-only
+	//     (available_in_chat=true && available_to_autonomous=false), OR
+	//   - At least one selected MCP tool that is admin-disabled.
+	// (The "agent has a schedule subscription" leg of the spec isn't
+	// available through the current API; we surface it as a permissive
+	// warning instead of a hard block — see report.)
+	const warningCases = useMemo(() => {
+		const chatOnly: { name: string; res: Resolution }[] = [];
+		const disabled: { name: string; res: Resolution }[] = [];
+		for (const name of mcpToolNames) {
+			const res = mcpToolResolutions.get(name);
+			if (!res) continue;
+			if (!res.toolEnabled) {
+				disabled.push({ name, res });
+				continue;
+			}
+			if (
+				res.availableInChat &&
+				!res.availableToAutonomous
+			) {
+				chatOnly.push({ name, res });
+			}
+		}
+		return { chatOnly, disabled };
+	}, [mcpToolNames, mcpToolResolutions]);
+
+	const showWarning =
+		warningCases.chatOnly.length > 0 || warningCases.disabled.length > 0;
+
+	// Don't render anything if the agent has no tools selected — keeps the
+	// settings form quiet for simple agents.
+	if (
+		systemToolIds.length === 0 &&
+		workflowToolIds.length === 0
+	) {
+		return null;
+	}
+
+	return (
+		<div
+			className="rounded-md border bg-muted/20 p-3 space-y-3"
+			data-testid="agent-tool-auth-summary"
+		>
+			<div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+				Tool auth context
+			</div>
+
+			{/* System / built-in / non-MCP tools */}
+			{systemToolIds
+				.filter((t) => !t.startsWith("mcp__"))
+				.map((toolId) => (
+					<div
+						key={`sys-${toolId}`}
+						className="flex items-center gap-2 text-xs"
+					>
+						<code className="text-xs">{toolId}</code>
+						<Badge variant="secondary">Service auth</Badge>
+						<Badge
+							variant="default"
+							className="bg-emerald-600 hover:bg-emerald-700"
+						>
+							Any context
+						</Badge>
+					</div>
+				))}
+
+			{/* Workflow tools — uniformly service-authenticated. */}
+			{workflowToolIds.map((toolId) => (
+				<div
+					key={`wf-${toolId}`}
+					className="flex items-center gap-2 text-xs"
+				>
+					<code className="text-xs">{toolId.slice(0, 8)}…</code>
+					<Badge variant="secondary">Service auth</Badge>
+					<Badge
+						variant="default"
+						className="bg-emerald-600 hover:bg-emerald-700"
+					>
+						Any context
+					</Badge>
+				</div>
+			))}
+
+			{/* MCP tools — surface per-user / shared-fallback / disabled. */}
+			{mcpToolNames.map((toolName) => {
+				const res = mcpToolResolutions.get(toolName);
+				if (!res) {
+					return (
+						<div
+							key={`mcp-${toolName}`}
+							className="flex items-center gap-2 text-xs"
+						>
+							<code className="text-xs">{toolName}</code>
+							<Badge
+								variant="default"
+								className="bg-amber-600 hover:bg-amber-700"
+							>
+								Unknown source
+							</Badge>
+						</div>
+					);
+				}
+				let authBadge: { label: string; cls: string };
+				let contextBadge: { label: string; cls: string } | null = null;
+				if (!res.toolEnabled) {
+					authBadge = {
+						label: "Disabled",
+						cls: "bg-rose-600 hover:bg-rose-700",
+					};
+					contextBadge = {
+						label: res.toolDisabledReason ?? "Disabled by admin",
+						cls: "bg-muted text-muted-foreground",
+					};
+				} else if (
+					res.availableInChat &&
+					!res.availableToAutonomous
+				) {
+					authBadge = {
+						label: "Per-user delegated",
+						cls: "bg-blue-600 hover:bg-blue-700",
+					};
+					contextBadge = {
+						label: "Chat only by default",
+						cls: "bg-amber-600 hover:bg-amber-700 text-white",
+					};
+				} else if (
+					res.availableInChat ||
+					res.availableToAutonomous
+				) {
+					authBadge = {
+						label: "Shared service auth",
+						cls: "bg-slate-500 hover:bg-slate-600",
+					};
+				} else {
+					authBadge = {
+						label: "Per-user delegated",
+						cls: "bg-blue-600 hover:bg-blue-700",
+					};
+					contextBadge = {
+						label: "Personal-use only",
+						cls: "bg-amber-600 hover:bg-amber-700 text-white",
+					};
+				}
+				return (
+					<div
+						key={`mcp-${toolName}`}
+						className="flex items-center gap-2 text-xs"
+					>
+						<code className="text-xs">{toolName}</code>
+						<span className="text-muted-foreground">·</span>
+						<span className="text-muted-foreground">
+							{res.serverName}
+						</span>
+						<Badge variant="default" className={authBadge.cls}>
+							{authBadge.label}
+						</Badge>
+						{contextBadge ? (
+							<Badge variant="default" className={contextBadge.cls}>
+								{contextBadge.label}
+							</Badge>
+						) : null}
+					</div>
+				);
+			})}
+
+			{showWarning ? (
+				<Alert
+					className="border-amber-300 bg-amber-50/70 dark:bg-amber-950/20"
+					data-testid="agent-publish-warning"
+				>
+					<AlertTriangle className="h-4 w-4 text-amber-600" />
+					<AlertTitle className="text-amber-900 dark:text-amber-200">
+						Publish warning
+					</AlertTitle>
+					<AlertDescription className="space-y-2 text-amber-900 dark:text-amber-200">
+						{warningCases.chatOnly.map(({ name, res }) => (
+							<p key={`warn-chat-${name}`} className="text-sm">
+								This agent has <code>{name}</code> bound, which
+								requires a per-user delegated token. Autonomous runs
+								against this org will only succeed if the connection's
+								<em> Available to autonomous agents </em>
+								flag is on AND the shared service connection is
+								healthy. Otherwise the tool will return{" "}
+								<code>needs_reauth</code> and the run will partially
+								fail.{" "}
+								<a
+									className="underline"
+									href={`/mcp-servers/${res.serverId}/connections/${res.connectionId}/edit`}
+								>
+									Manage {res.serverName} connection
+								</a>
+							</p>
+						))}
+						{warningCases.disabled.map(({ name, res }) => (
+							<p key={`warn-disabled-${name}`} className="text-sm">
+								<code>{name}</code> is currently disabled by your{" "}
+								{res.serverName} admin. Calls to it will fail until
+								it's re-enabled.{" "}
+								<a
+									className="underline"
+									href={`/mcp-servers/${res.serverId}/connections/${res.connectionId}/edit`}
+								>
+									Manage connection
+								</a>
+							</p>
+						))}
+						<div className="pt-1">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								data-testid="agent-publish-warning-ack"
+							>
+								Acknowledge and publish anyway
+							</Button>
+						</div>
+					</AlertDescription>
+				</Alert>
+			) : null}
+		</div>
 	);
 }
