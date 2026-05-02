@@ -52,6 +52,7 @@ async def test_subscribe_with_read_accepted(platform_admin, alice_user):
             headers=platform_admin.headers,
             json={
                 "name": f"sub_ok_{uuid.uuid4().hex[:8]}",
+                "organization_id": None,
                 "policies": {"policies": [
                     {
                         "name": "admin_bypass",
@@ -85,7 +86,10 @@ async def test_subscribe_without_read_rejected(platform_admin, alice_user):
         r = await client.post(
             "/api/tables",
             headers=platform_admin.headers,
-            json={"name": f"sub_deny_{uuid.uuid4().hex[:8]}"},  # seeded admin_bypass only
+            json={
+                "name": f"sub_deny_{uuid.uuid4().hex[:8]}",
+                "organization_id": None,
+            },  # seeded admin_bypass only
         )
         assert r.status_code == 201, r.text
         table_id = r.json()["id"]
@@ -108,6 +112,7 @@ async def test_receive_insert(platform_admin, alice_user):
             headers=platform_admin.headers,
             json={
                 "name": f"sub_insert_{uuid.uuid4().hex[:8]}",
+                "organization_id": None,
                 "policies": {"policies": [
                     {
                         "name": "admin_bypass",
@@ -156,6 +161,7 @@ async def test_subscribe_by_name_resolves_to_canonical_channel(platform_admin, a
             headers=platform_admin.headers,
             json={
                 "name": table_name,
+                "organization_id": None,
                 "policies": {"policies": [
                     {
                         "name": "admin_bypass",
@@ -230,6 +236,7 @@ async def test_subscription_revoked_on_policy_change(platform_admin, alice_user)
             headers=platform_admin.headers,
             json={
                 "name": f"revoke_{uuid.uuid4().hex[:8]}",
+                "organization_id": None,
                 "policies": {"policies": [
                     {
                         "name": "admin_bypass",
@@ -276,6 +283,7 @@ async def test_user_filter_narrows_messages(platform_admin, alice_user):
             headers=platform_admin.headers,
             json={
                 "name": f"filter_{uuid.uuid4().hex[:8]}",
+                "organization_id": None,
                 "policies": {"policies": [
                     {
                         "name": "admin_bypass",
@@ -317,3 +325,56 @@ async def test_user_filter_narrows_messages(platform_admin, alice_user):
             assert msg["row"]["status"] == "open", msg
         finally:
             await ws.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_subscribe_to_other_org_table_rejected(platform_admin, alice_user, org2):
+    """Hard org gate: alice (org1) cannot subscribe to an org2-scoped table,
+    by NAME or by UUID, even if its policies look permissive.
+
+    Pins the org gate in `_resolve_table_id` (UUID branch returns None for
+    cross-org access; name branch filters by org). The subscribe protocol
+    surfaces "Table not found" — same as a non-existent table — to avoid
+    leaking the existence of cross-org tables.
+    """
+    org2_id = org2["id"]
+    name = f"xorg_sub_{uuid.uuid4().hex[:8]}"
+
+    async with httpx.AsyncClient(base_url=TEST_API_URL) as client:
+        # Org2 table with a permissive read policy (this is what makes the
+        # gate the only line of defense — without it, alice could subscribe).
+        r = await client.post(
+            "/api/tables",
+            headers=platform_admin.headers,
+            json={
+                "name": name,
+                "organization_id": org2_id,
+                "policies": {"policies": [
+                    {
+                        "name": "admin_bypass",
+                        "actions": ["read", "create", "update", "delete"],
+                        "when": {"user": "is_platform_admin"},
+                    },
+                    {"name": "everyone_read", "actions": ["read"], "when": None},
+                ]},
+            },
+        )
+        assert r.status_code == 201, r.text
+        table_id = r.json()["id"]
+
+    # Subscribe by NAME — should be rejected.
+    ws, ack = await _ws_subscribe(alice_user.access_token, [f"table:{name}"])
+    try:
+        assert ack.get("type") == "error", f"name leak: {ack}"
+        assert "not found" in ack.get("message", "").lower()
+    finally:
+        await ws.close()
+
+    # Subscribe by UUID — also rejected.
+    ws, ack = await _ws_subscribe(alice_user.access_token, [f"table:{table_id}"])
+    try:
+        assert ack.get("type") == "error", f"UUID leak: {ack}"
+        assert "not found" in ack.get("message", "").lower()
+    finally:
+        await ws.close()

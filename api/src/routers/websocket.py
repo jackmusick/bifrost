@@ -69,52 +69,116 @@ def _parse_channels(channels_raw: list) -> list[ChannelSpec]:
     return out
 
 
-async def _resolve_table_id(name_or_id: str) -> str | None:
-    """Resolve a table reference (UUID string or name) to its canonical UUID.
+async def _resolve_table_id(name_or_id: str, user: UserPrincipal) -> str | None:
+    """Resolve a table reference (UUID string or name) to its canonical UUID,
+    enforcing the same org gate as the REST `get_table_or_404` helper:
+    a non-superuser may only resolve to tables in their own org or global.
 
-    `useTable(name)` and `tables.query(name)` both let callers reference a
-    table by name; the websocket pubsub channel is keyed by UUID, so we
-    normalize at the subscribe seam. Returns None if no table matches.
+    Returns None if no table matches OR the resolved table is outside the
+    user's org reach (404-style — callers translate to the user-visible
+    "Table not found" error).
     """
-    try:
-        UUID(name_or_id)
-        # Valid UUID format — assume it's an id reference. We don't verify
-        # existence here; `_load_policies_for_table` does that next.
-        return name_or_id
-    except ValueError:
-        pass
     async with get_db_context() as db:
-        result = await db.execute(
-            select(TableOrm.id).where(TableOrm.name == name_or_id)
-        )
+        try:
+            table_uuid = UUID(name_or_id)
+            stmt = select(TableOrm.id, TableOrm.organization_id).where(
+                TableOrm.id == table_uuid,
+            )
+        except ValueError:
+            stmt = select(TableOrm.id, TableOrm.organization_id).where(
+                TableOrm.name == name_or_id,
+            )
+            # Non-superusers' name lookups are restricted to their own org
+            # (cascade with global) — superusers see all orgs.
+            if not user.is_superuser:
+                stmt = stmt.where(
+                    (TableOrm.organization_id == user.organization_id)
+                    | (TableOrm.organization_id.is_(None))
+                )
+        result = await db.execute(stmt)
         row = result.one_or_none()
-        if row is None:
+
+    if row is None:
+        return None
+
+    table_id, table_org = row[0], row[1]
+
+    # Org gate for UUID lookups (name lookups already constrained above).
+    if not user.is_superuser:
+        if table_org is not None and table_org != user.organization_id:
             return None
-        return str(row[0])
+
+    return str(table_id)
+
+
+# In-process policy cache for the document_change fanout hot path.
+#
+# Each `document_change` event reaches every WS subscriber's local handler,
+# which previously did a fresh DB load + Pydantic validate per event per
+# subscriber. For high-fanout tables (many subscribers + frequent updates)
+# that's O(subs × updates) DB queries. The cache collapses it to one load
+# per (table, generation) pair.
+#
+# Invalidation is event-driven: `policy_changed` messages bump the table's
+# generation in `_invalidate_table_policy_cache`, forcing a reload on next
+# read. Worker processes that don't subscribe to `policy_changed` for a
+# given table will hold a stale entry until the table is re-resolved — but
+# they also won't be evaluating that table's policies, so the staleness is
+# moot. (When a new subscriber arrives, the subscribe path goes through
+# `is_subscribe_authorized` with a fresh load, sidestepping the cache.)
+_table_policy_cache: dict[str, TablePolicies | None] = {}
+# Bounded to keep memory predictable under high table churn. Eviction is
+# FIFO — for a hot working set of <_POLICY_CACHE_MAX tables, every read is
+# a hit; cold reads pay one DB load.
+_POLICY_CACHE_MAX = 256
+
+
+def _invalidate_table_policy_cache(table_id: str) -> None:
+    """Drop the cached policies for a table; next read reloads from DB."""
+    _table_policy_cache.pop(table_id, None)
 
 
 async def _load_policies_for_table(table_id: str) -> TablePolicies | None:
     """Load policies for a table by id (UUID) or name. Returns None if missing.
 
-    Accepts a name as a fallback so callers that pre-resolved via
-    `_resolve_table_id` and callers that skipped resolution share one code
-    path. The publisher always emits on `table:{uuid}`, so internal callers
-    pass UUIDs; subscribe-time callers may pass either form.
+    Cache-first for UUID lookups (the hot path during `document_change`
+    fanout). Name lookups bypass the cache because the same name can resolve
+    to different tables in different orgs; UUIDs are unambiguous.
     """
+    # UUID lookups go through the cache. Name lookups bypass it because the
+    # same name can resolve to different tables in different orgs.
+    is_uuid = False
+    try:
+        UUID(table_id)
+        is_uuid = True
+    except ValueError:
+        pass
+
+    if is_uuid and table_id in _table_policy_cache:
+        return _table_policy_cache[table_id]
+
     async with get_db_context() as db:
-        try:
-            table_uuid = UUID(table_id)
-            stmt = select(TableOrm.access).where(TableOrm.id == table_uuid)
-        except ValueError:
+        if is_uuid:
+            stmt = select(TableOrm.access).where(TableOrm.id == UUID(table_id))
+        else:
             stmt = select(TableOrm.access).where(TableOrm.name == table_id)
         result = await db.execute(stmt)
         row = result.one_or_none()
-        if row is None:
-            return None
-        access = row[0]
-        if access is None:
-            return TablePolicies()
-        return TablePolicies.model_validate(access)
+
+    if row is None:
+        policies: TablePolicies | None = None
+    elif row[0] is None:
+        policies = TablePolicies()
+    else:
+        policies = TablePolicies.model_validate(row[0])
+
+    if is_uuid:
+        # Bounded FIFO eviction — pop arbitrary entry when full.
+        if len(_table_policy_cache) >= _POLICY_CACHE_MAX:
+            _table_policy_cache.pop(next(iter(_table_policy_cache)), None)
+        _table_policy_cache[table_id] = policies
+
+    return policies
 
 
 async def _populate_user_roles(user: UserPrincipal) -> None:
@@ -171,6 +235,10 @@ async def _handle_table_message(
     msg_type = payload.get("type")
 
     if msg_type == "policy_changed":
+        # Drop the in-process policy cache for this table so the
+        # re-evaluation (and every subsequent document_change for this
+        # table on this process) sees the fresh policies.
+        _invalidate_table_policy_cache(table_id)
         await _re_evaluate_subscription(websocket, user, table_id)
         return
 
@@ -243,7 +311,7 @@ async def _authorize_table_subscribe(
     ack and returns None.
     """
     name_or_id = spec.name.split(":", 1)[1]
-    canonical_id = await _resolve_table_id(name_or_id)
+    canonical_id = await _resolve_table_id(name_or_id, user)
     if canonical_id is None:
         await websocket.send_json({
             "type": "error",
@@ -252,6 +320,11 @@ async def _authorize_table_subscribe(
         })
         return None
 
+    # Drop any stale cache entry: between this process's last sub
+    # disconnecting and now, a `policy_changed` event for this table
+    # would NOT have reached us (no subscriber to fan out to). Force a
+    # fresh load on subscribe to close that staleness window.
+    _invalidate_table_policy_cache(canonical_id)
     policies = await _load_policies_for_table(canonical_id)
     if policies is None:
         await websocket.send_json({
@@ -759,7 +832,7 @@ async def websocket_connect(
                     # under the canonical UUID channel. Resolve before pop.
                     if channel.startswith("table:"):
                         name_or_id = channel.split(":", 1)[1]
-                        canonical_id = await _resolve_table_id(name_or_id)
+                        canonical_id = await _resolve_table_id(name_or_id, user)
                         canonical_channel = (
                             f"table:{canonical_id}"
                             if canonical_id is not None
