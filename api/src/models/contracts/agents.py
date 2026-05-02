@@ -29,6 +29,23 @@ class ToolResult(BaseModel):
     result: Any = Field(..., description="Result from tool execution")
     error: str | None = Field(default=None, description="Error message if tool failed")
     duration_ms: int | None = Field(default=None, description="Execution duration in milliseconds")
+    error_type: str | None = Field(
+        default=None,
+        description=(
+            "Optional structured error class. Used by the chat surface to "
+            "render specialized recovery UIs (e.g. 'needs_reauth' shows an "
+            "inline reconnect button instead of a plain error message)."
+        ),
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Optional structured payload that travels alongside the error. "
+            "For 'needs_reauth' this carries 'reauth_url', 'connection_id', "
+            "and 'tool_name' so the chat surface can build the reconnect "
+            "button without re-querying."
+        ),
+    )
 
 
 # ==================== AGENT MODELS ====================
