@@ -17,7 +17,6 @@ from src.models.orm.base import Base
 
 if TYPE_CHECKING:
     from src.models.orm.ai_usage import AIUsage
-    from src.models.orm.external_mcp import MCPConnection
     from src.models.orm.organizations import Organization
     from src.models.orm.users import Role, User
     from src.models.orm.workflows import Workflow
@@ -101,7 +100,13 @@ class Agent(Base):
     # to. Default for new agents is empty (deny-by-default); the migration
     # that introduces ``agent_mcp_connections`` backfills grants for existing
     # rows so the rollout preserves current behavior.
-    mcp_connections: Mapped[list["MCPConnection"]] = relationship(
+    #
+    # Untyped on purpose: importing MCPConnection (even under TYPE_CHECKING)
+    # closes a CodeQL-flagged cycle through external_mcp → organizations →
+    # agents. SQLAlchemy resolves the string class name at mapper config
+    # time, so the runtime is unaffected.
+    mcp_connections = relationship(
+        "MCPConnection",
         secondary="agent_mcp_connections",
     )
 
