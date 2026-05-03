@@ -72,6 +72,13 @@ export function CodeEditor({
 					tabSize: 2,
 					formatOnPaste: true,
 					readOnly,
+					// Read-only displays (e.g., reference-panel examples) don't
+					// need the line-number / folding gutters — drop them to
+					// reclaim left margin. Editable consumers keep both.
+					lineNumbers: readOnly ? "off" : "on",
+					folding: !readOnly,
+					lineDecorationsWidth: readOnly ? 0 : undefined,
+					lineNumbersMinChars: readOnly ? 0 : undefined,
 				}}
 			/>
 		</div>
