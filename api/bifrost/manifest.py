@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -229,18 +230,43 @@ class ManifestConfig(BaseModel):
     value: object | None = Field(default=None, description="Config value (null for secret type)")
 
 
+class ManifestPolicy(BaseModel):
+    """Single policy entry within a table's policies list.
+
+    Mirrors :class:`src.models.contracts.policies.Policy`. The ``when`` field
+    holds the policy AST as a plain dict (validated server-side at import).
+    """
+    name: str = Field(description="Unique policy name within the table")
+    description: str | None = Field(default=None, description="Human-readable description")
+    actions: list[Literal["read", "create", "update", "delete"]] = Field(
+        description="Actions this policy applies to (read/create/update/delete)"
+    )
+    when: dict | None = Field(
+        default=None,
+        description="Policy AST as JSON-compatible dict; null = always allow for matching actions",
+    )
+
+
 class ManifestTable(BaseModel):
     """Table entry in manifest.
 
     Uses ``table_schema`` in Python but serializes as ``schema`` in YAML
     via the alias, matching the DB column name.
+
+    Policies are a flat list at the manifest level; the serializer wraps
+    them as ``{"policies": [...]}`` when writing to ``Table.access`` JSONB
+    and unwraps on export. This keeps the YAML readable without the
+    redundant ``policies.policies`` nesting.
     """
     id: str = Field(description="Table UUID")
     name: str = Field(default="", description="Table display name")
     description: str | None = Field(default=None, description="Table description")
     organization_id: str | None = Field(default=None, description="Org UUID (null = global)")
-    application_id: str | None = Field(default=None, description="App UUID (for app-scoped tables)")
     table_schema: dict | None = Field(default=None, alias="schema", description="Column definitions and validation hints")
+    policies: list[ManifestPolicy] | None = Field(
+        default=None,
+        description="Access policies (flat list). When null on import, the seed admin_bypass policy is written.",
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -464,7 +490,6 @@ def validate_manifest(manifest: Manifest) -> list[str]:
     role_ids = {role.id for role in manifest.roles}
     wf_ids = {wf.id for wf in manifest.workflows.values()}
     integration_ids = {integ.id for integ in manifest.integrations.values()}
-    app_ids = {app.id for app in manifest.apps.values()}
     agent_ids = {a.id for a in manifest.agents.values()}
 
     # Check organization references
@@ -522,13 +547,11 @@ def validate_manifest(manifest: Manifest) -> list[str]:
         if cfg.organization_id and cfg.organization_id not in org_ids:
             errors.append(f"Config '{key}' references unknown organization: {cfg.organization_id}")
 
-    # Tables: organization_id and application_id
+    # Tables: organization_id only (Table.application_id was removed)
     for _key, table in manifest.tables.items():
         table_label = table.name or table.id
         if table.organization_id and table.organization_id not in org_ids:
             errors.append(f"Table '{table_label}' references unknown organization: {table.organization_id}")
-        if table.application_id and table.application_id not in app_ids:
-            errors.append(f"Table '{table_label}' references unknown application: {table.application_id}")
 
     # Events: source + subscription refs
     for _key, evt in manifest.events.items():
