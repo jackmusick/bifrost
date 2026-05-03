@@ -19,6 +19,7 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { CodeEditor } from "./CodeEditor";
 import { POLICY_TEMPLATES } from "./policy-templates";
 import type { components } from "@/lib/v1";
 
@@ -403,10 +404,12 @@ function RefSection({ title, rows }: { title: string; rows: RefRow[] }) {
 
 function ExampleBlock({
 	example,
+	index,
 	copied,
 	onCopy,
 }: {
 	example: WorkedExample;
+	index: number;
 	copied: boolean;
 	onCopy: () => void;
 }) {
@@ -430,9 +433,14 @@ function ExampleBlock({
 			<p className="text-xs text-muted-foreground">
 				{example.description}
 			</p>
-			<pre className="text-xs font-mono bg-muted/50 rounded p-2 overflow-x-auto">
-				<code>{json}</code>
-			</pre>
+			<CodeEditor
+				mode="json"
+				text={json}
+				onChange={() => {}}
+				path={`example-${index}.json`}
+				height="180px"
+				readOnly
+			/>
 		</div>
 	);
 }
@@ -468,6 +476,7 @@ function ExamplesSection({ examples }: { examples: WorkedExample[] }) {
 					<ExampleBlock
 						key={ex.heading}
 						example={ex}
+						index={idx}
 						copied={copiedIdx === idx}
 						onCopy={() => handleCopy(idx, ex.policy)}
 					/>

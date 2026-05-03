@@ -9,6 +9,10 @@
  *     button text to "Copied!" then back. We don't assert clipboard write —
  *     jsdom omits navigator.clipboard and the spec calls that out.
  *   - Footguns section is present with at least 5 entries.
+ *
+ * Examples are now rendered through `CodeEditor` (the Monaco wrapper) so
+ * mock `@monaco-editor/react` to a textarea labelled by its `path` prop —
+ * matching the pattern in PolicyEditor.test.tsx / TableDialog.test.tsx.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -20,6 +24,29 @@ import {
 	fireEvent,
 	act,
 } from "@/test-utils";
+
+vi.mock("@monaco-editor/react", () => ({
+	default: ({
+		value,
+		onChange,
+		path,
+	}: {
+		value?: string;
+		onChange?: (v: string | undefined) => void;
+		path?: string;
+	}) => (
+		<textarea
+			aria-label={path ?? "monaco-editor"}
+			value={value ?? ""}
+			onChange={(e) => onChange?.(e.target.value)}
+		/>
+	),
+}));
+
+vi.mock("@/contexts/ThemeContext", () => ({
+	useTheme: () => ({ theme: "light" }),
+}));
+
 import { PolicyReferencePanel } from "./PolicyReferencePanel";
 
 describe("PolicyReferencePanel — legacy sections", () => {
@@ -98,19 +125,21 @@ describe("PolicyReferencePanel — worked examples", () => {
 		// document (i.e. starts with the wrapper) — the plan calls this out
 		// explicitly so users can copy → paste into the JSON tab without
 		// hand-editing the wrapper.
+		//
+		// Examples render through CodeEditor (mocked to a textarea labelled
+		// `example-<idx>.json`); pull each textarea by its label and parse.
 		renderWithProviders(
 			<PolicyReferencePanel open onClose={() => {}} />,
 		);
 		const headings = screen.getAllByRole("heading", { level: 5 });
-		for (const heading of headings) {
-			// Each example renders as <div.space-y-1><div.flex>h5+button</div>
-			// <p/><pre><code>JSON</code></pre></div>. Walk up two levels to
-			// reach the outer block, then locate the <code>.
-			const outerBlock = heading.parentElement?.parentElement;
-			expect(outerBlock).not.toBeNull();
-			const code = outerBlock!.querySelector("pre code");
-			expect(code).not.toBeNull();
-			const parsed = JSON.parse(code!.textContent ?? "");
+		const editors = screen.getAllByLabelText(/^example-\d+\.json$/);
+		expect(editors.length).toBe(headings.length);
+		for (let i = 0; i < headings.length; i++) {
+			const heading = headings[i]!;
+			const editor = screen.getByLabelText(
+				`example-${i}.json`,
+			) as HTMLTextAreaElement;
+			const parsed = JSON.parse(editor.value);
 			expect(parsed).toHaveProperty("policies");
 			expect(Array.isArray(parsed.policies)).toBe(true);
 			expect(parsed.policies.length).toBeGreaterThan(0);

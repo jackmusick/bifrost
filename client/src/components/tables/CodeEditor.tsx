@@ -27,6 +27,12 @@ export interface CodeEditorProps {
 	path: string;
 	/** CSS height; defaults to 320px. */
 	height?: string;
+	/**
+	 * Render the editor read-only. Monaco grays the cursor and disables
+	 * typing automatically when this is set; consumers typically pass a
+	 * no-op `onChange` since no edits will fire.
+	 */
+	readOnly?: boolean;
 	"data-testid"?: string;
 }
 
@@ -36,6 +42,7 @@ export function CodeEditor({
 	onChange,
 	path,
 	height = "320px",
+	readOnly = false,
 	"data-testid": testId,
 }: CodeEditorProps) {
 	const { theme } = useTheme();
@@ -64,6 +71,7 @@ export function CodeEditor({
 					automaticLayout: true,
 					tabSize: 2,
 					formatOnPaste: true,
+					readOnly,
 				}}
 			/>
 		</div>
