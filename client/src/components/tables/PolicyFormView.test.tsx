@@ -252,7 +252,11 @@ describe("PolicyFormView — mutations", () => {
 		expect(last!.policies![0]!.actions).toEqual(["read"]);
 	});
 
-	it("trash on the last row emits onChange(null)", async () => {
+	it("trash on the last row emits an empty policies array (parent collapses to null)", async () => {
+		// PolicyFormView forwards `{policies: []}` unchanged; the
+		// `[]` -> null collapse is owned by PolicyEditor.emit. This test
+		// pins the contract at this layer; the dialog-level round-trip
+		// test in TableDialog.test.tsx covers the parent collapse.
 		const value: TablePolicies = {
 			policies: [{ name: "p1", actions: ["read"], when: null }],
 		};
@@ -262,7 +266,7 @@ describe("PolicyFormView — mutations", () => {
 		await user.click(
 			screen.getByRole("button", { name: /remove policy/i }),
 		);
-		expect(lastEmitted()).toBeNull();
+		expect(lastEmitted()).toEqual({ policies: [] });
 	});
 
 	it("trash on one of N rows drops only that row", async () => {

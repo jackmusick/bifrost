@@ -93,7 +93,8 @@ export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
 	// last accepted from props. The render-phase reset below uses these to
 	// distinguish "external value changed" from "we just echoed our own
 	// commit back" (we don't want to clobber a mid-typed buffer in the
-	// latter case). Same pattern as PolicyEditorRow's `lastSynced`.
+	// latter case) — i.e. a render-phase reset to keep external value in
+	// sync without useEffect.
 	const [lastSyncedJson, setLastSyncedJson] = useState<string>(() =>
 		serializeJson(value),
 	);

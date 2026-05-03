@@ -220,4 +220,97 @@ describe("PolicyExpressionBuilder — and operand removal", () => {
 		const last = lastEmitted() as { and: unknown[] };
 		expect(last.and).toEqual([{ row: "x" }, { row: "z" }]);
 	});
+
+	it("disables the [×] buttons when removal would drop below 2 operands", () => {
+		const value: ExprNode = {
+			and: [{ row: "x" }, { row: "y" }],
+		};
+		renderWithProviders(
+			<PolicyExpressionBuilder value={value} onChange={onChange} />,
+		);
+		const btn1 = screen.getByRole("button", { name: /remove operand 1/i });
+		const btn2 = screen.getByRole("button", { name: /remove operand 2/i });
+		expect(btn1).toBeDisabled();
+		expect(btn2).toBeDisabled();
+	});
+
+	it("re-enables the [×] buttons once a 3rd operand is added; removing one disables them again", async () => {
+		// Three operands: all three [×] buttons are enabled.
+		const three: ExprNode = {
+			and: [{ row: "x" }, { row: "y" }, { row: "z" }],
+		};
+		const { rerender } = renderWithProviders(
+			<PolicyExpressionBuilder value={three} onChange={onChange} />,
+		);
+		expect(
+			screen.getByRole("button", { name: /remove operand 1/i }),
+		).toBeEnabled();
+		expect(
+			screen.getByRole("button", { name: /remove operand 2/i }),
+		).toBeEnabled();
+		expect(
+			screen.getByRole("button", { name: /remove operand 3/i }),
+		).toBeEnabled();
+
+		// Drop back to two: both remaining [×] buttons disabled.
+		const two: ExprNode = {
+			and: [{ row: "x" }, { row: "z" }],
+		};
+		rerender(
+			<PolicyExpressionBuilder value={two} onChange={onChange} />,
+		);
+		expect(
+			screen.getByRole("button", { name: /remove operand 1/i }),
+		).toBeDisabled();
+		expect(
+			screen.getByRole("button", { name: /remove operand 2/i }),
+		).toBeDisabled();
+	});
+});
+
+describe("PolicyExpressionBuilder — literal sub-kind gating", () => {
+	it("hides the `null` literal option when the parent op is `eq`", () => {
+		const value: ExprNode = {
+			eq: [{ row: "x" }, ""],
+		};
+		renderWithProviders(
+			<PolicyExpressionBuilder value={value} onChange={onChange} />,
+		);
+		// Operand 1 (right side) should be a literal kind picker. Find the
+		// nested literal-type select; under jsdom every Radix Select is a
+		// native <select>, so we can read its <option> values.
+		const literalTypeSelect = screen.getByLabelText(
+			/literal type/i,
+		) as HTMLSelectElement;
+		const options = Array.from(literalTypeSelect.options).map(
+			(o) => o.value,
+		);
+		expect(options).toEqual(
+			expect.arrayContaining(["string", "number", "boolean"]),
+		);
+		expect(options).not.toContain("null");
+	});
+
+	it("keeps the `null` literal option when the parent op is `is_null`", () => {
+		// `is_null` takes a single operand. If the user picks Literal as the
+		// operand kind, `null` is structurally valid (`{is_null: null}`).
+		const value: ExprNode = {
+			is_null: null,
+		};
+		renderWithProviders(
+			<PolicyExpressionBuilder value={value} onChange={onChange} />,
+		);
+		// Switch the single operand kind from its default to `literal` so
+		// LiteralBody renders.
+		const operandPicker = screen.getByLabelText(/operand kind/i);
+		fireEvent.change(operandPicker, { target: { value: "literal" } });
+		// Now LiteralBody is mounted with parentOp=is_null. `null` is allowed.
+		const literalTypeSelect = screen.getByLabelText(
+			/literal type/i,
+		) as HTMLSelectElement;
+		const options = Array.from(literalTypeSelect.options).map(
+			(o) => o.value,
+		);
+		expect(options).toContain("null");
+	});
 });

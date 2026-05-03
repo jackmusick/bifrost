@@ -9,8 +9,9 @@
  * Owns no buffers — every keystroke flows back up to the parent through
  * `onChange`, and the parent (PolicyEditor) is responsible for the
  * cross-tab buffer reseed dance. Empty-list collapses to `null` are also
- * the parent's responsibility (PolicyEditor.emit), so we don't suppress
- * empty arrays here — we forward them.
+ * the parent's responsibility (PolicyEditor.emit owns this normalization),
+ * so we don't suppress empty arrays here — we forward them as
+ * `{policies: []}` and let the parent collapse to null.
  */
 
 import { useId, useState } from "react";
@@ -46,10 +47,8 @@ export function PolicyFormView({ value, onChange }: PolicyFormViewProps) {
 	const idBase = useId();
 
 	function emitPolicies(nextPolicies: Policy[]) {
-		if (nextPolicies.length === 0) {
-			onChange(null);
-			return;
-		}
+		// Forward empty arrays as-is; PolicyEditor.emit owns the
+		// `{policies: []}` -> null collapse. (See file-level comment.)
 		onChange({ policies: nextPolicies });
 	}
 

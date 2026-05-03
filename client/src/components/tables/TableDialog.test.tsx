@@ -25,28 +25,6 @@ import {
 import type { ReactNode } from "react";
 import { POLICY_TEMPLATES } from "./policy-templates";
 
-// Stub Monaco to a textarea labelled by the editor's `path` prop. The
-// PolicyEditorRow uses path=`policy-${rowKey}.json`; PolicyEditor passes
-// rowKey down so we can find the editor for a specific row. This is the same
-// stub used in PolicyEditor.test.tsx / PolicyEditorRow.test.tsx.
-vi.mock("@monaco-editor/react", () => ({
-	default: ({
-		value,
-		onChange,
-		path,
-	}: {
-		value?: string;
-		onChange?: (v: string | undefined) => void;
-		path?: string;
-	}) => (
-		<textarea
-			aria-label={path ?? "monaco-editor"}
-			value={value ?? ""}
-			onChange={(e) => onChange?.(e.target.value)}
-		/>
-	),
-}));
-
 vi.mock("@/contexts/ThemeContext", () => ({
 	useTheme: () => ({ theme: "light" }),
 }));
@@ -296,13 +274,13 @@ describe("TableDialog — edit mode", () => {
 });
 
 describe("TableDialog — PolicyEditor save round-trip (security)", () => {
-	// The dialog-level round-trip used to drive per-row name + Monaco
-	// inputs inside the PolicyEditor's Form tab. Task 1 reduces that tab
-	// to a placeholder stub, so we drive the toolbar Insert Template flow
-	// instead — that's a usable surface today and survives the Task 2/3
-	// rewrite (Task 6 will broaden coverage once the per-row inputs are
-	// back). The edit-mode equivalent stays skipped: it tested in-row
-	// mutations that genuinely need the Form tab content.
+	// Two complementary surfaces:
+	//   1. Toolbar Insert Template flow (template → policies in submit body).
+	//   2. Edit-mode per-row Form view inputs (rename + toggle action → update
+	//      body).
+	// Both paths must reach the create/update mutation body verbatim — any
+	// drift between what the editor emits and what the API receives is a
+	// silent policy bypass.
 	it("creates a table whose policies body matches the inserted template", async () => {
 		const onClose = vi.fn();
 		const { user } = renderWithProviders(

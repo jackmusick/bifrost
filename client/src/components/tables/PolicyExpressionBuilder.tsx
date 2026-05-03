@@ -110,7 +110,6 @@ export function PolicyExpressionBuilder({
 						value={value}
 						onChange={onChange}
 						depth={0}
-						removable={false}
 					/>
 				)}
 			</div>
@@ -130,27 +129,21 @@ export function PolicyExpressionBuilder({
 			value={value}
 			onChange={onChange}
 			depth={currentDepth}
-			removable={false}
 		/>
 	);
 }
 
 /**
- * Single AST node renderer (recursive). `removable` toggles the trailing [×]
- * button; the root operand isn't removable, but operands of `and/or` are.
+ * Single AST node renderer (recursive).
  */
 function NodeEditor({
 	value,
 	onChange,
 	depth,
-	removable,
-	onRemove,
 }: {
 	value: ExprNode;
 	onChange: (next: ExprNode) => void;
 	depth: number;
-	removable: boolean;
-	onRemove?: () => void;
 }) {
 	const kind = kindOf(value);
 
@@ -170,18 +163,6 @@ function NodeEditor({
 					kind={kind}
 					onChange={handleOpChange}
 				/>
-				{removable && onRemove && (
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="h-7 w-7 ml-auto"
-						aria-label="Remove node"
-						onClick={onRemove}
-					>
-						<X className="h-3.5 w-3.5" />
-					</Button>
-				)}
 			</div>
 			<NodeBody
 				value={value}
@@ -414,18 +395,16 @@ function LogicBody({
 	}
 
 	function removeOperand(idx: number) {
-		// `and`/`or` require ≥2 operands. If the user tries to drop below two,
-		// fold the remaining single operand UP (the unwrap) so the AST stays
-		// structurally valid. Switching ops is the user's job from there.
+		// `and`/`or` require ≥2 operands. The per-operand [×] button is
+		// disabled when removing would drop below two, but defend against
+		// programmatic callers anyway: reject the removal silently.
+		if (operands.length <= 2) return;
 		const copy = operands.slice();
 		copy.splice(idx, 1);
-		if (copy.length < 2) {
-			if (copy.length === 1) onChange(copy[0] ?? null);
-			else onChange(defaultOperandForKind("expression"));
-			return;
-		}
 		update(copy);
 	}
+
+	const removeDisabled = operands.length <= 2;
 
 	return (
 		<div className="space-y-2 pl-3">
@@ -449,6 +428,12 @@ function LogicBody({
 						className="h-7 w-7 mt-1"
 						aria-label={`Remove operand ${idx + 1}`}
 						onClick={() => removeOperand(idx)}
+						disabled={removeDisabled}
+						title={
+							removeDisabled
+								? "and/or requires at least 2 operands"
+								: undefined
+						}
 					>
 						<X className="h-3.5 w-3.5" />
 					</Button>
@@ -516,6 +501,7 @@ function CompareBody({
 					value={left}
 					onChange={setLeft}
 					depth={depth + 1}
+					parentOp={op}
 					testId="compare-left"
 				/>
 			</div>
@@ -524,6 +510,7 @@ function CompareBody({
 					value={right}
 					onChange={setRight}
 					depth={depth + 1}
+					parentOp={op}
 					testId="compare-right"
 				/>
 			</div>
@@ -641,17 +628,21 @@ function CallBody({
 /**
  * One operand slot — kind picker + the kind-specific control. The kind
  * picker is a small dropdown; switching kind resets the slot to that kind's
- * default.
+ * default. `parentOp` lets sub-controls (e.g. LiteralBody) gate options
+ * that would produce a structurally-invalid AST in the parent's slot —
+ * specifically, hiding the `null` literal sub-kind under `eq`/`neq`.
  */
 function OperandSlot({
 	value,
 	onChange,
 	depth,
+	parentOp,
 	testId,
 }: {
 	value: ExprNode;
 	onChange: (next: ExprNode) => void;
 	depth: number;
+	parentOp?: AllOp;
 	testId?: string;
 }) {
 	const kind = operandKindOf(value);
@@ -688,6 +679,7 @@ function OperandSlot({
 				value={value}
 				onChange={onChange}
 				depth={depth}
+				parentOp={parentOp}
 			/>
 		</div>
 	);
@@ -713,11 +705,13 @@ function OperandBody({
 	value,
 	onChange,
 	depth,
+	parentOp,
 }: {
 	kind: OperandKind;
 	value: ExprNode;
 	onChange: (next: ExprNode) => void;
 	depth: number;
+	parentOp?: AllOp;
 }) {
 	if (kind === "row-ref") {
 		return (
@@ -736,7 +730,13 @@ function OperandBody({
 		);
 	}
 	if (kind === "literal") {
-		return <LiteralBody value={value} onChange={onChange} />;
+		return (
+			<LiteralBody
+				value={value}
+				onChange={onChange}
+				parentOp={parentOp}
+			/>
+		);
 	}
 	// Expression: nest a fresh builder.
 	return (
@@ -751,9 +751,11 @@ function OperandBody({
 function LiteralBody({
 	value,
 	onChange,
+	parentOp,
 }: {
 	value: ExprNode;
 	onChange: (next: ExprNode) => void;
+	parentOp?: AllOp;
 }) {
 	const sub: "string" | "number" | "boolean" | "null" =
 		value === null
@@ -763,6 +765,13 @@ function LiteralBody({
 				: typeof value === "boolean"
 					? "boolean"
 					: "string";
+
+	// Validator rejects `{eq: [..., null]}` / `{neq: [..., null]}` because the
+	// preferred null comparison is `is_null`. Hide the `null` sub-kind in
+	// those parents so the builder can't construct an invalid AST. Other
+	// parents (e.g. `is_null`'s single operand) still allow it — `null` is a
+	// structurally valid scalar there.
+	const allowNull = parentOp !== "eq" && parentOp !== "neq";
 
 	function changeSub(next: typeof sub) {
 		if (next === sub) return;
@@ -795,7 +804,7 @@ function LiteralBody({
 					<SelectItem value="string">string</SelectItem>
 					<SelectItem value="number">number</SelectItem>
 					<SelectItem value="boolean">boolean</SelectItem>
-					<SelectItem value="null">null</SelectItem>
+					{allowNull && <SelectItem value="null">null</SelectItem>}
 				</SelectContent>
 			</Select>
 			{sub === "string" && (
