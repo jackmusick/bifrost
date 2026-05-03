@@ -79,7 +79,7 @@ describe("PolicyReferencePanel — worked examples", () => {
 		expect(
 			screen.getByRole("heading", {
 				level: 5,
-				name: "cross_org_provider_read",
+				name: "provider_read",
 			}),
 		).toBeInTheDocument();
 	});

@@ -159,7 +159,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "field_unset",
+		heading: "unassigned",
 		description: "Null check.",
 		policy: {
 			name: "unassigned",
@@ -169,7 +169,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "field_set",
+		heading: "assigned",
 		description: "\"Is set\" idiom (not + is_null).",
 		policy: {
 			name: "assigned",
@@ -180,7 +180,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "compound_and",
+		heading: "own_open_row",
 		description: "Two clauses combined.",
 		policy: {
 			name: "own_open_row",
@@ -196,7 +196,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "compound_or",
+		heading: "owner_or_role",
 		description: "Alternative grants.",
 		policy: {
 			name: "owner_or_role",
@@ -212,7 +212,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "nested_and_or",
+		heading: "nested_grant",
 		description: "Showing precedence + indentation.",
 		policy: {
 			name: "nested_grant",
@@ -237,7 +237,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "has_role_name",
+		heading: "managers_only",
 		description: "Function call with role name.",
 		policy: {
 			name: "managers_only",
@@ -247,7 +247,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "has_role_uuid",
+		heading: "by_role_uuid",
 		description: "Function call with role UUID (string compared).",
 		policy: {
 			name: "by_role_uuid",
@@ -274,7 +274,7 @@ const EXAMPLES: WorkedExample[] = [
 		},
 	},
 	{
-		heading: "cross_org_provider_read",
+		heading: "provider_read",
 		description:
 			"`or` between own-org and platform-admin (cross-org provider scenario).",
 		policy: {
