@@ -103,7 +103,6 @@ class Agent(Base):
     # rows so the rollout preserves current behavior.
     mcp_connections: Mapped[list["MCPConnection"]] = relationship(
         secondary="agent_mcp_connections",
-        back_populates="agents",
     )
 
     __table_args__ = (
