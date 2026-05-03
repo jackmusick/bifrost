@@ -497,6 +497,10 @@ export function MCPServerForm({ onSuccess, onCancel }: MCPServerFormProps = {}) 
 							/>
 						</div>
 
+						{/* Redirect URL is only meaningful for the authorization_code flow.
+						    client_credentials is server-to-server; the vendor never redirects
+						    a browser anywhere, so showing this just confuses admins. */}
+						{flowType === "authorization_code" && (
 						<div className="space-y-2">
 							<label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
 								Redirect URL{" "}
@@ -518,6 +522,7 @@ export function MCPServerForm({ onSuccess, onCancel }: MCPServerFormProps = {}) 
 								server.
 							</p>
 						</div>
+						)}
 					</div>
 				)}
 
