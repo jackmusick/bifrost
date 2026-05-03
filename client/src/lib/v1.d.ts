@@ -3472,22 +3472,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8027,6 +8027,26 @@ export interface paths {
          *     All other fields are passed through verbatim.
          */
         patch: operations["update_mcp_connection_api_mcp_connections__connection_id__patch"];
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}/tools/{tool_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a single tool in the connection's catalog
+         * @description Toggle ``enabled`` for one tool on a connection. Used by the Connection edit UI when an admin opts a tool out of the catalog. Setting enabled=true clears any auto-set ``disabled_reason``; setting enabled=false records ``Manually disabled by admin`` so a future catalog sync won't auto-re-enable it.
+         */
+        patch: operations["update_mcp_connection_tool_api_mcp_connections__connection_id__tools__tool_id__patch"];
         trace?: never;
     };
     "/api/mcp-connections/{connection_id}/refresh-tools": {
@@ -15463,6 +15483,17 @@ export interface components {
              * @default true
              */
             is_system: boolean;
+        };
+        /**
+         * MCPToolPatchRequest
+         * @description Body for ``PATCH /api/mcp-connections/{cid}/tools/{tid}``.
+         */
+        MCPToolPatchRequest: {
+            /**
+             * Enabled
+             * @description Admin override. False removes this tool from the catalog surfaced to agents; True puts it back. Independent from the auto-disable that catalog sync applies when a tool disappears from the vendor's tools/list (those carry a disabled_reason starting with 'Removed from server catalog').
+             */
+            enabled?: boolean | null;
         };
         /**
          * MCPToolsResponse
@@ -26543,7 +26574,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26576,7 +26607,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26609,7 +26640,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26642,7 +26673,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -34922,6 +34953,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MCPConnectionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_connection_tool_api_mcp_connections__connection_id__tools__tool_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPToolPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionToolPublic"];
                 };
             };
             /** @description Validation Error */

@@ -201,7 +201,48 @@ export function MCPConnectionEdit() {
 				params: { path: { connection_id: connection.id } },
 				body,
 			});
-			toast.success("Connection saved");
+
+			// Persist any per-tool enabled toggles. handleSave originally
+			// only saved connection-level fields; tool checkboxes were
+			// collected into toolEnabledMap but never sent to the API. Issue
+			// PATCHes for each tool whose enabled value diverges from the
+			// last-fetched server state.
+			const toolPatches: Promise<unknown>[] = [];
+			for (const tool of connection.tools ?? []) {
+				const desired = toolEnabledMap[tool.id];
+				if (desired !== undefined && desired !== tool.enabled) {
+					toolPatches.push(
+						apiClient.PATCH(
+							"/api/mcp-connections/{connection_id}/tools/{tool_id}",
+							{
+								params: {
+									path: {
+										connection_id: connection.id,
+										tool_id: tool.id,
+									},
+								},
+								body: { enabled: desired },
+							},
+						),
+					);
+				}
+			}
+			if (toolPatches.length > 0) {
+				const results = await Promise.allSettled(toolPatches);
+				const failed = results.filter((r) => r.status === "rejected");
+				if (failed.length > 0) {
+					toast.error(
+						`Connection saved but ${failed.length} tool toggle(s) failed`,
+					);
+				} else {
+					toast.success(
+						`Connection saved (${toolPatches.length} tool toggle(s) applied)`,
+					);
+				}
+			} else {
+				toast.success("Connection saved");
+			}
+
 			queryClient.invalidateQueries({
 				queryKey: ["get", "/api/mcp-connections/{connection_id}"],
 			});

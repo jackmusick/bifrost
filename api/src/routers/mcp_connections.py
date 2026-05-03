@@ -609,6 +609,79 @@ async def delete_mcp_connection(
 
 
 # =============================================================================
+# Endpoints — per-tool catalog overrides
+# =============================================================================
+
+
+class MCPToolPatchRequest(BaseModel):
+    """Body for ``PATCH /api/mcp-connections/{cid}/tools/{tid}``."""
+
+    enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Admin override. False removes this tool from the catalog "
+            "surfaced to agents; True puts it back. Independent from the "
+            "auto-disable that catalog sync applies when a tool disappears "
+            "from the vendor's tools/list (those carry a "
+            "disabled_reason starting with 'Removed from server catalog')."
+        ),
+    )
+
+
+@router.patch(
+    "/{connection_id}/tools/{tool_id}",
+    response_model=MCPConnectionToolPublic,
+    summary="Update a single tool in the connection's catalog",
+    description=(
+        "Toggle ``enabled`` for one tool on a connection. Used by the "
+        "Connection edit UI when an admin opts a tool out of the catalog. "
+        "Setting enabled=true clears any auto-set ``disabled_reason``; "
+        "setting enabled=false records ``Manually disabled by admin`` "
+        "so a future catalog sync won't auto-re-enable it."
+    ),
+)
+async def update_mcp_connection_tool(
+    connection_id: UUID,
+    tool_id: UUID,
+    request: MCPToolPatchRequest,
+    ctx: Context,
+) -> MCPConnectionToolPublic:
+    """Update one tool's enabled flag on a connection's catalog."""
+    from src.models.orm.external_mcp import MCPConnectionTool
+
+    connection = await _get_connection_or_404(ctx, connection_id)
+    _enforce_can_write_org(ctx, connection.organization_id)
+
+    tool_q = await ctx.db.execute(
+        select(MCPConnectionTool).where(
+            MCPConnectionTool.id == tool_id,
+            MCPConnectionTool.connection_id == connection_id,
+        )
+    )
+    tool = tool_q.scalar_one_or_none()
+    if tool is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="MCP connection tool not found",
+        )
+
+    if request.enabled is not None and request.enabled != tool.enabled:
+        tool.enabled = request.enabled
+        if request.enabled:
+            # Re-enabling clears the auto-disable marker so a future catalog
+            # sync's "still missing from vendor's tools/list" check has clean
+            # state to work from.
+            tool.disabled_reason = None
+        else:
+            tool.disabled_reason = "Manually disabled by admin"
+        tool.updated_at = datetime.now(timezone.utc)
+
+    await ctx.db.flush()
+    await ctx.db.refresh(tool)
+    return MCPConnectionToolPublic.model_validate(tool)
+
+
+# =============================================================================
 # Endpoints — refresh tools / connect (admin)
 # =============================================================================
 
