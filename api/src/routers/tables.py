@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,11 @@ from src.core.auth import Context, CurrentSuperuser, UserPrincipal
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType, resolve_org_filter, resolve_target_org
-from src.models.contracts.policies import TablePolicies
+from src.models.contracts.policies import (
+    PolicyValidationError,
+    PolicyValidationResponse,
+    TablePolicies,
+)
 from src.models.contracts.tables import (
     DocumentBatchCreate,
     DocumentBatchCreateResponse,
@@ -756,6 +760,135 @@ async def list_tables(
         tables=[TablePublic.model_validate(t) for t in tables],
         total=len(tables),
     )
+
+
+def _loc_to_path(loc: tuple[Any, ...]) -> str:
+    """Convert a Pydantic ``error['loc']`` tuple to the JSONPath-like form
+    the AST validator emits (``$.policies[0].when.eq[1]``).
+
+    Integer locs are array indices and attach to the previous segment;
+    string locs are dotted-property segments. Returns ``$`` for an empty
+    loc (e.g. a top-level type error before any field was reached).
+    """
+    parts = ["$"]
+    for x in loc:
+        if isinstance(x, int):
+            parts[-1] = parts[-1] + f"[{x}]"
+        else:
+            parts.append(str(x))
+    return ".".join(parts) if len(parts) > 1 else "$"
+
+
+def _split_value_error_msg(msg: str) -> tuple[str, bool, str]:
+    """Split a Pydantic-wrapped Expr ``ValueError`` message back into its
+    embedded ``$.<path>: <message>`` parts.
+
+    Pydantic v2 prefixes ``ValueError`` raises from custom validators with
+    the literal ``"Value error, "``. The wrapped message itself starts
+    with the AST validator's own ``$.<path>: `` prefix (added by
+    ``_validate_operand`` so error context survives the call stack).
+
+    Returns ``(inner_path, separator_present, message)``. When the message
+    doesn't match the expected shape, returns ``("$", False, msg)`` so the
+    caller can fall through and use the loc-derived path verbatim.
+    """
+    PREFIX = "Value error, "
+    body = msg[len(PREFIX):] if msg.startswith(PREFIX) else msg
+    if not body.startswith("$"):
+        return ("$", False, msg)
+    path, sep, rest = body.partition(": ")
+    if not sep:
+        return ("$", False, msg)
+    return (path, True, rest)
+
+
+@router.post(
+    "/policies/validate",
+    response_model=PolicyValidationResponse,
+    summary="Validate a TablePolicies document without persisting it.",
+    description=(
+        "Runs the same AST validator the table create/update endpoints use, "
+        "returning structured errors. Used by the policy editor for live "
+        "feedback. On save, the create/update endpoints validate "
+        "authoritatively. Always returns 200 — the validation outcome is in "
+        "the body, not the status code."
+    ),
+)
+async def validate_policies(
+    user: CurrentSuperuser,
+    body: Any = Body(...),
+) -> PolicyValidationResponse:
+    """Validate a candidate ``TablePolicies`` payload.
+
+    The body is typed as ``dict | list`` (rather than ``TablePolicies``) so
+    FastAPI doesn't intercept validation errors as 422 before this handler
+    runs — we want to capture the full error list and surface it as
+    structured ``{path, message}`` entries in the response body. Anything
+    that isn't a JSON object (e.g. a list at the root, or a non-object
+    primitive) collapses to a single root-level error.
+
+    The validator (``Expr``) raises ``ValueError`` with messages already
+    prefixed by their AST path (``$.policies[0].when.eq[1]: ...``); we
+    split that prefix back out into the structured ``path``/``message``
+    pair. Pydantic's own ``ValidationError`` (e.g. wrong type for
+    ``actions``) goes through the standard ``loc``-tuple → path conversion
+    via ``_loc_to_path``.
+
+    Auth: matches the rest of the tables router (``CurrentSuperuser``).
+    The validator does not touch any tenant data, but tables are
+    superuser-only resources so the endpoint should not be reachable to
+    non-admin callers either.
+    """
+    if not isinstance(body, dict):
+        return PolicyValidationResponse(
+            ok=False,
+            errors=[
+                PolicyValidationError(
+                    path="$",
+                    message="root must be an object {policies: [...]}",
+                )
+            ],
+        )
+
+    try:
+        TablePolicies.model_validate(body)
+        return PolicyValidationResponse(ok=True)
+    except ValidationError as e:
+        errors: list[PolicyValidationError] = []
+        for err in e.errors():
+            path = _loc_to_path(err.get("loc", ()))
+            msg = err.get("msg", "validation error")
+            # ``Expr``'s recursive ``_validate_operand`` raises ``ValueError``
+            # with messages already prefixed by their AST path
+            # (``$.eq: eq does not accept null literals ...``). Pydantic v2
+            # wraps the raise as ``"Value error, <original>"``, so the inner
+            # path ends up embedded in ``msg`` instead of in ``loc``. Splice
+            # the inner path onto the loc path so the client gets the full
+            # ``$.policies[0].when.eq[1]`` form.
+            inner_path, sep, inner_msg = _split_value_error_msg(msg)
+            if sep:
+                path = path + inner_path[1:] if inner_path != "$" else path
+                msg = inner_msg
+            errors.append(PolicyValidationError(path=path, message=msg))
+        return PolicyValidationResponse(ok=False, errors=errors)
+    except ValueError as e:
+        # The Expr validator's ValueError is already path-prefixed
+        # (``$.policies[0].when.eq[1]: <message>``). Split the prefix back
+        # out so the client doesn't render the path twice. This branch
+        # fires when the ValueError is raised outside Pydantic's own
+        # validation context (defensive — the ``Expr`` raises currently
+        # surface as the ValidationError branch above).
+        text = str(e)
+        path, sep, msg = text.partition(": ")
+        return PolicyValidationResponse(
+            ok=False,
+            errors=[
+                PolicyValidationError(
+                    path=path if sep else "$",
+                    message=msg if sep else text,
+                )
+            ],
+        )
 
 
 @router.get(

@@ -6455,6 +6455,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/policies/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a TablePolicies document without persisting it.
+         * @description Runs the same AST validator the table create/update endpoints use, returning structured errors. Used by the policy editor for live feedback. On save, the create/update endpoints validate authoritatively. Always returns 200 — the validation outcome is in the body, not the status code.
+         */
+        post: operations["validate_policies_api_tables_policies_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{table_id}": {
         parameters: {
             query?: never;
@@ -16237,6 +16257,36 @@ export interface components {
             /** Actions */
             actions: ("read" | "create" | "update" | "delete")[];
             when?: components["schemas"]["Expr"] | null;
+        };
+        /**
+         * PolicyValidationError
+         * @description Single structured validation error for a policy document.
+         *
+         *     `path` is a JSONPath-like string pointing into the document (e.g.
+         *     ``$.policies[0].when.eq[1]``); `message` is the validator's prose
+         *     error stripped of any embedded path prefix.
+         */
+        PolicyValidationError: {
+            /** Path */
+            path: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * PolicyValidationResponse
+         * @description Outcome of a `POST /api/tables/policies/validate` call.
+         *
+         *     `ok` mirrors whether the document validated cleanly. On failure, every
+         *     error from the AST validator is surfaced via `errors`. Endpoint always
+         *     returns 200 — callers parse this body to render structured feedback,
+         *     which is why the validator's `ValueError` is not allowed to escape into
+         *     a FastAPI 422.
+         */
+        PolicyValidationResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Errors */
+            errors?: components["schemas"]["PolicyValidationError"][];
         };
         /**
          * PoolDetail
@@ -30685,6 +30735,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TablePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_policies_api_tables_policies_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": unknown;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyValidationResponse"];
                 };
             };
             /** @description Validation Error */

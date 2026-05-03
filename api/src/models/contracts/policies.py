@@ -192,3 +192,29 @@ class Policy(BaseModel):
 
 class TablePolicies(BaseModel):
     policies: list[Policy] = Field(default_factory=list)
+
+
+class PolicyValidationError(BaseModel):
+    """Single structured validation error for a policy document.
+
+    `path` is a JSONPath-like string pointing into the document (e.g.
+    ``$.policies[0].when.eq[1]``); `message` is the validator's prose
+    error stripped of any embedded path prefix.
+    """
+
+    path: str
+    message: str
+
+
+class PolicyValidationResponse(BaseModel):
+    """Outcome of a `POST /api/tables/policies/validate` call.
+
+    `ok` mirrors whether the document validated cleanly. On failure, every
+    error from the AST validator is surfaced via `errors`. Endpoint always
+    returns 200 — callers parse this body to render structured feedback,
+    which is why the validator's `ValueError` is not allowed to escape into
+    a FastAPI 422.
+    """
+
+    ok: bool
+    errors: list[PolicyValidationError] = Field(default_factory=list)

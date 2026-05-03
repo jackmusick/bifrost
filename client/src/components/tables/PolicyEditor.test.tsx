@@ -21,9 +21,12 @@
  *     into the expected TablePolicies
  *   - JSON ↔ YAML round-trip
  *   - Reference button opens the side sheet
+ *   - server-side validation: debounced call after parse-success, error
+ *     rendering, parse-error wipes stale validation results, and the
+ *     null-buffer case skips the round trip entirely
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, fireEvent } from "@/test-utils";
 import type { ReactNode } from "react";
 
@@ -121,8 +124,20 @@ vi.mock("@/components/ui/select", async () => {
 	};
 });
 
+// Mock the policies-service entry point. Tests that need to exercise
+// validation behavior import the mock factory and re-wire `validatePolicies`
+// per case. The default returns `{ok: true}` so unrelated tests aren't
+// perturbed when the editor's debounced validate effect fires.
+vi.mock("@/services/tables", () => ({
+	validatePolicies: vi.fn(async () => ({ ok: true, errors: [] })),
+}));
+
+import { useState } from "react";
 import { PolicyEditor } from "./PolicyEditor";
+import { validatePolicies } from "@/services/tables";
 import type { components } from "@/lib/v1";
+
+const mockValidate = validatePolicies as unknown as ReturnType<typeof vi.fn>;
 
 type TablePolicies = components["schemas"]["TablePolicies"];
 
@@ -132,6 +147,10 @@ let onChange: ReturnType<
 
 beforeEach(() => {
 	onChange = vi.fn<(next: TablePolicies | null) => void>();
+	mockValidate.mockReset();
+	// Default per-test impl: clean validation. Individual tests override
+	// to drive the error path.
+	mockValidate.mockImplementation(async () => ({ ok: true, errors: [] }));
 });
 
 function lastEmitted(): TablePolicies | null {
@@ -519,5 +538,150 @@ describe("PolicyEditor — reference panel", () => {
 		expect(screen.getByText(/policy reference/i)).toBeInTheDocument();
 		expect(screen.getByText(/USER fields/i)).toBeInTheDocument();
 		expect(screen.getByText(/Operators/i)).toBeInTheDocument();
+	});
+});
+
+// Mirror of the editor's debounce window. Kept in sync via a single named
+// constant so a future tweak in the component is caught by the tests
+// failing rather than silently passing on a wrong window.
+const VALIDATE_DEBOUNCE_MS_TEST = 300;
+
+/** Controlled wrapper: mirrors the real `TableDialog` parent's
+ * "echo prop back on every onChange" pattern so the editor's value-driven
+ * effects (in particular, the debounced validate) actually see the AST
+ * the user just edited into the buffer. */
+function ControlledPolicyEditor({
+	initial,
+	onChange: propOnChange,
+}: {
+	initial: TablePolicies | null;
+	onChange: (next: TablePolicies | null) => void;
+}) {
+	const [value, setValue] = useState<TablePolicies | null>(initial);
+	return (
+		<PolicyEditor
+			value={value}
+			onChange={(next) => {
+				setValue(next);
+				propOnChange(next);
+			}}
+		/>
+	);
+}
+
+describe("PolicyEditor — server-side validation", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("calls validate exactly once after a 300ms debounce of typing", async () => {
+		renderWithProviders(
+			<ControlledPolicyEditor initial={null} onChange={onChange} />,
+		);
+		const editor = screen.getByLabelText(
+			"policies.json",
+		) as HTMLTextAreaElement;
+		// Mount-time effect for value=null shouldn't have fired the
+		// validator. Reset the call log so we don't count any spurious
+		// mount-time call.
+		mockValidate.mockClear();
+		const valid = JSON.stringify(
+			{ policies: [{ name: "p1", actions: ["read"], when: null }] },
+			null,
+			2,
+		);
+		fireEvent.change(editor, { target: { value: valid } });
+		// Before the debounce expires, validate hasn't been called.
+		expect(mockValidate).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(299);
+		expect(mockValidate).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(mockValidate).toHaveBeenCalledTimes(1);
+		// The call payload is the parsed AST, not the raw text.
+		const arg = mockValidate.mock.calls[0]![0];
+		expect(arg).toEqual({
+			policies: [{ name: "p1", actions: ["read"], when: null }],
+		});
+	});
+
+	it("renders validation errors returned by the server", async () => {
+		mockValidate.mockResolvedValue({
+			ok: false,
+			errors: [
+				{
+					path: "$.policies[0].when.eq[1]",
+					message: "eq does not accept null literals",
+				},
+			],
+		});
+		renderWithProviders(
+			<ControlledPolicyEditor initial={null} onChange={onChange} />,
+		);
+		const editor = screen.getByLabelText(
+			"policies.json",
+		) as HTMLTextAreaElement;
+		const valid = JSON.stringify(
+			{ policies: [{ name: "p1", actions: ["read"], when: null }] },
+			null,
+			2,
+		);
+		fireEvent.change(editor, { target: { value: valid } });
+		// Run the debounce + the resolved-promise microtask so the state
+		// update from the validate response lands.
+		await vi.advanceTimersByTimeAsync(VALIDATE_DEBOUNCE_MS_TEST);
+		await vi.advanceTimersByTimeAsync(0);
+		// Both the path and the message should appear in the rendered row.
+		const block = screen.getByTestId("policy-editor-validation-errors");
+		expect(block.textContent).toContain("$.policies[0].when.eq[1]");
+		expect(block.textContent).toContain("eq does not accept null literals");
+	});
+
+	it("clears validation errors when the buffer becomes invalid", async () => {
+		mockValidate.mockResolvedValue({
+			ok: false,
+			errors: [{ path: "$.policies[0]", message: "broken" }],
+		});
+		renderWithProviders(
+			<ControlledPolicyEditor initial={null} onChange={onChange} />,
+		);
+		const editor = screen.getByLabelText(
+			"policies.json",
+		) as HTMLTextAreaElement;
+		// Step 1: type valid JSON; let validation resolve with errors.
+		const valid = JSON.stringify(
+			{ policies: [{ name: "p1", actions: ["read"], when: null }] },
+			null,
+			2,
+		);
+		fireEvent.change(editor, { target: { value: valid } });
+		await vi.advanceTimersByTimeAsync(VALIDATE_DEBOUNCE_MS_TEST);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(
+			screen.getByTestId("policy-editor-validation-errors"),
+		).toBeInTheDocument();
+		// Step 2: type garbage; the validation block should disappear.
+		fireEvent.change(editor, { target: { value: "{not json" } });
+		expect(
+			screen.queryByTestId("policy-editor-validation-errors"),
+		).not.toBeInTheDocument();
+		// Parse-error row takes over.
+		expect(
+			screen.getByTestId("policy-editor-parse-error"),
+		).toBeInTheDocument();
+	});
+
+	it("does not call validate while the buffer is empty (value=null)", async () => {
+		renderWithProviders(
+			<ControlledPolicyEditor initial={null} onChange={onChange} />,
+		);
+		mockValidate.mockClear();
+		// Walk past the debounce window without touching the editor; nothing
+		// to validate, so no round trip.
+		await vi.advanceTimersByTimeAsync(VALIDATE_DEBOUNCE_MS_TEST + 50);
+		expect(mockValidate).not.toHaveBeenCalled();
 	});
 });
