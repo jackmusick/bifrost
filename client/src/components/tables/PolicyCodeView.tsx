@@ -28,7 +28,6 @@ export interface PolicyCodeViewProps {
 	mode: "json" | "yaml";
 	text: string;
 	onChange: (next: string) => void;
-	onMount?: () => void;
 	"data-testid"?: string;
 }
 
@@ -36,17 +35,13 @@ export function PolicyCodeView({
 	mode,
 	text,
 	onChange,
-	onMount,
 	"data-testid": testId,
 }: PolicyCodeViewProps) {
 	const { theme } = useTheme();
 	const monacoTheme = theme === "dark" ? "vs-dark" : "light";
 
-	const handleEditorMount: OnMount = (_editor, monaco) => {
-		if (mode === "json") {
-			configureMonacoSchema(monaco);
-		}
-		onMount?.();
+	const handleMount: OnMount = (_editor, monaco) => {
+		if (mode === "json") configureMonacoSchema(monaco);
 	};
 
 	return (
@@ -59,7 +54,7 @@ export function PolicyCodeView({
 				language={mode}
 				value={text}
 				onChange={(next) => onChange(next ?? "")}
-				onMount={handleEditorMount}
+				onMount={handleMount}
 				theme={monacoTheme}
 				path={`policies.${mode}`}
 				options={{

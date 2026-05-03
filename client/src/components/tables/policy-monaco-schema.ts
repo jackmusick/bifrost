@@ -25,7 +25,7 @@ import schema from "@/lib/app-sdk/policy-schema.json";
 
 export const POLICY_SCHEMA_URI = "inmemory://policy-schema.json";
 
-export interface MonacoJsonDefaults {
+interface MonacoJsonDefaults {
 	diagnosticsOptions: {
 		schemas?: { uri: string; fileMatch?: string[]; schema: unknown }[];
 	};
