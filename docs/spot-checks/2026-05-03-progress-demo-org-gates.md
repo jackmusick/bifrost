@@ -18,6 +18,11 @@ After it runs:
 - Org `Beta`     (`00000000-0000-0000-0000-000000000003`) — created by the script.
 - User `alice@gobifrost.com` / `password` in Provider, non-superuser.
 - User `bob@gobifrost.com`   / `password` in Beta,     non-superuser.
+- The Progress Demo app's `organization_id` is set to `NULL` (global) by the
+  seed script so cross-org users can navigate to it. Without this, the
+  *application*-level org gate would prevent Bob from ever reaching the page,
+  and the table-level gate (the thing this spot-check exercises) would never
+  fire.
 
 ## What the spot check exercises
 

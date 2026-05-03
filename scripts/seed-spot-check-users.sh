@@ -106,6 +106,16 @@ create_or_update_user() {
 create_or_update_user alice@gobifrost.com Alice "$PROVIDER_ORG_ID"
 create_or_update_user bob@gobifrost.com   Bob   "$BETA_ORG_ID"
 
+# 3.5. Make the Progress Demo app global so Bob (in Beta) can navigate to it.
+#      The org gate we want to spot-check is on the TABLE, not the APP — if the
+#      app stays org-scoped Bob never reaches the page and the table read is
+#      unreachable. Idempotent: no-op when already NULL.
+docker exec "$PG" psql -U bifrost -d bifrost -c \
+  "UPDATE applications
+     SET organization_id = NULL
+   WHERE id = 'ae1740ef-bc04-404b-8bd6-b671fdde3b77';" > /dev/null
+echo "Progress Demo app set to global (cross-org users can now open it)"
+
 # 4. Smoke-test both logins
 for u in alice@gobifrost.com bob@gobifrost.com; do
   if docker exec "$API" curl -sS -X POST http://localhost:8000/auth/login \
