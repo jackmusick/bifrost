@@ -152,6 +152,9 @@ async def _load_policies_for_table(table_id: str) -> TablePolicies | None:
         UUID(table_id)
         is_uuid = True
     except ValueError:
+        # Not a UUID — `table_id` is a name lookup (handled below). The
+        # exception itself carries no information we need; the boolean is
+        # the signal.
         pass
 
     if is_uuid and table_id in _table_policy_cache:
