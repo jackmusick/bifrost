@@ -217,4 +217,85 @@ async def invoke(
 
     envelope = _normalize_call_tool_result(result)
     envelope["_resolution_path"] = resolution_path.value
+
+    # Result-size guardrail: an MCP tool returning hundreds of KB of JSON can
+    # blow the LLM's context window on the next turn. Cap the payload and
+    # replace it with a structured truncation message that nudges the LLM to
+    # use filters / pagination on retry. The cap is generous (default ~250KB
+    # ≈ ~60K tokens) so well-behaved tools pass through untouched, but
+    # protects us from "list_tickets() with no args" returning 1000+ rows.
+    envelope = _enforce_result_size_cap(envelope, tool_name, connection.id)
+
     return envelope
+
+
+# Conservative default ~250KB serialized JSON. Anthropic's input-token limit
+# is 1M; at ~4 chars/token this is ~60K tokens, leaving plenty of headroom
+# for system prompt, conversation history, and other tools' results.
+_MAX_TOOL_RESULT_BYTES = 250_000
+
+
+def _enforce_result_size_cap(
+    envelope: dict[str, Any], tool_name: str, connection_id: UUID
+) -> dict[str, Any]:
+    """Truncate oversized MCP tool results so they don't blow the LLM context.
+
+    Replaces ``content``+``structured_content`` with a single text block
+    explaining the truncation and a hint on how to retry. The original
+    payload size is preserved as a number so the LLM can reason about
+    whether to narrow the call.
+    """
+    import json
+
+    try:
+        serialized = json.dumps(
+            {
+                "content": envelope.get("content"),
+                "structured_content": envelope.get("structured_content"),
+            },
+            default=str,
+        )
+    except (TypeError, ValueError):
+        # Non-JSON-serializable; fall back to str length on the parts.
+        serialized = str(envelope.get("content")) + str(
+            envelope.get("structured_content")
+        )
+
+    size_bytes = len(serialized.encode("utf-8"))
+    if size_bytes <= _MAX_TOOL_RESULT_BYTES:
+        return envelope
+
+    truncation_note = (
+        f"⚠️ MCP tool '{tool_name}' returned {size_bytes:,} bytes "
+        f"(~{size_bytes // 4:,} tokens), exceeding Bifrost's per-call "
+        f"result cap of {_MAX_TOOL_RESULT_BYTES:,} bytes. "
+        f"The full payload was discarded to protect the model's context "
+        f"window.\n\n"
+        f"To retry successfully, narrow the call. Common parameters that "
+        f"reduce response size on list-style tools:\n"
+        f"  - Date range filters (e.g. 'since', 'until', 'created_after')\n"
+        f"  - Entity scope (e.g. 'client_id', 'agent_id', 'status_id')\n"
+        f"  - Pagination caps (e.g. 'page_size', 'max_pages', 'limit')\n"
+        f"  - Field projection (e.g. 'fields=[\"id\", \"summary\"]')\n\n"
+        f"Inspect the tool's input schema (visible in your tool catalog) "
+        f"for exact parameter names. If you need broad results, fetch in "
+        f"smaller batches and summarize between calls."
+    )
+    logger.warning(
+        "MCP tool result truncated: tool=%s connection=%s size=%d cap=%d",
+        tool_name,
+        connection_id,
+        size_bytes,
+        _MAX_TOOL_RESULT_BYTES,
+    )
+    return {
+        "content": [{"type": "text", "text": truncation_note}],
+        "structured_content": {
+            "_bifrost_truncated": True,
+            "original_size_bytes": size_bytes,
+            "cap_bytes": _MAX_TOOL_RESULT_BYTES,
+            "tool_name": tool_name,
+        },
+        "is_error": True,
+        "_resolution_path": envelope.get("_resolution_path"),
+    }
