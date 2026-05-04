@@ -126,7 +126,37 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
+      # Pre-build the dev images via build-push-action so we get GHA layer
+      # caching. docker-compose.test.yml pins both images to fixed tags
+      # (bifrost-test-api-dev / bifrost-test-client-dev) and test.sh respects
+      # BIFROST_SKIP_BUILD=1 so compose reuses the local images instead of
+      # rebuilding (which would skip the GHA cache).
+      #
+      # Cache is shared with test-e2e via the same scope so the second job to
+      # run gets warm hits from the first, even on cold-cache PRs.
+      - name: Build API dev image (cached)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: ./api/Dockerfile.dev
+          load: true
+          tags: bifrost-test-api-dev:latest
+          cache-from: type=gha,scope=test-api-dev
+          cache-to: type=gha,scope=test-api-dev,mode=max
+
+      - name: Build client dev image (cached)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: ./client
+          file: ./client/Dockerfile.dev
+          load: true
+          tags: bifrost-test-client-dev:latest
+          cache-from: type=gha,scope=test-client-dev
+          cache-to: type=gha,scope=test-client-dev,mode=max
+
       - name: Run unit tests
+        env:
+          BIFROST_SKIP_BUILD: "1"
         run: |
           chmod +x test.sh
           ./test.sh stack up
@@ -153,7 +183,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
+      # See test-unit for caching strategy notes.
+      - name: Build API dev image (cached)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: ./api/Dockerfile.dev
+          load: true
+          tags: bifrost-test-api-dev:latest
+          cache-from: type=gha,scope=test-api-dev
+          cache-to: type=gha,scope=test-api-dev,mode=max
+
+      - name: Build client dev image (cached)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: ./client
+          file: ./client/Dockerfile.dev
+          load: true
+          tags: bifrost-test-client-dev:latest
+          cache-from: type=gha,scope=test-client-dev
+          cache-to: type=gha,scope=test-client-dev,mode=max
+
       - name: Run E2E tests
+        env:
+          BIFROST_SKIP_BUILD: "1"
         run: |
           chmod +x test.sh
           ./test.sh stack up
