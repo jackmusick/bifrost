@@ -1,7 +1,7 @@
 """External MCP client tables.
 
 Revision ID: 20260502_external_mcp
-Revises: 20260428_webhook_rate_limit
+Revises: 20260504_backfill_table_access
 Create Date: 2026-05-02
 
 Creates four tables for the external MCP client feature:
@@ -23,7 +23,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "20260502_external_mcp"
-down_revision = "20260428_webhook_rate_limit"
+down_revision = "20260504_backfill_table_access"
 branch_labels = None
 depends_on = None
 

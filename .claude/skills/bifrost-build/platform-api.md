@@ -1403,3 +1403,67 @@ Signature: `twMerge(...classLists: string[]): string` — dedupes/conflict-resol
 import { twMerge } from "bifrost";
 twMerge("px-2 px-4");  // "px-4"
 ```
+
+### tables
+
+Web SDK for the Bifrost Tables API. Direct browser-to-API calls, no workflow required.
+
+Surface (one-line each):
+- `tables.get(table, id)` — fetch one row by id
+- `tables.insert(table, data | dataArray)` — single object → one row; array → batch
+- `tables.update(table, id, data)` — patch one row
+- `tables.upsert(table, item | itemArray)` — insert-or-update; array → batch
+- `tables.delete(table, id | idArray)` — delete one row OR a batch by ids
+- `tables.query(table, query?)` — list with filter/limit/offset
+- `tables.count(table)` — count rows
+- `tables.subscribe(tableId, filter, onEvent)` — live updates (lower-level; prefer `useTable`)
+
+```tsx
+import { tables, useTable } from "bifrost";
+
+// Single insert
+await tables.insert("clients", { name: "Acme", status: "active" });
+
+// Batch insert
+await tables.insert("clients", [
+  { data: { name: "A" } },
+  { data: { name: "B" } },
+]);
+
+// Live query — preferred React surface
+const { rows, loading, error } = useTable("clients", {
+  where: { eq: [{ row: "status" }, "active"] },
+});
+```
+
+**Prerequisite:** the table must have policies that grant the action. A freshly-created table is seeded with an `admin_bypass` policy — admins work, but non-admins are denied unless other policies grant them access. Edit the table's policies in the admin UI (Tables → click table → Policies) or via the API.
+
+**SDK vs Workflow:**
+- **SDK** (`tables.*`, `useTable`) — when policies allow the user; lower latency; no execution record. Use for browser apps doing CRUD on policy-gated rows.
+- **Workflow** — complex multi-step logic, side effects, state-transition guards. Note that policies are checked against the **pre-update** state, so policies cannot enforce "can't unfinalize" — use a workflow for that.
+
+If you're about to write a workflow just to read/write a table, configure the policies and use the SDK directly.
+
+### useTable
+
+Signature: `useTable(name: string, query?: { where?: Expr; limit?: number; offset?: number }): { rows: TableRow[]; loading: boolean; error: Error | null }`.
+
+Live-updating table data hook. Loads an initial snapshot via `tables.query` and subscribes to live changes via `tables.subscribe`, applying `insert` / `update` / `delete` events to local state. The subscribe filter is the same `where` expression passed to the initial query, so the websocket fanout sees exactly the same row visibility as the snapshot.
+
+Rows are returned in a **flat** shape — JSONB `data` fields (e.g. `status`, `assignee`) are spread at the top level alongside column-mapped fields (`id`, `created_by`, `updated_by`, `created_at`, `updated_at`, `table_id`). This matches the shape websocket events deliver, so live updates merge cleanly with the snapshot.
+
+```tsx
+import { useTable } from "bifrost";
+
+export default function Tasks() {
+  const { rows, loading, error } = useTable("my_tasks", {
+    where: { eq: [{ row: "status" }, "open"] },
+  });
+  if (loading) return <div>Loading…</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  return <ul>{rows.map((r) => <li key={r.id}>{r.title as string}</li>)}</ul>;
+}
+```
+
+The hook respects table policies — `rows` only contains rows the policies allow the current user to read. Inserts that transition into visibility appear; updates that transition out generate `delete` events.
+

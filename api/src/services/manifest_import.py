@@ -2254,13 +2254,35 @@ class ManifestResolver:
         from sqlalchemy import update
         from sqlalchemy.dialects.postgresql import insert
 
+        from shared.policies.probe import make_seed_admin_bypass
+        from src.models.contracts.policies import TablePolicies
         from src.models.orm.tables import Table
         from src.services.sync_ops import SyncOp  # noqa: F401
 
         table_id = UUID(mtable.id)
         org_id = UUID(mtable.organization_id) if mtable.organization_id else None
-        app_id = UUID(mtable.application_id) if mtable.application_id else None
         now = datetime.now(timezone.utc)
+
+        # Manifest-carried policies → Table.access JSONB. The manifest stores
+        # policies as a flat list; wrap to ``{"policies": [...]}`` here to
+        # match the JSONB shape expected by `_load_policies`. When the entry
+        # has no policies (older bundles or hand-authored YAML that omits the
+        # field), seed admin_bypass so platform admins aren't locked out —
+        # same default the REST create path uses.
+        #
+        # SECURITY: ManifestPolicy.when is typed as `dict | None` (permissive),
+        # so the manifest model alone does NOT validate the AST. Re-validate
+        # through TablePolicies before persisting, mirroring the REST create /
+        # update path. ValidationError propagates to the import caller so a
+        # malformed tables.yaml fails loudly rather than landing an
+        # unparseable AST in the DB. Pattern: fail loud at the writer, fail
+        # closed at the reader (see _load_policies in src/routers/tables.py).
+        if mtable.policies is not None:
+            policies_list = [p.model_dump(mode="json") for p in mtable.policies]
+            access = {"policies": policies_list}
+            TablePolicies(**access)  # raises ValidationError on bad AST
+        else:
+            access = make_seed_admin_bypass()
 
         # 1. Look up by natural key (name + org) — use cache if available
         if cache is not None:
@@ -2285,8 +2307,8 @@ class ManifestResolver:
                 .values(
                     id=table_id,
                     description=mtable.description,
-                    application_id=app_id,
                     schema=mtable.table_schema,
+                    access=access,
                     updated_at=now,
                 )
             )
@@ -2307,8 +2329,8 @@ class ManifestResolver:
                 .values(
                     name=table_name,
                     description=mtable.description,
-                    application_id=app_id,
                     schema=mtable.table_schema,
+                    access=access,
                     updated_at=now,
                 )
             )
@@ -2320,8 +2342,8 @@ class ManifestResolver:
             name=table_name,
             description=mtable.description,
             organization_id=org_id,
-            application_id=app_id,
             schema=mtable.table_schema,
+            access=access,
             created_by="git-sync",
         ).on_conflict_do_nothing()
         await self.db.execute(stmt)
