@@ -52,6 +52,38 @@ The user picks the mode by setting (or not setting) `NETBIRD_SETUP_KEY` in `~/.c
 
 4. **Point at logs if they ask.** `./debug.sh logs <service>` — services include `api`, `client`, `worker`, `scheduler`, `postgres`, `rabbitmq`, `redis`, `minio`.
 
+## Auto-connect the CLI in this folder
+
+After `./debug.sh up`, wire the per-folder CLI to target this stack. Tokens for multiple instances coexist in the OS keychain, keyed by URL — the user's prod token (if any) is not affected.
+
+1. Run the standard browser login against the debug URL:
+
+   ```bash
+   bifrost login --url <URL_FROM_DEBUG_STATUS>
+   ```
+
+   This opens the device-code page, the user accepts, and the token lands in the keychain (or the JSON fallback on headless Linux). On success, `bifrost login` also writes `BIFROST_API_URL=<URL>` to `.env` in the current directory and adds `.env` to `.gitignore` if it isn't already.
+
+2. Tell the user: *"Stack up at <URL>. CLI in this folder is now connected — token is in your keychain alongside any other instances you've logged into."*
+
+On `./debug.sh down`, run:
+
+```bash
+bifrost logout --url <URL>
+```
+
+That removes the keychain entry and prompts to remove the matching `BIFROST_API_URL` line from `.env`.
+
+### When to use password-grant instead
+
+If the user wants tokens that *don't* persist anywhere — POC folders, throwaway sessions — use the password-grant path:
+
+```bash
+bifrost login --url <URL> --email dev@gobifrost.com --password password
+```
+
+This prints three `BIFROST_*` lines to stdout and writes nothing to disk. The caller can `eval` them or pipe them into `.env`. Only works on instances with `BIFROST_MFA_ENABLED=false`. Do not suggest this as the default — it exists for the "leave no trace" use case.
+
 ## Lifecycle: who tears down what
 
 - **The stack outlives this Claude session.** Closing or clearing the session does NOT tear it down. This is intentional — the user might come back, or have another Claude session attach to the same stack.

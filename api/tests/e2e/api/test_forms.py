@@ -1043,3 +1043,154 @@ class TestFormDBStorage:
 
         # Cleanup
         e2e_client.delete(f"/api/forms/{form_id}", headers=platform_admin.headers)
+
+
+@pytest.mark.e2e
+class TestFormRoleIdsAtCreateUpdate:
+    """``role_ids`` on ``FormCreate`` / ``FormUpdate`` (issue #162).
+
+    Forms previously could not be assigned to roles via the CLI/SDK at all —
+    role assignments only existed via ``POST /api/roles/{id}/forms``. Bulk
+    ``role_ids`` on the create/update DTOs closes that gap.
+    """
+
+    def _make_role(self, e2e_client, platform_admin, name: str) -> dict:
+        resp = e2e_client.post(
+            "/api/roles",
+            headers=platform_admin.headers,
+            json={"name": name, "description": f"role for {name}"},
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    def test_create_form_with_role_ids_persists_assignments(
+        self, e2e_client, platform_admin
+    ):
+        role_a = self._make_role(e2e_client, platform_admin, "Issue162 RoleA")
+        role_b = self._make_role(e2e_client, platform_admin, "Issue162 RoleB")
+        try:
+            create_resp = e2e_client.post(
+                "/api/forms",
+                headers=platform_admin.headers,
+                json={
+                    "name": "Issue162 Role-Assigned Form",
+                    "workflow_id": None,
+                    "form_schema": {"fields": [{"name": "x", "type": "text", "label": "X"}]},
+                    "access_level": "role_based",
+                    "role_ids": [role_a["id"], role_b["id"]],
+                },
+            )
+            assert create_resp.status_code == 201, create_resp.text
+            form = create_resp.json()
+            # Response surfaces the assigned role IDs.
+            returned = set(form.get("role_ids", []))
+            assert returned == {role_a["id"], role_b["id"]}, form
+
+            # Re-fetch and confirm the platform persisted them.
+            get_resp = e2e_client.get(
+                f"/api/forms/{form['id']}",
+                headers=platform_admin.headers,
+            )
+            assert get_resp.status_code == 200
+            assert set(get_resp.json().get("role_ids", [])) == {
+                role_a["id"], role_b["id"]
+            }
+
+            # Cleanup
+            e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)
+        finally:
+            e2e_client.delete(f"/api/roles/{role_a['id']}", headers=platform_admin.headers)
+            e2e_client.delete(f"/api/roles/{role_b['id']}", headers=platform_admin.headers)
+
+    def test_update_form_role_ids_replaces_existing(self, e2e_client, platform_admin):
+        role_a = self._make_role(e2e_client, platform_admin, "Issue162 ReplaceA")
+        role_b = self._make_role(e2e_client, platform_admin, "Issue162 ReplaceB")
+        role_c = self._make_role(e2e_client, platform_admin, "Issue162 ReplaceC")
+        try:
+            create_resp = e2e_client.post(
+                "/api/forms",
+                headers=platform_admin.headers,
+                json={
+                    "name": "Issue162 Replace Form",
+                    "workflow_id": None,
+                    "form_schema": {"fields": [{"name": "x", "type": "text", "label": "X"}]},
+                    "access_level": "role_based",
+                    "role_ids": [role_a["id"], role_b["id"]],
+                },
+            )
+            assert create_resp.status_code == 201, create_resp.text
+            form = create_resp.json()
+
+            # Bulk-replace: pass only role_c. role_a and role_b should be removed.
+            patch_resp = e2e_client.patch(
+                f"/api/forms/{form['id']}",
+                headers=platform_admin.headers,
+                json={"role_ids": [role_c["id"]]},
+            )
+            assert patch_resp.status_code == 200, patch_resp.text
+            assert set(patch_resp.json().get("role_ids", [])) == {role_c["id"]}
+
+            # Empty list explicitly clears.
+            clear_resp = e2e_client.patch(
+                f"/api/forms/{form['id']}",
+                headers=platform_admin.headers,
+                json={"role_ids": []},
+            )
+            assert clear_resp.status_code == 200, clear_resp.text
+            assert clear_resp.json().get("role_ids", []) == []
+
+            e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)
+        finally:
+            for r in (role_a, role_b, role_c):
+                e2e_client.delete(f"/api/roles/{r['id']}", headers=platform_admin.headers)
+
+    def test_update_form_omitting_role_ids_leaves_assignments_alone(
+        self, e2e_client, platform_admin
+    ):
+        """Patching unrelated fields must not touch role assignments."""
+        role_a = self._make_role(e2e_client, platform_admin, "Issue162 KeepA")
+        try:
+            create_resp = e2e_client.post(
+                "/api/forms",
+                headers=platform_admin.headers,
+                json={
+                    "name": "Issue162 Keep Form",
+                    "workflow_id": None,
+                    "form_schema": {"fields": [{"name": "x", "type": "text", "label": "X"}]},
+                    "access_level": "role_based",
+                    "role_ids": [role_a["id"]],
+                },
+            )
+            assert create_resp.status_code == 201, create_resp.text
+            form = create_resp.json()
+
+            # PATCH only ``description`` — role_ids must be untouched.
+            patch_resp = e2e_client.patch(
+                f"/api/forms/{form['id']}",
+                headers=platform_admin.headers,
+                json={"description": "renamed"},
+            )
+            assert patch_resp.status_code == 200, patch_resp.text
+            assert set(patch_resp.json().get("role_ids", [])) == {role_a["id"]}
+
+            e2e_client.delete(f"/api/forms/{form['id']}", headers=platform_admin.headers)
+        finally:
+            e2e_client.delete(f"/api/roles/{role_a['id']}", headers=platform_admin.headers)
+
+    def test_create_form_with_unknown_role_id_returns_404(
+        self, e2e_client, platform_admin
+    ):
+        bogus = "00000000-0000-0000-0000-000000000000"
+        resp = e2e_client.post(
+            "/api/forms",
+            headers=platform_admin.headers,
+            json={
+                "name": "Issue162 Bogus Role Form",
+                "workflow_id": None,
+                "form_schema": {"fields": []},
+                "access_level": "role_based",
+                "role_ids": [bogus],
+            },
+        )
+        assert resp.status_code == 404, resp.text
+        assert bogus in resp.text

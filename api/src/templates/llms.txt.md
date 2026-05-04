@@ -462,7 +462,6 @@ Tables provide structured data storage with schema validation and multi-tenancy.
 |-------|--------------------|-----------|
 | Global | `None` | All organizations |
 | Organization | UUID | Only the owning org |
-| Application | UUID + `application_id` | Only the owning app |
 
 Scope is resolved via cascade: org-specific first, then global fallback. The SDK `scope` parameter accepts `None` for global or an org UUID for a specific org. Omit it to use the execution context's org (default, with global cascade).
 

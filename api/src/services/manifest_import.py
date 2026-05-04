@@ -705,6 +705,18 @@ class ManifestResolver:
 
         Returns a cache dict that _resolve_* methods use for O(1) lookups
         instead of per-entity SELECT queries.
+
+        Cache invariant
+        ---------------
+        All caches are keyed on parent UUIDs **as of prefetch time**. When a
+        resolver rewrites an entity's primary key in the same transaction
+        (cross-env id sync via the existing-by-name path), Postgres FK ON
+        UPDATE CASCADE migrates dependents to the new id, but the cache is
+        still keyed on the old id. The resolver responsible for the rewrite
+        MUST refresh / rekey any dependent caches before subsequent reads —
+        otherwise downstream lookups miss and fall through to INSERT, which
+        collides with the cascade-migrated rows. See `_resolve_integration`
+        for the canonical pattern and issue #148 for the original incident.
         """
         from src.models.orm.applications import Application
         from src.models.orm.config import Config
@@ -1777,6 +1789,7 @@ class ManifestResolver:
         }
 
         # Upsert integration row FIRST (must exist before config schema / mapping FKs)
+        id_was_rewritten = existing_by_name is not None and existing_by_name != integ_id
         if existing_by_name is not None:
             upsert_op = Upsert(
                 model=Integration,
@@ -1792,6 +1805,45 @@ class ManifestResolver:
                 match_on="id",
             )
         await upsert_op.execute(self.db)
+
+        # If the upsert rewrote the integration's PK (cross-env id sync), the
+        # FK ON UPDATE CASCADE on integration_config_schema, integration_mappings,
+        # and configs migrated those rows from existing_by_name → integ_id in the
+        # same statement. The prefetch cache is still keyed on the OLD id, so
+        # refresh dependent caches before we read them — otherwise the
+        # upsert-by-natural-key path below misses the (now-migrated) rows and
+        # tries to INSERT, hitting unique-index violations.
+        if id_was_rewritten and cache is not None:
+            cs_refresh = await self.db.execute(
+                select(IntegrationConfigSchema).where(
+                    IntegrationConfigSchema.integration_id == integ_id
+                )
+            )
+            cache["integ_cs"][integ_id] = {
+                cs.key: cs for cs in cs_refresh.scalars().all()
+            }
+            cache["integ_cs"].pop(existing_by_name, None)
+
+            m_refresh = await self.db.execute(
+                select(IntegrationMapping).where(
+                    IntegrationMapping.integration_id == integ_id
+                )
+            )
+            cache["integ_mappings"][integ_id] = {
+                str(m.organization_id) if m.organization_id else None: m
+                for m in m_refresh.scalars().all()
+            }
+            cache["integ_mappings"].pop(existing_by_name, None)
+
+            # _resolve_config runs later and reads cache["config_by_natural"]
+            # keyed on (key, integ_id, org_id). After CASCADE the underlying
+            # rows live under integ_id; rewrite cache keys to match so the
+            # update path is taken instead of an insert that would collide.
+            cfg_natural = cache.get("config_by_natural")
+            if cfg_natural:
+                stale_keys = [k for k in cfg_natural if k[1] == existing_by_name]
+                for old_key in stale_keys:
+                    cfg_natural[(old_key[0], integ_id, old_key[2])] = cfg_natural.pop(old_key)
 
         # Sync config schema items: upsert by (integration_id, key) to preserve IDs
         # (Config rows reference schema IDs via FK — deleting schema cascades to configs)
@@ -2070,13 +2122,35 @@ class ManifestResolver:
         from sqlalchemy import update
         from sqlalchemy.dialects.postgresql import insert
 
+        from shared.policies.probe import make_seed_admin_bypass
+        from src.models.contracts.policies import TablePolicies
         from src.models.orm.tables import Table
         from src.services.sync_ops import SyncOp  # noqa: F401
 
         table_id = UUID(mtable.id)
         org_id = UUID(mtable.organization_id) if mtable.organization_id else None
-        app_id = UUID(mtable.application_id) if mtable.application_id else None
         now = datetime.now(timezone.utc)
+
+        # Manifest-carried policies → Table.access JSONB. The manifest stores
+        # policies as a flat list; wrap to ``{"policies": [...]}`` here to
+        # match the JSONB shape expected by `_load_policies`. When the entry
+        # has no policies (older bundles or hand-authored YAML that omits the
+        # field), seed admin_bypass so platform admins aren't locked out —
+        # same default the REST create path uses.
+        #
+        # SECURITY: ManifestPolicy.when is typed as `dict | None` (permissive),
+        # so the manifest model alone does NOT validate the AST. Re-validate
+        # through TablePolicies before persisting, mirroring the REST create /
+        # update path. ValidationError propagates to the import caller so a
+        # malformed tables.yaml fails loudly rather than landing an
+        # unparseable AST in the DB. Pattern: fail loud at the writer, fail
+        # closed at the reader (see _load_policies in src/routers/tables.py).
+        if mtable.policies is not None:
+            policies_list = [p.model_dump(mode="json") for p in mtable.policies]
+            access = {"policies": policies_list}
+            TablePolicies(**access)  # raises ValidationError on bad AST
+        else:
+            access = make_seed_admin_bypass()
 
         # 1. Look up by natural key (name + org) — use cache if available
         if cache is not None:
@@ -2101,8 +2175,8 @@ class ManifestResolver:
                 .values(
                     id=table_id,
                     description=mtable.description,
-                    application_id=app_id,
                     schema=mtable.table_schema,
+                    access=access,
                     updated_at=now,
                 )
             )
@@ -2123,8 +2197,8 @@ class ManifestResolver:
                 .values(
                     name=table_name,
                     description=mtable.description,
-                    application_id=app_id,
                     schema=mtable.table_schema,
+                    access=access,
                     updated_at=now,
                 )
             )
@@ -2136,8 +2210,8 @@ class ManifestResolver:
             name=table_name,
             description=mtable.description,
             organization_id=org_id,
-            application_id=app_id,
             schema=mtable.table_schema,
+            access=access,
             created_by="git-sync",
         ).on_conflict_do_nothing()
         await self.db.execute(stmt)

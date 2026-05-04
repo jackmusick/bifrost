@@ -270,6 +270,10 @@ class FormCreate(BaseModel):
     organization_id: UUID | None = Field(
         default=None, description="Organization ID (null = global resource)"
     )
+    role_ids: list[UUID] = Field(
+        default_factory=list,
+        description="Role IDs for role_based access (ignored if access_level is 'authenticated')",
+    )
 
 class FormUpdate(BaseModel):
     """Input for updating a form."""
@@ -286,6 +290,10 @@ class FormUpdate(BaseModel):
         default=None, description="Organization ID (null = global resource)"
     )
     clear_roles: bool = False
+    role_ids: list[UUID] | None = Field(
+        default=None,
+        description="Role IDs for role_based access (replaces existing roles when provided)",
+    )
 
 
 class FormPublic(BaseModel):
@@ -302,6 +310,10 @@ class FormPublic(BaseModel):
     form_schema: dict | FormSchema | None = None
     access_level: FormAccessLevel | None = None
     organization_id: UUID | None = None
+    role_ids: list[UUID] = Field(
+        default_factory=list,
+        description="Role IDs assigned to this form (for role_based access)",
+    )
     is_active: bool
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -361,6 +373,12 @@ class FormPublic(BaseModel):
                 "created_at": data.created_at,
                 "updated_at": data.updated_at,
             }
+            # Forward an attached role_ids list when callers populate it
+            # (via a separate FormRole query). Falls back to default_factory
+            # when absent so reads that don't bother stay backwards-compatible.
+            attached_role_ids = getattr(data, "role_ids", None)
+            if attached_role_ids is not None:
+                data_dict["role_ids"] = list(attached_role_ids)
             return data_dict
 
         return data
