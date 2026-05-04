@@ -32,7 +32,9 @@ import {
 import { useAppBuilderStore } from "@/stores/app-builder.store";
 import { AppLoadingSkeleton } from "./AppLoadingSkeleton";
 
-const ESM_SHIMS_URL = "https://ga.jspm.io/npm:es-module-shims@2/dist/es-module-shims.js";
+// jsDelivr — JSPM's CDN 404s on floating tags (`@2`), only exact versions
+// resolve. Pinned to an exact version for reproducible loads.
+const ESM_SHIMS_URL = "https://cdn.jsdelivr.net/npm/es-module-shims@2.8.0/dist/es-module-shims.js";
 // Force esm.sh to leave React/Router as bare specifiers in its own response so
 // they resolve back through our static import map to the host's copies. Same
 // instance everywhere -> no "two Reacts" hooks failure when a user dep calls
