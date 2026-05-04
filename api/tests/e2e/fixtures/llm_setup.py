@@ -82,6 +82,12 @@ def llm_anthropic_configured(
     """
     Configure Anthropic as the LLM provider for a test.
 
+    Sets BOTH the platform-level provider config (POST /api/admin/llm/config)
+    AND the platform admin's org-level ``default_chat_model``. Both are
+    required because the model resolver in shared/model_resolver.py refuses
+    to pick a model for an org that has neither an allowlist entry nor a
+    default — see the "no model available for org ..." error.
+
     Skips if ANTHROPIC_API_TEST_KEY is not set.
 
     Yields:
@@ -105,11 +111,52 @@ def llm_anthropic_configured(
     assert response.status_code == 200, (
         f"Failed to configure Anthropic: {response.text}"
     )
-
     logger.info("Configured Anthropic LLM provider")
+
+    # Resolve the platform admin's org and set its default_chat_model so
+    # the resolver has something to pick. Use the unprefixed model id —
+    # ``anthropic/`` prefix is for cross-provider routing in some configs;
+    # the chat path expects the bare id.
+    me_resp = e2e_client.get("/auth/me", headers=platform_admin.headers)
+    assert me_resp.status_code == 200, f"GET /auth/me failed: {me_resp.text}"
+    org_id = me_resp.json().get("organization_id")
+    assert org_id, "platform_admin has no organization_id; cannot configure org default_chat_model"
+
+    org_resp = e2e_client.get(
+        f"/api/organizations/{org_id}", headers=platform_admin.headers
+    )
+    assert org_resp.status_code == 200, (
+        f"GET /api/organizations/{org_id} failed: {org_resp.text}"
+    )
+    prior_default_chat_model = org_resp.json().get("default_chat_model")
+
+    patch_resp = e2e_client.patch(
+        f"/api/organizations/{org_id}",
+        json={"default_chat_model": "claude-haiku-4-5-20251001"},
+        headers=platform_admin.headers,
+    )
+    assert patch_resp.status_code == 200, (
+        f"PATCH /api/organizations/{org_id} default_chat_model failed: {patch_resp.text}"
+    )
+    logger.info(f"Set org {org_id} default_chat_model for test")
+
     yield config
 
-    # Cleanup
+    # Cleanup: restore prior default_chat_model and delete provider config.
+    # NOTE: routers/organizations.py PATCH guards `if request.default_chat_model
+    # is not None`, so we cannot clear back to NULL through the API. If the
+    # prior value was None, the field stays at "claude-haiku-4-5-20251001".
+    # That's fine for the e2e suite (each test sets its own) but worth knowing.
+    try:
+        if prior_default_chat_model is not None:
+            e2e_client.patch(
+                f"/api/organizations/{org_id}",
+                json={"default_chat_model": prior_default_chat_model},
+                headers=platform_admin.headers,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to restore org default_chat_model: {e}")
+
     try:
         e2e_client.delete(
             "/api/admin/llm/config",

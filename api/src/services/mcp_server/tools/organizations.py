@@ -202,6 +202,8 @@ async def update_organization(
     organization_ref: str,
     name: str | None = None,
     is_active: bool | None = None,
+    allowed_chat_models: list[str] | None = None,
+    default_chat_model: str | None = None,
 ) -> ToolResult:
     """Update an organization — ``PATCH /api/organizations/{uuid}``.
 
@@ -209,6 +211,8 @@ async def update_organization(
     ``settings`` are excluded by design (see
     :data:`bifrost.dto_flags.DTO_EXCLUDES` — ``domain`` is
     auto-provisioning policy, ``settings`` is a UI-managed JSON blob).
+    ``allowed_chat_models`` and ``default_chat_model`` govern the chat
+    model resolver (see ``shared/model_resolver.py``).
     """
     if not organization_ref:
         return error_result("organization_ref is required")
@@ -229,7 +233,12 @@ async def update_organization(
                 _ref_error_payload(exc),
             )
 
-        fields: dict[str, Any] = {"name": name, "is_active": is_active}
+        fields: dict[str, Any] = {
+            "name": name,
+            "is_active": is_active,
+            "allowed_chat_models": allowed_chat_models,
+            "default_chat_model": default_chat_model,
+        }
         try:
             body = await assemble_body(
                 OrganizationUpdate,
@@ -288,7 +297,7 @@ TOOLS = [
     ("list_organizations", "List Organizations", "List all organizations in the platform."),
     ("get_organization", "Get Organization", "Get organization details by ID or domain."),
     ("create_organization", "Create Organization", "Create a new organization."),
-    ("update_organization", "Update Organization", "Update an organization (name, is_active)."),
+    ("update_organization", "Update Organization", "Update an organization (name, is_active, allowed_chat_models, default_chat_model)."),
     ("delete_organization", "Delete Organization", "Delete (soft-delete) an organization."),
 ]
 
