@@ -157,7 +157,7 @@ jobs:
         run: |
           chmod +x test.sh
           ./test.sh stack up
-          ./test.sh e2e
+          ./test.sh e2e --durations=50
 
   # =============================================================================
   # Dev Build - Every push to main, gated by unit tests only
