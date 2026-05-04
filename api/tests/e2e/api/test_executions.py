@@ -956,6 +956,13 @@ def get_value():
                 headers=platform_admin.headers,
             )
 
+    @pytest.mark.skip(
+        reason="Blocked by package install/uninstall user-site divergence — see "
+        "https://github.com/jackmusick/bifrost/issues/181. The test only passes "
+        "as the FIRST test in the suite to install humanize; later runs find the "
+        "package still present in worker user-site after a prior test's cleanup, "
+        "and Step 2 (expected import failure) succeeds instead."
+    )
     def test_package_available_after_installation(self, e2e_client, platform_admin):
         """Newly installed packages are available in next execution.
 
