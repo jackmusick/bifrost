@@ -165,7 +165,6 @@ Apps are React + Tailwind applications that run inside the Bifrost platform. You
 
 ```
 apps/my-app/
-  app.yaml              # Metadata (name, description, dependencies)
   _layout.tsx           # Root layout (MUST use <Outlet />, NOT {children})
   _providers.tsx        # Optional context providers
   styles.css            # Custom CSS (dark mode via .dark selector)
@@ -181,6 +180,8 @@ apps/my-app/
     utils.ts            # Utility modules
 ```
 
+App metadata (name, description, npm dependencies, access policies) lives on the `Application` record, not in a YAML file. Manage it with the CLI: `bifrost apps create`, `bifrost apps update <ref>`, `bifrost apps get <ref> --json`, `bifrost apps set-deps <ref> --deps '{...}'`.
+
 ### Imports
 
 Everything comes from a single import:
@@ -189,7 +190,7 @@ Everything comes from a single import:
 import { Button, Card, useState, useWorkflowQuery } from "bifrost";
 ```
 
-External npm packages (declared in `app.yaml`):
+External npm packages (declared on the app via `bifrost apps update --deps` / `bifrost apps set-deps`):
 
 ```tsx
 import dayjs from "dayjs";
@@ -503,7 +504,7 @@ Your app renders in a fixed-height container. The platform does not scroll the p
 
 ### Pre-included Packages
 
-These packages are available without declaring them in `app.yaml` dependencies:
+These packages are available without adding them to the app's `dependencies`:
 
 - `recharts` — charts and data visualization
 - `date-fns` — date formatting (`format` is available directly from `"bifrost"`)
@@ -539,7 +540,7 @@ const handleSubmit = async () => {
 | Relative imports (`./utils`) | Stripped silently, module not found | Import from `"bifrost"` or npm package names only |
 | `{children}` in layout | Children not rendered | Use `<Outlet />` in `_layout.tsx` |
 | Workflow name instead of UUID | Runtime error | Use UUIDs from `.bifrost/workflows.yaml` |
-| Undeclared npm dependency | `undefined` exports, runtime error | Add to `app.yaml` dependencies first |
+| Undeclared npm dependency | `undefined` exports, runtime error | `bifrost apps update <ref> --deps '{"pkg":"^x.y.z"}'` first |
 | Missing default export in component | Component renders as undefined | Add `export default function MyComponent()` |
 | Using `$`, `$deps`, `__defaultExport__` as variable names | Conflicts with runtime internals | Use different variable names |
 | No loading/error state for queries | Blank page or crash on slow/failed loads | Always handle `isLoading` and `isError` |
@@ -653,9 +654,8 @@ The workspace root is your git repository root. Only `.bifrost/*.yaml` manifests
   # .bifrost/forms.yaml and .bifrost/agents.yaml — there are no
   # standalone forms/ or agents/ files.
   apps/                       # Convention — app source directories
-    my-dashboard/
-      app.yaml                # App metadata + dependencies
-      _layout.tsx
+    my-dashboard/             # Source-only; metadata + deps live on the
+      _layout.tsx             # Application record (manage with `bifrost apps`)
       styles.css
       pages/index.tsx
       components/
