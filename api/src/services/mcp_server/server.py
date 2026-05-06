@@ -151,6 +151,15 @@ class MCPContext:
     # Database session from executor context (None when running via MCP server)
     session: Any = None
 
+    def __post_init__(self) -> None:
+        # JWT claims arrive as strings; downstream comparisons (e.g. against
+        # ORM UUID columns) silently fail because `UUID == str` is False.
+        # Normalize once at the boundary so org-scoped repos see real UUIDs.
+        if isinstance(self.user_id, str) and self.user_id:
+            self.user_id = UUID(self.user_id)
+        if isinstance(self.org_id, str) and self.org_id:
+            self.org_id = UUID(self.org_id)
+
 
 # =============================================================================
 # Context Helper Functions (for FastMCP authentication)
