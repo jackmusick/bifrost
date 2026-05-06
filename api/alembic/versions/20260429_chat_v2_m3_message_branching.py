@@ -21,7 +21,7 @@ correctly groups them as siblings. Do NOT add a partial unique index on
 first-message edits.
 
 Revision ID: 20260429_chat_v2_m3
-Revises: 20260428_chat_v2_m2
+Revises: 20260504_merge_main_chat_v2
 Create Date: 2026-04-29
 """
 from alembic import op
@@ -29,7 +29,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "20260429_chat_v2_m3"
-down_revision = "20260428_chat_v2_m2"
+down_revision = "20260504_merge_main_chat_v2"
 branch_labels = None
 depends_on = None
 
