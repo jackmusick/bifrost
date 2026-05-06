@@ -12,46 +12,74 @@
 
 ---
 
-## Status (2026-04-29)
+## Status (2026-05-06)
 
-**M3 split into two stacked PRs to mirror M2's pattern.**
+**M3-backend shipped. M3-frontend is the next session.**
 
-### M3-backend (this PR — almost ready to ship)
+### M3-backend — ✅ MERGED (PR #156)
 
-Tasks 1–9 are merged on branch `147-m3-edit-retry-instructions`:
+Squash-merged into `feature/chat-v2` as `7531b4b3`. All 20 backend tasks (1–10, 18–20) complete.
 
-- ✅ Task 1: migration (parent_message_id, active_leaf_message_id, instructions; backfill)
-- ✅ Task 2: ORM fields with self-FK relationship disambiguation
-- ✅ Task 3: `_load_active_branch` walks parent chain; warnings on cycle/missing-row
-- ✅ Task 4: `_save_message` advances active leaf; `parent_message_id_override` with typed `_Unset` sentinel
-- ✅ Task 5: system prompt = agent + workspace.instructions + conversation.instructions
-- ✅ Task 6: `edit_user_message` + `retry_assistant_message` + `_walk_leaf_to_assistant_parent`; `chat()` gains `_skip_save_user_message` / `_user_message_id` private flags
-- ✅ Task 7: Pydantic contracts — sibling metadata on `MessagePublic`, `active_leaf_message_id`/`instructions` on `ConversationPublic`/`ConversationUpdate`, three new request models
-- ✅ Task 8: HTTP — instructions PATCH, `POST /active-leaf` endpoint, sibling metadata via window functions
-- ✅ Task 9: WebSocket — `edit_message` + `retry_message` dispatch arms + `_process_*` helpers; cancel emits `done` frame; whitespace-only edits rejected
+Final test results on the merged branch:
 
-15 unit tests passing in `api/tests/unit/test_message_branching.py`. 1423 services unit tests still passing.
+- **Backend:** `./test.sh all` → 4961 passed, 5 skipped, 0 failed
+- **Frontend:** `tsc` clean, client unit tests 953/954 (1 flaky timeout in `ExecutionSidebar.test.tsx` from main, passes in isolation — not M3-related)
+- **Lint/types:** `ruff check .` clean, `pyright` clean on M3-touched files
 
-**Still to do for M3-backend (Tasks 10, 18-20):**
+What landed:
 
-- ⏳ Task 10: backend e2e tests (`api/tests/e2e/test_chat_branching.py`).
-- ⏳ Task 18 (partial): update spec doc (`docs/superpowers/specs/2026-04-27-chat-ux-design.md`) and master plan decisions log.
-- ⏳ Task 19: pre-completion verification (pyright, ruff, full test suite — frontend checks NOT applicable to this backend-only PR).
-- ⏳ Task 20: open PR titled "Chat V2 / M3 (backend) — branching + per-conversation instructions" into `feature/chat-v2`.
+- ✅ Task 1: migration `20260429_chat_v2_m3_message_branching.py` — `parent_message_id`, `active_leaf_message_id`, `instructions`; deterministic backfill with `(sequence, created_at, id)` tiebreakers.
+- ✅ Task 2: ORM fields with self-FK relationship disambiguation.
+- ✅ Task 3: `_load_active_branch` walks parent chain from `active_leaf_message_id`; logs warnings on truncation/cycles; falls back to max-sequence scan when leaf is NULL (legacy/empty conversation).
+- ✅ Task 4: `_save_message` advances active leaf; `parent_message_id_override` with typed `_Unset` sentinel for sibling creation.
+- ✅ Task 5: system prompt = `agent.system_prompt + workspace.instructions + conversation.instructions`, joined with blank lines, no trailing newline.
+- ✅ Task 6: `edit_user_message` + `retry_assistant_message` + `_walk_leaf_to_assistant_parent`; `chat()` gains `_skip_save_user_message` / `_user_message_id` private flags so the WS dispatch can inject the sibling without re-saving.
+- ✅ Task 7: Pydantic contracts — sibling metadata on `MessagePublic`, `active_leaf_message_id`/`instructions` on `ConversationPublic`/`ConversationUpdate`, three new request models (`EditMessageRequest`, `RetryMessageRequest`, `SwitchBranchRequest`).
+- ✅ Task 8: HTTP — instructions PATCH, `POST /conversations/{id}/active-leaf`, sibling metadata via window functions (`row_number()` + `count() OVER (partition by parent_message_id)`).
+- ✅ Task 9: WebSocket — `edit_message` + `retry_message` dispatch arms + `_process_*` helpers; cancel emits a terminal `done` frame to match `chat`'s cancel semantics; whitespace-only edits rejected.
+- ✅ Task 10: `api/tests/e2e/test_chat_branching.py` — 3 happy-path e2e tests (edit, retry, instructions) + the 15 unit tests in `api/tests/unit/test_message_branching.py`.
+- ✅ Task 18: spec doc updated (`docs/superpowers/specs/2026-04-27-chat-ux-design.md` §1.1, §1.2, §16.9, §16.10) — "linear-only" non-goal removed, retry-with-different-model dropdown dropped.
+- ✅ Task 19: pre-completion verification — full backend suite green, lint/types clean.
+- ✅ Task 20: PR #156 opened, reviewed, merged into `feature/chat-v2`.
 
-### M3-frontend (follow-up stacked PR)
+### M3-backend — pre-existing test issues fixed in this PR
 
-Tasks 11–17 are deferred to a separate PR stacked on top of M3-backend (or branched from `feature/chat-v2` after M3-backend merges):
+Four pre-existing failures surfaced on the full-suite run; rather than punt to follow-ups they were fixed here:
 
-- Task 11: type generation
-- Task 12: chat store branching state (`resolveActivePath`, `editMessage`/`retryMessage`/`switchBranch`)
-- Task 13: `MessageBranchNav` component
-- Task 14: ChatMessage hover affordances (Pencil + RotateCcw + sibling nav)
-- Task 15: ChatWindow wiring
-- Task 16: "Customize this chat" instructions dialog
-- Task 17: Playwright happy-path e2e
+- **`tests/e2e/api/test_chat.py::TestMessagesWithLLM` (×2)** — M2's `llm_anthropic_configured` fixture only POSTed `/api/admin/llm/config`; M2's resolver also requires an org-level allowlist or `default_chat_model`. Extended the fixture to PATCH the platform admin's org with `default_chat_model` and restore on teardown.
+- **`tests/e2e/mcp/test_mcp_parity.py[update_organization]`** — M2 added `allowed_chat_models` and `default_chat_model` to `OrganizationUpdate` without updating the MCP `update_organization` tool signature. Exposed both fields on the thin HTTP wrapper.
+- **`tests/e2e/api/test_executions.py::TestCodeHotReload::test_package_available_after_installation`** — pre-existing infra bug (worker user-site vs system-site divergence in package install/uninstall). Skipped with `@pytest.mark.skip` linking to **issue #181**.
 
-Why split: backend is reviewable in isolation, the frontend tasks benefit from a live debug stack for iteration, and it mirrors the M2 (PR #146) backend/frontend split that worked well.
+### Base-branch sync — PR #182 (separate, also merged)
+
+`feature/chat-v2` was 21 commits behind `origin/main` when M3-backend was being prepared. Caught up via PR #182 (squash-merged as `41820974`) which added an alembic merge revision (`20260504_merge_main_chat_v2`) and regenerated `client/src/lib/v1.d.ts`. M3's migration was re-pointed to `down_revision = "20260504_merge_main_chat_v2"` after the rebase.
+
+### M3-frontend — ⏳ NEXT SESSION
+
+Tasks 11–17 plus the new "tool-call grouping in streamed assistant turns" task discovered post-ship. Branch from `feature/chat-v2` (now post-merge tip `7531b4b3`).
+
+- Task 11: type generation (already done as part of M3-backend rebase, but verify on fresh worktree).
+- Task 12: chat store branching state (`resolveActivePath`, `editMessage`/`retryMessage`/`switchBranch`). **Replace the temporary `sibling_count: 1, sibling_index: 0` defaults** that M3-backend planted at 6 sites in `client/src/hooks/useChat.ts` and `client/src/hooks/useChatStream.ts` with server-provided values from API responses + streaming chunks.
+- Task 13: `MessageBranchNav` component.
+- Task 14: ChatMessage hover affordances (Pencil + RotateCcw + sibling nav).
+- Task 15: ChatWindow wiring.
+- Task 16: "Customize this chat" instructions dialog.
+- Task 17: Playwright happy-path e2e.
+
+#### NEW Task 17a: Tool-call grouping in streamed assistant turns
+
+Captured during M3-backend ship. In production today the chat UI shows a single uninterrupted run of tool-call/tool-result blocks until the assistant's final text reply, instead of the natural rhythm other chat clients show:
+
+```
+[tool call >]
+"Interesting. I got this information, I should probably look into this."
+[tool call >] [tool call >]
+"Even more interesting, I'm not going to do this based on that last bit of information."
+```
+
+The streamer emits all tool-call/tool-result blocks in arrival order but never surfaces the assistant's interstitial text between rounds. Investigate where the stream collapses interstitial content (likely in `client/src/hooks/useChatStream.ts` and/or the WS frame shape from `agent_executor`) and restore the round-by-round structure. Filed-in-spec, not a blocker for branching/edit/retry, but ship in M3-frontend rather than letting it slip further.
+
+Why these are deferred from M3-backend: backend is reviewable in isolation, frontend tasks benefit from a live debug stack for iteration, mirrors M2 (PR #146) split.
 
 ---
 
