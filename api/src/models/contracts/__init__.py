@@ -422,6 +422,23 @@ from src.models.contracts.llm import (
     LLMTestResponse,
 )
 
+# External MCP client (server template + per-org connection + tool catalog)
+from src.models.contracts.external_mcp import (
+    MCPServerCreate,
+    MCPServerUpdate,
+    MCPServerSummary,
+    MCPServerPublic,
+    MCPConnectionCreate,
+    MCPConnectionUpdate,
+    MCPConnectionSummary,
+    MCPConnectionPublic,
+    MCPConnectionToolCreate,
+    MCPConnectionToolUpdate,
+    MCPConnectionToolPublic,
+    UserMCPCredentialCreate,
+    UserMCPCredentialPublic,
+)
+
 # Integrations
 from src.models.contracts.integrations import (
     ConfigSchemaItem,
@@ -864,6 +881,20 @@ __all__ = [
     "LLMTestRequest",
     "LLMTestResponse",
     "LLMModelsResponse",
+    # External MCP client
+    "MCPServerCreate",
+    "MCPServerUpdate",
+    "MCPServerSummary",
+    "MCPServerPublic",
+    "MCPConnectionCreate",
+    "MCPConnectionUpdate",
+    "MCPConnectionSummary",
+    "MCPConnectionPublic",
+    "MCPConnectionToolCreate",
+    "MCPConnectionToolUpdate",
+    "MCPConnectionToolPublic",
+    "UserMCPCredentialCreate",
+    "UserMCPCredentialPublic",
     # Integrations
     "ConfigItemType",
     "ConfigSchemaItem",

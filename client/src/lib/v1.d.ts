@@ -3496,22 +3496,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7965,6 +7965,273 @@ export interface paths {
         patch: operations["update_workspace_api_workspaces__workspace_id__patch"];
         trace?: never;
     };
+    "/api/mcp-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List MCP server templates
+         * @description List MCP server templates visible to the caller. Platform admins see all templates (filterable via ``scope``); org users see platform-level templates + their own org's.
+         */
+        get: operations["list_mcp_servers_api_mcp_servers_get"];
+        put?: never;
+        /**
+         * Create MCP server template (platform admin)
+         * @description Create a new server template. Platform admin only.
+         *
+         *     If ``oauth_provider`` is set on the request, this also creates an
+         *     ``OAuthProvider`` row and links it on the new server. The provider
+         *     holds the schema (token_url, flow_type, scopes, audience). The actual
+         *     per-org client_id+secret pairs live on ``mcp_connections`` rows since
+         *     each org registers its own OAuth app with the vendor — the provider's
+         *     ``encrypted_client_secret`` is a non-authoritative placeholder.
+         */
+        post: operations["create_mcp_server_api_mcp_servers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-servers/{server_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get MCP server template
+         * @description Get a server template with its nested per-org connections and per-connection tool catalog.
+         */
+        get: operations["get_mcp_server_api_mcp_servers__server_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete MCP server template (platform admin)
+         * @description Soft delete (set ``is_active=False``) by default. Pass ``?hard=true`` to cascade-delete the row, its connections, tools, and any per-user credentials. Soft delete is preferred — the same treatment as ``integrations.is_deleted`` — so existing agent tool bindings don't silently break.
+         */
+        delete: operations["delete_mcp_server_api_mcp_servers__server_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update MCP server template (platform admin)
+         * @description Update a server template. Platform admin only.
+         */
+        patch: operations["update_mcp_server_api_mcp_servers__server_id__patch"];
+        trace?: never;
+    };
+    "/api/mcp-servers/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover OAuth metadata (platform admin)
+         * @description Fetch ``/.well-known/oauth-authorization-server`` and ``/.well-known/oauth-protected-resource`` from the server's host and return a merged metadata dict. Used by the new-server form to auto-fill OAuth fields. Returns ``{metadata: null}`` when neither endpoint is reachable; the frontend falls back to manual entry.
+         */
+        post: operations["discover_mcp_server_api_mcp_servers_discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List MCP connections
+         * @description List MCP connections.
+         *
+         *     Platform admins see all connections by default; pass ``?scope=<uuid>``
+         *     to filter to a single org. Org users see only their own org's
+         *     connections regardless of the ``scope`` parameter.
+         */
+        get: operations["list_mcp_connections_api_mcp_connections_get"];
+        put?: never;
+        /**
+         * Create MCP connection
+         * @description Create a per-org connection under a server template.
+         *
+         *     Encrypts the client_secret at rest using the same envelope encryption
+         *     as ``oauth_providers.encrypted_client_secret``.
+         */
+        post: operations["create_mcp_connection_api_mcp_connections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get MCP connection
+         * @description Get a single connection with its tool catalog.
+         */
+        get: operations["get_mcp_connection_api_mcp_connections__connection_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete MCP connection
+         * @description Hard delete. Cascades to tool catalog rows and per-user credentials per the FK definitions.
+         */
+        delete: operations["delete_mcp_connection_api_mcp_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update MCP connection
+         * @description Update a connection.
+         *
+         *     If ``client_secret`` is supplied it is re-encrypted before persist.
+         *     All other fields are passed through verbatim.
+         */
+        patch: operations["update_mcp_connection_api_mcp_connections__connection_id__patch"];
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}/tools/{tool_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a single tool in the connection's catalog
+         * @description Toggle ``enabled`` for one tool on a connection. Used by the Connection edit UI when an admin opts a tool out of the catalog. Setting enabled=true clears any auto-set ``disabled_reason``; setting enabled=false records ``Manually disabled by admin`` so a future catalog sync won't auto-re-enable it.
+         */
+        patch: operations["update_mcp_connection_tool_api_mcp_connections__connection_id__tools__tool_id__patch"];
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}/refresh-tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh tool catalog
+         * @description Calls ``tools/list`` on the vendor and upserts ``mcp_connection_tools``. Tools that disappear are flagged ``enabled=False`` rather than deleted (see ``catalog_sync`` docstring).
+         */
+        post: operations["refresh_tools_api_mcp_connections__connection_id__refresh_tools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Initiate or activate the shared service connection
+         * @description Branches on the linked OAuth provider's ``oauth_flow_type``:
+         *
+         *     - ``authorization_code`` — returns the vendor's authorize URL plus the signed ``state`` token. The frontend opens the URL in a popup; the vendor redirects back to ``/api/mcp/oauth/callback`` which completes the exchange and writes ``service_oauth_token_id`` on the connection.
+         *
+         *     - ``client_credentials`` — performs a server-to-server token exchange using the connection's client_id+secret and persists the resulting access token as ``service_oauth_token_id``. Synchronous, no popup.
+         */
+        post: operations["connect_service_token_api_mcp_connections__connection_id__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mcp-connections/{connection_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Initiate per-user OAuth flow
+         * @description Per-user delegated connect. Returns the vendor's authorize URL with state encoded for the *user* flow — the callback writes a ``user_mcp_credentials`` row instead of touching ``mcp_connections.service_oauth_token_id``.
+         *
+         *     Per-user delegation is only meaningful for ``authorization_code`` providers; ``client_credentials`` connections are rejected with 400.
+         */
+        get: operations["connect_user_credential_api_me_mcp_connections__connection_id__connect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mcp-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's per-user MCP credentials
+         * @description Returns one row per MCP connection the caller has personally OAuth'd. Includes the OAuth token's expiry so the UI can render 'expires in N days'. Does not return the bearer token itself.
+         */
+        get: operations["list_user_credentials_api_me_mcp_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mcp-connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect (forget) the caller's per-user credential
+         * @description Deletes the caller's user_mcp_credentials row for this connection and the underlying oauth_tokens row. Idempotent — returns 204 whether or not a credential existed.
+         */
+        delete: operations["disconnect_user_credential_api_me_mcp_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -8300,6 +8567,11 @@ export interface components {
              */
             system_tools?: string[];
             /**
+             * Mcp Connection Ids
+             * @description MCP connection UUIDs this agent is granted access to. Empty list (default) means the agent receives no external MCP tools. The agent's organization must own each listed connection.
+             */
+            mcp_connection_ids?: string[];
+            /**
              * Llm Model
              * @description Override model (null=use global config)
              */
@@ -8376,6 +8648,11 @@ export interface components {
             knowledge_sources?: string[];
             /** System Tools */
             system_tools?: string[];
+            /**
+             * Mcp Connection Ids
+             * @description MCP connection UUIDs this agent is granted access to.
+             */
+            mcp_connection_ids?: string[];
             /** Llm Model */
             llm_model?: string | null;
             /** Llm Max Tokens */
@@ -8705,6 +8982,12 @@ export interface components {
              * @default 0
              */
             dependency_count: number;
+            /**
+             * Mcp Connection Count
+             * @description Number of MCP connections explicitly granted to this agent.
+             * @default 0
+             */
+            mcp_connection_count: number;
         };
         /**
          * AgentUpdate
@@ -8752,6 +9035,11 @@ export interface components {
              * @description List of system tool names enabled for this agent
              */
             system_tools?: string[] | null;
+            /**
+             * Mcp Connection Ids
+             * @description MCP connection UUIDs this agent is granted access to. Replaces the agent's full grant list when provided; omit to leave grants unchanged. Pass [] to revoke all grants.
+             */
+            mcp_connection_ids?: string[] | null;
             /**
              * Clear Roles
              * @description If true, clear all role assignments (sets to role_based with no roles)
@@ -15077,6 +15365,443 @@ export interface components {
             configured_by?: string | null;
         };
         /**
+         * MCPConnectActivateResponse
+         * @description Response for ``POST /connect`` when the linked OAuth provider uses
+         *     the ``client_credentials`` flow.
+         *
+         *     No popup — the server already exchanged client_id+secret for a token
+         *     and stored it as ``service_oauth_token_id``.
+         */
+        MCPConnectActivateResponse: {
+            /**
+             * Flow
+             * @default client_credentials
+             * @constant
+             */
+            flow: "client_credentials";
+            /** Success */
+            success: boolean;
+            /**
+             * Service Oauth Token Id
+             * Format: uuid
+             */
+            service_oauth_token_id: string;
+        };
+        /**
+         * MCPConnectAuthorizeResponse
+         * @description Response for ``POST /connect`` when the linked OAuth provider uses
+         *     the ``authorization_code`` flow.
+         *
+         *     The frontend opens ``authorization_url`` in a popup; the vendor
+         *     redirects back to ``/api/mcp/oauth/callback`` which completes the
+         *     exchange.
+         */
+        MCPConnectAuthorizeResponse: {
+            /**
+             * Flow
+             * @default authorization_code
+             * @constant
+             */
+            flow: "authorization_code";
+            /** Authorization Url */
+            authorization_url: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * MCPConnectionCreateRequest
+         * @description Router-level create payload — accepts plaintext ``client_secret``.
+         *
+         *     The internal ``MCPConnectionCreate`` contract carries the
+         *     *already-encrypted* secret because manifest import/export consumes
+         *     it; the API surface accepts plaintext and encrypts here.
+         */
+        MCPConnectionCreateRequest: {
+            /**
+             * Server Id
+             * Format: uuid
+             */
+            server_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Client Id */
+            client_id: string;
+            /** Client Secret */
+            client_secret: string;
+            /** Server Url Override */
+            server_url_override?: string | null;
+            /**
+             * Available In Chat
+             * @default false
+             */
+            available_in_chat: boolean;
+            /**
+             * Available To Autonomous
+             * @default false
+             */
+            available_to_autonomous: boolean;
+        };
+        /**
+         * MCPConnectionPublic
+         * @description Detailed connection response; omits encrypted_client_secret.
+         */
+        MCPConnectionPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Server Id
+             * Format: uuid
+             */
+            server_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Client Id */
+            client_id: string;
+            /** Server Url Override */
+            server_url_override: string | null;
+            /** Available In Chat */
+            available_in_chat: boolean;
+            /** Available To Autonomous */
+            available_to_autonomous: boolean;
+            /** Service Oauth Token Id */
+            service_oauth_token_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Tools */
+            tools?: components["schemas"]["MCPConnectionToolPublic"][];
+        };
+        /**
+         * MCPConnectionRefreshToolsResponse
+         * @description Counts returned after a tool catalog refresh.
+         */
+        MCPConnectionRefreshToolsResponse: {
+            /**
+             * Total
+             * @description Total tool rows on the connection after sync
+             */
+            total: number;
+            /**
+             * Enabled
+             * @description Number that are currently enabled
+             */
+            enabled: number;
+            /**
+             * Disabled
+             * @description Number that are currently disabled
+             */
+            disabled: number;
+        };
+        /**
+         * MCPConnectionSummary
+         * @description Lightweight connection summary; omits encrypted secret.
+         */
+        MCPConnectionSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Server Id
+             * Format: uuid
+             */
+            server_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Client Id */
+            client_id: string;
+            /** Server Url Override */
+            server_url_override: string | null;
+            /** Available In Chat */
+            available_in_chat: boolean;
+            /** Available To Autonomous */
+            available_to_autonomous: boolean;
+            /** Service Oauth Token Id */
+            service_oauth_token_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MCPConnectionToolPublic
+         * @description Tool catalog response.
+         */
+        MCPConnectionToolPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Tool Name */
+            tool_name: string;
+            /** Tool Schema */
+            tool_schema: {
+                [key: string]: unknown;
+            };
+            /** Enabled */
+            enabled: boolean;
+            /** Disabled Reason */
+            disabled_reason: string | null;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MCPConnectionUpdateRequest
+         * @description Router-level update payload — plaintext ``client_secret`` if rotated.
+         */
+        MCPConnectionUpdateRequest: {
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Server Url Override */
+            server_url_override?: string | null;
+            /** Available In Chat */
+            available_in_chat?: boolean | null;
+            /** Available To Autonomous */
+            available_to_autonomous?: boolean | null;
+            /** Service Oauth Token Id */
+            service_oauth_token_id?: string | null;
+        };
+        /**
+         * MCPServerCreate
+         * @description Request model for creating an MCP server template.
+         */
+        MCPServerCreate: {
+            /**
+             * Name
+             * @description Unique server name (e.g. 'Microsoft 365 Copilot', 'halopsa-mcp')
+             */
+            name: string;
+            /**
+             * Server Url
+             * @description MCP server URL (Streamable HTTP endpoint)
+             */
+            server_url: string;
+            /**
+             * Oauth Provider Id
+             * @description OAuth provider configuration FK; absent for servers without auth
+             */
+            oauth_provider_id?: string | null;
+            /** @description Inline OAuth provider creation. When set, the router creates an OAuthProvider row and links it via ``oauth_provider_id``. Mutually exclusive with ``oauth_provider_id``. */
+            oauth_provider?: components["schemas"]["MCPServerOAuthProviderCreate"] | null;
+            /**
+             * Redirect Url
+             * @description Deterministic redirect URL for the OAuth callback
+             */
+            redirect_url?: string | null;
+            /**
+             * Discovery Metadata
+             * @description Snapshot of /.well-known/oauth-authorization-server at create time
+             */
+            discovery_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Organization Id
+             * @description Org UUID (NULL = platform-level template visible to all orgs)
+             */
+            organization_id?: string | null;
+            /**
+             * Is Active
+             * @description Active flag
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * MCPServerDiscoverRequest
+         * @description Request body for the discovery endpoint.
+         */
+        MCPServerDiscoverRequest: {
+            /** Server Url */
+            server_url: string;
+        };
+        /**
+         * MCPServerDiscoverResponse
+         * @description Response wrapper for the discovery endpoint.
+         *
+         *     ``metadata`` is ``None`` when both ``/.well-known`` endpoints failed to
+         *     return usable JSON; the frontend falls back to manual entry.
+         */
+        MCPServerDiscoverResponse: {
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * MCPServerOAuthProviderCreate
+         * @description Inline OAuth provider creation block carried on ``MCPServerCreate``.
+         *
+         *     When present, ``POST /api/mcp-servers`` creates an ``OAuthProvider`` row
+         *     and links it via ``mcp_servers.oauth_provider_id``. A placeholder
+         *     ``encrypted_client_secret`` is stored on the provider — the per-org
+         *     client_id+secret pair lives on each ``mcp_connections`` row, since each
+         *     org registers its own OAuth app with the vendor. The provider row is
+         *     just the schema (token_url, scopes, audience, flow_type).
+         */
+        MCPServerOAuthProviderCreate: {
+            /**
+             * Oauth Flow Type
+             * @description OAuth grant type. Detect from discovery's ``grant_types_supported``: if ``client_credentials`` is supported, default to that; else ``authorization_code``. Admin can override.
+             * @default authorization_code
+             * @enum {string}
+             */
+            oauth_flow_type: "authorization_code" | "client_credentials";
+            /** Token Url */
+            token_url: string;
+            /**
+             * Authorization Url
+             * @description Required for ``authorization_code`` flow; ignored for ``client_credentials``.
+             */
+            authorization_url?: string | null;
+            /** Scopes */
+            scopes?: string[];
+            /** Audience */
+            audience?: string | null;
+        };
+        /**
+         * MCPServerPublic
+         * @description Detailed server response including nested per-org connections.
+         */
+        MCPServerPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Server Url */
+            server_url: string;
+            /** Oauth Provider Id */
+            oauth_provider_id: string | null;
+            /**
+             * Oauth Flow Type
+             * @description OAuth flow type of the linked provider, if any. One of ``authorization_code`` | ``client_credentials``. The frontend branches on this when rendering the connect button (popup vs synchronous activate).
+             */
+            oauth_flow_type?: string | null;
+            /** Redirect Url */
+            redirect_url: string | null;
+            /** Discovery Metadata */
+            discovery_metadata: {
+                [key: string]: unknown;
+            } | null;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Connections */
+            connections?: components["schemas"]["MCPConnectionPublic"][];
+        };
+        /**
+         * MCPServerSummary
+         * @description Lightweight server summary used in list responses.
+         */
+        MCPServerSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Server Url */
+            server_url: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MCPServerUpdate
+         * @description Request model for updating an MCP server template.
+         */
+        MCPServerUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Server Url */
+            server_url?: string | null;
+            /** Oauth Provider Id */
+            oauth_provider_id?: string | null;
+            /** Redirect Url */
+            redirect_url?: string | null;
+            /** Discovery Metadata */
+            discovery_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /**
          * MCPToolInfo
          * @description Information about an available MCP tool.
          */
@@ -15102,6 +15827,17 @@ export interface components {
              * @default true
              */
             is_system: boolean;
+        };
+        /**
+         * MCPToolPatchRequest
+         * @description Body for ``PATCH /api/mcp-connections/{cid}/tools/{tid}``.
+         */
+        MCPToolPatchRequest: {
+            /**
+             * Enabled
+             * @description Admin override. False removes this tool from the catalog surfaced to agents; True puts it back. Independent from the auto-disable that catalog sync applies when a tool disappears from the vendor's tools/list (those carry a disabled_reason starting with 'Removed from server catalog').
+             */
+            enabled?: boolean | null;
         };
         /**
          * MCPToolsResponse
@@ -19106,6 +19842,51 @@ export interface components {
              * @description List of form IDs user can access (empty if has_access_to_all_forms=true)
              */
             form_ids?: string[];
+        };
+        /**
+         * UserMCPCredentialPublic
+         * @description Per-user credential response. Does not embed the OAuth tokens.
+         */
+        UserMCPCredentialPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /**
+             * Oauth Token Id
+             * Format: uuid
+             */
+            oauth_token_id: string;
+            /**
+             * Consent Granted At
+             * Format: date-time
+             */
+            consent_granted_at: string;
+            /** Consent Expires At */
+            consent_expires_at: string | null;
+            /** Granted Scopes */
+            granted_scopes: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * UserPublic
@@ -26022,7 +26803,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26055,7 +26836,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26088,7 +26869,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26121,7 +26902,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -34200,6 +34981,543 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorkspacePublic"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mcp_servers_api_mcp_servers_get: {
+        parameters: {
+            query?: {
+                /** @description Platform-admin filter: omit for all, 'global' for platform-level only, or an org UUID for that org's templates only. Ignored for non-admin callers. */
+                scope?: string | null;
+                /** @description If true, exclude templates with ``is_active = false``. */
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mcp_server_api_mcp_servers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_server_api_mcp_servers__server_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_server_api_mcp_servers__server_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Hard-delete via cascade if true. */
+                hard?: boolean;
+            };
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_server_api_mcp_servers__server_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_mcp_server_api_mcp_servers_discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerDiscoverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerDiscoverResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mcp_connections_api_mcp_connections_get: {
+        parameters: {
+            query?: {
+                server_id?: string | null;
+                /** @description Platform admin filter: omit to see all orgs' connections, or pass an org UUID to filter to that org. Ignored for non-admins. */
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mcp_connection_api_mcp_connections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPConnectionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_connection_api_mcp_connections__connection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_connection_api_mcp_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_connection_api_mcp_connections__connection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPConnectionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_connection_tool_api_mcp_connections__connection_id__tools__tool_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPToolPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionToolPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_tools_api_mcp_connections__connection_id__refresh_tools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionRefreshToolsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_service_token_api_mcp_connections__connection_id__connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectAuthorizeResponse"] | components["schemas"]["MCPConnectActivateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_user_credential_api_me_mcp_connections__connection_id__connect_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectAuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_credentials_api_me_mcp_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMCPCredentialPublic"][];
+                };
+            };
+        };
+    };
+    disconnect_user_credential_api_me_mcp_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

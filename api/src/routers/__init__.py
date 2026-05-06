@@ -64,6 +64,12 @@ from src.routers.platform import (
 )
 from src.routers.version import router as version_router
 from src.routers.workspaces import router as workspaces_router
+from src.routers.mcp_servers import router as mcp_servers_router
+from src.routers.mcp_connections import (
+    router as mcp_connections_router,
+    me_router as mcp_me_connections_router,
+)
+from src.routers.mcp_oauth_callback import router as mcp_oauth_callback_router
 
 __all__ = [
     "auth_router",
@@ -129,4 +135,8 @@ __all__ = [
     "platform_stuck_router",
     "version_router",
     "workspaces_router",
+    "mcp_servers_router",
+    "mcp_connections_router",
+    "mcp_me_connections_router",
+    "mcp_oauth_callback_router",
 ]

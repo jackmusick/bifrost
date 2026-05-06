@@ -185,6 +185,19 @@ const EntityManagement = lazyWithReload(() =>
 		default: m.EntityManagement,
 	})),
 );
+const MCPServers = lazyWithReload(() =>
+	import("@/pages/MCPServers").then((m) => ({ default: m.MCPServers })),
+);
+const MCPServerDetail = lazyWithReload(() =>
+	import("@/pages/MCPServerDetail").then((m) => ({
+		default: m.MCPServerDetail,
+	})),
+);
+const MCPConnectionEdit = lazyWithReload(() =>
+	import("@/pages/MCPConnectionEdit").then((m) => ({
+		default: m.MCPConnectionEdit,
+	})),
+);
 
 function AppRoutes() {
 	const { brandingLoaded } = useOrgScope();
@@ -508,6 +521,32 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<IntegrationDetail />
+								</ProtectedRoute>
+							}
+						/>
+
+						{/* MCP Servers - PlatformAdmin only */}
+						<Route
+							path="mcp-servers"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<MCPServers />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="mcp-servers/:id"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<MCPServerDetail />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="mcp-servers/:serverId/connections/:connectionId/edit"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<MCPConnectionEdit />
 								</ProtectedRoute>
 							}
 						/>
