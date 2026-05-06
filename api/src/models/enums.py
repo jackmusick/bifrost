@@ -138,3 +138,10 @@ class ExecutionModel(str, Enum):
     - PROCESS: Process pool model (process_pool.py + simple_worker.py)
     """
     PROCESS = "process"
+
+
+class ScheduleOverlapPolicy(str, Enum):
+    """Behavior when a schedule fires while a previous run is still active."""
+    SKIP = "skip"
+    QUEUE = "queue"
+    REPLACE = "replace"

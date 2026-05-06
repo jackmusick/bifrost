@@ -433,6 +433,7 @@ async def update_workflow(
     organization_id: str | None = None,
     access_level: str | None = None,
     clear_roles: bool | None = None,
+    role_ids: list[str] | None = None,
     description: str | None = None,
     category: str | None = None,
     timeout_seconds: int | None = None,
@@ -443,11 +444,13 @@ async def update_workflow(
     """Update a workflow — ``PATCH /api/workflows/{uuid}``.
 
     ``workflow_ref`` is a UUID, workflow name, or ``path::func``.
-    Only the parameters the user supplies are sent. Fields marked as
-    UI/code-managed in :data:`bifrost.dto_flags.DTO_EXCLUDES`
-    (``display_name``, ``tool_description``, ``time_saved``, ``value``,
-    ``cache_ttl_seconds``, ``allowed_methods``, ``execution_mode``,
-    ``disable_global_key``) are not surfaced here.
+    ``role_ids`` bulk-replaces the workflow's role assignments when supplied
+    (an empty list clears them); pair with ``clear_roles=True`` only when no
+    list is provided. Fields marked as UI/code-managed in
+    :data:`bifrost.dto_flags.DTO_EXCLUDES` (``display_name``,
+    ``tool_description``, ``time_saved``, ``value``, ``cache_ttl_seconds``,
+    ``allowed_methods``, ``execution_mode``, ``disable_global_key``) are not
+    surfaced here.
     """
     if not workflow_ref:
         return error_result("workflow_ref is required")
@@ -472,6 +475,7 @@ async def update_workflow(
             "organization_id": organization_id,
             "access_level": access_level,
             "clear_roles": clear_roles,
+            "role_ids": role_ids,
             "description": description,
             "category": category,
             "timeout_seconds": timeout_seconds,

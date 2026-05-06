@@ -59,7 +59,15 @@ export interface UseWorkflowQueryResult<T> {
 	isLoading: boolean;
 	/** True if the workflow failed. */
 	isError: boolean;
-	/** Error message if the workflow failed. */
+	/**
+	 * Error message string if the workflow failed, otherwise null.
+	 * Already a string — do NOT access `.message` on this value.
+	 */
+	errorMessage: string | null;
+	/**
+	 * @deprecated Use `errorMessage` — this is a string alias kept for
+	 * backward compatibility. Reading `error.message` returns undefined.
+	 */
 	error: string | null;
 	/** Streaming logs array that updates in real-time. */
 	logs: StreamingLog[];
@@ -84,13 +92,13 @@ export interface UseWorkflowQueryResult<T> {
  * @example
  * ```tsx
  * // Load data on mount
- * const { data, isLoading, error } = useWorkflowQuery<Customer[]>(
+ * const { data, isLoading, errorMessage } = useWorkflowQuery<Customer[]>(
  *   "workflow-uuid",
  *   { limit: 10 }
  * );
  *
  * if (isLoading) return <Skeleton />;
- * if (error) return <Alert>{error}</Alert>;
+ * if (errorMessage) return <Alert>{errorMessage}</Alert>;
  * return <CustomerList data={data} />;
  * ```
  *
@@ -120,7 +128,15 @@ export interface UseWorkflowMutationResult<T> {
 	isLoading: boolean;
 	/** True if the last execution failed. */
 	isError: boolean;
-	/** Error message from the last execution. */
+	/**
+	 * Error message string from the last execution, otherwise null.
+	 * Already a string — do NOT access `.message` on this value.
+	 */
+	errorMessage: string | null;
+	/**
+	 * @deprecated Use `errorMessage` — this is a string alias kept for
+	 * backward compatibility. Reading `error.message` returns undefined.
+	 */
 	error: string | null;
 	/** Result data from the last execution. */
 	data: T | null;
@@ -334,6 +350,37 @@ export declare function useAppState<T>(
 	key: string,
 	initialValue: T,
 ): [T, (value: T) => void];
+
+// =============================================================================
+// Table Access SDK
+// =============================================================================
+
+export declare const tables: typeof import("./app-sdk/tables").tables;
+
+/**
+ * Live-updating table data hook.
+ *
+ * Loads an initial snapshot and subscribes to live row changes (insert,
+ * update, delete) for the given table. The subscribe filter is the same
+ * `where` expression passed to the initial query, so the websocket fanout
+ * sees exactly the same row visibility as the snapshot.
+ *
+ * @param name - Table name (or id) to query and subscribe to
+ * @param query - Optional `where` / `limit` / `offset` query parameters
+ * @returns `{ rows, loading, error }`
+ *
+ * @example
+ * ```tsx
+ * const { rows, loading, error } = useTable("tickets", {
+ *   where: { eq: ["status", "open"] },
+ * });
+ *
+ * if (loading) return <Skeleton />;
+ * if (error) return <Alert>{error.message}</Alert>;
+ * return <TicketList rows={rows} />;
+ * ```
+ */
+export declare const useTable: typeof import("./app-sdk/use-table").useTable;
 
 // =============================================================================
 // Platform Utilities
@@ -670,6 +717,10 @@ export interface PlatformScope {
 	useNavigate: typeof useNavigate;
 	useAppState: typeof useAppState;
 	useLocation: typeof useLocation;
+
+	// Table access
+	tables: typeof import("./app-sdk/tables").tables;
+	useTable: typeof import("./app-sdk/use-table").useTable;
 
 	// Platform utilities
 	navigate: typeof navigate;

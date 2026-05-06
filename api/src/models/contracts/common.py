@@ -64,10 +64,15 @@ class FileUploadRequest(BaseModel):
 
 
 class UploadedFileMetadata(BaseModel):
-    """Metadata for uploaded file that workflows can use to access the file"""
+    """Metadata for uploaded file that workflows can use to access the file.
+
+    `path` is relative to the `uploads` location: pass it directly to
+    `files.read(path, location="uploads")` in a workflow and the SDK handles
+    scoping. The full S3 key is `uploads/{scope}/{path}`.
+    """
     name: str = Field(..., description="Original file name")
     container: str = Field(..., description="Blob storage container name (e.g., 'uploads')")
-    path: str = Field(..., description="Blob path within container")
+    path: str = Field(..., description="Path relative to uploads/ (e.g., '{form_id}/{uuid}/{filename}')")
     content_type: str = Field(..., description="MIME type of the file")
     size: int = Field(..., description="File size in bytes")
 

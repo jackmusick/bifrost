@@ -333,6 +333,9 @@ export function Events() {
 								<DataTableHead className="w-0 whitespace-nowrap text-right">
 									Events (24h)
 								</DataTableHead>
+								<DataTableHead className="w-0 whitespace-nowrap text-right">
+									Rate limited (24h)
+								</DataTableHead>
 								<DataTableHead className="w-0 whitespace-nowrap">Created</DataTableHead>
 								{isPlatformAdmin && (
 									<>
@@ -386,6 +389,19 @@ export function Events() {
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap text-right">
 										{source.event_count_24h || 0}
+									</DataTableCell>
+									<DataTableCell className="w-0 whitespace-nowrap text-right">
+										{source.webhook && source.webhook.rate_limited_count_24h > 0 ? (
+											<Badge
+												variant="destructive"
+												className="text-xs"
+												title="Webhooks rejected by per-source rate limit in the last 24h"
+											>
+												{source.webhook.rate_limited_count_24h}
+											</Badge>
+										) : (
+											<span className="text-muted-foreground">—</span>
+										)}
 									</DataTableCell>
 									<DataTableCell className="w-0 whitespace-nowrap text-muted-foreground">
 										{formatDistanceToNow(

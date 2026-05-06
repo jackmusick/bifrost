@@ -16,7 +16,7 @@
 		"tsc": "tsc -b",
 		"lint": "eslint .",
 		"format": "prettier --write .",
-		"generate:types": "npx openapi-typescript http://localhost:3000/openapi.json -o src/lib/v1.d.ts",
+		"generate:types": "npx openapi-typescript ${OPENAPI_URL:-http://localhost:3000/openapi.json} -o src/lib/v1.d.ts",
 		"generate:types:docker": "npx openapi-typescript http://localhost/openapi.json -o src/lib/v1.d.ts",
 		"test": "vitest run",
 		"test:watch": "vitest",
@@ -103,7 +103,6 @@
 		"zustand": "^5.0.12"
 	},
 	"devDependencies": {
-		"@azure/static-web-apps-cli": "^2.0.9",
 		"@eslint/js": "^9.39.4",
 		"@playwright/test": "^1.59.1",
 		"@tailwindcss/typography": "^0.5.19",
@@ -121,7 +120,7 @@
 		"eslint": "^9.39.4",
 		"eslint-plugin-react-hooks": "^7.1.1",
 		"eslint-plugin-react-refresh": "^0.5.2",
-		"globals": "^16.5.0",
+		"globals": "^17.5.0",
 		"happy-dom": "^20.9.0",
 		"openapi-typescript": "^7.13.0",
 		"js-yaml": "^4.1.0",
@@ -131,5 +130,8 @@
 		"typescript-eslint": "^8.59.2",
 		"vite": "^8.0.10",
 		"vitest": "^4.1.4"
+	},
+	"overrides": {
+		"dompurify": "^3.4.2"
 	}
 }

@@ -2024,6 +2024,174 @@ class TestSplitManifestFormat:
         assert table.schema is not None
         assert len(table.schema["columns"]) == 2
 
+    async def test_pull_table_with_policies_round_trip(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Pull a table with non-trivial policies → DB row has policies in `access`,
+        and the AST round-trips back to the YAML manifest unchanged.
+
+        Covers Task F: prove that table policies survive a full manifest cycle
+        (manifest → DB → manifest), including a role-gated policy authored
+        with the canonical ``{"call": "has_role", "args": [...]}`` form. The
+        manifest import path validates the AST through ``TablePolicies``
+        before persisting, so non-canonical shorthand (e.g. ``{"has_role":
+        "support"}``) is rejected — see the parallel
+        ``test_pull_table_with_invalid_policy_when_clause_is_rejected``.
+        """
+        from uuid import UUID as UUIDType
+
+        from src.models.orm.tables import Table
+
+        work_dir = Path(working_clone.working_dir)
+        table_id = str(uuid4())
+
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
+            "tables": {
+                "with_policies": {
+                    "id": table_id,
+                    "description": "Table with non-trivial policies",
+                    "policies": [
+                        {
+                            "name": "admin_bypass",
+                            "actions": ["read", "create", "update", "delete"],
+                            "when": {"user": "is_platform_admin"},
+                        },
+                        {
+                            "name": "own_row",
+                            "actions": ["read", "update", "delete"],
+                            "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+                        },
+                        {
+                            "name": "support_read",
+                            "actions": ["read"],
+                            "when": {"call": "has_role", "args": ["support"]},
+                        },
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/tables.yaml"])
+        working_clone.index.commit("table with policies")
+        working_clone.remotes.origin.push()
+
+        result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert result.success is True
+
+        # 1) DB row carries the policies in `access` JSONB
+        table = await db_session.get(Table, UUIDType(table_id))
+        assert table is not None
+        assert table.access is not None
+        policy_names = [p["name"] for p in table.access["policies"]]
+        assert "admin_bypass" in policy_names
+        assert "own_row" in policy_names
+        assert "support_read" in policy_names
+
+        # AST is preserved verbatim — the row-vs-user equality check
+        own = next(p for p in table.access["policies"] if p["name"] == "own_row")
+        assert own["when"] == {"eq": [{"row": "created_by"}, {"user": "user_id"}]}
+        assert sorted(own["actions"]) == ["delete", "read", "update"]
+
+        # The has_role call form is what the evaluator/compiler accepts;
+        # the function registry matches the literal arg against role_names
+        # OR role_ids at evaluation time.
+        support = next(p for p in table.access["policies"] if p["name"] == "support_read")
+        assert support["when"] == {"call": "has_role", "args": ["support"]}
+        assert support["actions"] == ["read"]
+
+        # 2) Round-trip back to manifest: serialize the DB row and verify the
+        # policies block survives unchanged.
+        from src.services.manifest_generator import serialize_table
+
+        round_tripped = serialize_table(table)
+        assert round_tripped.policies is not None
+        rt_dump = [p.model_dump(mode="json") for p in round_tripped.policies]
+        rt_names = [p["name"] for p in rt_dump]
+        assert rt_names == ["admin_bypass", "own_row", "support_read"]
+
+        rt_own = next(p for p in rt_dump if p["name"] == "own_row")
+        assert rt_own["when"] == {"eq": [{"row": "created_by"}, {"user": "user_id"}]}
+        assert sorted(rt_own["actions"]) == ["delete", "read", "update"]
+
+        rt_support = next(p for p in rt_dump if p["name"] == "support_read")
+        assert rt_support["when"] == {"call": "has_role", "args": ["support"]}
+
+    async def test_pull_table_with_invalid_policy_when_clause_is_rejected(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """Manifest carrying an unparseable policy AST is rejected at import.
+
+        Security boundary: ``ManifestPolicy.when`` is ``dict | None`` — the
+        manifest model does NOT validate the AST. Without revalidation at the
+        DB-write boundary, a malformed ``tables.yaml`` would land an
+        unparseable policy in ``Table.access`` (later crashing the evaluator
+        or — worse — being silently treated as deny-all). The import path
+        revalidates through ``TablePolicies`` so this fails loudly with
+        ``success=False``, and the table is NOT created.
+        """
+        from uuid import UUID as UUIDType
+
+        from src.models.orm.tables import Table
+
+        work_dir = Path(working_clone.working_dir)
+        table_id = str(uuid4())
+
+        bifrost_dir = work_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
+            "tables": {
+                "bad_policy": {
+                    "id": table_id,
+                    "description": "Has an unparseable when AST",
+                    "policies": [
+                        {
+                            "name": "broken",
+                            "actions": ["read"],
+                            # INVALID_OP is not a known operator — the
+                            # AST validator must reject this.
+                            "when": {"INVALID_OP": []},
+                        },
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/tables.yaml"])
+        working_clone.index.commit("table with bad policy")
+        working_clone.remotes.origin.push()
+
+        result = await sync_service.desktop_sync(confirm_deletes=True)
+
+        # Sync as a whole must fail — no silent success that landed bad data.
+        assert result.success is False, (
+            f"Malformed policy must be rejected; got success result: {result}"
+        )
+        # Error string mentions either the unknown operator or validation.
+        err = (result.error or "").lower()
+        assert (
+            "invalid_op" in err
+            or "unknown operator" in err
+            or "validation error" in err
+        ), f"Error should identify the AST problem; got: {result.error!r}"
+
+        # Side-effect check: the table was NOT created in the DB. Sync uses a
+        # nested transaction around _import_all_entities (see desktop_sync
+        # step 4); the ValidationError raised inside that block aborts the
+        # whole import — so the bad row never lands.
+        await db_session.rollback()
+        table = await db_session.get(Table, UUIDType(table_id))
+        assert table is None, (
+            f"Bad policy must not produce a Table row; found {table!r}"
+        )
+
     async def test_pull_event_source_from_manifest(
         self,
         db_session: AsyncSession,
@@ -2835,6 +3003,217 @@ class TestPullUpsertNaturalKeys:
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 integration, got {len(rows)}"
         assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+
+    async def test_integration_import_with_different_id_and_config_schema(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        """Regression for #148: integration UUID rewrite + existing config_schema rows
+        must not collide with the FK ON UPDATE CASCADE-migrated rows.
+
+        Pre-fix: prefetch cache is keyed on the OLD integration_id. After the
+        upsert rewrites the integration's id, the cascade migrates the schema
+        rows to the new id, but the cache lookup at the new id returns {},
+        the loop falls through to INSERT, and hits a unique violation on
+        (integration_id, key).
+        """
+        from src.models.orm.integrations import Integration, IntegrationConfigSchema
+
+        # Existing integration with config_schema rows under id_a
+        id_a = uuid4()
+        integ = Integration(id=id_a, name="CascadeSchemaInteg", is_deleted=False)
+        db_session.add(integ)
+        await db_session.flush()
+        db_session.add_all([
+            IntegrationConfigSchema(
+                integration_id=id_a, key="api_key", type="secret",
+                required=True, position=0,
+            ),
+            IntegrationConfigSchema(
+                integration_id=id_a, key="region", type="string",
+                required=False, position=1,
+            ),
+        ])
+        await db_session.commit()
+
+        # Manifest references the same integration name with a different UUID,
+        # plus the same two schema keys.
+        id_b = uuid4()
+        clone_dir = Path(working_clone.working_dir)
+        bifrost_dir = clone_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "CascadeSchemaInteg": {
+                    "id": str(id_b),
+                    "config_schema": [
+                        {"key": "api_key", "type": "secret", "required": True, "position": 0},
+                        {"key": "region", "type": "string", "required": False, "position": 1},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("integration with cross-env id + config schema")
+        working_clone.remotes.origin.push("main")
+
+        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert sync_result.success, f"Sync failed: {sync_result.error}"
+
+        # Integration now has id_b and exactly the two schema rows under id_b.
+        integ_rows = (await db_session.execute(
+            select(Integration).where(Integration.name == "CascadeSchemaInteg")
+        )).scalars().all()
+        assert len(integ_rows) == 1
+        assert integ_rows[0].id == id_b
+
+        cs_rows = (await db_session.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == id_b
+            ).order_by(IntegrationConfigSchema.position)
+        )).scalars().all()
+        assert [c.key for c in cs_rows] == ["api_key", "region"]
+        # No orphan rows under id_a
+        orphans = (await db_session.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == id_a
+            )
+        )).scalars().all()
+        assert orphans == []
+
+    async def test_integration_import_with_different_id_and_mapping(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        """Same #148 cache-staleness pattern, applied to integration_mappings:
+        the unique index is (integration_id, organization_id), and the cache
+        key is the OLD integration_id."""
+        from src.models.orm.integrations import Integration, IntegrationMapping
+        from src.models.orm.organizations import Organization
+
+        org_id = uuid4()
+        db_session.add(Organization(id=org_id, name="MappingCascadeOrg", created_by="test"))
+
+        id_a = uuid4()
+        db_session.add(Integration(id=id_a, name="CascadeMappingInteg", is_deleted=False))
+        await db_session.flush()
+        db_session.add(IntegrationMapping(
+            integration_id=id_a, organization_id=org_id, entity_id="tenant-a",
+        ))
+        await db_session.commit()
+
+        id_b = uuid4()
+        clone_dir = Path(working_clone.working_dir)
+        bifrost_dir = clone_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "CascadeMappingInteg": {
+                    "id": str(id_b),
+                    "mappings": [
+                        {"organization_id": str(org_id), "entity_id": "tenant-a"},
+                    ],
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([".bifrost/integrations.yaml"])
+        working_clone.index.commit("integration with cross-env id + mapping")
+        working_clone.remotes.origin.push("main")
+
+        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert sync_result.success, f"Sync failed: {sync_result.error}"
+
+        m_rows = (await db_session.execute(
+            select(IntegrationMapping).where(
+                IntegrationMapping.integration_id == id_b
+            )
+        )).scalars().all()
+        assert len(m_rows) == 1
+        assert m_rows[0].entity_id == "tenant-a"
+        assert m_rows[0].organization_id == org_id
+
+    async def test_integration_import_with_different_id_and_config(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        """Same #148 cache-staleness pattern, applied to configs that
+        reference the integration. The Config unique index is
+        (integration_id, organization_id, key); after CASCADE the existing
+        config row sits at the new integ_id, so a fresh INSERT collides."""
+        from src.models.orm.config import Config
+        from src.models.orm.integrations import Integration
+
+        id_a = uuid4()
+        db_session.add(Integration(id=id_a, name="CascadeConfigInteg", is_deleted=False))
+        await db_session.flush()
+        cfg_id = uuid4()
+        db_session.add(Config(
+            id=cfg_id, key="api_url", value={"value": "https://old.example.com"},
+            integration_id=id_a, organization_id=None,
+            updated_by="test",
+        ))
+        await db_session.commit()
+
+        id_b = uuid4()
+        clone_dir = Path(working_clone.working_dir)
+        bifrost_dir = clone_dir / ".bifrost"
+        bifrost_dir.mkdir(exist_ok=True)
+        (bifrost_dir / "integrations.yaml").write_text(yaml.dump({
+            "integrations": {
+                "CascadeConfigInteg": {
+                    "id": str(id_b),
+                },
+            },
+        }, default_flow_style=False))
+        # Manifest carries the same config under the NEW integ_id (cross-env
+        # parent rewrite is the trigger for the cache-staleness bug here).
+        new_cfg_id = uuid4()
+        (bifrost_dir / "configs.yaml").write_text(yaml.dump({
+            "configs": {
+                "api_url": {
+                    "id": str(new_cfg_id),
+                    "key": "api_url",
+                    "config_type": "string",
+                    "value": {"value": "https://new.example.com"},
+                    "integration_id": str(id_b),
+                },
+            },
+        }, default_flow_style=False))
+
+        working_clone.index.add([
+            ".bifrost/integrations.yaml",
+            ".bifrost/configs.yaml",
+        ])
+        working_clone.index.commit("integration with cross-env id + config")
+        working_clone.remotes.origin.push("main")
+
+        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
+        assert sync_result.success, f"Sync failed: {sync_result.error}"
+
+        cfg_rows = (await db_session.execute(
+            select(Config).where(
+                Config.key == "api_url",
+                Config.integration_id == id_b,
+            )
+        )).scalars().all()
+        assert len(cfg_rows) == 1, f"Expected 1 config row under integ id_b, got {len(cfg_rows)}"
+        assert cfg_rows[0].value == {"value": "https://new.example.com"}
+        # And nothing left under the old integ id (CASCADE moved them all)
+        orphans = (await db_session.execute(
+            select(Config).where(Config.integration_id == id_a)
+        )).scalars().all()
+        assert orphans == []
 
     async def test_app_import_with_different_id(
         self,
@@ -3766,71 +4145,6 @@ class TestRoleAssignmentSync:
 class TestImportOrder:
     """Dependency chain correctness."""
 
-    async def test_table_with_application_id(
-        self, db_session: AsyncSession, sync_service, working_clone,
-    ):
-        """Table refs app, both in manifest → no FK error (apps before tables)."""
-        from src.models.orm.tables import Table
-
-        org_id = uuid4()
-        app_id = str(uuid4())
-        table_id = str(uuid4())
-
-        from src.models.orm.organizations import Organization
-        db_session.add(Organization(id=org_id, name="TableOrg", is_active=True, created_by="git-sync"))
-        await db_session.commit()
-
-        work_dir = Path(working_clone.working_dir)
-        bifrost_dir = work_dir / ".bifrost"
-        bifrost_dir.mkdir(exist_ok=True)
-
-        # Write app layout file
-        app_dir = work_dir / "apps" / "testapp"
-        app_dir.mkdir(parents=True, exist_ok=True)
-        (app_dir / "_layout.tsx").write_text("export default function Layout({ children }) { return <>{children}</>; }\n")
-
-        (bifrost_dir / "organizations.yaml").write_text(yaml.dump({
-            "organizations": [{"id": str(org_id), "name": "TableOrg"}]
-        }, default_flow_style=False))
-        (bifrost_dir / "apps.yaml").write_text(yaml.dump({
-            "apps": {
-                "testapp": {
-                    "id": app_id,
-                    "path": "apps/testapp",
-                    "slug": "testapp",
-                    "name": "TestApp",
-                    "organization_id": str(org_id),
-                }
-            }
-        }, default_flow_style=False))
-        (bifrost_dir / "tables.yaml").write_text(yaml.dump({
-            "tables": {
-                "TestTable": {
-                    "id": table_id,
-                    "organization_id": str(org_id),
-                    "application_id": app_id,
-                }
-            }
-        }, default_flow_style=False))
-
-        working_clone.index.add([
-            "apps/testapp/_layout.tsx",
-            ".bifrost/organizations.yaml",
-            ".bifrost/apps.yaml",
-            ".bifrost/tables.yaml",
-        ])
-        working_clone.index.commit("Table with app ref")
-        working_clone.remotes.origin.push("main")
-
-        result = await sync_service.desktop_sync(confirm_deletes=True)
-        assert result.success, f"Sync failed: {result.error}"
-
-        row = (await db_session.execute(
-            select(Table).where(Table.id == table_id)
-        )).scalar_one_or_none()
-        assert row is not None, "Table not created"
-        assert str(row.application_id) == app_id
-
     async def test_event_sub_workflow_ref_by_path(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
@@ -4088,7 +4402,6 @@ class TestImportOrder:
                 "FullTable": {
                     "id": table_id,
                     "organization_id": org_id,
-                    "application_id": app_id,
                 }
             }
         }, default_flow_style=False))
@@ -4165,7 +4478,6 @@ class TestImportOrder:
             select(Table).where(Table.id == table_id)
         )).scalar_one_or_none()
         assert table is not None, "Table not created"
-        assert str(table.application_id) == app_id
 
 
 @pytest.mark.e2e

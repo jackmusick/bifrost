@@ -128,11 +128,13 @@ def _mock_event_source(source_id=EVENT_SOURCE_ID, name="det_source"):
 
 
 def _mock_schedule_source(source_id=EVENT_SOURCE_ID):
+    from src.models.enums import ScheduleOverlapPolicy
     ss = MagicMock()
     ss.event_source_id = source_id
     ss.cron_expression = "0 * * * *"
     ss.timezone = "UTC"
     ss.enabled = True
+    ss.overlap_policy = ScheduleOverlapPolicy.SKIP
     return ss
 
 
@@ -181,6 +183,7 @@ def _build_side_effects(
         empty,                        # form_fields (inline form_schema)
         empty,                        # agent_tools (inline tool_ids)
         empty,                        # agent_delegations (inline delegated_agent_ids)
+        empty,                        # agent_mcp_connections (inline mcp_connection_ids)
         empty,                        # integrations
         empty,                        # config_schemas
         empty,                        # oauth_providers
@@ -191,6 +194,9 @@ def _build_side_effects(
         _make_result([ss]),           # schedule_sources
         empty,                        # webhook_sources
         _make_result(subs_order or []),   # event_subscriptions
+        empty,                        # mcp_servers
+        empty,                        # mcp_connections
+        empty,                        # mcp_connection_tools
     ]
 
 

@@ -108,11 +108,16 @@ class AppCompilerService:
 # This is intentionally broad to handle both JSX (className="...") and compiled
 # output (className: "...") without fragile pattern matching.
 _STRING_LITERAL = re.compile(r'"([^"]{1,500})"')
-_TOKEN_SPLIT = re.compile(r"[\s,]+")
-# Tailwind classes contain hyphens, brackets, colons, or slashes.
+# Split tokens on whitespace ONLY. Splitting on commas breaks Tailwind v4
+# arbitrary values that legitimately contain commas — e.g.
+# `lg:grid-cols-[minmax(0,1fr)_360px]` or `bg-[rgb(0,0,0)]`.
+_TOKEN_SPLIT = re.compile(r"\s+")
+# Tailwind classes contain hyphens, brackets, parens, colons, slashes, commas.
+# Tailwind v4 arbitrary values heavily use `()` (var(), minmax(), calc()) and
+# `,` (rgb commas, minmax args), so both must pass the candidate filter.
 # Single-word utilities (flex, grid, hidden, etc.) also need to pass through.
 _LOOKS_LIKE_CLASS = re.compile(
-    r"^!?-?[a-z][a-z0-9:\-/\[.=#%_*>~&+\]]*$",
+    r"^!?-?[a-z][a-z0-9:\-/\[\](),.=#%_*>~&+]*$",
     re.IGNORECASE,
 )
 
@@ -141,12 +146,61 @@ class AppTailwindService:
         """Extract candidates from sources and generate Tailwind CSS.
 
         Returns the generated CSS string, or None on failure.
+
+        Candidates-only mode: produces utility CSS for the class names
+        found in `sources`. Does NOT process user CSS files — see
+        `generate_css_pipeline` for the pipeline mode that supports
+        @apply / @layer / per-app tailwind.config.
         """
         candidates = AppTailwindService.extract_candidates(sources)
         if not candidates:
             return None
 
-        input_data = json.dumps({"candidates": candidates})
+        return await AppTailwindService._invoke({"candidates": candidates})
+
+    @staticmethod
+    async def generate_css_pipeline(
+        code_sources: list[str],
+        user_css: list[tuple[str, str]],
+        config_path: str | None = None,
+    ) -> str | None:
+        """Run the full Tailwind v4 pipeline against app source.
+
+        Args:
+            code_sources: contents of .tsx/.ts/.jsx/.js files, scanned for
+                Tailwind class candidates.
+            user_css: list of (filename, content) tuples for the app's
+                .css files. Concatenated into the Tailwind input so
+                @apply / @layer / @theme directives in user CSS are
+                processed against the utility layer.
+            config_path: optional absolute path to a per-app
+                tailwind.config.js. Threaded through as @config.
+
+        Returns the generated CSS string (utilities + processed user CSS),
+        or None on failure.
+        """
+        candidates = AppTailwindService.extract_candidates(code_sources)
+        payload: dict[str, object] = {
+            "candidates": candidates,
+            "user_css": [
+                {"path": p, "content": c} for p, c in user_css
+            ],
+        }
+        if config_path:
+            payload["config_path"] = config_path
+
+        # Skip the subprocess only when there's literally nothing to do —
+        # no candidates AND no user CSS. (User CSS alone with no candidates
+        # is still a real input; e.g. a stylesheet declaring CSS variables.)
+        if not candidates and not user_css:
+            return None
+
+        return await AppTailwindService._invoke(payload)
+
+    @staticmethod
+    async def _invoke(payload: dict[str, object]) -> str | None:
+        """Send a payload to tailwind.js, return the css or None on error."""
+        input_data = json.dumps(payload)
 
         try:
             proc = await asyncio.create_subprocess_exec(

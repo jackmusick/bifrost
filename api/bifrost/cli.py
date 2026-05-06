@@ -19,9 +19,7 @@ import json
 import logging
 import os
 import pathlib
-import signal
 import shutil
-import subprocess
 import sys
 import textwrap
 import time
@@ -39,6 +37,7 @@ import httpx
 
 # Import credentials module directly (it's standalone)
 import bifrost.credentials as credentials
+from bifrost._workspace_lock import WorkspaceLock, WorkspaceLockError
 from bifrost.client import BifrostClient
 # Canonical platform export list. Shared with api/src/services/app_bundler.
 # A drift test (tests/unit/test_platform_names_match_runtime.py) keeps this
@@ -286,21 +285,179 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
         return False
 
 
-def logout_flow() -> bool:
+async def password_login_flow(api_url: str, email: str, password: str) -> tuple[int, dict | None]:
     """
-    Logout by clearing stored credentials.
+    Password-grant login. Tokens are returned to the caller; the caller
+    decides where to persist them. The CLI's `bifrost login` command writes
+    BIFROST_API_URL + the two tokens to .env in CWD so subsequent commands
+    in that directory inherit them. Suitable only for isolated development
+    stacks with MFA disabled.
+
+    Returns (exit_code, payload). On success, payload is the parsed JSON
+    response from /auth/login containing access_token / refresh_token.
+    """
+    # Always print the warning before doing anything.
+    print(
+        "⚠️  Password-grant login is for ephemeral, isolated development stacks only.\n"
+        "   Do not run a Bifrost instance with MFA disabled in production.",
+        file=sys.stderr,
+    )
+
+    api_url = api_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(base_url=api_url, timeout=30.0) as client:
+            # /auth/login uses OAuth2PasswordRequestForm — form-encoded, not JSON
+            response = await client.post(
+                "/auth/login",
+                data={"username": email, "password": password},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if response.status_code != 200:
+                print(f"Error: /auth/login returned HTTP {response.status_code}", file=sys.stderr)
+                return 1, None
+            data = response.json()
+
+        # MFA paths
+        if data.get("mfa_required") or data.get("mfa_setup_required"):
+            print(
+                "Error: this instance has MFA enabled. Ephemeral password login only works for "
+                "instances with BIFROST_MFA_ENABLED=false. Use `bifrost login` (no flags) for "
+                "the browser flow.",
+                file=sys.stderr,
+            )
+            return 2, None
+
+        if "access_token" not in data or "refresh_token" not in data:
+            print("Error: /auth/login response missing access_token/refresh_token", file=sys.stderr)
+            return 1, None
+
+        return 0, data
+    except Exception as e:
+        print(f"Error during ephemeral login: {e}", file=sys.stderr)
+        return 1, None
+
+
+def logout_flow(api_url: str | None = None) -> tuple[bool, str | None]:
+    """
+    Logout by clearing stored credentials for one URL.
+
+    Args:
+        api_url: URL to log out from. If None, resolves the same way
+            get_credentials() does (env var, then first stored URL).
 
     Returns:
-        True if credentials were cleared, False if no credentials existed
+        (cleared, url) — cleared is True if a record was removed; url is
+        the URL whose record was removed (so callers can prompt about .env).
     """
-    creds = credentials.get_credentials()
+    creds = credentials.get_credentials(api_url)
     if creds:
-        credentials.clear_credentials()
-        print("Logged out successfully.")
-        return True
-    else:
-        print("No active session found.")
+        target_url = creds.get("api_url") or api_url
+        credentials.clear_credentials(target_url)
+        print(f"Logged out from {target_url}.")
+        return True, target_url
+    print("No active session found.")
+    return False, None
+
+
+def _read_env_file(path: pathlib.Path) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        return path.read_text().splitlines(keepends=True)
+    except OSError:
+        return []
+
+
+def _upsert_env_vars(updates: dict[str, str]) -> None:
+    """
+    Write or update KEY=VALUE pairs in CWD's .env.
+
+    For each key in ``updates``: replaces an existing ``KEY=`` (or
+    ``export KEY=``) line if present; otherwise appends.
+    """
+    cwd = pathlib.Path.cwd()
+    env_path = cwd / ".env"
+    lines = _read_env_file(env_path)
+
+    for key, value in updates.items():
+        new_line = f"{key}={value}\n"
+        found = False
+        for i, line in enumerate(lines):
+            stripped = line.lstrip()
+            if stripped.startswith(f"{key}=") or stripped.startswith(f"export {key}="):
+                lines[i] = new_line
+                found = True
+                break
+        if not found:
+            if lines and not lines[-1].endswith("\n"):
+                lines[-1] = lines[-1] + "\n"
+            lines.append(new_line)
+
+    env_path.write_text("".join(lines))
+
+
+def _write_env_url(api_url: str) -> None:
+    """
+    Write or update `BIFROST_API_URL=<api_url>` in CWD's .env.
+
+    Updates an existing `BIFROST_API_URL=` line if present; otherwise appends.
+    Adds `.env` to .gitignore if it isn't already gitignored.
+    """
+    _upsert_env_vars({"BIFROST_API_URL": api_url})
+    cwd = pathlib.Path.cwd()
+    env_path = cwd / ".env"
+    print(f"Updated {env_path} with BIFROST_API_URL={api_url}")
+
+    # gitignore .env if we're in a git repo and it isn't already ignored
+    gitignore = cwd / ".gitignore"
+    if gitignore.exists():
+        try:
+            existing = gitignore.read_text()
+            already_ignored = any(
+                stripped.strip().rstrip("/") == ".env"
+                for stripped in existing.splitlines()
+            )
+            if not already_ignored:
+                with open(gitignore, "a") as f:
+                    if not existing.endswith("\n"):
+                        f.write("\n")
+                    f.write(".env\n")
+                print(f"Added .env to {gitignore}")
+        except OSError:
+            # Best-effort: failing to update .gitignore doesn't affect the
+            # token's correctness, only its discoverability. Don't let a
+            # permission error break a successful login.
+            pass
+
+
+def _remove_env_url_line(api_url: str) -> bool:
+    """
+    Remove a `BIFROST_API_URL=<api_url>` line from CWD's .env, if present.
+
+    Returns True if a line was removed.
+    """
+    env_path = pathlib.Path.cwd() / ".env"
+    lines = _read_env_file(env_path)
+    if not lines:
         return False
+    target = api_url.rstrip("/")
+    kept: list[str] = []
+    removed = False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("BIFROST_API_URL=") or stripped.startswith("export BIFROST_API_URL="):
+            value = line.split("=", 1)[1].strip().strip('"').strip("'").rstrip("/")
+            if value == target:
+                removed = True
+                continue
+        kept.append(line)
+    if not removed:
+        return False
+    if all(not line.strip() for line in kept):
+        env_path.unlink()
+    else:
+        env_path.write_text("".join(kept))
+    return True
 
 
 def main(args: list[str] | None = None) -> int:
@@ -342,6 +499,9 @@ def main(args: list[str] | None = None) -> int:
         if command == "logout":
             return handle_logout(args[1:])
 
+        if command == "auth":
+            return handle_auth(args[1:])
+
         if command == "run":
             return handle_run(args[1:])
 
@@ -373,6 +533,10 @@ def main(args: list[str] | None = None) -> int:
 
         if command == "migrate-imports":
             return handle_migrate_imports(args[1:])
+
+        if command == "skill":
+            from bifrost.skill import handle_skill
+            return handle_skill(args[1:])
 
         # Entity mutation subgroups (bifrost orgs ..., bifrost roles ..., etc.).
         from bifrost.commands import ENTITY_GROUPS, dispatch_entity_subgroup
@@ -408,8 +572,10 @@ Commands:
   watch       Watch for file changes and auto-push
   api         Generic authenticated API request
   migrate-imports  Rewrite "bifrost" imports into user/lucide/router imports
-  login       Authenticate with device authorization flow
-  logout      Clear stored credentials and sign out
+  skill       Install / update / remove agent skills (.claude/skills + .agents/skills)
+  login       Authenticate (browser device-code by default; password-grant with --email/--password)
+  logout      Clear stored credentials for one URL
+  auth        Inspect stored credentials (auth list)
   help        Show this help message
 
 Flags:
@@ -426,6 +592,7 @@ Entity mutation commands (see 'bifrost <entity> --help'):
   configs      Manage config values
   tables       Manage tables
   events       Manage event sources and subscriptions
+  requirements Manage workspace Python requirements.txt (install/list/remove)
 
 Examples:
   bifrost run workflow.py -w greet
@@ -458,19 +625,12 @@ For more information, visit: https://docs.gobifrost.com
 
 
 def handle_login(args: list[str]) -> int:
-    """
-    Handle 'bifrost login' command.
-
-    Args:
-        args: Additional arguments (e.g., --url, --no-browser)
-
-    Returns:
-        Exit code (0 for success, 1 for error)
-    """
+    """Handle 'bifrost login' command."""
     api_url = None
     auto_open = True
+    email: str | None = None
+    password: str | None = None
 
-    # Parse arguments
     i = 0
     while i < len(args):
         arg = args[i]
@@ -484,58 +644,231 @@ def handle_login(args: list[str]) -> int:
         elif arg in ("--no-browser", "-n"):
             auto_open = False
             i += 1
+        elif arg == "--email":
+            if i + 1 >= len(args):
+                print("Error: --email requires a value", file=sys.stderr)
+                return 1
+            email = args[i + 1]
+            i += 2
+        elif arg == "--password":
+            if i + 1 >= len(args):
+                print("Error: --password requires a value", file=sys.stderr)
+                return 1
+            password = args[i + 1]
+            i += 2
         elif arg in ("--help", "-h"):
             print("""
 Usage: bifrost login [options]
 
-Authenticate with Bifrost using device authorization flow.
-Opens a browser window where you can enter the displayed code to authorize.
+Authenticate with Bifrost. Two modes:
+
+Browser (default): Device-code flow; tokens stored in OS keychain (with JSON
+                   fallback on headless Linux). Multiple URLs can coexist.
+                   On success, writes BIFROST_API_URL=<url> to .env in the
+                   current directory so subsequent CLI commands target this
+                   instance.
+Password: When --email and --password are passed, performs an ephemeral
+          password-grant login and writes BIFROST_API_URL +
+          BIFROST_ACCESS_TOKEN + BIFROST_REFRESH_TOKEN to .env in the
+          current directory. Subsequent CLI commands from this directory
+          pick the tokens up automatically. For isolated dev stacks only
+          — refuses if MFA is enabled on the instance.
 
 Options:
-  --url, -u URL         API URL (default: BIFROST_DEV_URL or http://localhost:8000)
-  --no-browser, -n      Don't automatically open browser
+  --url, -u URL         API URL (default: BIFROST_API_URL or http://localhost:8000)
+  --no-browser, -n      Don't automatically open browser (browser mode only)
+  --email EMAIL         Email for ephemeral password-grant login
+  --password PASSWORD   Password for ephemeral password-grant login
   --help, -h            Show this help message
 
 Examples:
   bifrost login
   bifrost login --url https://app.gobifrost.com
-  bifrost login --no-browser
+  bifrost login --url http://localhost:38421 \\
+                --email dev@gobifrost.com --password password
 """.strip())
             return 0
         else:
             print(f"Unknown option: {arg}", file=sys.stderr)
             return 1
 
-    # Run login flow
+    # --email and --password go together. Either both or neither.
+    if (email is None) != (password is None):
+        print("Error: --email and --password must be used together", file=sys.stderr)
+        return 1
+
+    is_password_grant = email is not None and password is not None
+
+    if is_password_grant:
+        # Resolve URL: --url > BIFROST_API_URL env var > error. No default.
+        if not api_url:
+            api_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
+        if not api_url:
+            print(
+                "Error: password-grant login requires --url or BIFROST_API_URL env var "
+                "(no fallback default to avoid logging into the wrong stack)",
+                file=sys.stderr,
+            )
+            return 1
+
+        # email and password are guaranteed non-None by the validation above
+        assert email is not None
+        assert password is not None
+        rc, data = asyncio.run(password_login_flow(api_url, email, password))
+        if rc == 0 and data is not None:
+            # Persist URL + tokens to CWD's .env so subsequent `bifrost`
+            # commands from this directory just work — no shell-eval needed.
+            # Isolation is by directory: each sandbox dir has its own .env.
+            try:
+                _write_env_url(api_url)
+                _upsert_env_vars(
+                    {
+                        "BIFROST_ACCESS_TOKEN": data["access_token"],
+                        "BIFROST_REFRESH_TOKEN": data["refresh_token"],
+                    }
+                )
+            except OSError as e:
+                print(
+                    f"Warning: could not update .env in current directory: {e}",
+                    file=sys.stderr,
+                )
+                # Fall back to printing so the caller can eval them.
+                print(f"BIFROST_API_URL={api_url}")
+                print(f"BIFROST_ACCESS_TOKEN={data['access_token']}")
+                print(f"BIFROST_REFRESH_TOKEN={data['refresh_token']}")
+        return rc
+
+    # Browser device-code flow (persistent → keychain or JSON fallback).
     success = asyncio.run(login_flow(api_url=api_url, auto_open=auto_open))
-    return 0 if success else 1
+    if not success:
+        return 1
+
+    # Wire up the CWD .env so subsequent commands in this folder target this URL.
+    # The token lives in the keychain keyed by URL; .env just carries the URL.
+    resolved_url = (api_url or os.environ.get("BIFROST_API_URL") or "").rstrip("/")
+    if not resolved_url:
+        # login_flow's default — match what login_flow used so the .env line agrees
+        # with where the token landed.
+        resolved_url = "http://localhost:8000"
+    try:
+        _write_env_url(resolved_url)
+    except OSError as e:
+        print(f"Warning: could not update .env in current directory: {e}", file=sys.stderr)
+    return 0
 
 
 def handle_logout(args: list[str]) -> int:
-    """
-    Handle 'bifrost logout' command.
+    """Handle 'bifrost logout' command."""
+    api_url: str | None = None
+    no_prompt = False
+    yes = False
 
-    Args:
-        args: Additional arguments (e.g., --help)
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--url", "-u"):
+            if i + 1 >= len(args):
+                print("Error: --url requires a value", file=sys.stderr)
+                return 1
+            api_url = args[i + 1]
+            i += 2
+        elif arg == "--yes" or arg == "-y":
+            yes = True
+            i += 1
+        elif arg == "--no-prompt":
+            no_prompt = True
+            i += 1
+        elif arg in ("--help", "-h"):
+            print("""
+Usage: bifrost logout [options]
 
-    Returns:
-        Exit code (0 for success, 1 for error)
-    """
-    if args and args[0] in ("--help", "-h"):
-        print("""
-Usage: bifrost logout
+Clear stored credentials for one Bifrost URL.
 
-Clear stored credentials and sign out.
-This removes the credentials file from your system.
+If --url is omitted, logs out from the URL resolved by the same rules as
+`bifrost api ...` (BIFROST_API_URL env var, then the first stored URL).
+
+After clearing the keychain entry, if the current directory's .env contains
+a BIFROST_API_URL line for that URL, you'll be prompted to remove it.
+
+Options:
+  --url, -u URL   Specific URL to log out from
+  --yes, -y       Auto-confirm the .env removal prompt
+  --no-prompt     Skip the .env prompt entirely (leaves it as-is)
+  --help, -h      Show this help message
 
 Examples:
   bifrost logout
+  bifrost logout --url https://app.gobifrost.com
 """.strip())
+            return 0
+        else:
+            print(f"Unknown option: {arg}", file=sys.stderr)
+            return 1
+
+    cleared, target_url = logout_flow(api_url)
+    if not cleared or target_url is None:
         return 0
 
-    # Run logout
-    logout_flow()
+    # Prompt to remove the matching .env line, if present
+    if no_prompt:
+        return 0
+    env_path = pathlib.Path.cwd() / ".env"
+    if not env_path.exists():
+        return 0
+    has_match = any(
+        line.lstrip().startswith(("BIFROST_API_URL=", "export BIFROST_API_URL="))
+        and line.split("=", 1)[1].strip().strip('"').strip("'").rstrip("/") == target_url.rstrip("/")
+        for line in _read_env_file(env_path)
+    )
+    if not has_match:
+        return 0
+
+    if yes:
+        confirm = "y"
+    else:
+        try:
+            confirm = input(f"Remove BIFROST_API_URL={target_url} from {env_path}? [y/N] ").strip().lower()
+        except EOFError:
+            confirm = "n"
+    if confirm in ("y", "yes"):
+        if _remove_env_url_line(target_url):
+            print(f"Removed BIFROST_API_URL line from {env_path}")
     return 0
+
+
+def handle_auth(args: list[str]) -> int:
+    """Handle 'bifrost auth' subcommands."""
+    if not args or args[0] in ("--help", "-h", "help"):
+        print("""
+Usage: bifrost auth <subcommand>
+
+Subcommands:
+  list, ls    List all Bifrost URLs with stored credentials
+
+Examples:
+  bifrost auth list
+""".strip())
+        return 0 if args else 1
+
+    sub = args[0].lower()
+    if sub in ("list", "ls"):
+        urls = credentials.list_credentials()
+        if not urls:
+            print("No stored credentials.")
+            return 0
+        # Resolve which URL the CLI would currently use, to mark it.
+        env_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
+        for url in urls:
+            marker = ""
+            if env_url and url.rstrip("/") == env_url:
+                marker = "  (current — from BIFROST_API_URL)"
+            elif not env_url and url == urls[0]:
+                marker = "  (current — first stored)"
+            print(f"  {url}{marker}")
+        return 0
+
+    print(f"Unknown auth subcommand: {sub}", file=sys.stderr)
+    return 1
 
 
 def _extract_workflow_parameters(func: Any) -> list[dict[str, Any]]:
@@ -1221,23 +1554,42 @@ Examples:
     if parsed is None:
         return 1
 
-    # Authenticate BEFORE entering asyncio.run() so token refresh works
-    # (refresh_tokens() uses asyncio.run() internally, which fails inside a running loop)
-    try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    resolved = pathlib.Path(parsed.local_path).resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
+        return 1
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("push")
         return 1
 
-    _warn_if_git_workspace(parsed.local_path)
+    # Block push if a watch (or another sync/push) is already running in
+    # this workspace — see handle_sync for rationale.
+    try:
+        lock = WorkspaceLock(resolved, "push").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        return 1
 
     try:
-        return asyncio.run(_sync_files(
-            parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
-            client=client,
-        ))
-    except KeyboardInterrupt:
-        return 130
+        # Authenticate BEFORE entering asyncio.run() so token refresh works
+        # (refresh_tokens() uses asyncio.run() internally, which fails inside a running loop)
+        try:
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        _warn_if_git_workspace(parsed.local_path)
+
+        try:
+            return asyncio.run(_sync_files(
+                parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
+                client=client,
+            ))
+        except KeyboardInterrupt:
+            return 130
+    finally:
+        lock.__exit__()
 
 
 def handle_sync(args: list[str]) -> int:
@@ -1278,81 +1630,42 @@ Examples:
     if parsed is None:
         return 1
 
-    # Authenticate BEFORE entering asyncio.run()
-    try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+    resolved = pathlib.Path(parsed.local_path).resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
+        return 1
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("sync")
         return 1
 
-    _warn_if_git_workspace(parsed.local_path)
+    # Block sync if a watch (or another sync) is already running in this
+    # workspace — concurrent watch+sync would issue separate session_ids
+    # that the server can't dedupe, ping-ponging each other's writes.
+    try:
+        lock = WorkspaceLock(resolved, "sync").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        return 1
 
     try:
-        return asyncio.run(_sync_files(
-            parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
-            client=client,
-        ))
-    except KeyboardInterrupt:
-        return 130
-
-
-def _check_existing_watch() -> list[tuple[int, str]]:
-    """Check for other running 'bifrost watch' processes. Returns list of (pid, cmdline)."""
-    current_pid = os.getpid()
-    parent_pid = os.getppid()
-    results: list[tuple[int, str]] = []
-    try:
-        proc = subprocess.run(
-            ["ps", "ax", "-o", "pid=,args="],
-            capture_output=True, text=True, timeout=5,
-        )
-        for line in proc.stdout.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split(None, 1)
-            if len(parts) < 2:
-                continue
-            try:
-                pid = int(parts[0])
-            except ValueError:
-                continue
-            cmdline = parts[1]
-            if pid in (current_pid, parent_pid):
-                continue
-            if "bifrost" in cmdline and "watch" in cmdline and "grep" not in cmdline:
-                results.append((pid, cmdline))
-    except (subprocess.TimeoutExpired, OSError) as e:
-        # ps unavailable (Windows / restricted env) or timed out — skip the check
-        logger.debug(f"could not enumerate existing watch processes: {e}")
-    return results
-
-
-def _kill_watch_processes(processes: list[tuple[int, str]]) -> bool:
-    """Kill watch processes via SIGTERM, wait up to 5s. Returns True if all stopped."""
-    for pid, _cmdline in processes:
+        # Authenticate BEFORE entering asyncio.run()
         try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            continue
-        except PermissionError:
-            print(f"  Permission denied killing PID {pid}. Kill it manually.", file=sys.stderr)
-            return False
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
-    for _ in range(50):  # 5 seconds in 100ms increments
-        time.sleep(0.1)
-        all_dead = True
-        for pid, _ in processes:
-            try:
-                os.kill(pid, 0)  # check if still alive
-                all_dead = False
-            except ProcessLookupError:
-                continue
-            except PermissionError:
-                all_dead = False
-        if all_dead:
-            return True
-    return False
+        _warn_if_git_workspace(parsed.local_path)
+
+        try:
+            return asyncio.run(_sync_files(
+                parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
+                client=client,
+            ))
+        except KeyboardInterrupt:
+            return 130
+    finally:
+        lock.__exit__()
 
 
 def handle_watch(args: list[str]) -> int:
@@ -1388,29 +1701,6 @@ Examples:
 """.strip())
         return 0
 
-    # Check for other running bifrost watch processes
-    existing = _check_existing_watch()
-    if existing:
-        print("\n⚠ Another bifrost watch process is already running:", file=sys.stderr)
-        for pid, cmdline in existing:
-            print(f"  PID {pid} — {cmdline}", file=sys.stderr)
-        print(file=sys.stderr)
-        if not sys.stdin.isatty():
-            print("Cannot prompt in non-interactive mode. Stop the existing watch first.", file=sys.stderr)
-            return 1
-        try:
-            answer = input("Kill and start a new watch session? [y/N]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print(file=sys.stderr)
-            return 1
-        if answer != "y":
-            return 1
-        print("Stopping existing watch...", file=sys.stderr)
-        if not _kill_watch_processes(existing):
-            print("Failed to stop existing watch processes. Kill them manually.", file=sys.stderr)
-            return 1
-        print("Stopped.", file=sys.stderr)
-
     parsed = _parse_push_watch_args(args)
     if parsed is None:
         return 1
@@ -1421,38 +1711,47 @@ Examples:
         print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
         return 1
 
-    bifrost_dir = _find_bifrost_dir(resolved)
-    if not bifrost_dir.exists() or not bifrost_dir.is_dir():
-        print("Error: not a Bifrost workspace (no .bifrost/ directory found)", file=sys.stderr)
-        print("  Run 'bifrost watch' from a directory that contains .bifrost/,", file=sys.stderr)
-        print("  or run 'bifrost git commit' and 'bifrost git push' to initialize your workspace first.", file=sys.stderr)
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("watch")
         return 1
 
-    # Authenticate
+    # Acquire the per-workspace lock. Held for the lifetime of the watch
+    # process; the kernel releases it on any exit (including crashes), so no
+    # cleanup or stale-state recovery is needed.
     try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        lock = WorkspaceLock(resolved, "watch").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
         return 1
 
-    _warn_if_git_workspace(parsed.local_path)
-
-    repo_prefix = _detect_repo_prefix(resolved)
     try:
-        return asyncio.run(_push_with_precheck(
-            parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, watch=True, force=parsed.force,
-            client=client,
-        ))
-    except KeyboardInterrupt:
-        print("\nStopping watch...", flush=True)
+        # Authenticate
         try:
-            client.post_sync("/api/files/watch", json={
-                "action": "stop", "prefix": repo_prefix,
-            })
-        except Exception as e:
-            # Server may already be unreachable — session expires server-side via TTL
-            logger.debug(f"could not notify server of watch stop: {e}")
-        return 130
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        _warn_if_git_workspace(parsed.local_path)
+
+        repo_prefix = _detect_repo_prefix(resolved)
+        try:
+            return asyncio.run(_push_with_precheck(
+                parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, watch=True, force=parsed.force,
+                client=client,
+            ))
+        except KeyboardInterrupt:
+            print("\nStopping watch...", flush=True)
+            try:
+                client.post_sync("/api/files/watch", json={
+                    "action": "stop", "prefix": repo_prefix,
+                })
+            except Exception as e:
+                # Server may already be unreachable — session expires server-side via TTL
+                logger.debug(f"could not notify server of watch stop: {e}")
+            return 130
+    finally:
+        lock.__exit__()
 
 
 def handle_pull(args: list[str]) -> int:
@@ -1519,75 +1818,144 @@ Examples:
             print(f"Unexpected argument: {arg}", file=sys.stderr)
             return 1
 
-    # Authenticate
+    resolved = pathlib.Path(local_path).resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        print(f"Error: {local_path} is not a valid directory", file=sys.stderr)
+        return 1
+    if not _ensure_workspace_marker(resolved):
+        _print_not_a_workspace_error("pull")
+        return 1
+
+    # Block pull if a watch (or another sync/push/pull) is already running
+    # in this workspace — see handle_sync for rationale.
     try:
-        client = BifrostClient.get_instance(require_auth=True)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        lock = WorkspaceLock(resolved, "pull").__enter__()
+    except WorkspaceLockError as e:
+        print(f"\nError: {e}", file=sys.stderr)
         return 1
 
     try:
-        return asyncio.run(_sync_files(
-            local_path, mirror=mirror, force=force, client=client,
-        ))
-    except KeyboardInterrupt:
-        print("\nPull cancelled.")
-        return 130
+        # Authenticate
+        try:
+            client = BifrostClient.get_instance(require_auth=True)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        try:
+            return asyncio.run(_sync_files(
+                local_path, mirror=mirror, force=force, client=client,
+            ))
+        except KeyboardInterrupt:
+            print("\nPull cancelled.")
+            return 130
+    finally:
+        lock.__exit__()
 
 
 
 def _detect_repo_prefix(path: pathlib.Path) -> str:
-    """Detect the repo prefix from a local path by finding the .bifrost/ directory.
+    """Compute the repo prefix for ``path`` relative to the workspace root.
 
-    Anchors on the .bifrost/ directory — its parent is the workspace root.
-    Everything relative to that root is the repo prefix.
+    With walk-up gone, the workspace root is the current working directory:
+    the dir the user invoked the CLI from. The prefix is whatever sub-path
+    of that root the caller targeted (e.g. ``bifrost push apps/my-app``
+    yields ``apps/my-app``). The launch directory itself yields ``""``.
 
-    Examples:
-        /home/user/workspace/apps/my-app -> "apps/my-app"
-        /home/user/workspace/.bifrost     -> ".bifrost"
-        /home/user/workspace/             -> "" (workspace root, no prefix needed)
+    Paths that don't sit under the cwd (unusual: an absolute path outside
+    the workspace) fall through to ``""`` — the caller is expected to have
+    already validated the path via ``_ensure_workspace_marker``.
     """
-    # Find .bifrost/ directory — its parent is the workspace root
-    bifrost_dir = _find_bifrost_dir(path)
-    if bifrost_dir.exists():
-        workspace_root = bifrost_dir.parent
-        try:
-            relative = path.relative_to(workspace_root)
-            prefix = str(relative)
-            return "" if prefix == "." else prefix
-        except ValueError:
-            pass
+    try:
+        cwd = pathlib.Path.cwd().resolve()
+        relative = path.resolve().relative_to(cwd)
+    except (OSError, ValueError):
+        return ""
+    prefix = str(relative)
+    return "" if prefix == "." else prefix
 
-    # Workspace root — files already have correct relative paths
-    return ""
+
+_WORKSPACE_SENTINEL = ".workspace"
+
+
+def _is_workspace_bifrost_dir(d: pathlib.Path) -> bool:
+    """Distinguish a workspace ``.bifrost/`` from the CLI config ``~/.bifrost/``.
+
+    A workspace ``.bifrost/`` either contains manifest YAMLs (``tables.yaml``,
+    ``workflows.yaml``, etc., produced by sync/export) or the empty
+    ``.workspace`` sentinel file (created on first ``bifrost watch`` /
+    ``push`` / ``pull`` after the user confirms this is their workspace).
+
+    The CLI config directory at ``~/.bifrost/`` only contains
+    ``credentials.json`` and must NOT be treated as a workspace.
+    """
+    if not d.is_dir():
+        return False
+    try:
+        if (d / _WORKSPACE_SENTINEL).exists():
+            return True
+        return any(d.glob("*.yaml"))
+    except OSError:
+        return False
 
 
 def _find_bifrost_dir(local_root: pathlib.Path) -> pathlib.Path:
-    """Find the .bifrost/ manifest directory relative to a push root.
+    """Return the workspace ``.bifrost/`` for ``local_root``.
 
-    Resolution order:
-    1. If local_root IS the .bifrost/ directory, return it
-    2. Check local_root/.bifrost/
-    3. Walk up parent directories (max 10 levels) looking for .bifrost/
-    4. Fallback: return local_root/.bifrost/ (may not exist)
+    The launch directory IS the workspace root — no walk-up. Either:
+    1. ``local_root`` itself IS a workspace ``.bifrost/`` (e.g., user ran
+       ``bifrost watch .bifrost``); return it.
+    2. ``local_root/.bifrost/`` exists and looks like a workspace; return it.
+    3. Otherwise return ``local_root/.bifrost`` as the *expected* path. The
+       caller is responsible for verifying existence (and, in interactive
+       contexts, prompting the user to mark this directory as a workspace).
+
+    Removing the walk-up eliminates a class of "wrong workspace inferred"
+    bugs — most notably the credentials-only ``~/.bifrost/`` collision that
+    silently rooted every relative path at ``$HOME``.
     """
-    if local_root.name == ".bifrost":
+    if local_root.name == ".bifrost" and _is_workspace_bifrost_dir(local_root):
         return local_root
 
     candidate = local_root / ".bifrost"
-    if candidate.exists() and candidate.is_dir():
+    if _is_workspace_bifrost_dir(candidate):
         return candidate
 
-    search = local_root.parent
-    for _ in range(10):
-        candidate = search / ".bifrost"
-        if candidate.exists() and candidate.is_dir():
-            return candidate
-        if search.parent == search:
-            break  # Hit filesystem root
-        search = search.parent
+    return local_root / ".bifrost"  # Expected path; may not exist
 
-    return local_root / ".bifrost"  # Fallback (may not exist)
+
+def _ensure_workspace_marker(local_root: pathlib.Path, *, prompt: bool = True) -> bool:
+    """Confirm ``local_root`` is the user's workspace and create the marker.
+
+    If ``local_root/.bifrost/`` already looks like a workspace, returns True
+    immediately. Otherwise, asks the user (when ``prompt`` is True and stdin
+    is a tty) whether to mark this directory. On confirmation, creates
+    ``.bifrost/.workspace``. Returns True on success, False if the user
+    declined or stdin isn't a tty.
+    """
+    bifrost_dir = local_root / ".bifrost"
+    if _is_workspace_bifrost_dir(bifrost_dir):
+        return True
+
+    if not prompt or not sys.stdin.isatty():
+        return False
+
+    print(f"No .bifrost/ found in {local_root}.", file=sys.stderr)
+    answer = input("Is this your Bifrost workspace? Create a marker so future commands recognize it? [y/N] ").strip().lower()
+    if answer not in {"y", "yes"}:
+        return False
+
+    bifrost_dir.mkdir(parents=True, exist_ok=True)
+    (bifrost_dir / _WORKSPACE_SENTINEL).touch()
+    print(f"Marked {local_root} as a Bifrost workspace.", file=sys.stderr)
+    return True
+
+
+def _print_not_a_workspace_error(command: str) -> None:
+    """Print the standard 'not a workspace' error for a CLI command."""
+    print("Error: not a Bifrost workspace.", file=sys.stderr)
+    print(f"  Run 'bifrost {command}' from a directory that contains .bifrost/,", file=sys.stderr)
+    print("  or confirm the prompt above to mark this directory.", file=sys.stderr)
 
 
 async def _push_with_precheck(
@@ -2138,8 +2506,18 @@ async def _process_incoming(
                         except OSError as e:
                             # Permission / I/O issue reading existing file — fall through to overwrite
                             logger.debug(f"could not byte-compare {local_file}, will overwrite: {e}")
-                    local_file.write_bytes(content)
+                    # Set the cache hash BEFORE the disk write to close the
+                    # race window: watchdog runs in a separate thread and can
+                    # enqueue an event the moment write_bytes flushes — which
+                    # may be before this asyncio task gets to set_known_hash.
+                    # If the write later fails, forget the entry so the next
+                    # cycle re-pushes whatever's on disk.
                     state.set_known_hash(repo_path, content_hash)
+                    try:
+                        local_file.write_bytes(content)
+                    except OSError:
+                        state.forget_known_hash(repo_path)
+                        raise
                     if watch_app:
                         watch_app.log_pull(rel, user=user_name)
                     else:
@@ -2427,7 +2805,6 @@ def _collect_push_files(
             continue
 
     return files, skipped
-
 
 
 async def _sync_files(
