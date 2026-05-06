@@ -853,3 +853,135 @@ class TestMcpToolAccessMatrix:
             f"tools/call did not return expected 'ok' for variant={variant_key}, "
             f"tool={registered_tool_name!r}. Content: {content_text[:300]}"
         )
+
+    @pytest.mark.parametrize(
+        "variant_key",
+        [k for (caller, _agent_org, k) in ORG_A_USER_EXPECTED_VISIBLE
+         if caller == "org_a_user_with_role_x"
+         and not ORG_A_USER_EXPECTED_VISIBLE[(caller, _agent_org, k)]],
+        ids=lambda k: f"org_a_user__deny__{k}",
+    )
+    async def test_org_a_user_denied_for_unauthorized_tools_via_mcp_http(
+        self,
+        variant_key: str,
+        seeded_agent_with_tools: dict[str, Any],
+        e2e_client,
+        platform_admin,
+        org_a_user_with_role_x,
+    ) -> None:
+        """Symmetric deny test: invisible tools must also reject tools/call.
+
+        Hard rule from product: a user in Org A must NOT access anything in
+        Org B regardless of access_level or role-name match. Even if the
+        list filter gets bypassed (regression, race, name guess), tools/call
+        must reject. This test pins both layers — defense in depth.
+
+        Strategy: use the admin's tools/list response to discover the real
+        registered name for each variant — bypassing the user's filter — then
+        invoke tools/call as the Org A user with that name. The call must be
+        denied via one of:
+          * a JSON-RPC ``error`` envelope (middleware rejected the call),
+          * an ``isError=true`` result (executor returned an error),
+          * a result whose content doesn't contain ``"ok"`` (executor's repo
+            lookup returned None and produced "Workflow ... not found").
+
+        The ONE shape that's never acceptable: a successful ``"ok"`` response.
+        """
+        agent = seeded_agent_with_tools["agent"]
+        workflow = seeded_agent_with_tools["workflows_by_key"][variant_key]
+
+        # Use admin to learn the real registered name. Admin sees everything,
+        # so this is the ground-truth tool name FastMCP exposes.
+        admin_headers = {
+            "Authorization": f"Bearer {platform_admin.access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        admin_list = e2e_client.post(
+            f"/mcp/{agent['id']}",
+            headers=admin_headers,
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+        )
+        assert admin_list.status_code == 200
+        admin_payload = _parse_mcp_response(admin_list)
+        candidate_names = _candidate_tool_names_for_workflow(workflow)
+        registered_tool_name: str | None = None
+        for tool in admin_payload["result"].get("tools", []):
+            if tool.get("name") in candidate_names:
+                registered_tool_name = tool.get("name")
+                break
+        assert registered_tool_name is not None, (
+            f"Admin couldn't see the workflow either; fixture is broken. "
+            f"Candidates: {candidate_names}"
+        )
+
+        user_headers = {
+            "Authorization": f"Bearer {org_a_user_with_role_x.access_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+
+        # First layer of defense: the user's tools/list must not even expose
+        # the name. Listing leaks workflow names/descriptions/parameter
+        # schemas — sensitive metadata even if the call would later deny.
+        user_list_resp = e2e_client.post(
+            f"/mcp/{agent['id']}",
+            headers=user_headers,
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+        )
+        assert user_list_resp.status_code == 200
+        user_list = _parse_mcp_response(user_list_resp)
+        user_visible_names = {
+            t.get("name") for t in user_list["result"].get("tools", [])
+        }
+        assert registered_tool_name not in user_visible_names, (
+            f"INFO DISCLOSURE: variant={variant_key} should be denied for "
+            f"org_a_user_with_role_x but appears in their tools/list. "
+            f"Workflow id={workflow['id']}, name={workflow['name']!r}, "
+            f"workflow_org_id={workflow.get('organization_id')!r}, "
+            f"registered_tool_name={registered_tool_name!r}. "
+            f"Listing response leaks name/description/parameter schema "
+            f"across the org boundary. Even if the executor denies the "
+            f"actual call, this is sensitive metadata — fix in "
+            f"MCPToolAccessService."
+        )
+
+        # Second layer of defense: even if listing leaks, tools/call must
+        # reject. This is the belt to the listing's suspenders.
+        call_resp = e2e_client.post(
+            f"/mcp/{agent['id']}",
+            headers=user_headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": registered_tool_name, "arguments": {}},
+            },
+        )
+        assert call_resp.status_code == 200, (
+            f"MCP tools/call HTTP failed: status={call_resp.status_code} "
+            f"body={call_resp.text[:500]}"
+        )
+
+        payload = _parse_mcp_response(call_resp)
+        if "error" in payload:
+            return  # middleware denied — correct
+        result = payload.get("result")
+        if result is None:
+            return  # pathological but not a leak
+        is_error = result.get("isError", False)
+        content_blocks = result.get("content", [])
+        content_text = " ".join(
+            block.get("text", "") for block in content_blocks if isinstance(block, dict)
+        )
+        if is_error:
+            return  # executor denied — correct
+
+        assert "ok" not in content_text, (
+            f"CROSS-TENANT LEAK: variant={variant_key} should be denied for "
+            f"org_a_user_with_role_x but tools/call returned 'ok'. "
+            f"Workflow id={workflow['id']}, name={workflow['name']!r}, "
+            f"tool={registered_tool_name!r}, "
+            f"workflow_org_id={workflow.get('organization_id')!r}. "
+            f"Content: {content_text[:300]}"
+        )
