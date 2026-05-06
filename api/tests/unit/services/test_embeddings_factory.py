@@ -259,7 +259,8 @@ class TestListEmbeddingModels:
             "httpx.AsyncClient",
             return_value=_httpx_client_yielding(_httpx_response(payload)),
         ):
-            result = await _list_embedding_models("k", "https://something/v1")
+            # Real host so SSRF validator passes; httpx still mocked.
+            result = await _list_embedding_models("k", "https://api.openai.com/v1")
 
         assert result is None
 
@@ -270,7 +271,7 @@ class TestListEmbeddingModels:
             "httpx.AsyncClient",
             return_value=_httpx_client_yielding(RuntimeError("boom")),
         ):
-            result = await _list_embedding_models("k", "https://broken/v1")
+            result = await _list_embedding_models("k", "https://api.openai.com/v1")
 
         assert result is None
 
@@ -303,6 +304,33 @@ class TestListEmbeddingModels:
             "httpx.AsyncClient",
             return_value=_httpx_client_yielding(_httpx_response(payload)),
         ):
-            result = await _list_embedding_models("k", "https://mixed/v1")
+            # Use a real-resolving host because _list_embedding_models now
+            # SSRF-validates the endpoint (DNS lookup + private-IP rejection)
+            # before making the request. httpx is still mocked so no network.
+            result = await _list_embedding_models("k", "https://api.openai.com/v1")
 
         assert result == ["a"]
+
+    @pytest.mark.asyncio
+    async def test_ssrf_validation_rejects_private_endpoint(self):
+        """
+        _list_embedding_models must short-circuit on SSRF-rejected endpoints
+        (private/loopback/link-local) and never reach httpx. Any reach into
+        httpx here would be a regression: the validator failed open.
+        """
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_httpx_client_yielding(
+                _httpx_response({"data": [{"id": "should-not-see"}]})
+            ),
+        ) as httpx_factory:
+            # Hostname doesn't resolve and isn't allowlisted → ValueError
+            # inside the validator → _list_embedding_models returns None.
+            result = await _list_embedding_models(
+                "k", "http://nope.invalid.local/v1"
+            )
+
+        assert result is None
+        # If we ever reach httpx with an SSRF-rejected URL, the validator
+        # has failed open. This catches that regression cleanly.
+        httpx_factory.assert_not_called()

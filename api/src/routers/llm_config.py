@@ -451,6 +451,20 @@ async def set_embedding_config(
                 detail="API key is required for initial embedding configuration",
             )
 
+    # SSRF guard: reject endpoints that resolve to private/loopback addresses
+    # unless the host is explicitly opted-in via EMBEDDING_ALLOWED_HOSTS.
+    # See url_safety.validate_embedding_endpoint for rationale.
+    if normalized_endpoint:
+        from src.services.embeddings.url_safety import validate_embedding_endpoint
+
+        try:
+            validate_embedding_endpoint(normalized_endpoint)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Embedding endpoint rejected: {e}",
+            ) from e
+
     # Live-test the config before saving so we never persist something that doesn't work.
     try:
         client = OpenAIEmbeddingClient(
@@ -767,6 +781,21 @@ async def test_embedding_connection(
                         dimensions=None,
                     )
 
+        # SSRF guard before any outbound call. _list_embedding_models also
+        # validates internally for defense-in-depth, but failing here gives
+        # the user a clear error message instead of a silent empty model list.
+        if normalized_endpoint:
+            from src.services.embeddings.url_safety import validate_embedding_endpoint
+
+            try:
+                validate_embedding_endpoint(normalized_endpoint)
+            except ValueError as ve:
+                return EmbeddingTestResponse(
+                    success=False,
+                    message=f"Endpoint rejected: {ve}",
+                    dimensions=None,
+                )
+
         models = await _list_embedding_models(api_key, normalized_endpoint)
 
         return EmbeddingTestResponse(
@@ -806,24 +835,22 @@ async def _list_embedding_models(api_key: str, endpoint: str | None) -> list[str
     filter is the source of truth — we don't trust the server actually filtered.
     """
     import httpx
-    from urllib.parse import urlparse
+
+    from src.services.embeddings.url_safety import validate_embedding_endpoint
 
     base = (endpoint or DEFAULT_OPENAI_ENDPOINT).rstrip("/")
 
-    # Endpoint is admin-controlled (the whole /api/admin/llm/* surface is
-    # gated by RequirePlatformAdmin), but partial-SSRF still warrants a
-    # sanity check on the URL itself: must be http(s) with a hostname.
-    # We deliberately allow http+private addrs because Ollama/local-LLM
-    # configs (the entire reason this endpoint exists) point at localhost.
-    parsed = urlparse(base)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        logger.info(f"Refusing to list models from non-HTTP endpoint {log_safe(base)}")
+    # Defense-in-depth on top of admin auth: validate that the endpoint
+    # resolves to a public address (or is in EMBEDDING_ALLOWED_HOSTS).
+    # Closes CodeQL py/partial-ssrf — the URL flows through a sanitizer
+    # that rejects private/loopback/link-local addresses before httpx.get.
+    try:
+        validate_embedding_endpoint(base)
+    except ValueError as e:
+        logger.info(f"Refusing to list models from {log_safe(base)}: {e}")
         return None
 
-    # Rebuild the URL from the parsed parts so CodeQL sees a sanitized URL,
-    # not raw user input flowing into the request. Equivalent to f"{base}/models".
-    sanitized_base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
-    url = f"{sanitized_base}/models"
+    url = f"{base}/models"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as http:
