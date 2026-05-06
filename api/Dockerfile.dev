@@ -72,8 +72,8 @@ RUN cd /app/src/services/app_bundler && npm install --production
 COPY api/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER bifrost
-
+# Don't switch to bifrost here - entrypoint handles user switching
+# This allows the entrypoint to fix volume permissions when needed
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Environment variables

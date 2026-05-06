@@ -81,8 +81,8 @@ RUN mkdir -p /workspace /tmp/bifrost && \
 COPY api/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER bifrost
-
+# Don't switch to bifrost here - entrypoint handles user switching
+# This allows the entrypoint to fix volume permissions when needed
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Environment variables

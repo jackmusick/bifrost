@@ -689,7 +689,7 @@ jobs:
             ```bash
             cosign verify-blob \
               --bundle bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz.sigstore \
-              --certificate-identity-regexp 'https://github\.com/jackmusick/bifrost/.*' \
+              --certificate-identity-regexp 'https://github\.com/MTG-Thomas/bifrost/.*' \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
               bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz
             ```
