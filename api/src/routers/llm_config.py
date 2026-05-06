@@ -842,15 +842,16 @@ async def _list_embedding_models(api_key: str, endpoint: str | None) -> list[str
 
     # Defense-in-depth on top of admin auth: validate that the endpoint
     # resolves to a public address (or is in EMBEDDING_ALLOWED_HOSTS).
-    # Closes CodeQL py/partial-ssrf — the URL flows through a sanitizer
-    # that rejects private/loopback/link-local addresses before httpx.get.
+    # Use the validator's return value (not the input `base`) so CodeQL's
+    # data-flow analysis sees a cleansed URL flowing into http.get,
+    # closing py/partial-ssrf.
     try:
-        validate_embedding_endpoint(base)
+        safe_base = validate_embedding_endpoint(base).rstrip("/")
     except ValueError as e:
         logger.info(f"Refusing to list models from {log_safe(base)}: {e}")
         return None
 
-    url = f"{base}/models"
+    url = f"{safe_base}/models"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as http:

@@ -22,13 +22,16 @@ def _addr_info(ip: str):
 
 def test_https_public_address_passes():
     with patch.object(url_safety.socket, "getaddrinfo", return_value=_addr_info("8.8.8.8")):
-        url_safety.validate_embedding_endpoint("https://api.openai.com/v1")
+        result = url_safety.validate_embedding_endpoint("https://api.openai.com/v1")
+    # Validator returns a sanitized URL — CodeQL recognizes return-value-of-sanitizer.
+    assert result == "https://api.openai.com/v1"
 
 
 def test_http_public_address_passes():
     """HTTP is permitted because some hosted LLMs don't terminate TLS."""
     with patch.object(url_safety.socket, "getaddrinfo", return_value=_addr_info("8.8.8.8")):
-        url_safety.validate_embedding_endpoint("http://api.example.com/v1")
+        result = url_safety.validate_embedding_endpoint("http://api.example.com/v1")
+    assert result == "http://api.example.com/v1"
 
 
 def test_non_http_scheme_rejected():
