@@ -151,6 +151,15 @@ class MCPContext:
     # Database session from executor context (None when running via MCP server)
     session: Any = None
 
+    def __post_init__(self) -> None:
+        # JWT claims arrive as strings; downstream comparisons (e.g. against
+        # ORM UUID columns) silently fail because `UUID == str` is False.
+        # Normalize once at the boundary so org-scoped repos see real UUIDs.
+        if isinstance(self.user_id, str) and self.user_id:
+            self.user_id = UUID(self.user_id)
+        if isinstance(self.org_id, str) and self.org_id:
+            self.org_id = UUID(self.org_id)
+
 
 # =============================================================================
 # Context Helper Functions (for FastMCP authentication)
@@ -209,6 +218,8 @@ async def _get_context_with_namespaces() -> MCPContext:
 
     user_roles = token.claims.get("roles", [])
     is_superuser = token.claims.get("is_superuser", False)
+    user_id = token.claims.get("user_id")
+    org_id = token.claims.get("org_id")
 
     # Query accessible namespaces from agents
     accessible_namespaces: list[str] = []
@@ -218,6 +229,8 @@ async def _get_context_with_namespaces() -> MCPContext:
             result = await service.get_accessible_tools(
                 user_roles=user_roles,
                 is_superuser=is_superuser,
+                user_id=user_id,
+                org_id=org_id,
             )
             accessible_namespaces = result.accessible_namespaces
     except Exception as e:
