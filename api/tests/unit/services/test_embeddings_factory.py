@@ -210,12 +210,19 @@ class TestListEmbeddingModels:
                 },
             ]
         }
-        with patch(
-            "httpx.AsyncClient",
-            return_value=_httpx_client_yielding(_httpx_response(payload)),
-        ):
+        client_cm = _httpx_client_yielding(_httpx_response(payload))
+        with patch("httpx.AsyncClient", return_value=client_cm) as async_client:
             result = await _list_embedding_models("k", "https://openrouter.ai/api/v1")
 
+        async_client.assert_called_once_with(
+            base_url="https://openrouter.ai/api/v1/",
+            timeout=10.0,
+        )
+        client_cm.__aenter__.return_value.get.assert_awaited_once_with(
+            "models",
+            params={"output_modalities": "embeddings"},
+            headers={"Authorization": "Bearer k"},
+        )
         assert result == [
             "openai/text-embedding-3-small",
             "google/gemini-embedding-2",
