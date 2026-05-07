@@ -296,7 +296,7 @@ class TestLLMConfigServiceTestConnection:
                     result = await service.test_connection()
 
         assert result.success is True
-        assert "api.openai.com" in result.message
+        assert result.message == "Connected to https://api.openai.com/v1. Listed 2 model(s)."
         assert result.models is not None
 
     @pytest.mark.asyncio
@@ -330,7 +330,7 @@ class TestLLMConfigServiceTestConnection:
                     result = await service.test_connection()
 
         assert result.success is True
-        assert "api.anthropic.com" in result.message
+        assert result.message == "Connected to https://api.anthropic.com. Listed 1 model(s)."
         assert result.models is not None
 
     @pytest.mark.asyncio
@@ -570,7 +570,7 @@ class TestLLMConfigServiceLegacyCustomProvider:
                     )
 
         assert result.success is True
-        assert "api.custom.com" in result.message
+        assert result.message == "Connected to https://api.custom.com/v1. Listed 1 model(s)."
 
     @pytest.mark.asyncio
     async def test_test_connection_graceful_model_listing_fallback(
