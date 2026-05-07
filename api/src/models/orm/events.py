@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -21,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus
+from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ScheduleOverlapPolicy
 from src.models.orm.base import Base
 
 if TYPE_CHECKING:
@@ -122,6 +123,17 @@ class ScheduleSource(Base):
     cron_expression: Mapped[str] = mapped_column(String(100), nullable=False)
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    overlap_policy: Mapped[ScheduleOverlapPolicy] = mapped_column(
+        Enum(
+            ScheduleOverlapPolicy,
+            name="schedule_overlap_policy",
+            values_callable=lambda enum: [member.value for member in enum],
+            create_type=False,
+        ),
+        default=ScheduleOverlapPolicy.SKIP,
+        server_default="skip",
+        nullable=False,
+    )
 
     # Audit
     created_at: Mapped[datetime] = mapped_column(
@@ -186,6 +198,11 @@ class WebhookSource(Base):
         server_default=text("NOW()"),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+    # Rate limiting
+    rate_limit_per_minute: Mapped[int | None] = mapped_column(Integer, default=60, nullable=True)
+    rate_limit_window_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    rate_limit_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # Relationships
     event_source: Mapped["EventSource"] = relationship(back_populates="webhook_source")

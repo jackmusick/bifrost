@@ -296,7 +296,7 @@ class TestLLMConfigServiceTestConnection:
                     result = await service.test_connection()
 
         assert result.success is True
-        assert "api.openai.com" in result.message
+        assert result.message == "Connected to https://api.openai.com/v1. Listed 2 model(s)."
         assert result.models is not None
 
     @pytest.mark.asyncio
@@ -330,8 +330,68 @@ class TestLLMConfigServiceTestConnection:
                     result = await service.test_connection()
 
         assert result.success is True
-        assert "api.anthropic.com" in result.message
+        assert result.message == "Connected to https://api.anthropic.com. Listed 1 model(s)."
         assert result.models is not None
+
+    @pytest.mark.asyncio
+    async def test_test_credentials_openai_lists_models_without_model(
+        self, mock_session, mock_settings
+    ):
+        """OpenAI-compatible Test should hit /models without probing a default model."""
+        mock_models_response = MagicMock()
+        mock_models_response.data = [MagicMock(id="azure-gpt-4.1-deployment")]
+
+        with patch("src.services.llm_config_service.get_settings", return_value=mock_settings):
+            with patch("openai.AsyncOpenAI") as mock_openai:
+                mock_client = AsyncMock()
+                mock_client.models.list.return_value = mock_models_response
+                mock_client.chat.completions.create.side_effect = AssertionError(
+                    "test_credentials must not create a chat completion"
+                )
+                mock_openai.return_value = mock_client
+
+                service = LLMConfigService(mock_session)
+                result = await service.test_credentials(
+                    provider="openai",
+                    api_key="sk-test-key",
+                    endpoint="https://example.openai.azure.com/openai/v1",
+                )
+
+        assert result.success is True
+        assert result.models is not None
+        assert [m.id for m in result.models] == ["azure-gpt-4.1-deployment"]
+        mock_client.chat.completions.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_test_credentials_anthropic_lists_models_without_model(
+        self, mock_session, mock_settings
+    ):
+        """Anthropic-compatible Test should also list models without a completion probe."""
+        mock_models_response = MagicMock()
+        mock_models_response.data = [
+            MagicMock(id="claude-compatible-model", display_name="Claude Compatible")
+        ]
+
+        with patch("src.services.llm_config_service.get_settings", return_value=mock_settings):
+            with patch("anthropic.AsyncAnthropic") as mock_anthropic:
+                mock_client = AsyncMock()
+                mock_client.models.list.return_value = mock_models_response
+                mock_client.messages.create.side_effect = AssertionError(
+                    "test_credentials must not create an Anthropic message"
+                )
+                mock_anthropic.return_value = mock_client
+
+                service = LLMConfigService(mock_session)
+                result = await service.test_credentials(
+                    provider="anthropic",
+                    api_key="sk-ant-test-key",
+                    endpoint="https://anthropic-compatible.example",
+                )
+
+        assert result.success is True
+        assert result.models is not None
+        assert [m.id for m in result.models] == ["claude-compatible-model"]
+        mock_client.messages.create.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_test_connection_handles_api_error(
@@ -389,21 +449,19 @@ class TestLLMConfigServiceTestConnection:
         assert result.models is None
 
     @pytest.mark.asyncio
-    async def test_openai_completion_failure_fails_the_test(
+    async def test_openai_verify_completion_fails_on_completion_error(
         self, mock_session, mock_settings
     ):
         """Regression: keys that pass models.list but fail chat.completions
-        must be flagged by the Test button. This is the exact case of OpenAI
-        project-scoped keys without model permissions — they return "User
-        not found" on completions while listing models fine."""
+        must be flagged by Save (verify_completion). This is the exact case
+        of OpenAI project-scoped keys without model permissions — they return
+        "User not found" on completions while listing models fine. The
+        completion gate moved from Test to Save in the new contract."""
         mock_llm_config = MagicMock()
         mock_llm_config.provider = "openai"
         mock_llm_config.api_key = "sk-project-key"
         mock_llm_config.model = "gpt-4o"
         mock_llm_config.endpoint = None
-
-        mock_models_response = MagicMock()
-        mock_models_response.data = [MagicMock(id="gpt-4o")]
 
         with patch("src.services.llm_config_service.get_settings", return_value=mock_settings):
             with patch(
@@ -412,37 +470,28 @@ class TestLLMConfigServiceTestConnection:
             ):
                 with patch("openai.AsyncOpenAI") as mock_openai:
                     mock_client = AsyncMock()
-                    mock_client.models.list.return_value = mock_models_response
                     mock_client.chat.completions.create.side_effect = Exception(
                         "Error code: 401 - User not found."
                     )
                     mock_openai.return_value = mock_client
 
                     service = LLMConfigService(mock_session)
-                    result = await service.test_connection()
+                    result = await service.verify_completion()
 
         assert result.success is False
         assert "rejected a test completion" in result.message
         assert "User not found" in result.message
-        # The error message should still show the admin which models we
-        # found, so they can confirm the provider knows the key exists.
-        assert result.models is not None
 
     @pytest.mark.asyncio
-    async def test_anthropic_completion_failure_fails_the_test(
+    async def test_anthropic_verify_completion_fails_on_completion_error(
         self, mock_session, mock_settings
     ):
-        """Symmetric regression for Anthropic."""
+        """Symmetric regression for Anthropic via verify_completion."""
         mock_llm_config = MagicMock()
         mock_llm_config.provider = "anthropic"
         mock_llm_config.api_key = "sk-ant-test-key"
         mock_llm_config.model = "claude-sonnet-4-20250514"
         mock_llm_config.endpoint = None
-
-        mock_models_response = MagicMock()
-        mock_models_response.data = [
-            MagicMock(id="claude-sonnet-4-20250514", display_name="Claude Sonnet 4")
-        ]
 
         with patch("src.services.llm_config_service.get_settings", return_value=mock_settings):
             with patch(
@@ -451,14 +500,13 @@ class TestLLMConfigServiceTestConnection:
             ):
                 with patch("anthropic.AsyncAnthropic") as mock_anthropic:
                     mock_client = AsyncMock()
-                    mock_client.models.list.return_value = mock_models_response
                     mock_client.messages.create.side_effect = Exception(
                         "Error code: 403 - insufficient_quota"
                     )
                     mock_anthropic.return_value = mock_client
 
                     service = LLMConfigService(mock_session)
-                    result = await service.test_connection()
+                    result = await service.verify_completion()
 
         assert result.success is False
         assert "rejected a test completion" in result.message
@@ -582,7 +630,7 @@ class TestLLMConfigServiceLegacyCustomProvider:
                     )
 
         assert result.success is True
-        assert "api.custom.com" in result.message
+        assert result.message == "Connected to https://api.custom.com/v1. Listed 1 model(s)."
 
     @pytest.mark.asyncio
     async def test_test_connection_graceful_model_listing_fallback(

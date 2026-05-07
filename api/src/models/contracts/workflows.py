@@ -159,6 +159,17 @@ class RegisterWorkflowRequest(BaseModel):
     path: str = Field(..., description="Workspace-relative path to the .py file")
     function_name: str = Field(..., description="Name of the decorated function to register")
     organization_id: str | None = Field(default=None, description="Organization ID to scope the workflow to, or null for global scope")
+    access_level: str | None = Field(
+        default=None,
+        description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required). Omit to leave at the schema default.",
+    )
+    role_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Role IDs for role_based access. Omit to leave unchanged when "
+            "reactivating; pass an empty list to clear."
+        ),
+    )
 
 
 class RegisterWorkflowResponse(BaseModel):
@@ -275,6 +286,14 @@ class WorkflowUpdateRequest(BaseModel):
     clear_roles: bool = Field(
         default=False,
         description="If true, clear all role assignments for this workflow (sets to role_based with no roles)"
+    )
+    role_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Role IDs for role_based access (bulk replaces existing assignments "
+            "when provided). Mutually exclusive with clear_roles; if both are "
+            "set, role_ids wins."
+        ),
     )
 
     # New fields for UI management

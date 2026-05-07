@@ -29,6 +29,7 @@ from src.core.redis_client import get_redis_client
 from src.core.requirements_cache import (
     append_package_to_requirements,
     get_requirements,
+    remove_package_from_requirements,
     save_requirements,
     warm_requirements_cache,
 )
@@ -371,52 +372,47 @@ async def uninstall_package(
     ctx: Context,
     user: CurrentSuperuser,
 ) -> dict:
-    """
-    Uninstall a Python package.
+    """Uninstall a package: drop it from requirements.txt and recycle workers.
 
-    In production, this would queue a RabbitMQ job for background uninstall.
-    For now, it attempts direct uninstallation using async subprocess.
-
-    Args:
-        package_name: Name of the package to uninstall
-
-    Returns:
-        Confirmation message
+    Mirrors `install_package` — workers re-pip-install from requirements.txt on
+    recycle, and any package removed from requirements is gone after the next
+    process spawn.
     """
     try:
         logger.info(f"Uninstalling package: {log_safe(package_name)}")
 
-        # In production, this would be queued as a job
-        # For now, attempt direct uninstallation using async subprocess
-        proc = await asyncio.create_subprocess_exec(
-            "pip", "uninstall", "-y", package_name,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        cached = await get_requirements()
+        if not cached:
+            await warm_requirements_cache()
+            cached = await get_requirements()
+        current_content = cached["content"] if cached else ""
+        updated_content, was_present = remove_package_from_requirements(
+            current_content, package_name
         )
 
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            logger.error(f"Package uninstallation timed out: {log_safe(package_name)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Package uninstallation timed out",
-            )
+        if was_present:
+            await save_requirements(updated_content)
+            logger.info(f"Removed {log_safe(package_name)} from requirements.txt")
 
-        if proc.returncode != 0:
-            logger.error(f"pip uninstall failed: {stderr.decode()}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Package uninstallation failed: {stderr.decode()}",
-            )
-
-        logger.info(f"Successfully uninstalled package: {log_safe(package_name)}")
+        # Tell workers to pip uninstall and recycle. The "action" field
+        # is what distinguishes install from uninstall in the consumer.
+        await publish_broadcast(
+            exchange_name="package-installations",
+            message={
+                "type": "recycle_workers",
+                "action": "uninstall",
+                "package": package_name,
+                "version": None,
+                "is_update": True,
+            },
+        )
 
         return {
-            "message": f"Package '{package_name}' uninstalled successfully",
+            "message": (
+                f"Package '{package_name}' removed from requirements; workers recycling."
+            ),
             "status": "uninstalled",
+            "was_present": was_present,
         }
 
     except HTTPException:

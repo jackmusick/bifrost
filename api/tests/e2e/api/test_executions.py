@@ -971,19 +971,41 @@ def get_value():
         workflow_name = "e2e_package_test_workflow"
         workflow_path = f"{workflow_name}.py"
 
-        # First, check if package is already installed and uninstall it
-        response = e2e_client.get(
-            "/api/packages",
-            headers=platform_admin.headers,
-        )
-        if response.status_code == 200:
+        def _ensure_package_uninstalled() -> None:
+            """Ensure `package_name` is not installed before the test runs.
+
+            DELETE /api/packages/{name} is async — pip uninstall + worker recycle
+            takes seconds. Without polling here, a leaked install from a prior
+            run (or a prior crashed test) leaves the package present and step 2
+            of this test fails because `import humanize` succeeds when we
+            expect `ModuleNotFoundError`.
+            """
+            response = e2e_client.get("/api/packages", headers=platform_admin.headers)
+            if response.status_code != 200:
+                return
             packages = response.json().get("packages", [])
-            if any(p.get("name", "").lower() == package_name for p in packages):
-                # Uninstall it first to ensure clean test
-                e2e_client.delete(
-                    f"/api/packages/{package_name}",
-                    headers=platform_admin.headers,
-                )
+            if not any(p.get("name", "").lower() == package_name for p in packages):
+                return
+            e2e_client.delete(
+                f"/api/packages/{package_name}",
+                headers=platform_admin.headers,
+            )
+
+            def check_gone():
+                r = e2e_client.get("/api/packages", headers=platform_admin.headers)
+                if r.status_code == 200:
+                    pkgs = r.json().get("packages", [])
+                    if not any(p.get("name", "").lower() == package_name for p in pkgs):
+                        return True
+                return None
+
+            assert poll_until(check_gone, max_wait=20.0), (
+                f"Package '{package_name}' still installed after uninstall — "
+                "worker recycle may have hung."
+            )
+
+        # Pre-test: clear any leaked install from a prior (possibly crashed) run.
+        _ensure_package_uninstalled()
 
         # Step 1: Create workflow that imports humanize
         workflow_content = f'''"""Package Test Workflow"""
@@ -1077,11 +1099,9 @@ async def {workflow_name}(number: int = 1000000):
                 f"/api/files/editor?path={workflow_path}",
                 headers=platform_admin.headers,
             )
-            # Cleanup: uninstall package
-            e2e_client.delete(
-                f"/api/packages/{package_name}",
-                headers=platform_admin.headers,
-            )
+            # Cleanup: uninstall package and wait for it to actually go away
+            # (DELETE returns before pip uninstall + worker recycle complete).
+            _ensure_package_uninstalled()
 
     def test_nested_module_package_update_reflected(self, e2e_client, platform_admin):
         """Updates to nested package modules are reflected immediately.

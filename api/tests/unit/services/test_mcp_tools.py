@@ -17,7 +17,7 @@ We test the tool functions directly.
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -911,34 +911,28 @@ class TestMCPConfigService:
 
     @pytest.mark.asyncio
     async def test_delete_config_removes_existing(self, mock_session):
-        """Should delete existing config."""
+        """Should delete existing config via bulk DELETE."""
         from src.services.mcp_server.config_service import MCPConfigService
 
-        # Mock existing config
-        mock_config = MagicMock()
+        # Mock bulk DELETE returning rowcount=1
         mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [mock_config]
-        mock_result.scalars.return_value = mock_scalars
+        mock_result.rowcount = 1
         mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.delete = AsyncMock()
 
         service = MCPConfigService(mock_session)
         deleted = await service.delete_config()
 
         assert deleted is True
-        mock_session.delete.assert_awaited_once_with(mock_config)
+        mock_session.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_delete_config_returns_false_when_none_exists(self, mock_session):
-        """Should return False when no config to delete."""
+        """Should return False when no config to delete (rowcount=0)."""
         from src.services.mcp_server.config_service import MCPConfigService
 
-        # Mock no config
+        # Mock bulk DELETE returning rowcount=0
         mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = []
-        mock_result.scalars.return_value = mock_scalars
+        mock_result.rowcount = 0
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         service = MCPConfigService(mock_session)
@@ -1315,3 +1309,34 @@ class TestRegisterWorkflow:
         data = result.structured_content
         assert "error" in data
         assert "No @workflow/@tool/@data_provider decorated function" in data["error"]
+
+
+class TestMCPContextInputCoercion:
+    """JWT claims arrive at MCPContext as strings (`token.claims.get("org_id")`
+    returns `str` because auth.py wraps `str(user.organization_id)` when
+    minting the token). Downstream callers pass these to OrgScopedRepository,
+    which compares against UUID-typed ORM columns. `UUID == str` is False
+    in Python — that mismatch caused every non-admin MCP tool execution to
+    fail with 'Workflow not found'. Coerce at the boundary."""
+
+    def test_string_org_id_coerced_to_uuid(self):
+        org = UUID("00000000-0000-0000-0000-000000000002")
+        ctx = MCPContext(user_id=str(uuid4()), org_id=str(org))
+        assert ctx.org_id == org
+        assert isinstance(ctx.org_id, UUID)
+
+    def test_string_user_id_coerced_to_uuid(self):
+        user = uuid4()
+        ctx = MCPContext(user_id=str(user))
+        assert ctx.user_id == user
+        assert isinstance(ctx.user_id, UUID)
+
+    def test_uuid_inputs_passed_through(self):
+        user, org = uuid4(), uuid4()
+        ctx = MCPContext(user_id=user, org_id=org)
+        assert ctx.user_id is user
+        assert ctx.org_id is org
+
+    def test_none_org_id_remains_none(self):
+        ctx = MCPContext(user_id=uuid4(), org_id=None)
+        assert ctx.org_id is None

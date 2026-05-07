@@ -1,0 +1,7 @@
+# Mode B overlay — adds a host-port binding for the client.
+# Stacked over docker-compose.debug.yml by ./debug.sh in port mode only.
+
+services:
+  client:
+    ports:
+      - "${DEBUG_CLIENT_PORT}:80"

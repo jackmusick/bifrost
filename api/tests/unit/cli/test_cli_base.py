@@ -178,7 +178,7 @@ class TestRunAsyncErrorSurfacing:
 
 
 class TestSubgroupRegistration:
-    def test_all_ten_entity_subgroups_registered(self) -> None:
+    def test_all_entity_subgroups_registered(self) -> None:
         from bifrost.commands import ENTITY_GROUPS
 
         assert set(ENTITY_GROUPS) == {
@@ -192,6 +192,7 @@ class TestSubgroupRegistration:
             "configs",
             "tables",
             "events",
+            "requirements",
         }
 
     def test_dispatch_unknown_subgroup_exits_1(self) -> None:

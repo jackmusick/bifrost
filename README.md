@@ -5,6 +5,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![CodeQL](https://github.com/jackmusick/bifrost/actions/workflows/codeql.yml/badge.svg)](https://github.com/jackmusick/bifrost/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jackmusick/bifrost/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jackmusick/bifrost)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12665/badge)](https://www.bestpractices.dev/projects/12665)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://www.docker.com/)
@@ -18,6 +19,7 @@
 -   [Key Features](#key-features)
 -   [Quick Start](#quick-start)
 -   [Documentation](#documentation)
+-   [Security & Verification](#security--verification)
 -   [Contributing](#contributing)
 -   [License](#license)
 
@@ -224,6 +226,40 @@ For detailed documentation on architecture, development, deployment, and usage:
 
 -   **API Documentation**: http://localhost:8000/docs (when running)
 -   **Frontend Repository**: Included in `client/` directory
+
+---
+
+## Security & Verification
+
+Bifrost release artifacts are signed with [Sigstore](https://www.sigstore.dev/) using GitHub's keyless OIDC signing. You can verify any image or release pulled from this repo:
+
+**Verify a Docker image:**
+
+```bash
+cosign verify ghcr.io/jackmusick/bifrost-api:TAG \
+  --certificate-identity-regexp "https://github.com/jackmusick/bifrost/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+(Same form for `ghcr.io/jackmusick/bifrost-client`.)
+
+**Inspect SLSA build provenance:**
+
+```bash
+gh attestation verify ghcr.io/jackmusick/bifrost-api:TAG --owner jackmusick
+```
+
+**Verify a source tarball** (attached to GitHub Releases):
+
+```bash
+cosign verify-blob \
+  --bundle bifrost-VERSION-source.tar.gz.sigstore \
+  --certificate-identity-regexp "https://github.com/jackmusick/bifrost/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  bifrost-VERSION-source.tar.gz
+```
+
+Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
 
 ---
 

@@ -121,6 +121,15 @@ async def test_schedule_promote_run_terminal(
     await asyncio.sleep(3)
     from src.jobs.schedulers.deferred_execution_promoter import promote_due_executions
 
+    # The scheduler container ALSO runs promote_due_executions every 60s
+    # (next_run_time=now at boot). If its tick lands inside our 3s sleep
+    # above, it picks up our row via SELECT FOR UPDATE SKIP LOCKED before
+    # this direct call runs, and our call returns promoted=0. That is
+    # behaviorally fine — the row still gets promoted and the worker still
+    # runs it — but it makes asserting `promoted >= 1` flaky. So we drop
+    # the promoted-count assertion and verify the post-condition: the row
+    # left SCHEDULED (regardless of which tick promoted it) and any
+    # publishes our call attempted didn't fail.
     promoted, failures = await promote_due_executions()
     assert failures == 0, f"expected 0 publish failures, got {failures}"
     if promoted == 0:

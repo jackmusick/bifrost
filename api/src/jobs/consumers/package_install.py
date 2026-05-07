@@ -60,6 +60,33 @@ class PackageInstallConsumer(BroadcastConsumer):
             {"type": "complete", "status": status, "message": message},
         )
 
+    async def _pip_uninstall(self, package: str) -> bool:
+        """Run pip uninstall for a package on this worker."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "uninstall", "-y", package, "--quiet",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+            if proc.returncode == 0:
+                logger.info(f"Uninstalled {package}")
+                return True
+            err = stderr.decode()
+            # pip exits non-zero when the package isn't installed; that's fine
+            # for our purposes — the post-condition (package absent) holds.
+            if "not installed" in err.lower() or "skipping" in err.lower():
+                logger.info(f"Package {package} was not installed; nothing to do")
+                return True
+            logger.warning(f"pip uninstall {package} failed: {err}")
+            return False
+        except asyncio.TimeoutError:
+            logger.error(f"pip uninstall {package} timed out")
+            return False
+        except Exception as e:
+            logger.error(f"pip uninstall {package} error: {e}")
+            return False
+
     async def _pip_install(self, package: str, version: str | None) -> bool:
         """
         Run pip install for a specific package on this worker.
@@ -173,36 +200,44 @@ class PackageInstallConsumer(BroadcastConsumer):
             logger.warning(f"Failed to drain/restart after pip install: {e}")
 
     async def process_message(self, body: dict[str, Any]) -> None:
-        """Process a package installation message."""
+        """Process a package install or uninstall message.
+
+        `action` is "install" (default) or "uninstall". For "install" with
+        `package=None`, runs pip install -r requirements.txt (sync from cache).
+        """
+        action = body.get("action", "install")
         package = body.get("package")
         version = body.get("version")
         package_spec = f"{package}=={version}" if package and version else (package or "requirements.txt")
 
-        logger.info(f"Processing package install: {package_spec}")
+        logger.info(f"Processing package {action}: {package_spec}")
 
-        # Step 1: pip install on this worker
-        await self._send_log(f"Installing {package_spec}...")
-
-        if package:
+        if action == "uninstall":
+            if not package:
+                await self._send_complete("error", "uninstall requires a package name")
+                return
+            await self._send_log(f"Uninstalling {package}...")
+            success = await self._pip_uninstall(package)
+        elif package:
+            await self._send_log(f"Installing {package_spec}...")
             success = await self._pip_install(package, version)
         else:
+            await self._send_log("Installing from requirements.txt...")
             success = await self._pip_install_requirements()
 
         if success:
-            await self._send_log(f"Installed {package_spec}")
+            await self._send_log(f"{action.capitalize()}ed {package_spec}")
         else:
-            await self._send_log(f"Failed to install {package_spec}", "error")
-            await self._send_complete("error", f"Installation failed: {package_spec}")
+            await self._send_log(f"Failed to {action} {package_spec}", "error")
+            await self._send_complete("error", f"{action.capitalize()} failed: {package_spec}")
             return
 
-        # Step 2: Always recycle worker processes after installation.
-        # Worker subprocesses are forked before pip install runs, so they
-        # won't see newly installed packages on the filesystem until recycled.
+        # Worker subprocesses are forked before pip runs; recycle so they pick
+        # up the new on-disk state.
         await self._send_log("Recycling worker processes...")
         await self._recycle_workers()
 
-        # Step 3: Update package list in Redis
         await self._update_pool_packages()
 
-        await self._send_complete("success", "Installation complete")
-        logger.info("Package install completed")
+        await self._send_complete("success", f"{action.capitalize()} complete")
+        logger.info(f"Package {action} completed")
