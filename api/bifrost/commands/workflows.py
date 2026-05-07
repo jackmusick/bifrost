@@ -72,6 +72,14 @@ _UPDATE_FLAGS = build_cli_flags(
 )
 
 
+def _load_params_file(path: str) -> dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as fh:
+        loaded = json.load(fh)
+    if not isinstance(loaded, dict):
+        raise click.UsageError("Input parameters must be a JSON object")
+    return loaded
+
+
 @workflows_group.command("list")
 @click.pass_context
 @pass_resolver
@@ -266,8 +274,7 @@ async def execute_workflow(
         except json.JSONDecodeError as exc:
             raise click.UsageError(f"--params is not valid JSON: {exc}")
     elif params_file:
-        with open(params_file, "r", encoding="utf-8") as fh:
-            input_data = json.load(fh)
+        input_data = await asyncio.to_thread(_load_params_file, params_file)
     if not isinstance(input_data, dict):
         raise click.UsageError("Input parameters must be a JSON object")
 

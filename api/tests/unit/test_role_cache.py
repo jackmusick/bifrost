@@ -229,6 +229,7 @@ class TestInvalidateRole:
             store.pop(key, None)
 
         async def fake_scan_iter(match: str):
+            del match
             for k in list(store.keys()):
                 yield k
 
@@ -256,8 +257,10 @@ class TestInvalidateRole:
         role_id = uuid4()
 
         async def fake_scan_iter(match: str):
+            del match
+            for key in ():
+                yield key
             raise Exception("redis down")
-            yield  # pragma: no cover
 
         mock_redis = AsyncMock()
         mock_redis.scan_iter = fake_scan_iter

@@ -448,13 +448,13 @@ function ExampleBlock({
 function ExamplesSection({ examples }: { examples: WorkedExample[] }) {
 	const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
-	function handleCopy(idx: number, policy: TablePolicies) {
+	async function handleCopy(idx: number, policy: TablePolicies) {
 		const text = JSON.stringify(policy, null, 2);
 		// Guard the clipboard call so jsdom (which omits navigator.clipboard)
 		// doesn't blow up the visual feedback. The button still flips to
 		// "Copied!" so users get immediate confirmation either way.
 		try {
-			void navigator.clipboard?.writeText(text);
+			await navigator.clipboard?.writeText(text);
 		} catch {
 			// no-op; the user-visible state still updates
 		}
@@ -478,7 +478,9 @@ function ExamplesSection({ examples }: { examples: WorkedExample[] }) {
 						example={ex}
 						index={idx}
 						copied={copiedIdx === idx}
-						onCopy={() => handleCopy(idx, ex.policy)}
+						onCopy={() => {
+							void handleCopy(idx, ex.policy);
+						}}
 					/>
 				))}
 			</div>

@@ -99,7 +99,7 @@ async def test_run_reindex_completes_immediately_when_no_rows():
     final_update = final_call.args[1]
     assert final_update.status is not None
     assert final_update.status.value == "completed"
-    assert final_update.percent == 100.0
+    assert final_update.percent == pytest.approx(100.0)
 
 
 @pytest.mark.asyncio

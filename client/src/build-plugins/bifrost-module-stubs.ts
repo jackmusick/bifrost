@@ -42,7 +42,7 @@ async function loadExports(specifier: string): Promise<string[]> {
 	const mod = await import(specifier);
 	return Object.keys(mod)
 		.filter((k) => k !== "default" && VALID_IDENT.test(k))
-		.sort();
+		.sort((left, right) => left.localeCompare(right));
 }
 
 export interface StubManifest {

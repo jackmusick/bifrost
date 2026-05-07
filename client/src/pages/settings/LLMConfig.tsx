@@ -778,9 +778,17 @@ export function LLMConfig() {
  */
 const DEFAULT_OPENAI_ENDPOINT = "https://api.openai.com/v1";
 
+function stripTrailingSlashes(value: string): string {
+	let end = value.length;
+	while (end > 0 && value[end - 1] === "/") {
+		end -= 1;
+	}
+	return value.slice(0, end);
+}
+
 function isDefaultOpenAIEndpoint(value: string | null | undefined): boolean {
 	if (!value) return true;
-	return value.replace(/\/+$/, "") === DEFAULT_OPENAI_ENDPOINT.replace(/\/+$/, "");
+	return stripTrailingSlashes(value) === DEFAULT_OPENAI_ENDPOINT;
 }
 
 /**
