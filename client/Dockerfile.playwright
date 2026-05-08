@@ -5,7 +5,7 @@
 #   ./test.sh client e2e      # Run Playwright E2E tests in the client container
 
 # mcr.microsoft.com/playwright:v1.56.0-jammy
-FROM mcr.microsoft.com/playwright@sha256:8a0360d39d1973be506dd59002904a774f6d697d4946c94063b3fd006461c8ff
+FROM mcr.microsoft.com/playwright@sha256:02810c978d5396bf382ab6015c25ad6bed9e39f4a41c5b9c829e9fea439274e2
 
 WORKDIR /app
 
