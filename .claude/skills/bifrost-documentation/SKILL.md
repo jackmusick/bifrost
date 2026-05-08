@@ -24,6 +24,14 @@ The docs repo is at `~/GitHub/bifrost-integrations-docs` (or clone it from `git@
    - Locate docs repo. Try `~/GitHub/bifrost-integrations-docs` then `/tmp/bifrost-integrations-docs`. If missing, clone to `~/GitHub/`.
    - Verify clean tree (`git status --porcelain` empty). If dirty, ask the user to commit/stash before continuing.
    - Pull `main` (`git pull --ff-only origin main`).
+   - **Compare last-update timestamps** as a sanity signal:
+     ```bash
+     BIFROST_LAST=$(cd ~/GitHub/bifrost && git log -1 --format=%cI origin/main)
+     DOCS_LAST=$(cd ~/GitHub/bifrost-integrations-docs && git log -1 --format=%cI origin/main)
+     echo "bifrost: $BIFROST_LAST"
+     echo "docs:    $DOCS_LAST"
+     ```
+     Print both. If `BIFROST_LAST > DOCS_LAST`, that's normal — diff mode handles it. If `DOCS_LAST > BIFROST_LAST`, something is unusual (docs ahead of code); flag it but proceed.
    - Cut a fresh branch: `docs/screenshot-refresh-YYYY-MM-DD-<short-sha>`.
    - Verify bifrost test stack is up: `./test.sh stack status` in the bifrost worktree. If down, `./test.sh stack up`. The boot is ~2-5 minutes; warn the user up front.
    - Set `DOCS_REPO_PATH=<absolute path to docs repo>` for downstream tools.
@@ -107,6 +115,10 @@ If the user asks for a doc and you can't pick a quadrant in one sentence, ask th
 - The user wants to write a single targeted doc page from scratch — write it directly.
 - The user is debugging or fixing a typo — direct edit.
 - The bifrost test stack is broken — fix that first; this skill cannot work without it.
+
+## Invocation from `bifrost-release`
+
+The release skill calls this one (in `diff` mode) before tagging or pushing when bifrost main has moved past the docs repo's last commit. Behavior is identical — there's no special "release" mode. The release flow waits for the docs PR to be opened, then continues with the bifrost tag/push in parallel.
 
 ## Hard rules
 
