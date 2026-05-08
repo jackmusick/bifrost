@@ -88,6 +88,7 @@ class UserCreate(BaseModel):
     is_active: bool = True
     is_superuser: bool = False
     organization_id: UUID | None = None
+    invite: bool = False  # If True, generate invite + dispatch email after create
 
 
 class UserUpdate(BaseModel):
@@ -111,6 +112,7 @@ class UserPublic(UserBase):
     last_login: datetime | None
     created_at: datetime
     updated_at: datetime
+    invite_status: str = "active"  # one of InviteStatus values; populated by router
 
     @field_serializer("created_at", "updated_at", "last_login")
     def serialize_dt(self, dt: datetime | None) -> str | None:

@@ -11,11 +11,14 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
+from src.config import get_settings
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
 from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.services.audit import emit_audit
+from src.services.email_service import send_email
+from src.services.user_invite_service import UserInviteService
 from src.models import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
 from src.models import (
     UserCreate,
@@ -24,6 +27,7 @@ from src.models import (
     UserRolesResponse,
     UserFormsResponse,
 )
+from src.models.contracts.user_invites import CreateInviteResponse, InviteStatus
 from src.core.constants import PROVIDER_ORG_ID
 
 logger = logging.getLogger(__name__)
@@ -95,7 +99,13 @@ async def list_users(
     result = await db.execute(query)
     users = result.scalars().all()
 
-    return [UserPublic.model_validate(u) for u in users]
+    invite_svc = UserInviteService(db)
+    out: list[UserPublic] = []
+    for u in users:
+        public = UserPublic.model_validate(u)
+        public.invite_status = await invite_svc.status_for(u)
+        out.append(public)
+    return out
 
 
 @router.post(
@@ -142,7 +152,120 @@ async def create_user(
             "organization_id": str(new_user.organization_id) if new_user.organization_id else None,
         },
     )
-    return UserPublic.model_validate(new_user)
+
+    invite_status = InviteStatus.NEVER_INVITED
+    if request.invite:
+        svc = UserInviteService(db)
+        raw_token, invite = await svc.create_or_replace(
+            user_id=new_user.id, created_by=user.user_id
+        )
+        registration_url = (
+            f"{get_settings().public_url.rstrip('/')}/register?token={raw_token}"
+        )
+        send_result = await send_email(
+            recipient=new_user.email,
+            subject="You're invited to Bifrost",
+            body=(
+                f"Hello{(' ' + new_user.name) if new_user.name else ''},\n\n"
+                f"You've been invited to Bifrost. Complete your registration here:\n\n"
+                f"{registration_url}\n\n"
+                f"This link expires {invite.expires_at.isoformat()}."
+            ),
+        )
+        if not send_result.success:
+            logger.warning(
+                f"Invite email failed for {new_user.email}: {send_result.error}"
+            )
+        invite_status = InviteStatus.PENDING
+
+    response = UserPublic.model_validate(new_user)
+    response.invite_status = invite_status
+    return response
+
+
+@router.post(
+    "/{user_id}/invite/resend",
+    response_model=CreateInviteResponse,
+    summary="Resend invite",
+    description="Generate a fresh invite token and email it to the user.",
+)
+async def resend_invite(
+    user_id: UUID,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> CreateInviteResponse:
+    return await _generate_invite(user_id=user_id, actor=user, db=db, send=True)
+
+
+@router.post(
+    "/{user_id}/invite/regenerate",
+    response_model=CreateInviteResponse,
+    summary="Regenerate invite link",
+    description="Generate a fresh invite token without sending an email; returns the URL.",
+)
+async def regenerate_invite(
+    user_id: UUID,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> CreateInviteResponse:
+    return await _generate_invite(user_id=user_id, actor=user, db=db, send=False)
+
+
+@router.delete(
+    "/{user_id}/invite",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke invite",
+    description="Revoke any active invite for the user.",
+)
+async def revoke_invite(
+    user_id: UUID,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    svc = UserInviteService(db)
+    await svc.revoke(user_id=user_id)
+
+
+async def _generate_invite(
+    *, user_id: UUID, actor, db, send: bool
+) -> CreateInviteResponse:
+    target = (
+        await db.execute(select(UserORM).where(UserORM.id == user_id))
+    ).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.is_registered:
+        raise HTTPException(status_code=409, detail="User is already registered")
+
+    svc = UserInviteService(db)
+    raw_token, invite = await svc.create_or_replace(
+        user_id=user_id, created_by=actor.user_id
+    )
+    registration_url = (
+        f"{get_settings().public_url.rstrip('/')}/register?token={raw_token}"
+    )
+
+    email_sent = False
+    email_error = None
+    if send:
+        send_result = await send_email(
+            recipient=target.email,
+            subject="You're invited to Bifrost",
+            body=(
+                f"Complete your registration: {registration_url}\n\n"
+                f"Link expires {invite.expires_at.isoformat()}."
+            ),
+        )
+        email_sent = send_result.success
+        email_error = send_result.error
+
+    return CreateInviteResponse(
+        user_id=user_id,
+        expires_at=invite.expires_at,
+        registration_url=registration_url,
+        email_sent=email_sent,
+        email_error=email_error,
+    )
 
 
 @router.get(
