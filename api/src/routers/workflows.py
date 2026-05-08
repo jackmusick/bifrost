@@ -1179,6 +1179,35 @@ async def register_workflow(
     # Parse organization_id if provided
     org_uuid = UUID(request.organization_id) if request.organization_id else None
 
+    # Validate access_level early so we don't half-register on a typo
+    if request.access_level is not None and request.access_level not in ("authenticated", "role_based"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid access_level: '{request.access_level}'. Must be 'authenticated' or 'role_based'",
+        )
+
+    # Parse role_ids and verify they exist before any DB mutation
+    role_uuids: list[UUID] = []
+    if request.role_ids:
+        for rid_str in request.role_ids:
+            try:
+                role_uuids.append(UUID(rid_str))
+            except (ValueError, AttributeError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid role ID: '{rid_str}' (expected a UUID)",
+                )
+        role_check = await db.execute(
+            select(Role.id).where(Role.id.in_(role_uuids))
+        )
+        found_role_ids = set(role_check.scalars().all())
+        missing_roles = [str(rid) for rid in role_uuids if rid not in found_role_ids]
+        if missing_roles:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Role(s) not found: {', '.join(missing_roles)}",
+            )
+
     if existing_wf and existing_wf.is_active:
         raise HTTPException(status_code=409, detail="Workflow already registered")
     elif existing_wf and not existing_wf.is_active:
@@ -1188,6 +1217,8 @@ async def register_workflow(
         existing_wf.is_orphaned = False
         existing_wf.type = wf_type
         existing_wf.organization_id = org_uuid
+        if request.access_level is not None:
+            existing_wf.access_level = request.access_level
         existing_wf.updated_at = datetime.now(timezone.utc)
         await db.flush()
     else:
@@ -1201,8 +1232,27 @@ async def register_workflow(
             type=wf_type,
             is_active=True,
             organization_id=org_uuid,
+            access_level=request.access_level if request.access_level is not None else "role_based",
         )
         db.add(new_wf)
+        await db.flush()
+
+    # Apply role assignments. Replaces any pre-existing rows when reactivating
+    # an inactive workflow, so the caller's role list is authoritative.
+    if request.role_ids is not None:
+        await db.execute(
+            delete(WorkflowRole).where(WorkflowRole.workflow_id == workflow_id)
+        )
+        now = datetime.now(timezone.utc)
+        for role_uuid in role_uuids:
+            db.add(
+                WorkflowRole(
+                    workflow_id=workflow_id,
+                    role_id=role_uuid,
+                    assigned_by=user.email,
+                    assigned_at=now,
+                )
+            )
         await db.flush()
 
     # 5. Run indexer to enrich with content-derived fields
@@ -1215,7 +1265,13 @@ async def register_workflow(
     )
     workflow = result.scalar_one()
 
-    # Refresh MCP tool registry so new tools appear immediately
+    # Commit before refreshing MCP tools. refresh_workflow_tools() opens its
+    # own session via get_db_context(), and at READ COMMITTED it cannot see
+    # this request's still-uncommitted INSERT — leaving the freshly-registered
+    # workflow missing from FastMCP's in-memory registry until the next API
+    # restart. update_workflow / delete_workflow already follow this pattern.
+    await db.commit()
+
     try:
         from src.services.mcp_server.server import refresh_workflow_tools
         await refresh_workflow_tools()
@@ -1303,15 +1359,57 @@ async def update_workflow(
                 )
             workflow.access_level = request.access_level
 
-        # Clear all role assignments if requested
-        if request.clear_roles:
-            from src.models.orm.workflow_roles import WorkflowRole
+        # Role assignment edits. ``role_ids`` (when explicitly provided) bulk-replaces
+        # the assignment set; ``clear_roles`` is the legacy single-purpose flag and
+        # wipes assignments when ``role_ids`` was not supplied. If both are provided,
+        # ``role_ids`` wins because it carries the more specific intent.
+        if request.role_ids is not None:
+            target_role_uuids: list[UUID] = []
+            for rid_str in request.role_ids:
+                try:
+                    target_role_uuids.append(UUID(rid_str))
+                except (ValueError, AttributeError):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid role ID: '{rid_str}' (expected a UUID)",
+                    )
+
+            if target_role_uuids:
+                role_check = await db.execute(
+                    select(Role.id).where(Role.id.in_(target_role_uuids))
+                )
+                found_role_ids = set(role_check.scalars().all())
+                missing_roles = [str(rid) for rid in target_role_uuids if rid not in found_role_ids]
+                if missing_roles:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Role(s) not found: {', '.join(missing_roles)}",
+                    )
+
+            await db.execute(
+                delete(WorkflowRole).where(WorkflowRole.workflow_id == workflow_id)
+            )
+            now = datetime.now(timezone.utc)
+            for role_uuid in target_role_uuids:
+                db.add(
+                    WorkflowRole(
+                        workflow_id=workflow_id,
+                        role_id=role_uuid,
+                        assigned_by=user.email,
+                        assigned_at=now,
+                    )
+                )
+            logger.info(
+                f"Replaced role assignments for workflow '{log_safe(workflow.name)}' "
+                f"({len(target_role_uuids)} role(s))"
+            )
+        elif request.clear_roles:
             await db.execute(
                 delete(WorkflowRole).where(WorkflowRole.workflow_id == workflow_id)
             )
             # Also set to role_based access level (effectively no access)
             workflow.access_level = "role_based"
-            logger.info(f"Cleared all role assignments for workflow '{workflow.name}'")
+            logger.info(f"Cleared all role assignments for workflow '{log_safe(workflow.name)}'")
 
         # Update display_name if provided
         if "display_name" in request.model_fields_set:

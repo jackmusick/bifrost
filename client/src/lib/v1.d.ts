@@ -27,6 +27,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live Health Check
+         * @description Liveness check endpoint.
+         *
+         *     Returns healthy when the API process can respond.
+         */
+        get: operations["live_health_check_health_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ready Health Check
+         * @description Readiness check for core API serving dependencies.
+         */
+        get: operations["ready_health_check_health_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/detailed": {
         parameters: {
             query?: never;
@@ -40,6 +82,9 @@ export interface paths {
          *
          *     Checks:
          *     - Database connectivity
+         *     - Redis connectivity
+         *     - RabbitMQ connectivity
+         *     - S3 bucket availability when S3 is configured
          *
          *     Returns:
          *         Detailed health status with component information
@@ -2320,6 +2365,10 @@ export interface paths {
         /**
          * Get Signed Url
          * @description Generate a presigned S3 URL for direct file upload or download.
+         *
+         *     Path resolution goes through `shared.file_paths.resolve_s3_key`, so the
+         *     URL targets the same key as a `files.read`/`files.write` to the same
+         *     `(location, scope, path)`.
          */
         post: operations["get_signed_url_api_files_signed_url_post"];
         delete?: never;
@@ -3423,22 +3472,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4104,234 +4153,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cli/tables/documents/insert": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Insert a document
-         * @description Insert a document into a table via SDK.
-         *
-         *     Auto-creates the table if it doesn't exist.
-         *     If id is provided, returns 409 Conflict if a document with that id already exists.
-         *     If id is not provided, a UUID will be auto-generated.
-         */
-        post: operations["cli_insert_document_api_cli_tables_documents_insert_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/upsert": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upsert a document
-         * @description Upsert (create or replace) a document via SDK.
-         *
-         *     Auto-creates the table if it doesn't exist.
-         *     If a document with the given id exists, it is replaced with the new data.
-         *     If not, a new document is created.
-         *
-         *     Uses atomic INSERT ... ON CONFLICT DO UPDATE to prevent race conditions.
-         */
-        post: operations["cli_upsert_document_api_cli_tables_documents_upsert_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/get": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Get a document
-         * @description Get a document by ID via SDK.
-         */
-        post: operations["cli_get_document_api_cli_tables_documents_get_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/update": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Update a document
-         * @description Update a document via SDK (partial update, merges with existing).
-         */
-        post: operations["cli_update_document_api_cli_tables_documents_update_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete a document
-         * @description Delete a document via SDK.
-         */
-        post: operations["cli_delete_document_api_cli_tables_documents_delete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/insert/batch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch insert documents
-         * @description Batch insert documents into a table via SDK.
-         *
-         *     Auto-creates the table if it doesn't exist.
-         *     All documents are inserted atomically — if any ID conflicts, the entire batch rolls back.
-         */
-        post: operations["cli_insert_documents_batch_api_cli_tables_documents_insert_batch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/upsert/batch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch upsert documents
-         * @description Batch upsert (create or replace) documents via SDK.
-         *
-         *     Auto-creates the table if it doesn't exist.
-         *     Uses atomic INSERT ... ON CONFLICT DO UPDATE for each document.
-         */
-        post: operations["cli_upsert_documents_batch_api_cli_tables_documents_upsert_batch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/delete/batch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch delete documents
-         * @description Batch delete documents via SDK.
-         *
-         *     Returns the IDs of documents that were actually deleted.
-         *     Non-existent IDs are silently skipped.
-         */
-        post: operations["cli_delete_documents_batch_api_cli_tables_documents_delete_batch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/query": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Query documents
-         * @description Query documents with filtering and pagination via SDK.
-         *
-         *     Supports advanced filter operators:
-         *     - Simple equality: {"status": "active"}
-         *     - Comparison: {"amount": {"gt": 100, "lte": 1000}}
-         *     - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
-         *     - IN lists: {"category": {"in": ["a", "b"]}}
-         *     - NULL checks: {"deleted_at": {"is_null": true}}
-         */
-        post: operations["cli_query_documents_api_cli_tables_documents_query_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/documents/count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Count documents
-         * @description Count documents matching filter via SDK.
-         *
-         *     Supports the same filter operators as query.
-         */
-        post: operations["cli_count_documents_api_cli_tables_documents_count_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/notifications": {
         parameters: {
             query?: never;
@@ -4385,6 +4206,11 @@ export interface paths {
          * @description Dismiss (delete) a notification.
          *
          *     Only the owner can dismiss their notification.
+         *
+         *     For embedding-reindex notifications that are still running, this also sets
+         *     the Redis cancellation flag the scheduler polls between batches — so the
+         *     reindex job stops cleanly with partial state rather than running to
+         *     completion after the notification is gone.
          *
          *     Args:
          *         notification_id: Notification ID to dismiss
@@ -4820,10 +4646,12 @@ export interface paths {
          *     the affordance instead of surfacing a dead-end "Nothing to backfill"
          *     modal.
          *
-         *     When ``prompt_version_below`` is set, also counts ``completed`` runs whose
-         *     ``summary_prompt_version`` is older than the given version (or NULL), so
-         *     admins can discover the existence of a roll-forward opportunity even when
-         *     there are no pending/failed runs.
+         *     Three orthogonal flags shape the count:
+         *       - default (no flags)                  → pending + failed summaries
+         *       - ``prompt_version_below="vN"``       → above + completed runs on an
+         *                                                older prompt version (or NULL)
+         *       - ``include_completed=true``          → above + ALL completed summaries
+         *                                                regardless of version
          */
         get: operations["get_backfill_eligible_api_agent_runs_backfill_eligible_get"];
         put?: never;
@@ -5360,7 +5188,8 @@ export interface paths {
          * @description Get current embedding configuration.
          *
          *     Returns the configuration and indicates whether it uses a dedicated key
-         *     or falls back to the LLM provider's OpenAI key.
+         *     or falls back to the LLM provider's key. The `endpoint` field is the
+         *     resolved endpoint (dedicated → inherited LLM → null = OpenAI default).
          *     Requires platform admin access.
          */
         get: operations["get_embedding_config_endpoint_api_admin_llm_embedding_config_get"];
@@ -5369,8 +5198,14 @@ export interface paths {
          * Set Embedding Config
          * @description Set dedicated embedding configuration.
          *
-         *     This allows using a separate OpenAI key for embeddings,
-         *     useful when the main LLM provider is Anthropic.
+         *     Validates the configuration by running a live embedding call before
+         *     persisting; captures the returned vector dimensions.
+         *
+         *     If the new model's output dimension differs from the currently-saved
+         *     dimension AND knowledge_store has existing rows, the response carries
+         *     `needs_reindex_confirmation=True` and persistence is skipped — re-POST
+         *     with `confirm_reindex: true` to commit the new config and trigger a
+         *     reindex via the scheduler.
          *     Requires platform admin access.
          */
         post: operations["set_embedding_config_api_admin_llm_embedding_config_post"];
@@ -5388,6 +5223,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/llm/embedding-reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Embedding Reindex
+         * @description Re-embed every knowledge_store row against the currently-saved embedding config.
+         *
+         *     Returns immediately with a notification_id; progress is delivered over the
+         *     `notification:{user_id}` WebSocket channel. Cancel via
+         *     DELETE /api/notifications/{notification_id}.
+         *
+         *     No-op when knowledge_store is empty (returns row_count=0 and no notification
+         *     is created).
+         *     Requires platform admin access.
+         */
+        post: operations["trigger_embedding_reindex_api_admin_llm_embedding_reindex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/llm/embedding-test": {
         parameters: {
             query?: never;
@@ -5399,11 +5262,18 @@ export interface paths {
         put?: never;
         /**
          * Test Embedding Connection
-         * @description Test embedding connection with provided credentials.
+         * @description Validate credentials and list embedding-capable models.
          *
-         *     Tests the connection without saving the configuration.
-         *     If no API key is provided, uses the saved embedding key.
-         *     Requires platform admin access.
+         *     Symmetric with the LLM /test endpoint: this is the "does the key work,
+         *     what models are available" call. It does NOT issue an embedding — that's
+         *     Save's job. Save runs the real embeddings.create() against the chosen
+         *     model and rejects with 400 on failure.
+         *
+         *     Credential resolution order:
+         *     1. request.api_key + request.endpoint when provided
+         *     2. saved dedicated embedding config (decrypt stored key, use stored endpoint)
+         *     3. LLM provider config — only when provider is openai (Anthropic doesn't
+         *        have embeddings). Inherits both key and endpoint.
          */
         post: operations["test_embedding_connection_api_admin_llm_embedding_test_post"];
         delete?: never;
@@ -6631,6 +6501,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/policies/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a TablePolicies document without persisting it.
+         * @description Runs the same AST validator the table create/update endpoints use, returning structured errors. Used by the policy editor for live feedback. On save, the create/update endpoints validate authoritatively. Always returns 200 — the validation outcome is in the body, not the status code.
+         */
+        post: operations["validate_policies_api_tables_policies_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{table_id}": {
         parameters: {
             query?: never;
@@ -6670,7 +6560,7 @@ export interface paths {
         put?: never;
         /**
          * Insert a document
-         * @description Insert a new document into the table (platform admin only).
+         * @description Insert a new document into the table.
          */
         post: operations["insert_document_api_tables__table_id__documents_post"];
         delete?: never;
@@ -6679,35 +6569,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{table_id}/documents/{doc_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get a document
-         * @description Get a document by ID (platform admin only).
-         */
-        get: operations["get_document_api_tables__table_id__documents__doc_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete a document
-         * @description Delete a document (platform admin only).
-         */
-        delete: operations["delete_document_api_tables__table_id__documents__doc_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update a document
-         * @description Update a document (platform admin only, partial update, merges with existing).
-         */
-        patch: operations["update_document_api_tables__table_id__documents__doc_id__patch"];
-        trace?: never;
-    };
-    "/api/tables/{table_id}/documents/query": {
+    "/api/tables/{table_id}/documents/upsert": {
         parameters: {
             query?: never;
             header?: never;
@@ -6717,12 +6579,21 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Query documents
-         * @description Query documents with filtering and pagination (platform admin only).
+         * Upsert a document by id
+         * @description Atomically upsert a document by id (single ``INSERT ... ON CONFLICT DO UPDATE``).
          *
-         *     Returns 404 if the table doesn't exist.
+         *     On conflict the JSONB ``data`` column is **replaced**, not merged — use
+         *     PATCH ``/{doc_id}`` for partial updates with merge semantics.
+         *
+         *     The candidate row is policy-checked for ``create``; if a row already
+         *     exists, it is also policy-checked for ``update`` against its pre-image.
+         *     Either denial returns 403; the row is not written.
+         *
+         *     NOTE: This route is declared BEFORE ``GET /{table_id}/documents/{doc_id}``
+         *     so the literal ``/upsert`` segment matches first. Reversing the order
+         *     binds ``doc_id="upsert"`` and the endpoint becomes unreachable.
          */
-        post: operations["query_documents_api_tables__table_id__documents_query_post"];
+        post: operations["upsert_document_api_tables__table_id__documents_upsert_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6738,13 +6609,117 @@ export interface paths {
         };
         /**
          * Count documents
-         * @description Count documents in a table (platform admin only).
+         * @description Count documents in a table.
          *
          *     Returns 404 if the table doesn't exist.
+         *
+         *     NOTE: This route is declared BEFORE ``GET /{table_id}/documents/{doc_id}``
+         *     so the literal ``/count`` segment matches first. Reversing the order makes
+         *     FastAPI bind ``doc_id="count"`` and return 404, silently disabling the
+         *     count endpoint.
          */
         get: operations["count_documents_api_tables__table_id__documents_count_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{table_id}/documents/{doc_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a document
+         * @description Get a document by ID.
+         */
+        get: operations["get_document_api_tables__table_id__documents__doc_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a document
+         * @description Delete a document.
+         */
+        delete: operations["delete_document_api_tables__table_id__documents__doc_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a document
+         * @description Update a document (partial update, merges with existing).
+         */
+        patch: operations["update_document_api_tables__table_id__documents__doc_id__patch"];
+        trace?: never;
+    };
+    "/api/tables/{table_id}/documents/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query documents
+         * @description Query documents with filtering and pagination.
+         *
+         *     Returns 404 if the table doesn't exist.
+         */
+        post: operations["query_documents_api_tables__table_id__documents_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{table_id}/documents/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch insert or upsert documents
+         * @description Insert (or upsert) multiple documents in a single request.
+         *
+         *     When `upsert=true`, each item with a provided id will be updated if it
+         *     exists, otherwise inserted. Items without an id are always inserted.
+         *
+         *     All-or-nothing on policy denials: any denied row aborts the whole batch
+         *     with a 403 listing every denied index.
+         */
+        post: operations["batch_documents_api_tables__table_id__documents_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tables/{table_id}/documents/batch-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch delete documents by ID
+         * @description Delete multiple documents by ID.
+         *
+         *     Skips IDs that don't exist. All-or-nothing on policy denials: any
+         *     denied row aborts the whole batch with a 403 listing every denied index.
+         */
+        post: operations["batch_delete_documents_api_tables__table_id__documents_batch_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7837,6 +7812,273 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List MCP server templates
+         * @description List MCP server templates visible to the caller. Platform admins see all templates (filterable via ``scope``); org users see platform-level templates + their own org's.
+         */
+        get: operations["list_mcp_servers_api_mcp_servers_get"];
+        put?: never;
+        /**
+         * Create MCP server template (platform admin)
+         * @description Create a new server template. Platform admin only.
+         *
+         *     If ``oauth_provider`` is set on the request, this also creates an
+         *     ``OAuthProvider`` row and links it on the new server. The provider
+         *     holds the schema (token_url, flow_type, scopes, audience). The actual
+         *     per-org client_id+secret pairs live on ``mcp_connections`` rows since
+         *     each org registers its own OAuth app with the vendor — the provider's
+         *     ``encrypted_client_secret`` is a non-authoritative placeholder.
+         */
+        post: operations["create_mcp_server_api_mcp_servers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-servers/{server_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get MCP server template
+         * @description Get a server template with its nested per-org connections and per-connection tool catalog.
+         */
+        get: operations["get_mcp_server_api_mcp_servers__server_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete MCP server template (platform admin)
+         * @description Soft delete (set ``is_active=False``) by default. Pass ``?hard=true`` to cascade-delete the row, its connections, tools, and any per-user credentials. Soft delete is preferred — the same treatment as ``integrations.is_deleted`` — so existing agent tool bindings don't silently break.
+         */
+        delete: operations["delete_mcp_server_api_mcp_servers__server_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update MCP server template (platform admin)
+         * @description Update a server template. Platform admin only.
+         */
+        patch: operations["update_mcp_server_api_mcp_servers__server_id__patch"];
+        trace?: never;
+    };
+    "/api/mcp-servers/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover OAuth metadata (platform admin)
+         * @description Fetch ``/.well-known/oauth-authorization-server`` and ``/.well-known/oauth-protected-resource`` from the server's host and return a merged metadata dict. Used by the new-server form to auto-fill OAuth fields. Returns ``{metadata: null}`` when neither endpoint is reachable; the frontend falls back to manual entry.
+         */
+        post: operations["discover_mcp_server_api_mcp_servers_discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List MCP connections
+         * @description List MCP connections.
+         *
+         *     Platform admins see all connections by default; pass ``?scope=<uuid>``
+         *     to filter to a single org. Org users see only their own org's
+         *     connections regardless of the ``scope`` parameter.
+         */
+        get: operations["list_mcp_connections_api_mcp_connections_get"];
+        put?: never;
+        /**
+         * Create MCP connection
+         * @description Create a per-org connection under a server template.
+         *
+         *     Encrypts the client_secret at rest using the same envelope encryption
+         *     as ``oauth_providers.encrypted_client_secret``.
+         */
+        post: operations["create_mcp_connection_api_mcp_connections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get MCP connection
+         * @description Get a single connection with its tool catalog.
+         */
+        get: operations["get_mcp_connection_api_mcp_connections__connection_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete MCP connection
+         * @description Hard delete. Cascades to tool catalog rows and per-user credentials per the FK definitions.
+         */
+        delete: operations["delete_mcp_connection_api_mcp_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update MCP connection
+         * @description Update a connection.
+         *
+         *     If ``client_secret`` is supplied it is re-encrypted before persist.
+         *     All other fields are passed through verbatim.
+         */
+        patch: operations["update_mcp_connection_api_mcp_connections__connection_id__patch"];
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}/tools/{tool_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a single tool in the connection's catalog
+         * @description Toggle ``enabled`` for one tool on a connection. Used by the Connection edit UI when an admin opts a tool out of the catalog. Setting enabled=true clears any auto-set ``disabled_reason``; setting enabled=false records ``Manually disabled by admin`` so a future catalog sync won't auto-re-enable it.
+         */
+        patch: operations["update_mcp_connection_tool_api_mcp_connections__connection_id__tools__tool_id__patch"];
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}/refresh-tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh tool catalog
+         * @description Calls ``tools/list`` on the vendor and upserts ``mcp_connection_tools``. Tools that disappear are flagged ``enabled=False`` rather than deleted (see ``catalog_sync`` docstring).
+         */
+        post: operations["refresh_tools_api_mcp_connections__connection_id__refresh_tools_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-connections/{connection_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Initiate or activate the shared service connection
+         * @description Branches on the linked OAuth provider's ``oauth_flow_type``:
+         *
+         *     - ``authorization_code`` — returns the vendor's authorize URL plus the signed ``state`` token. The frontend opens the URL in a popup; the vendor redirects back to ``/api/mcp/oauth/callback`` which completes the exchange and writes ``service_oauth_token_id`` on the connection.
+         *
+         *     - ``client_credentials`` — performs a server-to-server token exchange using the connection's client_id+secret and persists the resulting access token as ``service_oauth_token_id``. Synchronous, no popup.
+         */
+        post: operations["connect_service_token_api_mcp_connections__connection_id__connect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mcp-connections/{connection_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Initiate per-user OAuth flow
+         * @description Per-user delegated connect. Returns the vendor's authorize URL with state encoded for the *user* flow — the callback writes a ``user_mcp_credentials`` row instead of touching ``mcp_connections.service_oauth_token_id``.
+         *
+         *     Per-user delegation is only meaningful for ``authorization_code`` providers; ``client_credentials`` connections are rejected with 400.
+         */
+        get: operations["connect_user_credential_api_me_mcp_connections__connection_id__connect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mcp-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's per-user MCP credentials
+         * @description Returns one row per MCP connection the caller has personally OAuth'd. Includes the OAuth token's expiry so the UI can render 'expires in N days'. Does not return the bearer token itself.
+         */
+        get: operations["list_user_credentials_api_me_mcp_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/mcp-connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect (forget) the caller's per-user credential
+         * @description Deletes the caller's user_mcp_credentials row for this connection and the underlying oauth_tokens row. Idempotent — returns 204 whether or not a credential existed.
+         */
+        delete: operations["disconnect_user_credential_api_me_mcp_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -8172,6 +8414,11 @@ export interface components {
              */
             system_tools?: string[];
             /**
+             * Mcp Connection Ids
+             * @description MCP connection UUIDs this agent is granted access to. Empty list (default) means the agent receives no external MCP tools. The agent's organization must own each listed connection.
+             */
+            mcp_connection_ids?: string[];
+            /**
              * Llm Model
              * @description Override model (null=use global config)
              */
@@ -8248,6 +8495,11 @@ export interface components {
             knowledge_sources?: string[];
             /** System Tools */
             system_tools?: string[];
+            /**
+             * Mcp Connection Ids
+             * @description MCP connection UUIDs this agent is granted access to.
+             */
+            mcp_connection_ids?: string[];
             /** Llm Model */
             llm_model?: string | null;
             /** Llm Max Tokens */
@@ -8577,6 +8829,12 @@ export interface components {
              * @default 0
              */
             dependency_count: number;
+            /**
+             * Mcp Connection Count
+             * @description Number of MCP connections explicitly granted to this agent.
+             * @default 0
+             */
+            mcp_connection_count: number;
         };
         /**
          * AgentUpdate
@@ -8624,6 +8882,11 @@ export interface components {
              * @description List of system tool names enabled for this agent
              */
             system_tools?: string[] | null;
+            /**
+             * Mcp Connection Ids
+             * @description MCP connection UUIDs this agent is granted access to. Replaces the agent's full grant list when provided; omit to leave grants unchanged. Pass [] to revoke all grants.
+             */
+            mcp_connection_ids?: string[] | null;
             /**
              * Clear Roles
              * @description If true, clear all role assignments (sets to role_based with no roles)
@@ -11097,6 +11360,92 @@ export interface components {
             message?: string | null;
         };
         /**
+         * DocumentBatchCreate
+         * @description Input for inserting or upserting multiple documents.
+         */
+        DocumentBatchCreate: {
+            /**
+             * Documents
+             * @description Documents to insert or upsert
+             */
+            documents: components["schemas"]["DocumentBatchItem"][];
+            /**
+             * Upsert
+             * @description If true, upsert documents with an id instead of inserting.
+             * @default false
+             */
+            upsert: boolean;
+        };
+        /**
+         * DocumentBatchCreateResponse
+         * @description Response for a batch insert or upsert.
+         */
+        DocumentBatchCreateResponse: {
+            /** Inserted */
+            inserted: number;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Documents
+             * @description Inserted/updated documents in submission order. Lets SDK callers use auto-generated ids without a follow-up fetch.
+             */
+            documents?: components["schemas"]["DocumentPublic"][];
+        };
+        /**
+         * DocumentBatchDeleteRequest
+         * @description Input for deleting multiple documents by ID.
+         */
+        DocumentBatchDeleteRequest: {
+            /**
+             * Ids
+             * @description Document IDs to delete
+             */
+            ids: string[];
+        };
+        /**
+         * DocumentBatchDeleteResponse
+         * @description Response for a batch delete.
+         */
+        DocumentBatchDeleteResponse: {
+            /** Deleted */
+            deleted: number;
+            /**
+             * Deleted Ids
+             * @description IDs of documents that were actually deleted (in submission order, skipping ids that didn't exist).
+             */
+            deleted_ids?: string[];
+        };
+        /**
+         * DocumentBatchItem
+         * @description A single item in a batch insert or upsert.
+         */
+        DocumentBatchItem: {
+            /**
+             * Id
+             * @description Optional document ID. Auto-generated (UUID) if omitted.
+             */
+            id?: string | null;
+            /**
+             * Data
+             * @description Document data (any JSON-serializable dict)
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created By
+             * @description Override attribution for created_by. Engine and platform-admin callers only; any item that sends this field from a non-privileged caller fails the whole batch with 403.
+             */
+            created_by?: string | null;
+            /**
+             * Updated By
+             * @description Override attribution for updated_by (upsert-update branch). Engine and platform-admin callers only.
+             */
+            updated_by?: string | null;
+        };
+        /**
          * DocumentCountResponse
          * @description Response for document count.
          */
@@ -11110,18 +11459,44 @@ export interface components {
          */
         DocumentCreate: {
             /**
+             * Id
+             * @description Optional document ID. Auto-generated (UUID) if omitted.
+             */
+            id?: string | null;
+            /**
              * Data
              * @description Document data (any JSON-serializable dict)
              */
             data: {
                 [key: string]: unknown;
             };
+            /**
+             * Upsert
+             * @description If true and id is provided, update the existing document instead of raising a conflict.
+             * @default false
+             */
+            upsert: boolean;
+            /**
+             * Created By
+             * @description Override attribution for created_by. Engine and platform-admin callers only; any other caller that sends this field receives 403. When omitted, defaults to the calling user.
+             */
+            created_by?: string | null;
+            /**
+             * Updated By
+             * @description Override attribution for updated_by (used on the update branch of an upsert). Engine and platform-admin callers only; any other caller that sends this field receives 403. When omitted, defaults to the calling user.
+             */
+            updated_by?: string | null;
         };
         /**
          * DocumentListResponse
          * @description Response for document queries.
          */
         DocumentListResponse: {
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
             /** Documents */
             documents: components["schemas"]["DocumentPublic"][];
             /** Total */
@@ -11218,6 +11593,39 @@ export interface components {
             data: {
                 [key: string]: unknown;
             };
+            /**
+             * Updated By
+             * @description Override attribution for updated_by. Engine and platform-admin callers only; any other caller that sends this field receives 403. When omitted, defaults to the calling user.
+             */
+            updated_by?: string | null;
+        };
+        /**
+         * DocumentUpsert
+         * @description Input for upserting a document by id (atomic INSERT ... ON CONFLICT DO UPDATE).
+         */
+        DocumentUpsert: {
+            /**
+             * Id
+             * @description Document ID. Required (the upsert conflict key).
+             */
+            id: string;
+            /**
+             * Data
+             * @description Document data (any JSON-serializable dict)
+             */
+            data: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created By
+             * @description Override attribution for created_by (insert path). Engine and platform-admin callers only; any other caller that sends this field receives 403.
+             */
+            created_by?: string | null;
+            /**
+             * Updated By
+             * @description Override attribution for updated_by (insert and update paths). Engine and platform-admin callers only.
+             */
+            updated_by?: string | null;
         };
         /**
          * DryRunPerRun
@@ -11485,11 +11893,8 @@ export interface components {
             is_active?: boolean | null;
             /** Name */
             name?: string | null;
-            /**
-             * Hmac Scheme
-             * @enum {string}
-             */
-            hmac_scheme?: "shopify" | "halopsa" | null;
+            /** Hmac Scheme */
+            hmac_scheme?: ("shopify" | "halopsa") | null;
         };
         /**
          * EmbeddingConfigRequest
@@ -11498,21 +11903,26 @@ export interface components {
         EmbeddingConfigRequest: {
             /**
              * Api Key
-             * @description OpenAI API key for embeddings. Omit to preserve existing key.
+             * @description API key for embeddings. Omit to preserve existing key.
              */
             api_key?: string | null;
             /**
              * Model
-             * @description Embedding model (text-embedding-3-small or text-embedding-3-large)
+             * @description Embedding model identifier
              * @default text-embedding-3-small
              */
             model: string;
             /**
-             * Dimensions
-             * @description Embedding dimensions (1536 for small, up to 3072 for large)
-             * @default 1536
+             * Endpoint
+             * @description Custom OpenAI-compatible endpoint URL. Null/empty means OpenAI default.
              */
-            dimensions: number;
+            endpoint?: string | null;
+            /**
+             * Confirm Reindex
+             * @description When the new model's vector dimension differs from the saved one and knowledge_store has existing rows, the first POST returns needs_reindex_confirmation. Re-POST with this flag set to true to persist the new config and trigger a reindex.
+             * @default false
+             */
+            confirm_reindex: boolean;
         };
         /**
          * EmbeddingConfigResponse
@@ -11529,6 +11939,8 @@ export interface components {
              * @default 1536
              */
             dimensions: number;
+            /** Endpoint */
+            endpoint?: string | null;
             /**
              * Is Configured
              * @default true
@@ -11546,6 +11958,88 @@ export interface components {
             uses_llm_key: boolean;
         };
         /**
+         * EmbeddingConfigSaveResponse
+         * @description Response from POST /embedding-config.
+         *
+         *     Two shapes:
+         *     - Save persisted: `saved=True`, `config` populated, `notification_id` set if
+         *       a reindex was kicked off (dim change confirmed).
+         *     - Confirmation needed: `saved=False`, `needs_reindex_confirmation=True`,
+         *       and the dim-change details populated. Re-POST with `confirm_reindex: true`
+         *       to proceed.
+         */
+        EmbeddingConfigSaveResponse: {
+            /** Saved */
+            saved: boolean;
+            config?: components["schemas"]["EmbeddingConfigResponse"] | null;
+            /**
+             * Notification Id
+             * @description Set when a reindex was triggered alongside the save.
+             */
+            notification_id?: string | null;
+            /**
+             * Needs Reindex Confirmation
+             * @default false
+             */
+            needs_reindex_confirmation: boolean;
+            /**
+             * Reason
+             * @description Why confirmation is required (e.g. 'dim_change').
+             */
+            reason?: string | null;
+            /** Old Dim */
+            old_dim?: number | null;
+            /** New Dim */
+            new_dim?: number | null;
+            /** Old Model */
+            old_model?: string | null;
+            /** New Model */
+            new_model?: string | null;
+            /**
+             * Row Count
+             * @description Rows that would be re-embedded if confirmed.
+             */
+            row_count?: number | null;
+        };
+        /**
+         * EmbeddingReindexResponse
+         * @description Response from triggering an on-demand embedding reindex.
+         */
+        EmbeddingReindexResponse: {
+            /**
+             * Notification Id
+             * @description Notification ID — subscribe via WebSocket on `notification:{user_id}` to track progress, cancel via DELETE /api/notifications/{id}.
+             */
+            notification_id: string;
+            /**
+             * Row Count
+             * @description Number of knowledge_store rows that will be re-embedded.
+             */
+            row_count: number;
+        };
+        /**
+         * EmbeddingTestRequest
+         * @description Request to test an embedding configuration before saving.
+         */
+        EmbeddingTestRequest: {
+            /**
+             * Api Key
+             * @description API key to test. Omit to use the saved key.
+             */
+            api_key?: string | null;
+            /**
+             * Model
+             * @description Embedding model identifier
+             * @default text-embedding-3-small
+             */
+            model: string;
+            /**
+             * Endpoint
+             * @description Endpoint URL to test against. Null/empty means OpenAI default.
+             */
+            endpoint?: string | null;
+        };
+        /**
          * EmbeddingTestResponse
          * @description Response from testing embedding configuration.
          */
@@ -11556,6 +12050,8 @@ export interface components {
             message: string;
             /** Dimensions */
             dimensions?: number | null;
+            /** Models */
+            models?: string[] | null;
         };
         /**
          * EndpointExecuteResponse
@@ -12217,6 +12713,13 @@ export interface components {
             ids?: string[];
         };
         /**
+         * Expr
+         * @description Policy expression AST. Validated at construction.
+         */
+        Expr: {
+            [key: string]: unknown;
+        };
+        /**
          * FileChange
          * @description Represents a changed file in Git
          */
@@ -12381,11 +12884,15 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12442,11 +12949,15 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12493,11 +13004,15 @@ export interface components {
             directory: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12637,11 +13152,15 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12745,11 +13264,15 @@ export interface components {
             content: string;
             /**
              * Location
-             * @description Storage location
+             * @description Storage location: reserved (workspace, temp, uploads) or freeform
              * @default workspace
-             * @enum {string}
              */
-            location: "workspace" | "temp" | "uploads";
+            location: string;
+            /**
+             * Scope
+             * @description Org scope. Required for non-workspace, non-uploads locations.
+             */
+            scope?: string | null;
             /**
              * Mode
              * @description Storage mode: local or cloud
@@ -12838,6 +13361,11 @@ export interface components {
              * @description Organization ID (null = global resource)
              */
             organization_id?: string | null;
+            /**
+             * Role Ids
+             * @description Role IDs for role_based access (ignored if access_level is 'authenticated')
+             */
+            role_ids?: string[];
         };
         /**
          * FormExecuteRequest
@@ -12994,6 +13522,11 @@ export interface components {
             access_level?: components["schemas"]["FormAccessLevel"] | null;
             /** Organization Id */
             organization_id?: string | null;
+            /**
+             * Role Ids
+             * @description Role IDs assigned to this form (for role_based access)
+             */
+            role_ids?: string[];
             /** Is Active */
             is_active: boolean;
             /** Created At */
@@ -13067,6 +13600,11 @@ export interface components {
              * @default false
              */
             clear_roles: boolean;
+            /**
+             * Role Ids
+             * @description Role IDs for role_based access (replaces existing roles when provided)
+             */
+            role_ids?: string[] | null;
         };
         /**
          * GenerateSDKRequest
@@ -14481,14 +15019,14 @@ export interface components {
             provider: "openai" | "anthropic";
             /**
              * Model
-             * @description Model identifier
+             * @description Optional model identifier. Connection tests list provider models without probing a guessed default.
              */
-            model: string;
+            model?: string | null;
             /**
              * Api Key
-             * @description API key to test
+             * @description API key to test. Omit to test current form settings with the saved key.
              */
-            api_key: string;
+            api_key?: string | null;
             /**
              * Endpoint
              * @description Custom API endpoint URL
@@ -14671,6 +15209,443 @@ export interface components {
             configured_by?: string | null;
         };
         /**
+         * MCPConnectActivateResponse
+         * @description Response for ``POST /connect`` when the linked OAuth provider uses
+         *     the ``client_credentials`` flow.
+         *
+         *     No popup — the server already exchanged client_id+secret for a token
+         *     and stored it as ``service_oauth_token_id``.
+         */
+        MCPConnectActivateResponse: {
+            /**
+             * Flow
+             * @default client_credentials
+             * @constant
+             */
+            flow: "client_credentials";
+            /** Success */
+            success: boolean;
+            /**
+             * Service Oauth Token Id
+             * Format: uuid
+             */
+            service_oauth_token_id: string;
+        };
+        /**
+         * MCPConnectAuthorizeResponse
+         * @description Response for ``POST /connect`` when the linked OAuth provider uses
+         *     the ``authorization_code`` flow.
+         *
+         *     The frontend opens ``authorization_url`` in a popup; the vendor
+         *     redirects back to ``/api/mcp/oauth/callback`` which completes the
+         *     exchange.
+         */
+        MCPConnectAuthorizeResponse: {
+            /**
+             * Flow
+             * @default authorization_code
+             * @constant
+             */
+            flow: "authorization_code";
+            /** Authorization Url */
+            authorization_url: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * MCPConnectionCreateRequest
+         * @description Router-level create payload — accepts plaintext ``client_secret``.
+         *
+         *     The internal ``MCPConnectionCreate`` contract carries the
+         *     *already-encrypted* secret because manifest import/export consumes
+         *     it; the API surface accepts plaintext and encrypts here.
+         */
+        MCPConnectionCreateRequest: {
+            /**
+             * Server Id
+             * Format: uuid
+             */
+            server_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Client Id */
+            client_id: string;
+            /** Client Secret */
+            client_secret: string;
+            /** Server Url Override */
+            server_url_override?: string | null;
+            /**
+             * Available In Chat
+             * @default false
+             */
+            available_in_chat: boolean;
+            /**
+             * Available To Autonomous
+             * @default false
+             */
+            available_to_autonomous: boolean;
+        };
+        /**
+         * MCPConnectionPublic
+         * @description Detailed connection response; omits encrypted_client_secret.
+         */
+        MCPConnectionPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Server Id
+             * Format: uuid
+             */
+            server_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Client Id */
+            client_id: string;
+            /** Server Url Override */
+            server_url_override: string | null;
+            /** Available In Chat */
+            available_in_chat: boolean;
+            /** Available To Autonomous */
+            available_to_autonomous: boolean;
+            /** Service Oauth Token Id */
+            service_oauth_token_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Tools */
+            tools?: components["schemas"]["MCPConnectionToolPublic"][];
+        };
+        /**
+         * MCPConnectionRefreshToolsResponse
+         * @description Counts returned after a tool catalog refresh.
+         */
+        MCPConnectionRefreshToolsResponse: {
+            /**
+             * Total
+             * @description Total tool rows on the connection after sync
+             */
+            total: number;
+            /**
+             * Enabled
+             * @description Number that are currently enabled
+             */
+            enabled: number;
+            /**
+             * Disabled
+             * @description Number that are currently disabled
+             */
+            disabled: number;
+        };
+        /**
+         * MCPConnectionSummary
+         * @description Lightweight connection summary; omits encrypted secret.
+         */
+        MCPConnectionSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Server Id
+             * Format: uuid
+             */
+            server_id: string;
+            /**
+             * Organization Id
+             * Format: uuid
+             */
+            organization_id: string;
+            /** Client Id */
+            client_id: string;
+            /** Server Url Override */
+            server_url_override: string | null;
+            /** Available In Chat */
+            available_in_chat: boolean;
+            /** Available To Autonomous */
+            available_to_autonomous: boolean;
+            /** Service Oauth Token Id */
+            service_oauth_token_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MCPConnectionToolPublic
+         * @description Tool catalog response.
+         */
+        MCPConnectionToolPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Tool Name */
+            tool_name: string;
+            /** Tool Schema */
+            tool_schema: {
+                [key: string]: unknown;
+            };
+            /** Enabled */
+            enabled: boolean;
+            /** Disabled Reason */
+            disabled_reason: string | null;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MCPConnectionUpdateRequest
+         * @description Router-level update payload — plaintext ``client_secret`` if rotated.
+         */
+        MCPConnectionUpdateRequest: {
+            /** Client Id */
+            client_id?: string | null;
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Server Url Override */
+            server_url_override?: string | null;
+            /** Available In Chat */
+            available_in_chat?: boolean | null;
+            /** Available To Autonomous */
+            available_to_autonomous?: boolean | null;
+            /** Service Oauth Token Id */
+            service_oauth_token_id?: string | null;
+        };
+        /**
+         * MCPServerCreate
+         * @description Request model for creating an MCP server template.
+         */
+        MCPServerCreate: {
+            /**
+             * Name
+             * @description Unique server name (e.g. 'Microsoft 365 Copilot', 'halopsa-mcp')
+             */
+            name: string;
+            /**
+             * Server Url
+             * @description MCP server URL (Streamable HTTP endpoint)
+             */
+            server_url: string;
+            /**
+             * Oauth Provider Id
+             * @description OAuth provider configuration FK; absent for servers without auth
+             */
+            oauth_provider_id?: string | null;
+            /** @description Inline OAuth provider creation. When set, the router creates an OAuthProvider row and links it via ``oauth_provider_id``. Mutually exclusive with ``oauth_provider_id``. */
+            oauth_provider?: components["schemas"]["MCPServerOAuthProviderCreate"] | null;
+            /**
+             * Redirect Url
+             * @description Deterministic redirect URL for the OAuth callback
+             */
+            redirect_url?: string | null;
+            /**
+             * Discovery Metadata
+             * @description Snapshot of /.well-known/oauth-authorization-server at create time
+             */
+            discovery_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Organization Id
+             * @description Org UUID (NULL = platform-level template visible to all orgs)
+             */
+            organization_id?: string | null;
+            /**
+             * Is Active
+             * @description Active flag
+             * @default true
+             */
+            is_active: boolean;
+        };
+        /**
+         * MCPServerDiscoverRequest
+         * @description Request body for the discovery endpoint.
+         */
+        MCPServerDiscoverRequest: {
+            /** Server Url */
+            server_url: string;
+        };
+        /**
+         * MCPServerDiscoverResponse
+         * @description Response wrapper for the discovery endpoint.
+         *
+         *     ``metadata`` is ``None`` when both ``/.well-known`` endpoints failed to
+         *     return usable JSON; the frontend falls back to manual entry.
+         */
+        MCPServerDiscoverResponse: {
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * MCPServerOAuthProviderCreate
+         * @description Inline OAuth provider creation block carried on ``MCPServerCreate``.
+         *
+         *     When present, ``POST /api/mcp-servers`` creates an ``OAuthProvider`` row
+         *     and links it via ``mcp_servers.oauth_provider_id``. A placeholder
+         *     ``encrypted_client_secret`` is stored on the provider — the per-org
+         *     client_id+secret pair lives on each ``mcp_connections`` row, since each
+         *     org registers its own OAuth app with the vendor. The provider row is
+         *     just the schema (token_url, scopes, audience, flow_type).
+         */
+        MCPServerOAuthProviderCreate: {
+            /**
+             * Oauth Flow Type
+             * @description OAuth grant type. Detect from discovery's ``grant_types_supported``: if ``client_credentials`` is supported, default to that; else ``authorization_code``. Admin can override.
+             * @default authorization_code
+             * @enum {string}
+             */
+            oauth_flow_type: "authorization_code" | "client_credentials";
+            /** Token Url */
+            token_url: string;
+            /**
+             * Authorization Url
+             * @description Required for ``authorization_code`` flow; ignored for ``client_credentials``.
+             */
+            authorization_url?: string | null;
+            /** Scopes */
+            scopes?: string[];
+            /** Audience */
+            audience?: string | null;
+        };
+        /**
+         * MCPServerPublic
+         * @description Detailed server response including nested per-org connections.
+         */
+        MCPServerPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Server Url */
+            server_url: string;
+            /** Oauth Provider Id */
+            oauth_provider_id: string | null;
+            /**
+             * Oauth Flow Type
+             * @description OAuth flow type of the linked provider, if any. One of ``authorization_code`` | ``client_credentials``. The frontend branches on this when rendering the connect button (popup vs synchronous activate).
+             */
+            oauth_flow_type?: string | null;
+            /** Redirect Url */
+            redirect_url: string | null;
+            /** Discovery Metadata */
+            discovery_metadata: {
+                [key: string]: unknown;
+            } | null;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Connections */
+            connections?: components["schemas"]["MCPConnectionPublic"][];
+        };
+        /**
+         * MCPServerSummary
+         * @description Lightweight server summary used in list responses.
+         */
+        MCPServerSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Server Url */
+            server_url: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MCPServerUpdate
+         * @description Request model for updating an MCP server template.
+         */
+        MCPServerUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Server Url */
+            server_url?: string | null;
+            /** Oauth Provider Id */
+            oauth_provider_id?: string | null;
+            /** Redirect Url */
+            redirect_url?: string | null;
+            /** Discovery Metadata */
+            discovery_metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /**
          * MCPToolInfo
          * @description Information about an available MCP tool.
          */
@@ -14696,6 +15671,17 @@ export interface components {
              * @default true
              */
             is_system: boolean;
+        };
+        /**
+         * MCPToolPatchRequest
+         * @description Body for ``PATCH /api/mcp-connections/{cid}/tools/{tid}``.
+         */
+        MCPToolPatchRequest: {
+            /**
+             * Enabled
+             * @description Admin override. False removes this tool from the catalog surfaced to agents; True puts it back. Independent from the auto-disable that catalog sync applies when a tool disappears from the vendor's tools/list (those carry a disabled_reason starting with 'Removed from server catalog').
+             */
+            enabled?: boolean | null;
         };
         /**
          * MCPToolsResponse
@@ -14981,7 +15967,7 @@ export interface components {
          * @description Categories for grouping notifications.
          * @enum {string}
          */
-        NotificationCategory: "github_setup" | "github_sync" | "file_upload" | "package_install" | "system";
+        NotificationCategory: "github_setup" | "github_sync" | "file_upload" | "package_install" | "embedding_reindex" | "system";
         /**
          * NotificationListResponse
          * @description Response containing list of notifications.
@@ -16150,6 +17136,46 @@ export interface components {
             /** Refreshed At */
             refreshed_at: string;
         };
+        /** Policy */
+        Policy: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Actions */
+            actions: ("read" | "create" | "update" | "delete")[];
+            when?: components["schemas"]["Expr"] | null;
+        };
+        /**
+         * PolicyValidationError
+         * @description Single structured validation error for a policy document.
+         *
+         *     `path` is a JSONPath-like string pointing into the document (e.g.
+         *     ``$.policies[0].when.eq[1]``); `message` is the validator's prose
+         *     error stripped of any embedded path prefix.
+         */
+        PolicyValidationError: {
+            /** Path */
+            path: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * PolicyValidationResponse
+         * @description Outcome of a `POST /api/tables/policies/validate` call.
+         *
+         *     `ok` mirrors whether the document validated cleanly. On failure, every
+         *     error from the AST validator is surfaced via `errors`. Endpoint always
+         *     returns 200 — callers parse this body to render structured feedback,
+         *     which is why the validator's `ValueError` is not allowed to escape into
+         *     a FastAPI 422.
+         */
+        PolicyValidationResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Errors */
+            errors?: components["schemas"]["PolicyValidationError"][];
+        };
         /**
          * PoolDetail
          * @description Detailed pool information including all processes.
@@ -16809,6 +17835,16 @@ export interface components {
              * @description Organization ID to scope the workflow to, or null for global scope
              */
             organization_id?: string | null;
+            /**
+             * Access Level
+             * @description Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required). Omit to leave at the schema default.
+             */
+            access_level?: string | null;
+            /**
+             * Role Ids
+             * @description Role IDs for role_based access. Omit to leave unchanged when reactivating; pass an empty list to clear.
+             */
+            role_ids?: string[] | null;
         };
         /**
          * RegisterWorkflowResponse
@@ -17148,455 +18184,6 @@ export interface components {
             user_ids: string[];
         };
         /**
-         * SDKBatchDeleteResponse
-         * @description Batch delete response.
-         */
-        SDKBatchDeleteResponse: {
-            /**
-             * Deleted Ids
-             * @description IDs of deleted documents
-             */
-            deleted_ids: string[];
-            /**
-             * Count
-             * @description Number of documents deleted
-             */
-            count: number;
-        };
-        /**
-         * SDKBatchDocumentResponse
-         * @description Batch insert/upsert response.
-         */
-        SDKBatchDocumentResponse: {
-            /**
-             * Documents
-             * @description Created/updated documents
-             */
-            documents: components["schemas"]["SDKDocumentData"][];
-            /**
-             * Count
-             * @description Number of documents affected
-             */
-            count: number;
-        };
-        /**
-         * SDKDocumentCountRequest
-         * @description SDK request for counting documents.
-         */
-        SDKDocumentCountRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Where
-             * @description Filter conditions with operators
-             */
-            where?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentData
-         * @description Document data response for SDK.
-         */
-        SDKDocumentData: {
-            /**
-             * Id
-             * @description Document ID (user-provided or auto-generated)
-             */
-            id: string;
-            /**
-             * Table Id
-             * @description Table UUID
-             */
-            table_id: string;
-            /**
-             * Data
-             * @description Document data
-             */
-            data: {
-                [key: string]: unknown;
-            };
-            /**
-             * Created At
-             * @description Creation timestamp (ISO format)
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * @description Last update timestamp (ISO format)
-             */
-            updated_at: string;
-        };
-        /**
-         * SDKDocumentDeleteBatchRequest
-         * @description SDK request for batch deleting documents.
-         */
-        SDKDocumentDeleteBatchRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Doc Ids
-             * @description Document IDs to delete (max 1000)
-             */
-            doc_ids: string[];
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentDeleteRequest
-         * @description SDK request for deleting a document.
-         */
-        SDKDocumentDeleteRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Doc Id
-             * @description Document UUID
-             */
-            doc_id: string;
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentGetRequest
-         * @description SDK request for getting a document.
-         */
-        SDKDocumentGetRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Doc Id
-             * @description Document UUID
-             */
-            doc_id: string;
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentInsertBatchItem
-         * @description Single item in a batch insert request.
-         */
-        SDKDocumentInsertBatchItem: {
-            /**
-             * Id
-             * @description Document ID (optional, auto-generated if not provided)
-             */
-            id?: string | null;
-            /**
-             * Data
-             * @description Document data
-             */
-            data: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * SDKDocumentInsertBatchRequest
-         * @description SDK request for batch inserting documents.
-         */
-        SDKDocumentInsertBatchRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Documents
-             * @description Documents to insert (max 1000)
-             */
-            documents: components["schemas"]["SDKDocumentInsertBatchItem"][];
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentInsertRequest
-         * @description SDK request for inserting a document.
-         */
-        SDKDocumentInsertRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Id
-             * @description Document ID (user-provided key). If not provided, a UUID will be auto-generated.
-             */
-            id?: string | null;
-            /**
-             * Data
-             * @description Document data
-             */
-            data: {
-                [key: string]: unknown;
-            };
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentList
-         * @description Document list response for SDK.
-         */
-        SDKDocumentList: {
-            /**
-             * Documents
-             * @description List of documents
-             */
-            documents: components["schemas"]["SDKDocumentData"][];
-            /**
-             * Total
-             * @description Total count
-             */
-            total: number;
-            /**
-             * Limit
-             * @description Limit used
-             */
-            limit: number;
-            /**
-             * Offset
-             * @description Offset used
-             */
-            offset: number;
-        };
-        /**
-         * SDKDocumentQueryRequest
-         * @description SDK request for querying documents with advanced filtering.
-         *
-         *     Filter conditions support:
-         *     - Simple equality: {"status": "active"}
-         *     - Comparison operators: {"amount": {"gt": 100, "lte": 1000}}
-         *     - LIKE patterns: {"name": {"like": "%acme%"}} or {"name": {"ilike": "%ACME%"}}
-         *     - IN lists: {"category": {"in": ["a", "b"]}}
-         *     - NULL checks: {"deleted_at": {"is_null": true}}
-         */
-        SDKDocumentQueryRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Where
-             * @description Filter conditions with operators
-             */
-            where?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Order By
-             * @description Field to order by
-             */
-            order_by?: string | null;
-            /**
-             * Order Dir
-             * @description Sort direction
-             * @default asc
-             * @enum {string}
-             */
-            order_dir: "asc" | "desc";
-            /**
-             * Limit
-             * @description Max documents
-             * @default 100
-             */
-            limit: number;
-            /**
-             * Offset
-             * @description Documents to skip
-             * @default 0
-             */
-            offset: number;
-            /**
-             * Skip Count
-             * @description Skip the total count query (returns total=-1). Use for faster paginated fetches after the first page.
-             * @default false
-             */
-            skip_count: boolean;
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentUpdateRequest
-         * @description SDK request for updating a document.
-         */
-        SDKDocumentUpdateRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Doc Id
-             * @description Document UUID
-             */
-            doc_id: string;
-            /**
-             * Data
-             * @description Fields to update (merged with existing)
-             */
-            data: {
-                [key: string]: unknown;
-            };
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentUpsertBatchItem
-         * @description Single item in a batch upsert request.
-         */
-        SDKDocumentUpsertBatchItem: {
-            /**
-             * Id
-             * @description Document ID (required for upsert)
-             */
-            id: string;
-            /**
-             * Data
-             * @description Document data
-             */
-            data: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * SDKDocumentUpsertBatchRequest
-         * @description SDK request for batch upserting documents.
-         */
-        SDKDocumentUpsertBatchRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Documents
-             * @description Documents to upsert (max 1000)
-             */
-            documents: components["schemas"]["SDKDocumentUpsertBatchItem"][];
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
-         * SDKDocumentUpsertRequest
-         * @description SDK request for upserting (create or replace) a document.
-         */
-        SDKDocumentUpsertRequest: {
-            /**
-             * Table
-             * @description Table name
-             */
-            table: string;
-            /**
-             * Id
-             * @description Document ID (required for upsert)
-             */
-            id: string;
-            /**
-             * Data
-             * @description Document data
-             */
-            data: {
-                [key: string]: unknown;
-            };
-            /**
-             * Scope
-             * @description Organization scope
-             */
-            scope?: string | null;
-            /**
-             * App
-             * @description Application UUID
-             */
-            app?: string | null;
-        };
-        /**
          * SDKIntegrationsDeleteMappingRequest
          * @description Request to delete a mapping via SDK.
          */
@@ -17907,11 +18494,6 @@ export interface components {
              * @description Scope: None=context org, 'global'=global, UUID=specific org
              */
             scope?: string | null;
-            /**
-             * App
-             * @description Application UUID to scope table to an app
-             */
-            app?: string | null;
         };
         /**
          * SDKTableInfo
@@ -17933,11 +18515,6 @@ export interface components {
              * @description Organization UUID or null for global
              */
             organization_id?: string | null;
-            /**
-             * Application Id
-             * @description Application UUID if app-scoped
-             */
-            application_id?: string | null;
             /**
              * Table Schema
              * @description Schema hints
@@ -17971,12 +18548,13 @@ export interface components {
              * @description Organization scope
              */
             scope?: string | null;
-            /**
-             * App
-             * @description Filter by application UUID
-             */
-            app?: string | null;
         };
+        /**
+         * ScheduleOverlapPolicy
+         * @description Behavior when a schedule fires while a previous run is still active.
+         * @enum {string}
+         */
+        ScheduleOverlapPolicy: "skip" | "queue" | "replace";
         /**
          * ScheduleSourceConfig
          * @description Schedule-specific configuration for creating an event source.
@@ -17999,6 +18577,11 @@ export interface components {
              * @default true
              */
             enabled: boolean;
+            /**
+             * @description Behavior when a schedule fires while a previous run is still active
+             * @default skip
+             */
+            overlap_policy: components["schemas"]["ScheduleOverlapPolicy"];
         };
         /**
          * ScheduleSourceResponse
@@ -18020,6 +18603,11 @@ export interface components {
              * @description Whether the schedule is enabled
              */
             enabled: boolean;
+            /**
+             * @description Behavior when a schedule fires while a previous run is still active
+             * @default skip
+             */
+            overlap_policy: components["schemas"]["ScheduleOverlapPolicy"];
         };
         /**
          * SearchRequest
@@ -18258,7 +18846,7 @@ export interface components {
         SignedUrlRequest: {
             /**
              * Path
-             * @description File path (scoped automatically by org)
+             * @description File path relative to location root (NOT including scope segment)
              */
             path: string;
             /**
@@ -18275,8 +18863,14 @@ export interface components {
              */
             content_type: string;
             /**
+             * Location
+             * @description Storage location. Defaults to 'uploads' for backwards compatibility with form upload flows.
+             * @default uploads
+             */
+            location: string;
+            /**
              * Scope
-             * @description Organization scope (auto-resolved from context if None)
+             * @description Org scope. Required for non-workspace, non-uploads locations.
              */
             scope?: string | null;
         };
@@ -18462,6 +19056,8 @@ export interface components {
              * @description Organization ID. Null for global table.
              */
             organization_id?: string | null;
+            /** @description Optional row-level access policies. See docs/superpowers/specs/2026-04-30-table-policies-design.md. */
+            policies?: components["schemas"]["TablePolicies"] | null;
         };
         /**
          * TableListResponse
@@ -18472,6 +19068,11 @@ export interface components {
             tables: components["schemas"]["TablePublic"][];
             /** Total */
             total: number;
+        };
+        /** TablePolicies */
+        TablePolicies: {
+            /** Policies */
+            policies?: components["schemas"]["Policy"][];
         };
         /**
          * TablePublic
@@ -18502,8 +19103,7 @@ export interface components {
             id: string;
             /** Organization Id */
             organization_id: string | null;
-            /** Application Id */
-            application_id: string | null;
+            policies?: components["schemas"]["TablePolicies"] | null;
             /** Created At */
             created_at: string | null;
             /** Updated At */
@@ -18527,8 +19127,8 @@ export interface components {
             schema?: {
                 [key: string]: unknown;
             } | null;
-            /** Application Id */
-            application_id?: string | null;
+            /** @description Optional row-level access policies. See docs/superpowers/specs/2026-04-30-table-policies-design.md. */
+            policies?: components["schemas"]["TablePolicies"] | null;
         };
         /**
          * Token
@@ -18824,7 +19424,11 @@ export interface components {
         };
         /**
          * UploadedFileMetadata
-         * @description Metadata for uploaded file that workflows can use to access the file
+         * @description Metadata for uploaded file that workflows can use to access the file.
+         *
+         *     `path` is relative to the `uploads` location: pass it directly to
+         *     `files.read(path, location="uploads")` in a workflow and the SDK handles
+         *     scoping. The full S3 key is `uploads/{scope}/{path}`.
          */
         UploadedFileMetadata: {
             /**
@@ -18839,7 +19443,7 @@ export interface components {
             container: string;
             /**
              * Path
-             * @description Blob path within container
+             * @description Path relative to uploads/ (e.g., '{form_id}/{uuid}/{filename}')
              */
             path: string;
             /**
@@ -18957,6 +19561,51 @@ export interface components {
              * @description List of form IDs user can access (empty if has_access_to_all_forms=true)
              */
             form_ids?: string[];
+        };
+        /**
+         * UserMCPCredentialPublic
+         * @description Per-user credential response. Does not embed the OAuth tokens.
+         */
+        UserMCPCredentialPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /**
+             * Oauth Token Id
+             * Format: uuid
+             */
+            oauth_token_id: string;
+            /**
+             * Consent Granted At
+             * Format: date-time
+             */
+            consent_granted_at: string;
+            /** Consent Expires At */
+            consent_expires_at: string | null;
+            /** Granted Scopes */
+            granted_scopes: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * UserPublic
@@ -19254,6 +19903,24 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            /**
+             * Rate Limit Per Minute
+             * @description Max events per window. Null disables.
+             * @default 60
+             */
+            rate_limit_per_minute: number | null;
+            /**
+             * Rate Limit Window Seconds
+             * @description Window in seconds.
+             * @default 60
+             */
+            rate_limit_window_seconds: number;
+            /**
+             * Rate Limit Enabled
+             * @description Per-source kill switch.
+             * @default true
+             */
+            rate_limit_enabled: boolean;
         };
         /**
          * WebhookSourceResponse
@@ -19297,6 +19964,30 @@ export interface components {
              * @description When the external subscription expires
              */
             expires_at?: string | null;
+            /**
+             * Rate Limit Per Minute
+             * @description Max events per window. Null disables.
+             * @default 60
+             */
+            rate_limit_per_minute: number | null;
+            /**
+             * Rate Limit Window Seconds
+             * @description Window in seconds.
+             * @default 60
+             */
+            rate_limit_window_seconds: number;
+            /**
+             * Rate Limit Enabled
+             * @description Per-source kill switch.
+             * @default true
+             */
+            rate_limit_enabled: boolean;
+            /**
+             * Rate Limited Count 24H
+             * @description Number of rate-limit rejections in the last 24h (read-only).
+             * @default 0
+             */
+            rate_limited_count_24h: number;
         };
         /**
          * WorkerMetricPoint
@@ -19984,6 +20675,11 @@ export interface components {
              */
             clear_roles: boolean;
             /**
+             * Role Ids
+             * @description Role IDs for role_based access (bulk replaces existing assignments when provided). Mutually exclusive with clear_roles; if both are set, role_ids wins.
+             */
+            role_ids?: string[] | null;
+            /**
              * Display Name
              * @description User-facing display name (defaults to code name if not set)
              */
@@ -20335,6 +21031,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthCheck"];
+                };
+            };
+        };
+    };
+    live_health_check_health_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthCheck"];
+                };
+            };
+        };
+    };
+    ready_health_check_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailedHealthCheck"];
                 };
             };
         };
@@ -25608,7 +26344,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25641,7 +26377,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25674,7 +26410,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -25707,7 +26443,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26833,336 +27569,6 @@ export interface operations {
             };
         };
     };
-    cli_insert_document_api_cli_tables_documents_insert_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentInsertRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKDocumentData"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_upsert_document_api_cli_tables_documents_upsert_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentUpsertRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKDocumentData"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_get_document_api_cli_tables_documents_get_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentGetRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKDocumentData"] | null;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_update_document_api_cli_tables_documents_update_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKDocumentData"] | null;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_delete_document_api_cli_tables_documents_delete_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentDeleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": boolean;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_insert_documents_batch_api_cli_tables_documents_insert_batch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentInsertBatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKBatchDocumentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_upsert_documents_batch_api_cli_tables_documents_upsert_batch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentUpsertBatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKBatchDocumentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_delete_documents_batch_api_cli_tables_documents_delete_batch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentDeleteBatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKBatchDeleteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_query_documents_api_cli_tables_documents_query_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentQueryRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SDKDocumentList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_count_documents_api_cli_tables_documents_count_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SDKDocumentCountRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": number;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_notifications_api_notifications_get: {
         parameters: {
             query?: never;
@@ -27960,6 +28366,7 @@ export interface operations {
             query?: {
                 agent_id?: string | null;
                 prompt_version_below?: string | null;
+                include_completed?: boolean;
             };
             header?: never;
             path?: never;
@@ -28892,7 +29299,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmbeddingConfigResponse"];
+                    "application/json": components["schemas"]["EmbeddingConfigSaveResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28924,6 +29331,26 @@ export interface operations {
             };
         };
     };
+    trigger_embedding_reindex_api_admin_llm_embedding_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmbeddingReindexResponse"];
+                };
+            };
+        };
+    };
     test_embedding_connection_api_admin_llm_embedding_test_post: {
         parameters: {
             query?: never;
@@ -28933,7 +29360,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EmbeddingConfigRequest"];
+                "application/json": components["schemas"]["EmbeddingTestRequest"];
             };
         };
         responses: {
@@ -31289,6 +31716,39 @@ export interface operations {
             };
         };
     };
+    validate_policies_api_tables_policies_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": unknown;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyValidationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_table_api_tables__table_id__get: {
         parameters: {
             query?: never;
@@ -31386,7 +31846,10 @@ export interface operations {
     };
     insert_document_api_tables__table_id__documents_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31419,9 +31882,84 @@ export interface operations {
             };
         };
     };
+    upsert_document_api_tables__table_id__documents_upsert_post: {
+        parameters: {
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_documents_api_tables__table_id__documents_count_get: {
+        parameters: {
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCountResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_tables__table_id__documents__doc_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31453,7 +31991,10 @@ export interface operations {
     };
     delete_document_api_tables__table_id__documents__doc_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31483,7 +32024,10 @@ export interface operations {
     };
     update_document_api_tables__table_id__documents__doc_id__patch: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31519,7 +32063,10 @@ export interface operations {
     };
     query_documents_api_tables__table_id__documents_query_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
@@ -31552,16 +32099,23 @@ export interface operations {
             };
         };
     };
-    count_documents_api_tables__table_id__documents_count_get: {
+    batch_documents_api_tables__table_id__documents_batch_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
             header?: never;
             path: {
                 table_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchCreate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -31569,7 +32123,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentCountResponse"];
+                    "application/json": components["schemas"]["DocumentBatchCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_delete_documents_api_tables__table_id__documents_batch_delete_post: {
+        parameters: {
+            query?: {
+                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchDeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -33628,6 +34220,543 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StuckHistoryResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mcp_servers_api_mcp_servers_get: {
+        parameters: {
+            query?: {
+                /** @description Platform-admin filter: omit for all, 'global' for platform-level only, or an org UUID for that org's templates only. Ignored for non-admin callers. */
+                scope?: string | null;
+                /** @description If true, exclude templates with ``is_active = false``. */
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mcp_server_api_mcp_servers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_server_api_mcp_servers__server_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_server_api_mcp_servers__server_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Hard-delete via cascade if true. */
+                hard?: boolean;
+            };
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_server_api_mcp_servers__server_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_mcp_server_api_mcp_servers_discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPServerDiscoverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPServerDiscoverResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mcp_connections_api_mcp_connections_get: {
+        parameters: {
+            query?: {
+                server_id?: string | null;
+                /** @description Platform admin filter: omit to see all orgs' connections, or pass an org UUID to filter to that org. Ignored for non-admins. */
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mcp_connection_api_mcp_connections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPConnectionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_connection_api_mcp_connections__connection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_connection_api_mcp_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_connection_api_mcp_connections__connection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPConnectionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_connection_tool_api_mcp_connections__connection_id__tools__tool_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MCPToolPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionToolPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_tools_api_mcp_connections__connection_id__refresh_tools_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectionRefreshToolsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_service_token_api_mcp_connections__connection_id__connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectAuthorizeResponse"] | components["schemas"]["MCPConnectActivateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_user_credential_api_me_mcp_connections__connection_id__connect_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPConnectAuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_credentials_api_me_mcp_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMCPCredentialPublic"][];
+                };
+            };
+        };
+    };
+    disconnect_user_credential_api_me_mcp_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

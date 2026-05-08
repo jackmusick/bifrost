@@ -13,14 +13,36 @@ on:
     #
     # IMPORTANT: do NOT add .github/workflows/** to this list — workflow
     # changes must always run CI so we catch CI-breaking edits before merge.
+    # Also do NOT add **/*.yml, **/*.yaml, **/*.json, or **/*.toml — these
+    # cover real config (docker-compose, package-lock, tsconfig, pyproject)
+    # that does affect runtime/tests and must run CI.
+    #
+    # The companion ci-noop.yml `paths:` list MUST stay byte-identical to
+    # this `paths-ignore:` list — branch protection relies on the inverse
+    # mapping to always report the required check names.
     paths-ignore:
       - "**/*.md"
+      - "**/*.txt"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.webp"
+      - "**/*.ico"
       - ".claude/**"
       - "docs/**"
       - "LICENSE"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/dependabot.yml"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".editorconfig"
+      - ".prettierrc*"
+      - ".prettierignore"
+      - ".vscode/**"
+      - ".idea/**"
   workflow_dispatch:
 
 env:
@@ -49,11 +71,20 @@ jobs:
 
       # Create .venv at the repo root so pyrightconfig.json's
       # `venvPath: ..` + `venv: .venv` resolves the same way locally and in CI.
+      # Install runtime deps from the hash-pinned lock file (Scorecard
+      # Pinned-Dependencies); pyright is installed from its own hash-pinned
+      # lock because --require-hashes forbids unpinned packages and pyright
+      # targets a different Python minor (3.12 here vs 3.14 in production)
+      # so it can't share requirements.lock.
+      #
+      # We deliberately do NOT `pip install --upgrade pip` — actions/setup-python
+      # already ships a current pip into the venv and any explicit upgrade
+      # would be flagged by Scorecard as an unpinned install.
       - name: Install Python deps into .venv
         run: |
           python -m venv .venv
-          ./.venv/bin/pip install --upgrade pip
-          ./.venv/bin/pip install -r requirements.txt pyright
+          ./.venv/bin/pip install --require-hashes -r requirements.lock
+          ./.venv/bin/pip install --require-hashes -r requirements-pyright.lock
 
       - name: Ruff
         working-directory: api
@@ -139,6 +170,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # OIDC for keyless cosign signing
+      attestations: write # for actions/attest-build-provenance
 
     steps:
       - name: Checkout repository
@@ -163,7 +196,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
       - name: Build and push API dev image
+        id: build-api
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
@@ -179,7 +216,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign API dev image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.API_IMAGE }}@${{ steps.build-api.outputs.digest }}
+
+      - name: Attest API dev image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.API_IMAGE }}
+          subject-digest: ${{ steps.build-api.outputs.digest }}
+          push-to-registry: true
+
       - name: Build and push client dev image
+        id: build-client
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: ./client
@@ -195,6 +247,20 @@ jobs:
             VITE_BIFROST_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Sign client dev image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.CLIENT_IMAGE }}@${{ steps.build-client.outputs.digest }}
+
+      - name: Attest client dev image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.CLIENT_IMAGE }}
+          subject-digest: ${{ steps.build-client.outputs.digest }}
+          push-to-registry: true
 
   # =============================================================================
   # Deploy Dry Run - Manual trigger only (workflow_dispatch from any branch).
@@ -343,6 +409,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # OIDC for keyless cosign signing
+      attestations: write # for actions/attest-build-provenance
 
     steps:
       - name: Checkout repository
@@ -365,6 +433,9 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Extract metadata (tags, labels)
         id: meta
@@ -382,6 +453,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push API image
+        id: build-api
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
@@ -394,6 +466,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign API image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.API_IMAGE }}@${{ steps.build-api.outputs.digest }}
+
+      - name: Attest API image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.API_IMAGE }}
+          subject-digest: ${{ steps.build-api.outputs.digest }}
+          push-to-registry: true
+
   # =============================================================================
   # Build Client Image - Only on version tags, after tests pass
   # =============================================================================
@@ -405,6 +491,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # OIDC for keyless cosign signing
+      attestations: write # for actions/attest-build-provenance
 
     steps:
       - name: Checkout repository
@@ -428,6 +516,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
@@ -444,6 +535,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push client image
+        id: build-client
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: ./client
@@ -457,8 +549,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Sign client image
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes \
+            ghcr.io/${{ env.CLIENT_IMAGE }}@${{ steps.build-client.outputs.digest }}
+
+      - name: Attest client image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/${{ env.CLIENT_IMAGE }}
+          subject-digest: ${{ steps.build-client.outputs.digest }}
+          push-to-registry: true
+
   # =============================================================================
-  # Create GitHub Release - Only on version tags, after images are built
+  # Create GitHub Release - Only on version tags, after images are built.
+  # Release assets are signed with Sigstore/cosign (keyless OIDC) and a SLSA
+  # build provenance attestation is generated via GitHub's native attestation
+  # action. Both feed Scorecard's Signed-Releases check.
   # =============================================================================
   create-release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -466,7 +575,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Release
     permissions:
-      contents: write
+      contents: write       # upload assets to the GitHub Release
+      id-token: write       # OIDC token for keyless cosign signing
+      attestations: write   # actions/attest-build-provenance writes attestations
 
     steps:
       - name: Checkout repository
@@ -492,14 +603,61 @@ jobs:
             echo "Warning: bifrost.pyi not found in stubs/, skipping"
           fi
 
+      # Produce a reproducible source tarball as a primary release artifact so
+      # Scorecard's Signed-Releases check has something concrete to verify
+      # against (it ignores tag-only releases).
+      - name: Build source tarball
+        id: source_tarball
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TARBALL="bifrost-${VERSION}-source.tar.gz"
+          git archive --format=tar.gz --prefix="bifrost-${VERSION}/" -o "${TARBALL}" HEAD
+          sha256sum "${TARBALL}" | tee "${TARBALL}.sha256"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v2.4.1
+
+      # Keyless OIDC signing: cosign exchanges the GitHub Actions OIDC token
+      # for a short-lived Fulcio cert, signs, and records the signature in
+      # Rekor. The .sigstore bundle is the format Scorecard's Signed-Releases
+      # check recognizes (alongside .sig, .asc, .minisig, .sign).
+      - name: Sign release artifacts with cosign
+        run: |
+          set -euo pipefail
+          ARTIFACTS=("${{ steps.source_tarball.outputs.tarball }}")
+          if [ -f "bifrost.pyi" ]; then
+            ARTIFACTS+=("bifrost.pyi")
+          fi
+          for f in "${ARTIFACTS[@]}"; do
+            cosign sign-blob --yes \
+              --bundle "${f}.sigstore" \
+              "${f}"
+          done
+
+      # SLSA build provenance — stored in GitHub's transparency log and
+      # discoverable via `gh attestation verify`. Independent signal from the
+      # cosign blob signatures above.
+      - name: Generate SLSA build provenance attestation
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: ${{ steps.source_tarball.outputs.tarball }}
+
       - name: Create release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Release ${{ steps.get_version.outputs.version }}
           files: |
+            ${{ steps.source_tarball.outputs.tarball }}
+            ${{ steps.source_tarball.outputs.tarball }}.sha256
+            ${{ steps.source_tarball.outputs.tarball }}.sigstore
             bifrost.pyi
+            bifrost.pyi.sigstore
             stubs/DISTRIBUTION.md
+          fail_on_unmatched_files: false
           body: |
             ## Bifrost ${{ steps.get_version.outputs.version }}
 
@@ -519,6 +677,29 @@ jobs:
             Download `bifrost.pyi` from the assets below and place it in your workspace directory for IDE autocomplete and type checking support.
 
             See `DISTRIBUTION.md` for instructions.
+
+            ### Signed artifacts (Sigstore / cosign — keyless)
+
+            Each release asset has a matching `.sigstore` bundle (Sigstore's
+            self-contained signature + certificate + Rekor inclusion proof,
+            produced via keyless OIDC — no maintainer-held keys involved).
+
+            Verify with cosign (>= v2.4):
+
+            ```bash
+            cosign verify-blob \
+              --bundle bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz.sigstore \
+              --certificate-identity-regexp 'https://github\.com/MTG-Thomas/bifrost/.*' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz
+            ```
+
+            A SLSA build-provenance attestation is also published and verifiable via:
+
+            ```bash
+            gh attestation verify bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz \
+              --owner jackmusick
+            ```
 
           draft: false
           prerelease: ${{ steps.get_version.outputs.prerelease == 'true' }}

@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models.enums import EventSourceType, EventStatus
+from src.models.enums import EventSourceType, EventStatus, ScheduleOverlapPolicy
 
 
 # ==================== WEBHOOK ADAPTER MODELS ====================
@@ -62,6 +62,18 @@ class WebhookSourceConfig(BaseModel):
         default_factory=dict,
         description="Adapter-specific configuration",
     )
+    rate_limit_per_minute: int | None = Field(
+        default=60,
+        description="Max events per window. Null disables.",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        description="Window in seconds.",
+    )
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Per-source kill switch.",
+    )
 
 
 class ScheduleSourceConfig(BaseModel):
@@ -78,6 +90,10 @@ class ScheduleSourceConfig(BaseModel):
     enabled: bool = Field(
         default=True,
         description="Whether the schedule is enabled",
+    )
+    overlap_policy: ScheduleOverlapPolicy = Field(
+        default=ScheduleOverlapPolicy.SKIP,
+        description="Behavior when a schedule fires while a previous run is still active",
     )
 
 
@@ -242,6 +258,22 @@ class WebhookSourceResponse(BaseModel):
         default=None,
         description="When the external subscription expires",
     )
+    rate_limit_per_minute: int | None = Field(
+        default=60,
+        description="Max events per window. Null disables.",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        description="Window in seconds.",
+    )
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Per-source kill switch.",
+    )
+    rate_limited_count_24h: int = Field(
+        default=0,
+        description="Number of rate-limit rejections in the last 24h (read-only).",
+    )
 
 
 class ScheduleSourceResponse(BaseModel):
@@ -260,6 +292,10 @@ class ScheduleSourceResponse(BaseModel):
     enabled: bool = Field(
         ...,
         description="Whether the schedule is enabled",
+    )
+    overlap_policy: ScheduleOverlapPolicy = Field(
+        default=ScheduleOverlapPolicy.SKIP,
+        description="Behavior when a schedule fires while a previous run is still active",
     )
 
 

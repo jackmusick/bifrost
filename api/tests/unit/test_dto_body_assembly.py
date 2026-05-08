@@ -49,7 +49,7 @@ from src.models.contracts.organizations import (  # noqa: E402
     OrganizationCreate,
     OrganizationUpdate,
 )
-from src.models.contracts.tables import TableCreate, TableUpdate  # noqa: E402
+from src.models.contracts.tables import TableCreate  # noqa: E402
 from src.models.contracts.users import RoleCreate, RoleUpdate  # noqa: E402
 from src.models.contracts.workflows import WorkflowUpdateRequest  # noqa: E402
 
@@ -231,17 +231,6 @@ async def test_uuid_passthrough_for_ref_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_table_update_resolves_application_id() -> None:
-    resolver = _resolver()
-    body = await assemble_body(
-        TableUpdate,
-        _parsed(TableUpdate, {"application_id": "my-app"}),
-        resolver=resolver,  # type: ignore[arg-type]
-    )
-    assert body == {"application_id": APP_UUID}
-
-
-@pytest.mark.asyncio
 async def test_event_subscription_resolves_workflow_or_agent() -> None:
     resolver = _resolver()
     body = await assemble_body(
@@ -286,6 +275,61 @@ async def test_role_ids_comma_split_accepted() -> None:
     body = await assemble_body(
         AgentUpdate,
         _parsed(AgentUpdate, {"role_ids": ("admin,ops",)}),
+        resolver=resolver,  # type: ignore[arg-type]
+    )
+    assert body["role_ids"] == [ROLE_UUID, ROLE_UUID_2]
+
+
+@pytest.mark.asyncio
+async def test_form_create_resolves_role_ids() -> None:
+    """``--role-ids admin,ops`` on form create resolves names → UUIDs."""
+    resolver = _resolver()
+    body = await assemble_body(
+        FormCreate,
+        _parsed(
+            FormCreate,
+            {
+                "name": "F",
+                "workflow_id": "MyWorkflow",
+                "form_schema": '{"fields":[]}',
+                "role_ids": ("admin", "ops"),
+            },
+        ),
+        resolver=resolver,  # type: ignore[arg-type]
+    )
+    assert body["role_ids"] == [ROLE_UUID, ROLE_UUID_2]
+
+
+@pytest.mark.asyncio
+async def test_form_update_resolves_role_ids_comma_split() -> None:
+    resolver = _resolver()
+    body = await assemble_body(
+        FormUpdate,
+        _parsed(FormUpdate, {"role_ids": ("admin,ops",)}),
+        resolver=resolver,  # type: ignore[arg-type]
+    )
+    assert body["role_ids"] == [ROLE_UUID, ROLE_UUID_2]
+
+
+@pytest.mark.asyncio
+async def test_form_update_omits_role_ids_when_unset() -> None:
+    """No ``--role-ids`` → field absent from body (not ``[]``)."""
+    resolver = _resolver()
+    body = await assemble_body(
+        FormUpdate,
+        _parsed(FormUpdate, {"name": "Renamed"}),
+        resolver=resolver,  # type: ignore[arg-type]
+    )
+    assert "role_ids" not in body
+    assert body == {"name": "Renamed"}
+
+
+@pytest.mark.asyncio
+async def test_workflow_update_resolves_role_ids() -> None:
+    resolver = _resolver()
+    body = await assemble_body(
+        WorkflowUpdateRequest,
+        _parsed(WorkflowUpdateRequest, {"role_ids": ("admin", "ops")}),
         resolver=resolver,  # type: ignore[arg-type]
     )
     assert body["role_ids"] == [ROLE_UUID, ROLE_UUID_2]

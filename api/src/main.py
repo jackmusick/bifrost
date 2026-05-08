@@ -83,6 +83,10 @@ from src.routers import (
     platform_queue_router,
     platform_stuck_router,
     version_router,
+    mcp_servers_router,
+    mcp_connections_router,
+    mcp_me_connections_router,
+    mcp_oauth_callback_router,
 )
 
 # Configure logging
@@ -220,14 +224,15 @@ async def create_default_user() -> None:
     Create default admin user if it doesn't exist.
 
     Only runs if BIFROST_DEFAULT_USER_EMAIL and BIFROST_DEFAULT_USER_PASSWORD
-    environment variables are set. This is useful for automated deployments
-    where you want to pre-configure an admin account.
-
-    If not configured, users will go through the setup wizard on first access.
+    environment variables are set. Routed through ensure_user_provisioned() so
+    the user is fully scoped (organization_id = provider org), which makes
+    has_users() return True and skips the setup wizard. mfa_enabled is forced
+    off for password login on the seeded account.
     """
     from src.core.database import get_db_context
     from src.core.security import get_password_hash
     from src.repositories.users import UserRepository
+    from src.services.user_provisioning import ensure_user_provisioned
 
     settings = get_settings()
 
@@ -237,20 +242,20 @@ async def create_default_user() -> None:
     async with get_db_context() as db:
         user_repo = UserRepository(db)
 
-        # Check if default user exists
         existing = await user_repo.get_by_email(settings.default_user_email)
         if existing:
             logger.info(f"Default user already exists: {settings.default_user_email}")
             return
 
-        # Create default admin user
-        hashed_password = get_password_hash(settings.default_user_password)
-        user = await user_repo.create_user(
+        result = await ensure_user_provisioned(
+            db=db,
             email=settings.default_user_email,
-            hashed_password=hashed_password,
-            name="Admin",
-            is_superuser=True,
+            name="Dev Admin",
         )
+        user = result.user
+        user.hashed_password = get_password_hash(settings.default_user_password)
+        user.mfa_enabled = False
+        await db.commit()
         logger.info(f"Created default admin user: {user.email} (id: {user.id})")
 
 
@@ -572,6 +577,10 @@ def create_app() -> FastAPI:
     app.include_router(platform_workers_router)
     app.include_router(platform_queue_router)
     app.include_router(platform_stuck_router)
+    app.include_router(mcp_servers_router)
+    app.include_router(mcp_connections_router)
+    app.include_router(mcp_me_connections_router)
+    app.include_router(mcp_oauth_callback_router)
 
     # Mount MCP OAuth routes at root level (required by RFC 8414/9728)
     # These must be registered BEFORE the FastMCP ASGI mount

@@ -247,3 +247,24 @@ def append_package_to_requirements(
     # Filter empty lines and ensure trailing newline
     lines = [line for line in lines if line.strip()]
     return ("\n".join(lines) + "\n" if lines else "", found)
+
+
+def remove_package_from_requirements(current: str, package: str) -> tuple[str, bool]:
+    """Remove a package from requirements.txt content.
+
+    Returns (updated content, was_present).
+    """
+    lines = current.strip().split("\n") if current.strip() else []
+    package_lower = package.lower()
+    kept: list[str] = []
+    found = False
+    for line in lines:
+        line_package = (
+            line.split("==")[0].split(">=")[0].split("<=")[0].split("~=")[0].strip()
+        )
+        if line_package.lower() == package_lower:
+            found = True
+            continue
+        if line.strip():
+            kept.append(line)
+    return ("\n".join(kept) + "\n" if kept else "", found)

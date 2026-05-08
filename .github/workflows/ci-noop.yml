@@ -12,6 +12,11 @@
 #
 # Keep the `name:` of each job below in EXACT sync with the corresponding
 # job's `name:` in ci.yml.
+#
+# The `paths:` list below MUST stay byte-identical to ci.yml's
+# `paths-ignore:` list — any drift breaks branch protection (either CI
+# runs twice on the same change, or neither workflow runs and merge is
+# blocked forever).
 
 name: CI
 
@@ -20,12 +25,27 @@ on:
     branches: [main]
     paths:
       - "**/*.md"
+      - "**/*.txt"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.webp"
+      - "**/*.ico"
       - ".claude/**"
       - "docs/**"
       - "LICENSE"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/dependabot.yml"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".editorconfig"
+      - ".prettierrc*"
+      - ".prettierignore"
+      - ".vscode/**"
+      - ".idea/**"
 
 permissions:
   contents: read

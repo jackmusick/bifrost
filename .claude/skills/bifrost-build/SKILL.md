@@ -7,6 +7,19 @@ description: Build Bifrost workflows, forms, and apps. Use when user wants to cr
 
 Create and debug Bifrost artifacts.
 
+## Who Runs What (read this first)
+
+The skill draws a hard line between commands the agent runs and commands the user runs. Mixing them up is the #1 source of confusion.
+
+| Action | Who runs it | Why |
+|---|---|---|
+| `bifrost run <file>`, `bifrost workflows execute`, `bifrost <entity> create / update / delete / get / list`, `bifrost api GET/POST`, `bifrost requirements install` | **Agent** | Non-interactive, idempotent, scoped to the entity at hand |
+| Writing files into `apps/` and `workflows/` | **Agent** (after confirming `bifrost watch` is running) | Watch syncs them automatically |
+| `bifrost watch`, `bifrost sync`, `bifrost push`, `bifrost pull`, `bifrost git push` | **User** | Interactive TUI, broad blast radius, controls deployment cadence |
+| `bifrost requirements install <pkg>` (ONLY on a workflow that triggered `ModuleNotFoundError`) | **Agent** | Recycles workers — see "Python workflow dependencies" |
+
+When in doubt, the agent does the small entity mutation; the user does anything that watches files, deploys, or recycles infrastructure unsolicited.
+
 ## First: Check Prerequisites
 
 ```bash
@@ -15,6 +28,8 @@ echo "Source: $BIFROST_HAS_SOURCE | Path: $BIFROST_SOURCE_PATH | URL: $BIFROST_D
 ```
 
 **If SDK or Login is false/empty:** Direct user to run `/bifrost:setup` first.
+
+**If `BIFROST_DEV_URL` is empty:** Don't guess the URL. Ask the user: "I don't see `BIFROST_DEV_URL` set — what URL should I use for previews and platform links?" Then use that. Never invent a `*.gobifrost.com` / `*.musick.gg` / etc. host on your own; the user has been burned by this before.
 
 ## Step 1: Download Platform Docs (Once Per Session)
 
@@ -45,11 +60,30 @@ Then use `Grep/Read` on `/tmp/bifrost-docs/llms.txt` whenever you need reference
 ### Before Building
 
 1. **Which organization?** Ask the user which organization they're building for (natural language — don't dump a list of UUIDs). Confirm the org name, then resolve the UUID with `bifrost orgs get <name> --json` (or `bifrost orgs list --json` and pick from the list).
-2. **What triggers this?** (webhook, form, schedule, manual)
-3. **If webhook:** Get sample payload from user
-4. **What integrations?** `bifrost integrations list --json` — drill into specific ones with `bifrost integrations get <ref> --json`.
-5. **If migrating from Rewst:** Use `/rewst-migration` skill
-6. **If building something new** (new integration, workflow, app, or shared module — not modifying existing):
+2. **Who should have access?** Confirm the access tuple `(organization, access_level, role_ids)` *before* you scaffold anything, and apply it consistently across the app and every workflow / form it depends on. Mismatched access is the most common reason a working app silently 403s for end users. Compatibility rule of thumb when an app is assigned to roles X (under Org A or global): every supporting workflow and form must satisfy at least one of —
+   - **Global** scope (any org, available to all roles), OR
+   - **Org A scoped + `access_level=authenticated`** (any logged-in user in Org A), OR
+   - **Same role(s) X** assigned to it.
+
+   Example: a Finance app for Org A, role-restricted to `finance`. Every workflow it calls must be either global, Org-A-scoped+authenticated, or role-assigned to `finance` — otherwise users with the `finance` role can't execute the workflows the app depends on. Discover roles with `bifrost roles list --json`. Pass the tuple through every subsequent create/register call so it doesn't drift:
+
+   ```bash
+   # Apps + forms support these flags directly on create/update.
+   bifrost apps create --name "Finance" --slug finance --organization "Org A" \
+     --access-level role_based --role-ids finance
+   bifrost forms create --name "..." --workflow ... --organization "Org A" \
+     --access-level role_based --role-ids finance
+
+   # Workflows: --access-level + --role-ids on register, or update later
+   # via `bifrost workflows update <ref> --role-ids ...` (bulk replace).
+   bifrost workflows register --path workflows/foo.py --function-name foo \
+     --org "Org A" --access-level role_based --role-ids finance
+   ```
+3. **What triggers this?** (webhook, form, schedule, manual)
+4. **If webhook:** Get sample payload from user
+5. **What integrations?** `bifrost integrations list --json` — drill into specific ones with `bifrost integrations get <ref> --json`.
+6. **If migrating from Rewst:** Use `/rewst-migration` skill
+7. **If building something new** (new integration, workflow, app, or shared module — not modifying existing):
    > "It sounds like we're building something new. Would you like me to clone the bifrost-workspace-community repo? It has working examples from the community and might already have what you need."
 
    If the user agrees:
@@ -143,7 +177,9 @@ Example — Agent Tuning tools:
 |---------|---------|
 | `bifrost watch` | Primary dev command — starts interactive watch session, syncs file changes on save |
 | `bifrost sync` | One-shot bidirectional sync — **interactive TUI, user must run manually** |
-| `bifrost run <file> -w <name> --org <UUID>` | Execute workflow in specific org context |
+| `bifrost run <file> -w <name> --org <UUID>` | Execute workflow from a local `.py` file (no sync required). Best for active iteration. |
+| `bifrost workflows execute <ref> --params '{...}'` | Execute a registered workflow remotely; streams logs via WebSocket; exits on terminal status. |
+| `bifrost requirements install [pkg[==ver]] \| list \| remove <pkg>` | Manage workspace `requirements.txt` for Python workflow deps. Workers recycle async after install/remove. |
 | `bifrost api <METHOD> <path>` | Bifrost platform API client ONLY — inspect executions, validate apps, check platform state. NOT for third-party APIs. |
 | `bifrost push` | One-shot upload — **interactive TUI, user must run manually** |
 | `bifrost pull` | One-shot download — **interactive TUI, user must run manually** |
@@ -157,13 +193,40 @@ Example — Agent Tuning tools:
 
 | Need | Command |
 |------|---------|
-| Run a workflow | `bifrost run <file> -w <name> --org <UUID> --params '{...}'` |
-| Run a workflow (remote) | `bifrost api POST /api/workflows/{id}/execute '{"workflow_id":"...","input_data":{...},"sync":true}'` |
-| Check execution logs | `bifrost api GET /api/executions/{id}` |
+| Run a workflow (local file, fastest iteration) | `bifrost run <file> -w <name> --org <UUID> --params '{...}'` |
+| Run a registered workflow remotely (streams logs as it runs, exits on terminal status) | `bifrost workflows execute <ref> --params '{...}' [--org <ref>]` |
+| Check execution logs (one-shot) | `bifrost api GET /api/executions/{id}` |
 | List executions | `bifrost api GET /api/executions` |
 | List workflows / discover by id | `bifrost workflows list --json` / `bifrost workflows get <ref> --json` |
 | Validate an app | `bifrost api POST /api/applications/{id}/validate` |
 | Download platform docs | `bifrost api GET /api/llms.txt > /tmp/bifrost-docs/llms.txt` |
+
+**`bifrost run` vs `bifrost workflows execute` — pick the right one:**
+
+- **`bifrost run <file> -w <name>`** — executes a `.py` file from the local workspace against the running platform. No sync required, no platform-side registration required. This is the default for iterating on a workflow you're actively editing.
+- **`bifrost workflows execute <ref>`** — executes an *already-registered* workflow on the platform by UUID/name/`path::func`. Use this when the workflow is already deployed and you want to test it as it would run in production (real org context, real triggers, real workers). Streams logs over WebSocket as the workflow runs.
+
+Do not use `bifrost api POST /api/workflows/execute` directly — it returns immediately without logs and forces a manual `GET /api/executions/{id}` follow-up. Use `bifrost workflows execute` instead.
+
+### Python Workflow Dependencies
+
+Workflow `.py` files run on platform workers, which install Python packages from a single workspace-wide `requirements.txt`. App npm dependencies (`bifrost apps update --deps`) are unrelated — those are browser-side packages bundled into apps, not Python imports.
+
+If a workflow imports a third-party Python package, that package must be in `requirements.txt` and the workers must have recycled to pick it up. Symptom of a missing dep: `ModuleNotFoundError: No module named 'reportlab'` (or whichever package).
+
+**Add a dependency:**
+
+```bash
+bifrost requirements install reportlab           # append, then recycle workers
+bifrost requirements install httpx==0.27.0       # pin version, then recycle
+bifrost requirements install                     # no arg = warm cache + recycle (after manual edit)
+bifrost requirements list                        # what's installed
+bifrost requirements remove reportlab            # drop from requirements.txt + recycle
+```
+
+`bifrost requirements install` returns immediately. Worker recycle happens asynchronously — give it a few seconds before re-running the workflow.
+
+**Stdlib and a small set of pre-installed packages** (httpx, pydantic, pyjwt, anthropic, openai, etc. — anything bundled into the worker image) are always available. Don't try to install those.
 
 ### `bifrost api` Boundaries (CRITICAL)
 
@@ -258,7 +321,7 @@ Before writing any app code, design what you're building.
 1. Ask: "What should this app feel like? Any products you'd like it inspired by?"
 2. If a product is named, **describe the specific visual patterns** that define it — not abstract qualities ("clean", "modern") but concrete observations: "full-height dark sidebar with icon+label nav items, content area with a sticky toolbar row above the main editor, right panel for live preview with a simulated email client frame, generous whitespace between sections, muted borders instead of heavy dividers."
 3. Write a visual spec for each key screen: what elements exist, their spatial relationships, which are fixed vs. scrollable, where the visual weight sits, how the eye flows. This is the design — get it right before writing code.
-4. Plan `styles.css` for visual identity — color palette, typography scale, spacing rhythm, dark mode variants.
+4. Plan `styles.css` for visual identity — color palette via CSS variables (`:root` + `.dark`), typography scale, spacing rhythm. Use Tailwind v4 features freely: `@apply`, `@layer components`, arbitrary values with `var()`, optional per-app `tailwind.config.ts` for custom theme tokens. See [app-patterns.md](app-patterns.md) §10.
 5. Decide what's a custom component vs. pre-included shadcn. shadcn is for standard interactions (settings forms, confirmation dialogs, data tables). Custom components are for the interactions that define the app's identity — a project management app needs a custom kanban board, not a `<Table>`; an email tool needs a simulated inbox, not a textarea in a split pane.
 6. Then start building.
 
@@ -272,8 +335,8 @@ Before writing any app code, design what you're building.
 2. **Root layout:** `_layout.tsx` uses `<Outlet />` from `"bifrost"` (or `"react-router-dom"`) — NOT `{children}`.
 3. **Workflow hooks:** Always use UUIDs, never names — `useWorkflowQuery("uuid-here")`. Resolve UUIDs with `bifrost workflows list --json` or `bifrost workflows get <ref> --json`.
 4. **Fixed-height container:** Your app renders in a fixed-height box — manage your own scrolling (see [app-patterns.md](app-patterns.md) "Custom components" for layout patterns).
-5. **Custom CSS:** `styles.css` at app root, dark mode via `.dark` selector.
-6. **Dependencies:** Declare npm packages in `app.yaml` (max 20, loaded from esm.sh at runtime — no `package.json` required).
+5. **Styling:** Tailwind v4 with the full feature set — arbitrary values (`bg-[color:var(--x)]`, `lg:grid-cols-[1fr_360px]`), `@apply` and `@layer components` in `styles.css`, optional per-app `tailwind.config.{ts,js,mjs,cjs}` for custom theme tokens. Dark mode via `.dark` selector. See [app-patterns.md](app-patterns.md) §10.
+6. **Dependencies:** Declare npm packages with `bifrost apps create --deps`, `bifrost apps update <ref> --deps`, or `bifrost apps set-deps <ref> --deps` (max 20, loaded from esm.sh at runtime — no `package.json` required at runtime, though `--deps @package.json` works for one-shot import).
 7. **Default exports:** Every page file MUST have a default export. Components under `components/` may be default or named; the bundler detects which.
 8. **Migrating an older app:** run `bifrost migrate-imports` from the workspace root, then **review the diff** before applying. See [import-patterns.md](import-patterns.md) "Migration notes".
 
@@ -288,6 +351,8 @@ These patterns are required for every data-fetching page. Full code examples in 
 - Custom components go in `components/<Name>.tsx`, imported relatively.
 - Heavy routes: split with `React.lazy(() => import("./pages/heavy"))` + `<Suspense>`.
 
+**Tables:** When you need to read or write structured data from an app, use the `tables.*` SDK + `useTable` hook directly (see [platform-api.md](platform-api.md) → tables). **If you're about to write a workflow just to read/write a table, configure policies and use the SDK directly.** See [app-patterns.md](app-patterns.md) §11 for the CRUD-with-live-updates pattern.
+
 ### Platform API Reference
 
 Every name exported by the `"bifrost"` package is listed in [platform-api.md](platform-api.md) with signature and usage example. The canonical list lives in `api/bifrost/platform_names.py` (`PLATFORM_EXPORT_NAMES`) and a drift test enforces docs match the set.
@@ -301,11 +366,15 @@ Common lookups:
 
 ### App Workflow (SDK-First)
 
-1. Write files in `apps/{slug}/`
-2. Create the app record: `bifrost apps create --name "My App" --slug my-app [--deps @package.json]` — the server assigns the UUID and returns it. Do NOT hand-edit `.bifrost/apps.yaml`.
+**Order matters.** `bifrost watch` ignores files under `apps/{slug}/` until an app record exists for that slug. Files written before `bifrost apps create` are silently dropped — the user opens the preview and sees the "Welcome / Start building your app" placeholder. Always create the app record FIRST.
+
+1. **Create the app record FIRST**: `bifrost apps create --name "My App" --slug my-app [--deps @package.json]` — the server assigns the UUID and returns it. Do NOT hand-edit `.bifrost/apps.yaml`. The agent runs this; do not ask the user to.
+2. Write files in `apps/{slug}/` (only after step 1).
 3. `bifrost watch` syncs file changes (triggers esbuild rebuild + validation after each push).
 4. Preview at `$BIFROST_DEV_URL/apps/{slug}/preview`
 5. Fix any validation errors shown in watch output. esbuild errors appear as a banner in the preview and in the diagnostics channel — the last good bundle keeps serving underneath until the error is fixed.
+
+If you've dispatched a sub-agent to write app files, the parent agent — not the user — runs `bifrost apps create` immediately when the sub-agent returns. Do not defer to the user "after review"; that's the failure mode where 30+ files exist on disk and the preview is empty.
 
 ### App Workflow (MCP-Only)
 
@@ -320,7 +389,7 @@ After writing all app files, verify:
 
 1. `_layout.tsx` exists and uses `<Outlet />`
 2. `pages/index.tsx` exists
-3. Every npm import matches an entry in `app.yaml` dependencies (see [import-patterns.md](import-patterns.md) "User npm deps"; pre-included packages exempt).
+3. Every npm import matches an entry in the app's declared dependencies (`bifrost apps get <ref> --json | jq .dependencies`; see [import-patterns.md](import-patterns.md) "User npm deps"; pre-included packages exempt).
 4. Every `useWorkflowQuery`/`useWorkflowMutation` uses a valid UUID returned by `bifrost workflows get <ref>` or visible in `bifrost workflows list --json` — do NOT grep `.bifrost/workflows.yaml`.
 5. Every `<PascalCase />` JSX tag and every referenced identifier has a matching import — no auto-injection. Cross-reference against [import-patterns.md](import-patterns.md):
    - Platform names → `"bifrost"`
@@ -333,8 +402,8 @@ After writing all app files, verify:
 
 ## Testing
 
-- **Workflows (local):** `bifrost run <file> --workflow <name> --org <UUID> --params '{...}'`
-- **Workflows (remote):** `bifrost api POST /api/workflows/{id}/execute '{"workflow_id":"...","input_data":{...},"sync":true}'`
+- **Workflows (local file):** `bifrost run <file> --workflow <name> --org <UUID> --params '{...}'`
+- **Workflows (registered, remote):** `bifrost workflows execute <ref> --params '{...}'` — streams logs, exits on terminal status
 - **Forms:** `$BIFROST_DEV_URL/forms/{form_id}`
 - **Apps:** Preview at `$BIFROST_DEV_URL/apps/{slug}/preview`, publish with `publish_app`, live at `$BIFROST_DEV_URL/apps/{slug}`
 - **Webhooks:** `curl -X POST $BIFROST_DEV_URL/api/hooks/{source_id} -H 'Content-Type: application/json' -d '{...}'`

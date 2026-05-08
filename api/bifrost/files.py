@@ -33,8 +33,9 @@ from typing import Literal
 from .client import get_client, raise_for_status_with_detail
 from ._context import resolve_scope
 
-Location = Literal["workspace", "temp", "uploads"]
 Mode = Literal["local", "cloud"]
+# `location` is a free string. Reserved names: "workspace", "temp", "uploads".
+# Anything else is a freeform user-defined location (e.g. "reports", "exports").
 
 
 class files:
@@ -51,23 +52,20 @@ class files:
     @staticmethod
     async def read(
         path: str,
-        location: Location = "workspace",
+        location: str = "workspace",
         mode: Mode = "cloud",
+        scope: str | None = None,
     ) -> str:
         """
         Read a text file.
 
         Args:
             path: File path relative to location root
-            location: Storage location (workspace, temp, or uploads)
+            location: Storage location. Reserved: "workspace", "temp", "uploads".
+                Freeform names (e.g. "reports") are also allowed.
             mode: Storage mode (local or cloud, default: cloud)
-
-        Returns:
-            str: File contents
-
-        Raises:
-            FileNotFoundError: If file doesn't exist
-            ValueError: If path is outside allowed directories
+            scope: Org scope. Defaults to the current execution's org.
+                Provider orgs may pass an explicit scope to read from another org.
 
         Example:
             >>> from bifrost import files
@@ -75,9 +73,10 @@ class files:
             >>> uploaded = await files.read("form_id/uuid/file.txt", location="uploads")
         """
         client = get_client()
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/read",
-            json={"path": path, "location": location, "mode": mode, "binary": False}
+            json={"path": path, "location": location, "mode": mode, "binary": False, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)
         return response.json()["content"]
@@ -85,32 +84,24 @@ class files:
     @staticmethod
     async def read_bytes(
         path: str,
-        location: Location = "workspace",
+        location: str = "workspace",
         mode: Mode = "cloud",
+        scope: str | None = None,
     ) -> bytes:
         """
         Read a binary file.
 
         Args:
             path: File path relative to location root
-            location: Storage location (workspace, temp, or uploads)
+            location: Storage location (reserved or freeform)
             mode: Storage mode (local or cloud, default: cloud)
-
-        Returns:
-            bytes: File contents
-
-        Raises:
-            FileNotFoundError: If file doesn't exist
-            ValueError: If path is outside allowed directories
-
-        Example:
-            >>> from bifrost import files
-            >>> data = await files.read_bytes("reports/report.pdf")
+            scope: Org scope; provider-org override allowed.
         """
         client = get_client()
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/read",
-            json={"path": path, "location": location, "mode": mode, "binary": True}
+            json={"path": path, "location": location, "mode": mode, "binary": True, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)
         import base64
@@ -120,8 +111,9 @@ class files:
     async def write(
         path: str,
         content: str,
-        location: Location = "workspace",
+        location: str = "workspace",
         mode: Mode = "cloud",
+        scope: str | None = None,
     ) -> None:
         """
         Write text to a file.
@@ -129,20 +121,15 @@ class files:
         Args:
             path: File path relative to location root
             content: Text content to write
-            location: Storage location (workspace or temp)
+            location: Storage location (reserved or freeform)
             mode: Storage mode (local or cloud, default: cloud)
-
-        Raises:
-            ValueError: If path is outside allowed directories
-
-        Example:
-            >>> from bifrost import files
-            >>> await files.write("output/report.txt", "Report data")
+            scope: Org scope; provider-org override allowed.
         """
         client = get_client()
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/write",
-            json={"path": path, "content": content, "location": location, "mode": mode, "binary": False}
+            json={"path": path, "content": content, "location": location, "mode": mode, "binary": False, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)
 
@@ -150,8 +137,9 @@ class files:
     async def write_bytes(
         path: str,
         content: bytes,
-        location: Location = "workspace",
+        location: str = "workspace",
         mode: Mode = "cloud",
+        scope: str | None = None,
     ) -> None:
         """
         Write binary data to a file.
@@ -159,30 +147,26 @@ class files:
         Args:
             path: File path relative to location root
             content: Binary content to write
-            location: Storage location (workspace or temp)
+            location: Storage location (reserved or freeform)
             mode: Storage mode (local or cloud, default: cloud)
-
-        Raises:
-            ValueError: If path is outside allowed directories
-
-        Example:
-            >>> from bifrost import files
-            >>> await files.write_bytes("uploads/image.png", image_data)
+            scope: Org scope; provider-org override allowed.
         """
         client = get_client()
         import base64
         encoded_content = base64.b64encode(content).decode('utf-8')
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/write",
-            json={"path": path, "content": encoded_content, "location": location, "mode": mode, "binary": True}
+            json={"path": path, "content": encoded_content, "location": location, "mode": mode, "binary": True, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)
 
     @staticmethod
     async def list(
         directory: str = "",
-        location: Location = "workspace",
+        location: str = "workspace",
         mode: Mode = "cloud",
+        scope: str | None = None,
     ) -> list[str]:
         """
         List files in a directory.
@@ -205,9 +189,10 @@ class files:
             ...     print(item)
         """
         client = get_client()
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/list",
-            json={"directory": directory, "location": location, "mode": mode}
+            json={"directory": directory, "location": location, "mode": mode, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)
         return response.json()["files"]
@@ -215,61 +200,52 @@ class files:
     @staticmethod
     async def delete(
         path: str,
-        location: Location = "workspace",
+        location: str = "workspace",
         mode: Mode = "cloud",
+        scope: str | None = None,
     ) -> None:
         """
         Delete a file.
 
         Args:
             path: File path relative to location root
-            location: Storage location (workspace or temp)
+            location: Storage location (reserved or freeform)
             mode: Storage mode (local or cloud, default: cloud)
-
-        Raises:
-            FileNotFoundError: If file doesn't exist
-            ValueError: If path is outside allowed directories
+            scope: Org scope; provider-org override allowed.
 
         Example:
             >>> from bifrost import files
             >>> await files.delete("temp/old_file.txt", location="temp")
         """
         client = get_client()
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/delete",
-            json={"path": path, "location": location, "mode": mode}
+            json={"path": path, "location": location, "mode": mode, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)
 
     @staticmethod
     async def exists(
         path: str,
-        location: Location = "workspace",
+        location: str = "workspace",
         mode: Mode = "cloud",
+        scope: str | None = None,
     ) -> bool:
         """
         Check if a file exists.
 
         Args:
             path: File path relative to location root
-            location: Storage location (workspace or temp)
+            location: Storage location (reserved or freeform)
             mode: Storage mode (local or cloud, default: cloud)
-
-        Returns:
-            bool: True if path exists
-
-        Raises:
-            ValueError: If path is outside allowed directories
-
-        Example:
-            >>> from bifrost import files
-            >>> if await files.exists("data/customers.csv"):
-            ...     data = await files.read("data/customers.csv")
+            scope: Org scope; provider-org override allowed.
         """
         client = get_client()
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/exists",
-            json={"path": path, "location": location, "mode": mode}
+            json={"path": path, "location": location, "mode": mode, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)
         return response.json()["exists"]
@@ -279,23 +255,43 @@ class files:
         path: str,
         method: Literal["PUT", "GET"] = "PUT",
         content_type: str = "application/octet-stream",
+        location: str = "uploads",
+        scope: str | None = None,
     ) -> dict:
         """
         Generate a presigned S3 URL for direct file upload or download.
 
         Args:
-            path: File path (scoped automatically by org)
+            path: File path relative to location root (NOT including scope segment)
             method: "PUT" for upload, "GET" for download
             content_type: MIME type (only used for PUT)
+            location: Storage location. Defaults to "uploads" for backwards
+                compatibility with form upload flows. Use "workspace" to sign
+                URLs for files written via `files.write_bytes(..., location="workspace")`.
+            scope: Org scope; provider-org override allowed.
 
         Returns:
             dict with keys: url, path, expires_in
+
+        Example:
+            >>> # Generate a download URL for a file written to workspace
+            >>> await files.write_bytes("report.pdf", pdf_bytes, location="workspace")
+            >>> signed = await files.get_signed_url(
+            ...     "report.pdf", method="GET", location="workspace",
+            ...     content_type="application/pdf",
+            ... )
         """
         client = get_client()
-        scope = resolve_scope(None)
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/files/signed-url",
-            json={"path": path, "method": method, "content_type": content_type, "scope": scope}
+            json={
+                "path": path,
+                "method": method,
+                "content_type": content_type,
+                "location": location,
+                "scope": effective_scope,
+            }
         )
         raise_for_status_with_detail(response)
         return response.json()

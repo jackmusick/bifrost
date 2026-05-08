@@ -122,14 +122,14 @@ Use `list_workflows` to see available data providers. For `@data_provider` decor
     file_upload_docs = """
 ## File Upload Fields
 
-Use `type: "file"` to accept file uploads in forms. Uploaded files are stored in S3 and the workflow receives their paths as strings.
+Use `type: "file"` to accept file uploads in forms. Uploaded files are stored in S3 under `uploads/{scope}/{form_id}/{uuid}/{filename}`. The workflow receives the **location-relative** path — pass it straight to `files.read(..., location="uploads")` and the SDK adds `uploads/{scope}/`.
 
 ### What the workflow receives
 
 | Scenario | Parameter value |
 |----------|----------------|
-| Single file (`multiple: false`) | `"uploads/abc123/report.pdf"` (string) |
-| Multiple files (`multiple: true`) | `["uploads/abc123/a.pdf", "uploads/abc123/b.pdf"]` (list of strings) |
+| Single file (`multiple: false`) | `"abc123/uuid/report.pdf"` (string, relative to `uploads/`) |
+| Multiple files (`multiple: true`) | `["abc123/uuid/a.pdf", "abc123/uuid/b.pdf"]` (list of strings) |
 
 ### Reading uploaded files in a workflow
 
@@ -138,6 +138,7 @@ from bifrost import workflow, files
 
 @workflow
 async def process_upload(document: str) -> dict:
+    # SDK resolves to uploads/{your_scope}/{document}
     content = await files.read(document, location="uploads")
     return {"size": len(content)}
 ```

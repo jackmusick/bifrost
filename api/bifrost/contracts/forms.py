@@ -28,6 +28,7 @@ class FormCreate(BaseModel):
     form_schema: dict
     access_level: FormAccessLevel | None = FormAccessLevel.ROLE_BASED
     organization_id: UUID | None = Field(default=None)
+    role_ids: list[UUID] = Field(default_factory=list)
 
 
 class FormUpdate(BaseModel):
@@ -44,3 +45,4 @@ class FormUpdate(BaseModel):
     access_level: FormAccessLevel | None = None
     organization_id: UUID | None = Field(default=None)
     clear_roles: bool = False
+    role_ids: list[UUID] | None = Field(default=None)

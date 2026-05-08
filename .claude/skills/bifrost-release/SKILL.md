@@ -141,6 +141,50 @@ git tag <tag>
 git push origin <tag>
 ```
 
+### 4b. Draft human-readable release notes (REQUIRED for OSPS Passing)
+
+CI's `create-release` job in `.github/workflows/ci.yml` writes a templated body covering Docker pulls, type stubs, and Sigstore verification. That template is **not** sufficient for the OpenSSF Best Practices "Passing" criteria `release_notes` and `release_notes_vulns`, which require a human-readable change summary and an explicit list of CVEs fixed (or "None in this release"). After the tag is pushed, draft notes and overwrite CI's body via `gh release edit <tag> --notes-file <file>`.
+
+**Always-required sections** (drop a section only if explicitly empty AND verifiably so):
+
+1. **Headline** — 1–2 sentences naming what this release is about. Plus the commit count since the previous tag.
+2. **Themed groupings** — pick from this set as appropriate; use human judgment on ordering and which apply:
+   - Security & Supply-Chain Hardening
+   - Bug Fixes
+   - Reliability
+   - Developer Experience
+   - Features
+   - Breaking Changes
+3. **Contributors** — REQUIRED. Credit every external contributor whose PR landed in this release. Use the list you generated in step 2b. Format: `- #NN by @login — short description`. If a contributor's PR maps to a bullet in another section, also append `(#NN by @login)` to that bullet. If there were zero external contributions, write "None in this release — solo-maintained cycle."
+4. **Fixed CVEs** — REQUIRED. Cross-reference commits via `git log <prev-tag>..HEAD --grep='CVE\|GHSA\|PYSEC\|vuln\|security'` and read the bodies of dep-bump PRs (`gh pr view <num> --json body`) for specific CVE/GHSA IDs. List each package bumped and the specific CVEs/GHSAs the bump closed. If nothing was fixed, write "None in this release". **Do NOT fabricate IDs** — if a bump didn't list a specific CVE, say "multiple Dependabot security advisories closed via dep bumps; see commit log for details" rather than inventing one.
+5. **Breaking Changes** — REQUIRED. If none, write "None in this release". If anything moved, was renamed, or changed install/upgrade procedure, document the migration step.
+6. **Docker Images / Type Stubs / Signed Artifacts** — keep the corresponding blocks from CI's template body (the verification commands matter for users).
+
+**Format rules:**
+
+- Markdown bullets, one line per item.
+- Link PRs as `(#123)` — GitHub auto-links these.
+- Group by theme, **NOT** chronologically. Raw `git log` output does not satisfy `release_notes`.
+- Cap individual sections at ~10 bullets; collapse routine Dependabot bumps into a single line referencing the commit log.
+
+**Drafting workflow:**
+
+```bash
+# 1. Get the commit list
+git log <prev-tag>..HEAD --oneline
+
+# 2. Get security-tagged commits for the Fixed CVEs section
+git log <prev-tag>..HEAD --grep='CVE\|GHSA\|PYSEC\|vuln\|security' --oneline
+
+# 3. For any dep-bump PR or security PR you need details on
+gh pr view <num> --json title,body
+
+# 4. (Reuse the contributor list from step 2b)
+
+# 5. Write the notes to a file, then (after CI's create-release job finishes) overwrite the body
+gh release edit <tag> --notes-file /tmp/release-notes-<tag>.md
+```
+
 ### 5. Tell the user what happens next
 
 > "Tag `<tag>` pushed. CI will now:
