@@ -25,12 +25,14 @@ The docs repo is at `~/GitHub/bifrost-integrations-docs` (or clone it from `git@
    - Verify clean tree (`git status --porcelain` empty). If dirty, ask the user to commit/stash before continuing.
    - Pull `main` (`git pull --ff-only origin main`).
    - **Compare last-update timestamps** as a sanity signal:
+
      ```bash
      BIFROST_LAST=$(cd ~/GitHub/bifrost && git log -1 --format=%cI origin/main)
      DOCS_LAST=$(cd ~/GitHub/bifrost-integrations-docs && git log -1 --format=%cI origin/main)
      echo "bifrost: $BIFROST_LAST"
      echo "docs:    $DOCS_LAST"
      ```
+
      Print both. If `BIFROST_LAST > DOCS_LAST`, that's normal — diff mode handles it. If `DOCS_LAST > BIFROST_LAST`, something is unusual (docs ahead of code); flag it but proceed.
    - Cut a fresh branch: `docs/screenshot-refresh-YYYY-MM-DD-<short-sha>`.
    - Verify bifrost test stack is up: `./test.sh stack status` in the bifrost worktree. If down, `./test.sh stack up`. The boot is ~2-5 minutes; warn the user up front.
@@ -124,7 +126,7 @@ When you've written a new MDX page and need a screenshot:
 1. **Identify the route** in `client/src/App.tsx`. Confirm the route renders empty-state-free with mocked data.
 2. **Find the API endpoints** the page calls. `grep -nE 'apiClient|useQuery' <component>` then look at the route names. For each, write a fixture under `bifrost-integrations-docs/fixtures/`.
 3. **Add a manifest entry** to `screenshots.yaml` with `route`, `mocks`, `actions` (`wait_for: text="<exact-label>"` is the most common). Mock URLs use playwright glob — `**/api/foo` and a separate `**/api/foo?**` to cover query strings.
-4. **Vite proxy collisions:** if the route shares a prefix with a `vite.config.ts` proxy rule (e.g. `/mcp-servers` collides with the `/mcp` rule because of prefix match in dev), use `nav_via: { from: "/", click: "<sidebar-link-text>" }` so the test stack reaches the page via in-app routing instead of hard navigation. For deeper paths after `nav_via`, use the `goto_spa: <path>` action to push the path via the SPA's history without re-triggering proxy rules.
+4. **Vite proxy collisions:** if the route shares a prefix with a `vite.config.ts` proxy rule (e.g. `/mcp-servers` collides with the `/mcp` rule because of prefix match in dev), use `nav_via: { from: "/", click: "<sidebar-link-text>" }` so the test stack reaches the page via in-app routing instead of hard navigation. For deeper paths after `nav_via`, use the `goto_spa: <path>` action to push the path via the SPA's history without re-triggering proxy rules, then add an explicit `wait_for` or `wait_ms` action so React Router can commit before capture.
 5. **Capture only the new ids**: `scripts/docs/run-pipeline.sh --ids id1,id2 ...` so existing entries aren't re-run.
 6. **`organization_id` matters**: a few panels (e.g. `AgentMCPConnectionsPanel`) only render for org-scoped entities. If your fixture has `organization_id: null`, the panel returns null and the capture's `wait_for` will time out. Make a separate fixture variant when needed.
 

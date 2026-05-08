@@ -8,7 +8,7 @@
 # Exits non-zero with a diagnostic on stderr if no usable tag exists.
 set -euo pipefail
 
-last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+last_tag=$(git describe --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)
 if [[ -z "$last_tag" ]]; then
   echo "compute-dev-version: no v* tag found in history" >&2
   exit 1

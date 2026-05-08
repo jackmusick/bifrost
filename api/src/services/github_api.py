@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 # on owners since enterprise instances allow longer names.)
 _REPO_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}/[A-Za-z0-9._-]{1,100}$")
 
-# Git SHA: 7-64 lowercase hex chars (full SHA-1 is 40, SHA-256 is 64; GitHub
-# also accepts 7+ as abbreviated).
+# Git SHA: 7-64 hex chars, case-insensitive (full SHA-1 is 40, SHA-256 is
+# 64; GitHub also accepts 7+ as abbreviated).
 _SHA_RE = re.compile(r"^[a-fA-F0-9]{7,64}$")
 
 # Git ref: branch, tag, or "heads/<name>" / "tags/<name>". Disallow:
@@ -522,7 +522,7 @@ class GitHubAPIClient:
         tree = GitHubTree.model_validate(data)
 
         if tree.truncated:
-            logger.warning(f"Tree response was truncated for {repo}@{sha}")
+            logger.warning(f"Tree response was truncated for {log_safe(repo)}@{log_safe(sha)}")
 
         # Return only blobs (files), not trees (directories)
         return {
@@ -709,7 +709,7 @@ class GitHubAPIClient:
         data = await self._request("POST", endpoint, json_data=request_data)
 
         response = GitHubCreateCommitResponse.model_validate(data)
-        logger.info(f"Created commit {response.sha[:8]} in {repo}")
+        logger.info(f"Created commit {response.sha[:8]} in {log_safe(repo)}")
         return response.sha
 
     # =========================================================================
@@ -756,19 +756,22 @@ class GitHubAPIClient:
         Raises:
             GitHubAPIError: On API errors
         """
-        endpoint = f"/repos/{_validate_repo(repo)}/git/refs/{_validate_ref(ref)}"
-        logger.debug(f"Updating ref: {log_safe(repo)} @ {log_safe(ref)} -> {_validate_sha(sha)[:8]}")
+        validated_repo = _validate_repo(repo)
+        validated_ref = _validate_ref(ref)
+        validated_sha = _validate_sha(sha)
+        endpoint = f"/repos/{validated_repo}/git/refs/{validated_ref}"
+        logger.debug(f"Updating ref: {log_safe(repo)} @ {log_safe(ref)} -> {validated_sha[:8]}")
 
         await self._request(
             "PATCH",
             endpoint,
             json_data={
-                "sha": sha,
+                "sha": validated_sha,
                 "force": force,
             },
         )
 
-        logger.info(f"Updated ref {ref} to {sha[:8]} in {repo}")
+        logger.info(f"Updated ref {log_safe(ref)} to {validated_sha[:8]} in {log_safe(repo)}")
 
     # =========================================================================
     # High-Level Helpers
@@ -855,7 +858,10 @@ class GitHubAPIClient:
         if params:
             endpoint += "?" + "&".join(params)
 
-        logger.debug(f"Listing commits: {repo} (sha={sha}, per_page={per_page}, page={page})")
+        logger.debug(
+            f"Listing commits: {log_safe(repo)} "
+            f"(sha={log_safe(sha) if sha else None}, per_page={log_safe(per_page)}, page={log_safe(page)})"
+        )
 
         data = await self._request("GET", endpoint)
 

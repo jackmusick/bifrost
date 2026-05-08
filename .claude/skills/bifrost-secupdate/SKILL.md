@@ -158,6 +158,7 @@ After all subagents return, the controller (this skill, in the main session) agg
     -f state=dismissed -f "dismissed_reason=false positive" \
     -f "dismissed_comment=$REASON"
   ```
+
   > `dismissed_reason` must be `false positive`, `won't fix`, or `used in tests` (with spaces, not underscores). `dismissed_comment` is capped at 280 chars.
 - **FIX_AS_CLASS verdicts:** dispatch an implementer subagent (separate worktree) to write the fix as its own PR. Per-rule PR, never bundled.
 - **MIXED verdicts:** dismiss the FP file:line list; file an issue per real finding cluster, link to alerts.

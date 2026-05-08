@@ -17,7 +17,7 @@
 **What's NOT changing:**
 - `:dev` moving-pointer tag — still pushed on every main build.
 - `:sha-<short>` traceability tag — still pushed on every main build.
-- `:latest` tag — still pushed only by release workflow on non-prerelease tags (`ci.yml:449`).
+- `:latest` tag — still pushed only by release workflow on release tags (`ci.yml:449`).
 - Release workflow version computation (already correct: `${GITHUB_REF#refs/tags/v}`).
 - `/api/version` endpoint, `useVersionCheck`, `VersionUpdateBanner`, CLI `_check_cli_version` — all use strict string equality, format-agnostic.
 - Keel polling `:dev` digest in `kubernetes/components/bifrost/api/deployment.yaml`.
@@ -26,10 +26,10 @@
 
 **Why this is safe:**
 - Strict string equality (CLI, banner) is unaffected by format change. Mismatches still correctly trigger "update needed".
-- The new format `0.8.1-dev.47` is valid semver (prerelease segment `-dev.47` per SemVer 2.0.0). Old format `0.8.0-47-g1a2b3c4` also parses as valid semver but with a different base, so the new tags always rank higher — no Flux ordering hazard during transition.
+- The new format `0.8.1-dev.47` is valid semver (pre-release segment `-dev.47` per SemVer 2.0.0). Old format `0.8.0-47-g1a2b3c4` also parses as valid semver but with a different base, so the new tags always rank higher — no Flux ordering hazard during transition.
 - `:dev` floating tag means production rolls forward via Keel digest poll regardless of tag string.
 
-**Tag inventory check:** `git tag -l 'v*'` shows two-component tags (`v0.6`, `v0.7`) in the repo's history. Latest tag is `v0.8.0` (three-component). The script must reject non-three-component latest tags loudly rather than silently produce garbage.
+**Tag inventory check:** `git tag -l 'v*'` shows two-component tags (`v0.6`, `v0.7`) in the repo's history. Latest tag is `v0.8.0` (three-component). The script must only consider annotated three-component release tags rather than silently produce garbage from other tags.
 
 ---
 
@@ -68,7 +68,7 @@ The script reads the latest annotated `v*` tag, validates it's exactly three num
 # Exits non-zero with a diagnostic on stderr if no usable tag exists.
 set -euo pipefail
 
-last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+last_tag=$(git describe --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)
 if [[ -z "$last_tag" ]]; then
   echo "compute-dev-version: no v* tag found in history" >&2
   exit 1
@@ -104,18 +104,22 @@ Expected: a string like `0.8.1-dev.<N>` where `<N>` is `git rev-list v0.8.0..HEA
 
 ```bash
 # In a tmp dir with no tags, should fail loudly
+REPO_ROOT=$(pwd)
 tmp=$(mktemp -d) && (cd "$tmp" && git init -q && git commit --allow-empty -m init -q && \
-  /home/jack/GitHub/bifrost/scripts/compute-dev-version.sh; echo "exit=$?")
+  "$REPO_ROOT/scripts/compute-dev-version.sh"; echo "exit=$?")
 ```
+
 Expected: stderr line `compute-dev-version: no v* tag found in history`, exit code 1.
 
 ```bash
 # In a tmp dir with a 2-component tag, should fail loudly
+REPO_ROOT=$(pwd)
 tmp=$(mktemp -d) && (cd "$tmp" && git init -q && git commit --allow-empty -m init -q && \
-  git tag v0.7 && \
-  /home/jack/GitHub/bifrost/scripts/compute-dev-version.sh; echo "exit=$?")
+  git tag -a v0.7 -m v0.7 && \
+  "$REPO_ROOT/scripts/compute-dev-version.sh"; echo "exit=$?")
 ```
-Expected: stderr line `compute-dev-version: latest tag 'v0.7' is not vMAJOR.MINOR.PATCH`, exit code 1.
+
+Expected: stderr line `compute-dev-version: no v* tag found in history`, exit code 1.
 
 - [ ] **Step 5: Commit**
 
@@ -177,31 +181,31 @@ run_test() {
 }
 
 run_test "tag at HEAD, no commits ahead" \
-  'git commit --allow-empty -m init -q && git tag v0.8.0' \
+  'git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0' \
   '0.8.1-dev.0' 0
 
 run_test "tag with 1 commit ahead" \
-  'git commit --allow-empty -m init -q && git tag v0.8.0 && git commit --allow-empty -m c1 -q' \
+  'git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0 && git commit --allow-empty -m c1 -q' \
   '0.8.1-dev.1' 0
 
 run_test "tag with 47 commits ahead" \
-  'git commit --allow-empty -m init -q && git tag v0.8.0 && for i in $(seq 47); do git commit --allow-empty -m "c$i" -q; done' \
+  'git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0 && for i in $(seq 47); do git commit --allow-empty -m "c$i" -q; done' \
   '0.8.1-dev.47' 0
 
 run_test "release sets next dev cycle floor" \
-  'git commit --allow-empty -m init -q && git tag v0.8.0 && git commit --allow-empty -m c1 -q && git tag v0.9.0 && git commit --allow-empty -m c2 -q' \
+  'git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0 && git commit --allow-empty -m c1 -q && git tag -a v0.9.0 -m v0.9.0 && git commit --allow-empty -m c2 -q' \
   '0.9.1-dev.1' 0
 
 run_test "minor with double-digit patch" \
-  'git commit --allow-empty -m init -q && git tag v1.2.10 && git commit --allow-empty -m c1 -q' \
+  'git commit --allow-empty -m init -q && git tag -a v1.2.10 -m v1.2.10 && git commit --allow-empty -m c1 -q' \
   '1.2.11-dev.1' 0
 
 run_test "no tags fails loudly" \
   'git commit --allow-empty -m init -q' \
   '' 1
 
-run_test "two-component tag fails loudly" \
-  'git commit --allow-empty -m init -q && git tag v0.7' \
+run_test "two-component tag is ignored" \
+  'git commit --allow-empty -m init -q && git tag -a v0.7 -m v0.7' \
   '' 1
 
 run_test "non-v prefixed tag is ignored, falls back" \
@@ -219,9 +223,10 @@ exit $((fail > 0))
 chmod +x scripts/test-compute-dev-version.sh
 ./scripts/test-compute-dev-version.sh
 ```
-Expected: all 8 cases pass, exit 0.
 
-Note on the last case: `git describe --tags --abbrev=0` finds any tag, including non-`v` ones. The script only validates `v<X>.<Y>.<Z>`, so a bare `1.0.0` tag triggers the "not vMAJOR.MINOR.PATCH" branch. That's fine — the script's contract is "I require v-prefixed three-component tags".
+Expected: all 9 cases pass, exit 0.
+
+Note on the last case: `git describe --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*'` only finds annotated three-component release tags. Lightweight and non-`v` tags are ignored by design.
 
 - [ ] **Step 3: Commit**
 
@@ -273,6 +278,7 @@ echo "$v"
 # Tag-validity check: GHCR tags allow [a-zA-Z0-9_.-]
 [[ "$v" =~ ^[A-Za-z0-9._-]+$ ]] && echo "valid tag" || echo "INVALID"
 ```
+
 Expected: prints e.g. `0.8.1-dev.47`, then `valid tag`. (Dots, hyphens, alphanumerics — all OCI-tag-legal.)
 
 - [ ] **Step 3: Commit**
@@ -310,6 +316,7 @@ def test_get_version_accepts_semver_dev_format(monkeypatch):
 ```bash
 ./test.sh tests/unit/test_version.py -v
 ```
+
 Expected: all four tests pass, including the new one.
 
 - [ ] **Step 3: Add a strict-equality test in `api/tests/unit/cli/test_cli_version_check.py`**
@@ -338,6 +345,7 @@ If the existing test file has a real comparison helper (e.g., `_versions_match()
 ```bash
 ./test.sh tests/unit/cli/test_cli_version_check.py -v
 ```
+
 Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
@@ -377,7 +385,7 @@ release tag was last cut — no script changes required.
 ## Where it's computed
 
 - `scripts/compute-dev-version.sh` — pure shell, takes no args, prints
-  the version to stdout. Exits non-zero on missing/malformed latest tag.
+  the version to stdout. Exits non-zero when no annotated release tag is usable.
 - `.github/workflows/ci.yml` "Compute version" step in the
   `build-dev-images` job calls the script and feeds the output into
   `BIFROST_VERSION` and `VITE_BIFROST_VERSION` build args.
@@ -392,7 +400,7 @@ release tag was last cut — no script changes required.
 | `:sha-1a2b3c4` | No (immutable) | Direct commit traceability |
 
 Release builds (on `v*` tag push) push semver tags (`:0.8.1`, `:0.8`,
-`:0`) and `:latest` (only for non-prerelease tags). See `ci.yml:436-449`.
+`:0`) and `:latest` (only for release tags). See `ci.yml:436-449`.
 
 ## Where the version is consumed
 
@@ -426,10 +434,10 @@ After this change ships, in-flight users will see exactly one of:
 The job's checkout step doesn't have `fetch-depth: 0`. Check the
 `actions/checkout` invocation in the dev-build job (currently line 191).
 
-**Symptom: build fails with `compute-dev-version: latest tag 'X' is not vMAJOR.MINOR.PATCH`**
+**Symptom: build fails with `compute-dev-version: no v* tag found in history`**
 
-Someone tagged a non-semver release. Either delete the bad tag or
-extend the regex in `scripts/compute-dev-version.sh`.
+No annotated `vMAJOR.MINOR.PATCH` release tag is reachable from the commit.
+Create or fetch the release tag before building.
 
 **Symptom: dev count seems wrong**
 
@@ -439,7 +447,7 @@ locally on the same SHA the CI built.
 **Symptom: Flux picks an old image after re-enable**
 
 Verify the `ImagePolicy` semver range is `>=0.0.0-0` (the trailing `-0`
-is required to include prereleases like `-dev.N`). Without it, Flux
+is required to include pre-releases like `-dev.N`). Without it, Flux
 silently excludes all dev builds.
 ```
 
@@ -490,10 +498,10 @@ gh pr create --title "ci: semver dev image tags (0.8.1-dev.N)" \
 - Pin the new format in `test_version.py` and `test_cli_version_check.py`.
 - Runbook at `docs/runbooks/dev-version-format.md`.
 
-Equality-based consumers (CLI version check, browser version banner) are format-agnostic — strict string equality. Keel still polls `:dev`. `:latest` still gated on non-prerelease release tags. No kubernetes-repo changes; re-enabling Flux ImageUpdateAutomation is a separate follow-up.
+Equality-based consumers (CLI version check, browser version banner) are format-agnostic — strict string equality. Keel still polls `:dev`. `:latest` still gated on release tags. No kubernetes-repo changes; re-enabling Flux ImageUpdateAutomation is a separate follow-up.
 
 ## Test plan
-- [ ] `./scripts/test-compute-dev-version.sh` (8 cases)
+- [ ] `./scripts/test-compute-dev-version.sh` (9 cases)
 - [ ] `./test.sh tests/unit/test_version.py -v`
 - [ ] `./test.sh tests/unit/cli/test_cli_version_check.py -v`
 - [ ] After merge: confirm next dev image in GHCR is tagged `:0.8.1-dev.<N>` matching `git rev-list v0.8.0..HEAD --count`.

@@ -58,6 +58,7 @@ async def _get_chat_rollup(
         .join(Conversation, Conversation.id == AIUsage.conversation_id)
         .where(
             Conversation.agent_id == agent_id,
+            AIUsage.agent_run_id.is_(None),
             AIUsage.timestamp >= cutoff,
         )
     )
@@ -225,7 +226,10 @@ async def get_fleet_stats(
         select(func.coalesce(func.sum(AIUsage.cost), 0))
         .join(Conversation, Conversation.id == AIUsage.conversation_id)
         .join(Agent, Agent.id == Conversation.agent_id)
-        .where(AIUsage.timestamp >= cutoff)
+        .where(
+            AIUsage.agent_run_id.is_(None),
+            AIUsage.timestamp >= cutoff,
+        )
     )
     if org_id is not None:
         chat_cost_q = chat_cost_q.where(Agent.organization_id == org_id)

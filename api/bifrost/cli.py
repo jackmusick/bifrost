@@ -153,7 +153,10 @@ def _check_cli_version() -> None:
         # if bifrost.client's import-time load happened against a different cwd.
         try:
             from dotenv import find_dotenv, load_dotenv
-            load_dotenv(find_dotenv(usecwd=True), override=False)
+
+            dotenv_path = find_dotenv(usecwd=True)
+            if dotenv_path:
+                load_dotenv(dotenv_path, override=True)
         except ImportError:
             pass  # python-dotenv is optional; without it, only os.environ is consulted
 

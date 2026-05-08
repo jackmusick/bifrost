@@ -51,7 +51,8 @@ export type ActionSpec =
   | { scroll_into_view: string }
   // Push a path via the SPA's history without a hard reload. Use after a
   // nav_via sidebar click to deep-link further (e.g. into /mcp-servers/<id>)
-  // without re-triggering Vite proxy rules that hard navigation would hit.
+  // without re-triggering Vite proxy rules that hard navigation would hit. Always
+  // follow goto_spa with wait_for or wait_ms so React Router can commit the route.
   | { goto_spa: string };
 
 export interface CaptureSpec {

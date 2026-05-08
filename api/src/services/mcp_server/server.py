@@ -186,6 +186,17 @@ def _get_agent_id_from_scope() -> UUID | None:
     return None
 
 
+def _has_http_request_context() -> bool:
+    """Return whether FastMCP has an active HTTP request on this stack."""
+    from fastmcp.server.dependencies import get_http_request
+
+    try:
+        get_http_request()
+    except RuntimeError:
+        return False
+    return True
+
+
 def _get_context_from_token() -> MCPContext:
     """
     Get MCPContext from authenticated FastMCP token.
@@ -230,6 +241,7 @@ async def _get_runtime_context() -> MCPContext:
     """
     from fastmcp.exceptions import ToolError
     from fastmcp.server.dependencies import get_access_token
+    from sqlalchemy.exc import SQLAlchemyError
 
     from src.core.database import get_db_context
     from src.services.mcp_server.tool_access import MCPToolAccessService
@@ -266,8 +278,11 @@ async def _get_runtime_context() -> MCPContext:
                     org_id=org_id,
                 )
                 accessible_namespaces = list(result.accessible_namespaces)
-    except Exception as e:
-        logger.warning(f"Failed to resolve accessible namespaces: {e}")
+    except SQLAlchemyError:
+        logger.exception("Failed to resolve accessible namespaces")
+    except Exception:
+        logger.exception("Unexpected error resolving accessible namespaces")
+        raise
 
     return MCPContext(
         user_id=token.claims.get("user_id", ""),
@@ -373,6 +388,8 @@ class BifrostMCPServer:
                 # current call — for HTTP requests that means unauthenticated
                 # and should bubble up; for tool introspection at startup
                 # there is no HTTP context, so fall back to default.
+                if _has_http_request_context():
+                    raise
                 return default_context
 
         # If auth is provided, always create a new server with auth

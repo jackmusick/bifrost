@@ -41,12 +41,14 @@ fi
 
 BIFROST_LAST=$(git -C "$BIFROST_REPO" log -1 --format=%cI origin/main)
 DOCS_LAST=$(git -C "$DOCS_REPO" log -1 --format=%cI origin/main)
+BIFROST_LAST_EPOCH=$(git -C "$BIFROST_REPO" log -1 --format=%ct origin/main)
+DOCS_LAST_EPOCH=$(git -C "$DOCS_REPO" log -1 --format=%ct origin/main)
 
 echo "bifrost last main commit:  $BIFROST_LAST"
 echo "docs    last main commit:  $DOCS_LAST"
 
 # If docs are at-or-ahead of bifrost, no drift to surface.
-if [[ "$DOCS_LAST" > "$BIFROST_LAST" || "$DOCS_LAST" == "$BIFROST_LAST" ]]; then
+if [[ "$DOCS_LAST_EPOCH" -ge "$BIFROST_LAST_EPOCH" ]]; then
     echo
     echo "✓ docs are current (at or ahead of bifrost main)"
     exit 0

@@ -337,3 +337,28 @@ class TestUrlResolution:
         assert urlopen.called, "urlopen never called — dotenv URL not resolved"
         url = urlopen.call_args[0][0]
         assert url == "http://from-dotenv.example/api/version"
+
+    def test_cwd_dotenv_overrides_stale_env_url(self, monkeypatch, tmp_path):
+        """The current project's ``.env`` wins over a stale inherited URL."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("BIFROST_API_URL=http://from-current-dotenv.example\n")
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("BIFROST_API_URL", "http://from-old-env.example")
+
+        _patch_version(monkeypatch, "1.2.3")
+        from bifrost import cli
+
+        with patch(
+            "bifrost.credentials.get_persistent_backend"
+        ) as get_backend, patch(
+            "urllib.request.urlopen",
+            return_value=_make_url_response({"version": "1.2.3"}),
+        ) as urlopen:
+            backend = get_backend.return_value
+            backend.list_urls.return_value = []
+            backend.get.return_value = None
+            cli._check_cli_version()
+
+        url = urlopen.call_args[0][0]
+        assert url == "http://from-current-dotenv.example/api/version"

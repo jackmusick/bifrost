@@ -29,6 +29,10 @@ import uuid
 
 import pytest
 
+from src.services.mcp_server.tools.knowledge import (
+    SEARCH_KNOWLEDGE_NAMESPACE_DENIED_CODE,
+)
+
 logger = logging.getLogger(__name__)
 
 EMBEDDINGS_AVAILABLE = bool(os.environ.get("EMBEDDINGS_AI_TEST_KEY"))
@@ -95,6 +99,14 @@ def _mcp_call_tool(
             "params": {"name": tool_name, "arguments": arguments},
         },
     )
+
+
+def _structured_tool_result(payload: dict) -> dict:
+    result = payload.get("result") or {}
+    structured = (
+        result.get("structuredContent") or result.get("structured_content") or {}
+    )
+    return structured if isinstance(structured, dict) else {}
 
 
 @pytest.fixture(scope="module")
@@ -321,8 +333,8 @@ class TestMCPKnowledgeScoping:
                 "namespace": _knowledge_scoping_setup["ns_beta"],
             },
         )
-        text_blob = str(result.get("result", ""))
-        assert "Access denied" in text_blob or "not accessible" in text_blob, (
+        structured = _structured_tool_result(result)
+        assert structured.get("code") == SEARCH_KNOWLEDGE_NAMESPACE_DENIED_CODE, (
             f"Cross-namespace request on agent-scoped mount was not "
             f"rejected. Got: {result}"
         )
@@ -340,7 +352,7 @@ class TestMCPKnowledgeScoping:
                 "namespace": "this_namespace_does_not_exist",
             },
         )
-        text_blob = str(result.get("result", ""))
-        assert "Access denied" in text_blob or "not accessible" in text_blob, (
+        structured = _structured_tool_result(result)
+        assert structured.get("code") == SEARCH_KNOWLEDGE_NAMESPACE_DENIED_CODE, (
             f"Unknown namespace was not rejected on /mcp: {result}"
         )

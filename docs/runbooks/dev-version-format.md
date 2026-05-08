@@ -31,7 +31,7 @@ release tag was last cut — no script changes required.
 | `:sha-1a2b3c4` | No (immutable) | Direct commit traceability |
 
 Release builds (on `v*` tag push) push semver tags (`:0.8.1`, `:0.8`,
-`:0`) and `:latest` (only for non-prerelease tags). See `ci.yml:436-449`.
+`:0`) and `:latest` (only for release tags). See `ci.yml:436-449`.
 
 ## Where the version is consumed
 
@@ -78,5 +78,5 @@ locally on the same SHA the CI built.
 **Symptom: Flux picks an old image after re-enable**
 
 Verify the `ImagePolicy` semver range is `>=0.0.0-0` (the trailing `-0`
-is required to include prereleases like `-dev.N`). Without it, Flux
+is required to include pre-releases like `-dev.N`). Without it, Flux
 silently excludes all dev builds.
