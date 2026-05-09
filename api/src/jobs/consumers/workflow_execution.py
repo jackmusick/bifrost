@@ -478,14 +478,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 )
 
             logger.error(f"No pending execution found in Redis: {execution_id}")
-            if is_sync:
-                await self._redis_client.push_result(
-                    execution_id=execution_id,
-                    status="Failed",
-                    error="Pending execution not found in Redis",
-                    error_type="PendingNotFound",
-                    duration_ms=0,
-                )
             raise RetryableConsumerError(
                 f"pending execution not found in Redis: {execution_id}"
             )
@@ -741,8 +733,29 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 f"Admission rejected for {execution_id[:8]}: {e}. "
                 "Will requeue for retry."
             )
-            # Don't mark as failed or delete pending state — the execution
-            # hasn't started yet, and retry needs the Redis context.
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            try:
+                from src.models.enums import ExecutionStatus
+                from src.repositories.executions import update_execution
+
+                await update_execution(
+                    execution_id=execution_id,
+                    status=ExecutionStatus.PENDING,
+                    error_message=f"Process pool admission rejected; retrying: {e}",
+                    error_type="ProcessPoolAdmissionRejected",
+                    duration_ms=duration_ms,
+                )
+                await publish_execution_update(
+                    execution_id,
+                    "Pending",
+                    {"error": str(e), "errorType": "ProcessPoolAdmissionRejected", "retrying": True},
+                )
+            except Exception:
+                logger.exception(
+                    f"Failed to compensate RUNNING execution state for retry: {execution_id}"
+                )
+            # Don't mark as terminal or delete pending state — retry needs the
+            # Redis context and may still start successfully.
             raise RetryableConsumerError(
                 f"process pool admission rejected for {execution_id}: {e}"
             ) from e

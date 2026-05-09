@@ -12,6 +12,7 @@ from src.jobs.rabbitmq import (
     MalformedMessage,
     RetryableConsumerError,
 )
+from src.models.enums import ExecutionStatus
 
 
 def make_consumer() -> WorkflowExecutionConsumer:
@@ -82,13 +83,7 @@ async def test_process_message_retries_missing_pending_context() -> None:
         with pytest.raises(RetryableConsumerError, match="pending execution"):
             await consumer.process_message({"execution_id": execution_id, "sync": True})
 
-    consumer._redis_client.push_result.assert_awaited_once_with(
-        execution_id=execution_id,
-        status="Failed",
-        error="Pending execution not found in Redis",
-        error_type="PendingNotFound",
-        duration_ms=0,
-    )
+    consumer._redis_client.push_result.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -106,6 +101,7 @@ async def test_process_message_retries_pool_admission_memory_pressure_without_de
             new_callable=AsyncMock,
         ),
         patch("src.repositories.executions.create_execution", new_callable=AsyncMock),
+        patch("src.repositories.executions.update_execution", new_callable=AsyncMock) as update_execution,
         patch(
             "src.jobs.consumers.workflow_execution.publish_execution_update",
             new_callable=AsyncMock,
@@ -125,6 +121,10 @@ async def test_process_message_retries_pool_admission_memory_pressure_without_de
             )
 
     consumer._redis_client.delete_pending_execution.assert_not_called()
+    update_execution.assert_awaited_once()
+    assert update_execution.await_args is not None
+    assert update_execution.await_args.kwargs["execution_id"] == execution_id
+    assert update_execution.await_args.kwargs["status"] == ExecutionStatus.PENDING
 
 
 @pytest.mark.asyncio

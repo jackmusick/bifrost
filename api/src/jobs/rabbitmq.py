@@ -6,6 +6,7 @@ background jobs from RabbitMQ queues.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "1"
 DEFAULT_RETRY_DELAYS_SECONDS = [10, 60, 300, 1800]
+AMQP_SHORTSTR_MAX_BYTES = 255
 
 
 class ConsumerDeliveryError(Exception):
@@ -588,6 +590,13 @@ def infer_idempotency_key(queue_name: str, message: dict[str, Any]) -> str:
     return str(message.get("id") or json.dumps(message, sort_keys=True, default=str))
 
 
+def _bounded_message_id(message_id: str) -> str:
+    """Return a value safe for AMQP shortstr message_id properties."""
+    if len(message_id.encode("utf-8")) <= AMQP_SHORTSTR_MAX_BYTES:
+        return message_id
+    return f"sha256:{hashlib.sha256(message_id.encode('utf-8')).hexdigest()}"
+
+
 def _message_headers(
     message: dict[str, Any],
     origin_queue: str,
@@ -1015,29 +1024,21 @@ async def _publish_once(
                 },
             )
 
-            for idx, delay in enumerate(DEFAULT_RETRY_DELAYS_SECONDS, start=1):
-                await channel.declare_queue(
-                    f"{queue_name}-retry-{idx}",
-                    durable=True,
-                    arguments={
-                        "x-message-ttl": delay * 1000,
-                        "x-dead-letter-exchange": "",
-                        "x-dead-letter-routing-key": queue_name,
-                    },
-                )
-
-            stable_id = message_id or infer_idempotency_key(queue_name, message)
+            stable_id = str(message_id or infer_idempotency_key(queue_name, message))
+            bounded_message_id = _bounded_message_id(stable_id)
+            message_headers = dict(headers or {})
+            message_headers.setdefault("x-idempotency-key", stable_id)
             await channel.default_exchange.publish(
                 aio_pika.Message(
                     body=json.dumps(message).encode(),
                     delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                     priority=priority,
-                    message_id=stable_id,
+                    message_id=bounded_message_id,
                     headers=_message_headers(
                         message,
                         queue_name,
                         message_id=stable_id,
-                        headers=headers,
+                        headers=message_headers,
                     ),
                 ),
                 routing_key=queue_name,

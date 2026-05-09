@@ -11,6 +11,9 @@ from src.jobs.rabbitmq import (
     DuplicateMessage,
     PermanentConsumerError,
     RetryableConsumerError,
+    _publish_once,
+    infer_idempotency_key,
+    rabbitmq,
 )
 
 
@@ -225,6 +228,80 @@ async def test_publish_poison_routes_to_dlx_with_reason_headers() -> None:
     assert published.headers["x-retry-count"] == 2
     assert published.headers["x-poison-reason"] == "bad forever"
     assert "x-poisoned-at" in published.headers
+
+
+class FakeDeclaredQueue:
+    def __init__(self) -> None:
+        self.bind = AsyncMock()
+
+
+class FakePublishChannel:
+    def __init__(self) -> None:
+        self.default_exchange = FakeExchange()
+        self.dead_letter_exchange = FakeExchange()
+        self.declare_exchange = AsyncMock(return_value=self.dead_letter_exchange)
+        self.declare_queue = AsyncMock(return_value=FakeDeclaredQueue())
+        self.close = AsyncMock()
+
+
+class FakeConnection:
+    def __init__(self, channel: FakePublishChannel) -> None:
+        self._channel = channel
+
+    async def channel(self) -> FakePublishChannel:
+        return self._channel
+
+
+class FakeConnectionContext:
+    def __init__(self, connection: FakeConnection) -> None:
+        self._connection = connection
+
+    async def __aenter__(self) -> FakeConnection:
+        return self._connection
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_publish_once_does_not_redeclare_retry_queues() -> None:
+    channel = FakePublishChannel()
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            rabbitmq,
+            "get_connection",
+            lambda: FakeConnectionContext(FakeConnection(channel)),
+        )
+
+        await _publish_once("unit-queue", {"id": "msg-1"}, 0)
+
+    declared_names = [call.args[0] for call in channel.declare_queue.await_args_list]
+    assert declared_names == ["unit-queue-poison", "unit-queue"]
+
+
+@pytest.mark.asyncio
+async def test_publish_once_bounds_message_id_and_preserves_full_idempotency_key() -> None:
+    channel = FakePublishChannel()
+    message = {"content": "x" * 600}
+    full_idempotency_key = infer_idempotency_key("unit-queue", message)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            rabbitmq,
+            "get_connection",
+            lambda: FakeConnectionContext(FakeConnection(channel)),
+        )
+
+        await _publish_once("unit-queue", message, 0)
+
+    publish_call = channel.default_exchange.publish.await_args
+    assert publish_call is not None
+    published, = publish_call.args
+    assert len(published.message_id.encode()) <= 255
+    assert published.message_id != full_idempotency_key
+    assert published.headers["x-idempotency-key"] == full_idempotency_key
+    assert published.headers["x-original-message-id"] == full_idempotency_key
 
 
 class BasePublishConsumer(BaseConsumer):
