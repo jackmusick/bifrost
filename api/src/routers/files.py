@@ -632,6 +632,12 @@ async def list_files_editor(
 
         # Folders first
         for folder_path in child_folders:
+            # SeaweedFS can briefly retain an empty CommonPrefix after deleting
+            # every object under it. Treat the non-delimited object list as the
+            # source of truth before showing a folder in the editor.
+            if not await repo.list(folder_path):
+                continue
+
             clean = folder_path.rstrip("/")
             files.append(FileMetadata(
                 path=clean,
