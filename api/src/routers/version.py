@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.models.contracts.version import VersionResponse
+from shared.models import VersionResponse
 from shared.version import get_version
 
 router = APIRouter(prefix="/api/version", tags=["version"])

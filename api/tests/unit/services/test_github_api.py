@@ -864,6 +864,25 @@ class TestListCommits:
                 "GET", "/repos/owner/repo/commits?sha=main&per_page=100&page=3"
             )
 
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"per_page": 0}, "Invalid per_page"),
+            ({"per_page": 101}, "Invalid per_page"),
+            ({"per_page": "not-a-number"}, "Invalid per_page"),
+            ({"page": 0}, "Invalid page"),
+            ({"page": "not-a-number"}, "Invalid page"),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_pagination_locally(self, client, kwargs, message):
+        """Invalid pagination fails before any GitHub request is made."""
+        with patch.object(client, "_request", new_callable=AsyncMock) as mock_request:
+            with pytest.raises(GitHubAPIError, match=message):
+                await client.list_commits("owner/repo", **kwargs)
+
+            mock_request.assert_not_called()
+
 
 class TestTreeItem:
     """Tests for TreeItem dataclass."""
@@ -929,7 +948,7 @@ class TestPathSegmentValidators:
     def test_validate_repo_rejects_unsafe(self, bad):
         from src.services.github_api import _validate_repo
 
-        with pytest.raises(ValueError, match="Invalid GitHub repo"):
+        with pytest.raises(GitHubAPIError, match="Invalid GitHub repo"):
             _validate_repo(bad)
 
     @pytest.mark.parametrize(
@@ -960,7 +979,7 @@ class TestPathSegmentValidators:
     def test_validate_sha_rejects_unsafe(self, bad):
         from src.services.github_api import _validate_sha
 
-        with pytest.raises(ValueError, match="Invalid git SHA"):
+        with pytest.raises(GitHubAPIError, match="Invalid git SHA"):
             _validate_sha(bad)
 
     def test_validate_ref_accepts_branch_and_tag_paths(self):
@@ -989,7 +1008,7 @@ class TestPathSegmentValidators:
     def test_validate_ref_rejects_unsafe(self, bad):
         from src.services.github_api import _validate_ref
 
-        with pytest.raises(ValueError, match="Invalid git ref"):
+        with pytest.raises(GitHubAPIError, match="Invalid git ref"):
             _validate_ref(bad)
 
     @pytest.mark.parametrize(
@@ -1016,7 +1035,7 @@ class TestPathSegmentValidators:
     def test_validate_org_rejects_unsafe(self, bad):
         from src.services.github_api import _validate_org
 
-        with pytest.raises(ValueError, match="Invalid GitHub organization"):
+        with pytest.raises(GitHubAPIError, match="Invalid GitHub organization"):
             _validate_org(bad)
 
     def test_validators_use_quote_for_codeql_sanitizer_recognition(self):

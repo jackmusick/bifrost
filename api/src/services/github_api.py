@@ -23,6 +23,49 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Exceptions
+# =============================================================================
+
+
+class GitHubAPIError(Exception):
+    """Exception raised when GitHub API operations fail."""
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        response_body: dict | None = None,
+    ):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.response_body = response_body or {}
+
+    def __str__(self) -> str:
+        if self.status_code:
+            return f"GitHubAPIError({self.status_code}): {self.message}"
+        return f"GitHubAPIError: {self.message}"
+
+
+class GitHubRateLimitError(GitHubAPIError):
+    """Exception raised when GitHub API rate limit is exceeded."""
+
+    pass
+
+
+class GitHubNotFoundError(GitHubAPIError):
+    """Exception raised when a GitHub resource is not found."""
+
+    pass
+
+
+class GitHubAuthError(GitHubAPIError):
+    """Exception raised when GitHub authentication fails."""
+
+    pass
+
+
+# =============================================================================
 # Path-segment validators
 # =============================================================================
 #
@@ -62,7 +105,7 @@ def _validate_repo(repo: str) -> str:
     data-flow path from user input to httpx.AsyncClient.request(url=...).
     """
     if not _REPO_RE.match(repo) or ".." in repo:
-        raise ValueError(
+        raise GitHubAPIError(
             f"Invalid GitHub repo identifier (expected 'owner/name'): {log_safe(repo)!r}"
         )
     return quote(repo, safe="/")
@@ -71,7 +114,7 @@ def _validate_repo(repo: str) -> str:
 def _validate_sha(sha: str) -> str:
     """Validate hex SHA and return URL-quoted form."""
     if not _SHA_RE.match(sha):
-        raise ValueError(f"Invalid git SHA: {log_safe(sha)!r}")
+        raise GitHubAPIError(f"Invalid git SHA: {log_safe(sha)!r}")
     return quote(sha, safe="")
 
 
@@ -88,17 +131,41 @@ def _validate_ref(ref: str) -> str:
         or ref.startswith("/")
         or ref.endswith("/")
     ):
-        raise ValueError(f"Invalid git ref: {log_safe(ref)!r}")
+        raise GitHubAPIError(f"Invalid git ref: {log_safe(ref)!r}")
     return quote(ref, safe="/")
 
 
 def _validate_org(org: str) -> str:
     """Validate GitHub org/user login shape and return URL-quoted form."""
     if not _ORG_RE.match(org):
-        raise ValueError(
+        raise GitHubAPIError(
             f"Invalid GitHub organization/user login: {log_safe(org)!r}"
         )
     return quote(org, safe="")
+
+
+def _validate_pagination_value(
+    name: str,
+    value: int,
+    min_value: int,
+    max_value: int | None = None,
+) -> int:
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise GitHubAPIError(f"Invalid {name}: {log_safe(value)!r}") from exc
+
+    if normalized < min_value or (
+        max_value is not None and normalized > max_value
+    ):
+        if max_value is None:
+            expected = f">= {min_value}"
+        else:
+            expected = f"between {min_value} and {max_value}"
+        raise GitHubAPIError(
+            f"Invalid {name}: {log_safe(value)!r} (expected {expected})"
+        )
+    return normalized
 
 
 # =============================================================================
@@ -314,49 +381,6 @@ class TreeItem:
     mode: str = "100644"  # Regular file
     type: str = "blob"
     sha: str | None = None  # None means delete
-
-
-# =============================================================================
-# Exceptions
-# =============================================================================
-
-
-class GitHubAPIError(Exception):
-    """Exception raised when GitHub API returns an error."""
-
-    def __init__(
-        self,
-        message: str,
-        status_code: int | None = None,
-        response_body: dict | None = None,
-    ):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
-        self.response_body = response_body or {}
-
-    def __str__(self) -> str:
-        if self.status_code:
-            return f"GitHubAPIError({self.status_code}): {self.message}"
-        return f"GitHubAPIError: {self.message}"
-
-
-class GitHubRateLimitError(GitHubAPIError):
-    """Exception raised when GitHub API rate limit is exceeded."""
-
-    pass
-
-
-class GitHubNotFoundError(GitHubAPIError):
-    """Exception raised when a GitHub resource is not found."""
-
-    pass
-
-
-class GitHubAuthError(GitHubAPIError):
-    """Exception raised when GitHub authentication fails."""
-
-    pass
 
 
 # =============================================================================
@@ -845,22 +869,25 @@ class GitHubAPIClient:
         """
         endpoint = f"/repos/{_validate_repo(repo)}/commits"
         params = []
+        validated_per_page = _validate_pagination_value("per_page", per_page, 1, 100)
+        validated_page = _validate_pagination_value("page", page, 1)
 
         if sha:
             # `sha` here can be a branch name or a commit SHA; the ref
             # validator covers both shapes safely.
             params.append(f"sha={_validate_ref(sha)}")
-        if per_page != 30:
-            params.append(f"per_page={int(per_page)}")
-        if page != 1:
-            params.append(f"page={int(page)}")
+        if validated_per_page != 30:
+            params.append(f"per_page={validated_per_page}")
+        if validated_page != 1:
+            params.append(f"page={validated_page}")
 
         if params:
             endpoint += "?" + "&".join(params)
 
         logger.debug(
             f"Listing commits: {log_safe(repo)} "
-            f"(sha={log_safe(sha) if sha else None}, per_page={log_safe(per_page)}, page={log_safe(page)})"
+            f"(sha={log_safe(sha) if sha else None}, "
+            f"per_page={validated_per_page}, page={validated_page})"
         )
 
         data = await self._request("GET", endpoint)

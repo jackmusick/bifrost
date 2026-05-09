@@ -268,8 +268,9 @@ async def _get_runtime_context() -> MCPContext:
                     user_id=user_id,
                     org_id=org_id,
                 )
-                if agent_result is not None:
-                    accessible_namespaces = list(agent_result.accessible_namespaces)
+                if agent_result is None:
+                    raise ToolError("Agent not found or inaccessible")
+                accessible_namespaces = list(agent_result.accessible_namespaces)
             else:
                 result = await service.get_accessible_tools(
                     user_roles=user_roles,
@@ -278,6 +279,8 @@ async def _get_runtime_context() -> MCPContext:
                     org_id=org_id,
                 )
                 accessible_namespaces = list(result.accessible_namespaces)
+    except ToolError:
+        raise
     except SQLAlchemyError:
         logger.exception("Failed to resolve accessible namespaces")
     except Exception:

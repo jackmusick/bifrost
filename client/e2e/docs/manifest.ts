@@ -34,13 +34,14 @@ export interface MockSpec {
 /**
  * One UI action to perform after the page settles, before the screenshot.
  * Mirrors the docs repo's Zod schema (scripts/manifest/schema.mjs). Each
- * action is exactly one of these six shapes:
+ * action is exactly one of these seven shapes:
  *   - { click: "<selector>" }              → page.locator(selector).click()
  *   - { fill: { selector, value } }        → page.locator(selector).fill(value)
  *   - { wait_for: "<selector>" }           → page.locator(selector).waitFor({ state: 'visible' })
  *   - { wait_for_hidden: "<selector>" }    → page.locator(selector).waitFor({ state: 'hidden' })
  *   - { wait_ms: <number> }                → page.waitForTimeout(ms)
  *   - { scroll_into_view: "<selector>" }   → page.locator(selector).scrollIntoViewIfNeeded()
+ *   - { goto_spa: "<path>" }               → history.pushState() without a hard reload
  */
 export type ActionSpec =
   | { click: string }
@@ -82,7 +83,7 @@ export interface ManifestEntry {
   viewport?: { width: number; height: number };
   capture?: CaptureSpec;
   // Optional SPA navigation. When set, the spec navigates to `from` first,
-  // then clicks the named link/element to reach `route` via in-app routing.
+  // then clicks the named link to reach `route` via in-app routing.
   // Use this for routes that share a prefix with a Vite proxy rule (e.g.
   // /mcp-servers collides with the /mcp proxy in dev builds), where a hard
   // page.goto() would be intercepted before the SPA can handle it.

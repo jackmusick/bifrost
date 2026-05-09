@@ -330,15 +330,32 @@ def test_cli_strict_equality_with_dev_format(monkeypatch, tmp_path):
     """Regression: CLI `__version__` and `/api/version` are compared as
     plain strings. The new dev format must match itself and must NOT
     match a different dev count."""
-    # If this file already has a helper for stubbing /api/version, use it.
-    # The assertion: "0.8.1-dev.47" == "0.8.1-dev.47" passes,
-    # "0.8.1-dev.47" != "0.8.1-dev.48" mismatches as expected.
-    assert "0.8.1-dev.47" == "0.8.1-dev.47"
-    assert "0.8.1-dev.47" != "0.8.1-dev.48"
-    # If the file exposes a comparison helper, exercise it instead.
+    _patch_version(monkeypatch, "0.8.1-dev.47")
+    from bifrost import cli
+
+    with patch(
+        "bifrost.credentials._resolve_url",
+        return_value="http://server.example",
+    ), patch(
+        "urllib.request.urlopen",
+        return_value=_make_url_response({"version": "0.8.1-dev.47"}),
+    ):
+        cli._check_cli_version()
+
+    with patch(
+        "bifrost.credentials._resolve_url",
+        return_value="http://server.example",
+    ), patch(
+        "urllib.request.urlopen",
+        return_value=_make_url_response({"version": "0.8.1-dev.48"}),
+    ):
+        with pytest.raises(SystemExit):
+            cli._check_cli_version()
 ```
 
-If the existing test file has a real comparison helper (e.g., `_versions_match()`), call it directly here. Otherwise the trivial-string assertions above are sufficient as a regression pin — the actual comparison logic is `==` and is already covered by other tests in the file.
+Use the file's existing `_patch_version` and `_make_url_response` helpers so the
+test exercises the real `_check_cli_version` path instead of pinning trivial
+string comparisons.
 
 - [ ] **Step 4: Run the CLI version test**
 
@@ -429,12 +446,12 @@ After this change ships, in-flight users will see exactly one of:
 
 ## Debugging a wrong tag
 
-**Symptom: build fails with `compute-dev-version: no v* tag found in history`**
+**Symptom: build fails with `compute-dev-version: no v* tag found in history` even though the repo has release tags**
 
 The job's checkout step doesn't have `fetch-depth: 0`. Check the
 `actions/checkout` invocation in the dev-build job (currently line 191).
 
-**Symptom: build fails with `compute-dev-version: no v* tag found in history`**
+**Symptom: build fails with `compute-dev-version: no v* tag found in history` in a repo with no release tag**
 
 No annotated `vMAJOR.MINOR.PATCH` release tag is reachable from the commit.
 Create or fetch the release tag before building.
@@ -550,7 +567,7 @@ is the integration point that the unit tests can't fully cover.
 These intentionally aren't in this plan. Each is its own change.
 
 1. **Re-enable Flux `ImageUpdateAutomation` against `:dev` semver tags** in
-   `/home/jack/GitHub/kubernetes`. Requires `ImageRepository`,
+   the cluster config repository. Requires `ImageRepository`,
    `ImagePolicy` (range `>=0.0.0-0`), `ImageUpdateAutomation`, and
    removing `imagePullPolicy: Always` once tag pinning takes over.
    The previous attempt was reverted in commit `310b9cd`; re-do it

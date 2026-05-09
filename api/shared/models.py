@@ -1,4 +1,4 @@
-"""Version endpoint contracts."""
+"""Shared Pydantic models used by API routers and clients."""
 
 from pydantic import BaseModel
 

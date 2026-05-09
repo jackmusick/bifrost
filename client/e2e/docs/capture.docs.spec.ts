@@ -250,7 +250,8 @@ if (!fs.existsSync(manifestPath)) {
 
         // Navigation. Default: hard page.goto to entry.route. If the entry
         // declares nav_via, instead hard-load the `from` page (SPA shell)
-        // and click the named link to navigate via in-app routing — this
+        // and click the named link (matching the manifest contract) to
+        // navigate via in-app routing — this
         // sidesteps Vite proxy rules that prefix-match SPA paths in dev.
         // Deeper destinations are reached afterward via the goto_spa action.
         if (entry.nav_via) {
