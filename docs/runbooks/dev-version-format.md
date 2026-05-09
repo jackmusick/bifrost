@@ -13,6 +13,10 @@ When a release is cut (e.g. `v0.8.1`), the next merge to main produces
 `0.8.2-dev.1`. The next dev cycle's floor is automatically whatever
 release tag was last cut — no script changes required.
 
+Both annotated and lightweight `vMAJOR.MINOR.PATCH` tags are valid. The dev
+image workflow fetches upstream release tags before computing the version so a
+fork does not need every upstream tag manually mirrored before each sync.
+
 ## Where it's computed
 
 - `scripts/compute-dev-version.sh` — pure shell, takes no args, prints
@@ -62,8 +66,9 @@ After this change ships, in-flight users will see exactly one of:
 
 **Symptom: build fails with `compute-dev-version: no v* tag found in history`**
 
-The job's checkout step doesn't have `fetch-depth: 0`. Check the
-`actions/checkout` invocation in the dev-build job (currently line 191).
+The job cannot see any `vMAJOR.MINOR.PATCH` release tag. Check that the
+dev-build job has `fetch-depth: 0` and that its upstream-tag fetch step still
+runs before `scripts/compute-dev-version.sh`.
 
 **Symptom: build fails with `compute-dev-version: latest tag 'X' is not vMAJOR.MINOR.PATCH`**
 

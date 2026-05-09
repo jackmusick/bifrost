@@ -192,6 +192,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch upstream release tags
+        run: |
+          git fetch --tags https://github.com/jackmusick/bifrost.git
+
       - name: Compute version
         id: version
         run: |

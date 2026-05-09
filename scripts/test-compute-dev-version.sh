@@ -70,9 +70,13 @@ run_test "non-v prefixed tag is ignored, falls back" \
   'git commit --allow-empty -m init -q && git tag 1.0.0' \
   '' 1
 
-run_test "lightweight release tag is ignored" \
+run_test "lightweight release tag is accepted" \
   'git commit --allow-empty -m init -q && git tag v1.0.0' \
-  '' 1
+  '1.0.1-dev.0' 0
+
+run_test "latest lightweight tag beats older annotated tag" \
+  'git commit --allow-empty -m init -q && git tag -a v1.0.0 -m v1.0.0 && git commit --allow-empty -m c1 -q && git tag v1.1.0 && git commit --allow-empty -m c2 -q' \
+  '1.1.1-dev.1' 0
 
 echo
 echo "$pass passed, $fail failed"
