@@ -113,7 +113,7 @@ class TestSkipCases:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch("urllib.request.urlopen", side_effect=OSError("network down")):
             cli._check_cli_version()  # must not raise SystemExit
 
@@ -134,7 +134,7 @@ class TestSkipCases:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch("urllib.request.urlopen", return_value=_BadResp()):
             cli._check_cli_version()  # must not raise SystemExit
 
@@ -145,7 +145,7 @@ class TestSkipCases:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({}),
@@ -167,7 +167,7 @@ class TestVersionComparison:
         stderr = io.StringIO()
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({"version": "1.2.3"}),
@@ -183,7 +183,7 @@ class TestVersionComparison:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({"version": "v1.2.3"}),
@@ -197,7 +197,7 @@ class TestVersionComparison:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({"version": "1.3.0"}),
@@ -210,7 +210,7 @@ class TestVersionComparison:
         assert "1.2.3" in err
         assert "1.3.0" in err
         # Upgrade instructions reference the resolved api_url.
-        assert "http://server.example/api/cli/download" in err
+        assert "https://server.example/api/cli/download" in err
 
     def test_exits_when_server_is_older_too(self, monkeypatch):
         """Policy is ``!=``, not ordering — even a 'newer' CLI exits.
@@ -224,7 +224,7 @@ class TestVersionComparison:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({"version": "1.9.9"}),
@@ -244,7 +244,7 @@ class TestVersionComparison:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({"version": "0.8.1-dev.47"}),
@@ -259,7 +259,7 @@ class TestVersionComparison:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://server.example",
+            return_value="https://server.example",
         ), patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({"version": "0.8.1-dev.48"}),
@@ -290,7 +290,7 @@ class TestUrlResolution:
 
         with patch(
             "bifrost.credentials._resolve_url",
-            return_value="http://from-credentials.example",
+            return_value="https://from-credentials.example",
         ) as resolve, patch(
             "urllib.request.urlopen",
             return_value=_make_url_response({"version": "1.2.3"}),
@@ -299,7 +299,7 @@ class TestUrlResolution:
             resolve.assert_called_once()
             # The /api/version GET should target the URL credentials returned.
             url = urlopen.call_args[0][0]
-            assert url == "http://from-credentials.example/api/version"
+            assert url == "https://from-credentials.example/api/version"
 
     def test_loads_dotenv_before_resolving(self, monkeypatch, tmp_path):
         """A project ``.env`` containing BIFROST_API_URL is honored.
@@ -310,7 +310,7 @@ class TestUrlResolution:
         URL just like the rest of the CLI would.
         """
         env_file = tmp_path / ".env"
-        env_file.write_text("BIFROST_API_URL=http://from-dotenv.example\n")
+        env_file.write_text("BIFROST_API_URL=https://from-dotenv.example\n")
 
         monkeypatch.chdir(tmp_path)
         # Make sure the env var isn't already set in the test process so we
@@ -336,15 +336,15 @@ class TestUrlResolution:
         # urlopen should have been called against the URL from .env.
         assert urlopen.called, "urlopen never called — dotenv URL not resolved"
         url = urlopen.call_args[0][0]
-        assert url == "http://from-dotenv.example/api/version"
+        assert url == "https://from-dotenv.example/api/version"
 
     def test_cwd_dotenv_overrides_stale_env_url(self, monkeypatch, tmp_path):
         """The current project's ``.env`` wins over a stale inherited URL."""
         env_file = tmp_path / ".env"
-        env_file.write_text("BIFROST_API_URL=http://from-current-dotenv.example\n")
+        env_file.write_text("BIFROST_API_URL=https://from-current-dotenv.example\n")
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("BIFROST_API_URL", "http://from-old-env.example")
+        monkeypatch.setenv("BIFROST_API_URL", "https://from-old-env.example")
 
         _patch_version(monkeypatch, "1.2.3")
         from bifrost import cli
@@ -361,4 +361,4 @@ class TestUrlResolution:
             cli._check_cli_version()
 
         url = urlopen.call_args[0][0]
-        assert url == "http://from-current-dotenv.example/api/version"
+        assert url == "https://from-current-dotenv.example/api/version"
