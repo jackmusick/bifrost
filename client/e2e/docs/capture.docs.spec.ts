@@ -110,8 +110,11 @@ async function runActions(
       } else if ("scroll_into_view" in action) {
         await page.locator(action.scroll_into_view).scrollIntoViewIfNeeded();
       } else if ("goto_spa" in action) {
-        // Follow goto_spa with wait_for or wait_ms in the manifest; React Router
-        // commits asynchronously after this synchronous history update.
+        // Always follow goto_spa with wait_for or wait_ms in the manifest. The
+        // capture runner's settle phase has already finished by the time actions
+        // run, and React Router commits asynchronously after this synchronous
+        // history update; without an explicit wait, screenshots can capture the
+        // previous route before the new route's components commit.
         await page.evaluate((path) => {
           globalThis.history.pushState({}, "", path);
           globalThis.dispatchEvent(new PopStateEvent("popstate"));
