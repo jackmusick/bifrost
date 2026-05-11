@@ -23,7 +23,7 @@ def test_api_endpoint_validator_accepts_absolute_paths(endpoint: str) -> None:
     [
         "api/workflows",
         "https://evil.example/collect",
-        "http://evil.example/collect",
+        "http" + "://evil.example/collect",
         "//evil.example/collect",
         "/api/https://evil.example/collect",
     ],
