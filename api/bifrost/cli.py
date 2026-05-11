@@ -3195,6 +3195,11 @@ Examples:
     endpoint = args[1]
     body = None
 
+    endpoint_error = _validate_api_endpoint(endpoint)
+    if endpoint_error:
+        print(endpoint_error, file=sys.stderr)
+        return 1
+
     if len(args) > 2:
         import pathlib
         raw = args[2]
@@ -3224,6 +3229,23 @@ Examples:
         return 1
 
     return asyncio.run(_api_request(method, endpoint, body, client=client))
+
+
+def _validate_api_endpoint(endpoint: str) -> str | None:
+    """Validate the CLI API endpoint before attaching auth credentials.
+
+    ``httpx`` accepts absolute and scheme-relative URLs even when a client has
+    a ``base_url``. The CLI's authenticated ``api`` command is intentionally
+    scoped to the configured Bifrost API origin, so only absolute paths are
+    accepted here.
+    """
+    if endpoint.startswith("//"):
+        return "Error: endpoint must not be a scheme-relative URL."
+    if "://" in endpoint:
+        return "Error: endpoint must not include a URL scheme or host."
+    if not endpoint.startswith("/"):
+        return "Error: endpoint must be an absolute API path starting with '/'."
+    return None
 
 
 async def _api_request(method: str, endpoint: str, body: Any | None, client: "BifrostClient | None" = None) -> int:
