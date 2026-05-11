@@ -91,7 +91,7 @@ async def test_regular_user_can_tune_own_private_agent():
     "access_level",
     [AgentAccessLevel.AUTHENTICATED, AgentAccessLevel.ROLE_BASED],
 )
-async def test_regular_user_cannot_tune_shared_agent(access_level):
+async def test_regular_user_cannot_tune_shared_agent(access_level: AgentAccessLevel):
     org_id = uuid4()
     user_id = uuid4()
     agent = _agent(
