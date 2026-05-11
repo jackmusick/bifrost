@@ -31,6 +31,7 @@ from src.models.contracts.agent_tuning import (
     ConsolidatedProposalResponse,
     DryRunPerRun,
 )
+from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
 from src.services.execution.tuning_service import (
     apply_consolidated_tuning,
@@ -46,10 +47,12 @@ router = APIRouter(prefix="/api/agents", tags=["Agent Tuning"])
 async def _load_agent_with_access(
     agent_id: UUID, db: DbSession, user: CurrentActiveUser
 ) -> Agent:
-    """Fetch an agent and enforce org scoping for non-superusers.
+    """Fetch an agent and enforce tune authorization.
 
-    Org users can only tune agents in their own org (or global agents,
-    where ``organization_id is None``). Platform admins can tune any.
+    Tuning is a mutating prompt-management surface. Platform admins can tune
+    any agent; regular users can tune only their own private agents. Shared
+    org/global agents may be visible to regular users, but they are not
+    user-owned mutable resources.
     """
     is_admin = user.is_superuser or any(
         role in ["Platform Admin", "Platform Owner"] for role in user.roles
@@ -64,15 +67,14 @@ async def _load_agent_with_access(
             detail=f"Agent {agent_id} not found",
         )
 
-    if not is_admin:
-        if (
-            agent.organization_id is not None
-            and agent.organization_id != user.organization_id
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Agent {agent_id} not found",
-            )
+    if not is_admin and (
+        agent.access_level != AgentAccessLevel.PRIVATE
+        or agent.owner_user_id != user.user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only tune your own private agents",
+        )
 
     return agent
 
