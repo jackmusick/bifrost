@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from src.core.system_agents import is_privileged_agent_management_tool
 from src.models.contracts.agents import (
     AgentSwitch,
     ChatStreamChunk,
@@ -1190,6 +1191,17 @@ IMPORTANT: When the user's request can be fulfilled using one of your tools, you
 
         # Check if this is a system tool call
         if agent and tool_call.name in (agent.system_tools or []):
+            if is_privileged_agent_management_tool(tool_call.name):
+                return ToolResult(
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    result=None,
+                    error=(
+                        f"System tool '{tool_call.name}' cannot be executed "
+                        "from chat agents"
+                    ),
+                    duration_ms=int((time.time() - start_time) * 1000),
+                )
             return await self._execute_system_tool(tool_call, agent, conversation)
 
         # External MCP tools — namespaced ``mcp__<connection_id>__<tool>``.

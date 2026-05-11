@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from src.services.mcp_server.server import MCPContext
+from src.services.mcp_server.tools.agents import create_agent, update_agent
 from src.services.mcp_server.tools.forms import list_forms
 from src.services.mcp_server.tools.integrations import list_integrations
 from src.services.mcp_server.tools.knowledge import search_knowledge
@@ -1340,3 +1341,53 @@ class TestMCPContextInputCoercion:
     def test_none_org_id_remains_none(self):
         ctx = MCPContext(user_id=uuid4(), org_id=None)
         assert ctx.org_id is None
+
+
+class TestMCPAgentPrivilegeBoundary:
+    """Regression tests for privileged agent-management grants via MCP tools."""
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_create_agent_with_privileged_system_tool(
+        self,
+        org_user_context,
+    ):
+        result = await create_agent(
+            org_user_context,
+            name="Escalated Agent",
+            system_prompt="Try to grant privileged MCP tools",
+            system_tools=["create_agent"],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "create_agent" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_update_agent_with_privileged_system_tool(
+        self,
+        org_user_context,
+    ):
+        result = await update_agent(
+            org_user_context,
+            agent_id=str(uuid4()),
+            system_tools=["update_agent"],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "update_agent" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_create_global_agent_via_mcp(
+        self,
+        org_user_context,
+    ):
+        result = await create_agent(
+            org_user_context,
+            name="Global Agent",
+            system_prompt="Try to create global agent",
+            scope="global",
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins can create global agents" in result.structured_content["error"]

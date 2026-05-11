@@ -331,6 +331,71 @@ class TestWorkflowToolIdResolution:
         assert "some_unknown_tool" in compiled
 
 
+class TestPrivilegedAgentManagementTools:
+    """Regression tests for privileged MCP agent-management tools in chat."""
+
+    @pytest.mark.asyncio
+    async def test_chat_agent_cannot_execute_privileged_agent_management_tool(
+        self, executor, mock_agent
+    ):
+        """Even if present on agent.system_tools, chat cannot execute create_agent."""
+        from src.services.llm.base import ToolCallRequest
+
+        mock_agent.system_tools = ["create_agent"]
+
+        with patch.object(
+            executor,
+            "_execute_system_tool",
+            new_callable=AsyncMock,
+        ) as mock_execute_system_tool:
+            result = await executor._execute_tool(
+                ToolCallRequest(
+                    id="call_privileged",
+                    name="create_agent",
+                    arguments={
+                        "name": "Escalated",
+                        "system_prompt": "Grant privileged tools",
+                    },
+                ),
+                agent=mock_agent,
+                conversation=MagicMock(),
+            )
+
+        mock_execute_system_tool.assert_not_awaited()
+        assert result.error is not None
+        assert "cannot be executed from chat agents" in result.error
+        assert result.tool_name == "create_agent"
+
+    @pytest.mark.asyncio
+    async def test_chat_agent_can_execute_non_privileged_system_tool(
+        self, executor, mock_agent
+    ):
+        """The chat denylist does not block ordinary assigned system tools."""
+        from src.services.llm.base import ToolCallRequest
+
+        mock_agent.system_tools = ["list_workflows"]
+        expected = MagicMock()
+
+        with patch.object(
+            executor,
+            "_execute_system_tool",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as mock_execute_system_tool:
+            result = await executor._execute_tool(
+                ToolCallRequest(
+                    id="call_allowed",
+                    name="list_workflows",
+                    arguments={},
+                ),
+                agent=mock_agent,
+                conversation=MagicMock(),
+            )
+
+        mock_execute_system_tool.assert_awaited_once()
+        assert result is expected
+
+
 class TestSerializeForJson:
     """Test the _serialize_for_json helper function."""
 

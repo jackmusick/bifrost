@@ -12,12 +12,45 @@ from uuid import uuid4
 
 from fastmcp.tools import ToolResult
 
+from src.core.system_agents import PRIVILEGED_AGENT_MANAGEMENT_TOOLS
 from src.services.mcp_server.tool_result import error_result, success_result
 from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_can_manage_agent_privileges(
+    context: Any,
+    *,
+    scope: str | None = None,
+    system_tools: list[str] | None = None,
+    delegated_agent_ids: list[str] | None = None,
+    knowledge_sources: list[str] | None = None,
+) -> ToolResult | None:
+    """Block non-admin MCP callers from granting sensitive agent capabilities."""
+    if getattr(context, "is_platform_admin", False):
+        return None
+
+    if scope == "global":
+        return error_result("Only platform admins can create global agents.")
+
+    if system_tools:
+        privileged = sorted(set(system_tools) & PRIVILEGED_AGENT_MANAGEMENT_TOOLS)
+        if privileged:
+            return error_result(
+                "Only platform admins can grant privileged agent management tools: "
+                + ", ".join(privileged)
+            )
+
+    if delegated_agent_ids:
+        return error_result("Only platform admins can configure agent delegation via MCP.")
+
+    if knowledge_sources:
+        return error_result("Only platform admins can configure agent knowledge sources via MCP.")
+
+    return None
 
 
 # ==================== SCHEMA TOOL ====================
@@ -282,6 +315,16 @@ async def create_agent(
     if scope not in ("global", "organization"):
         return error_result("scope must be 'global' or 'organization'")
 
+    privilege_error = _ensure_can_manage_agent_privileges(
+        context,
+        scope=scope,
+        system_tools=system_tools,
+        delegated_agent_ids=delegated_agent_ids,
+        knowledge_sources=knowledge_sources,
+    )
+    if privilege_error is not None:
+        return privilege_error
+
     # Validate channels if provided
     valid_channels = {"chat", "voice", "teams", "slack"}
     if channels:
@@ -467,6 +510,15 @@ async def update_agent(
         invalid_channels = set(channels) - valid_channels
         if invalid_channels:
             return error_result(f"Invalid channels: {list(invalid_channels)}. Valid options: {list(valid_channels)}")
+
+    privilege_error = _ensure_can_manage_agent_privileges(
+        context,
+        system_tools=system_tools,
+        delegated_agent_ids=delegated_agent_ids,
+        knowledge_sources=knowledge_sources,
+    )
+    if privilege_error is not None:
+        return privilege_error
 
     try:
         async with get_tool_db(context) as db:
