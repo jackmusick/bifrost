@@ -160,8 +160,10 @@ class OAuthCredentials(BaseModel):
         For client_credentials flows, requests a new token directly.
         For authorization_code flows, uses the stored refresh_token.
 
-        Updates access_token and expires_at in-place and persists
-        the new token to the database.
+        Persists the new token to the database and updates expires_at
+        in-place. The refresh response does not expose the new access
+        token; fetch integration data again if the workflow needs the
+        rotated token in this process.
 
         Returns:
             self (for chaining)
@@ -169,10 +171,9 @@ class OAuthCredentials(BaseModel):
         Example:
             >>> integration = await integrations.get("Pax8")
             >>> await integration.oauth.refresh()
-            >>> # integration.oauth.access_token is now fresh
+            >>> # integration.oauth.expires_at now reflects the persisted refresh
         """
         from .client import get_client
-        from ._context import register_secret
 
         client = get_client()
         response = await client.post(
@@ -185,9 +186,7 @@ class OAuthCredentials(BaseModel):
             raise RuntimeError(f"Token refresh failed: {response.status_code} - {detail}")
 
         data = response.json()
-        self.access_token = data["access_token"]
         self.expires_at = data.get("expires_at")
-        register_secret(self.access_token)
         return self
 
 

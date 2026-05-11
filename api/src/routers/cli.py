@@ -1203,7 +1203,7 @@ async def sdk_integrations_refresh_token(
         )
 
         return SDKIntegrationsRefreshTokenResponse(
-            access_token=access_token,
+            refreshed=True,
             expires_at=expires_at,
         )
 

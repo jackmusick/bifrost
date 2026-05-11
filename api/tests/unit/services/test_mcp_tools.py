@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from src.services.mcp_server.server import MCPContext
+from src.services.mcp_server.tools.agents import create_agent, update_agent
 from src.services.mcp_server.tools.forms import list_forms
 from src.services.mcp_server.tools.integrations import list_integrations
 from src.services.mcp_server.tools.knowledge import search_knowledge
@@ -1340,3 +1341,151 @@ class TestMCPContextInputCoercion:
     def test_none_org_id_remains_none(self):
         ctx = MCPContext(user_id=uuid4(), org_id=None)
         assert ctx.org_id is None
+
+
+class TestMCPAgentPrivilegeBoundary:
+    """Regression tests for privileged agent-management grants via MCP tools."""
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_create_agent_with_privileged_system_tool(
+        self,
+        org_user_context,
+    ):
+        result = await create_agent(
+            org_user_context,
+            name="Escalated Agent",
+            system_prompt="Try to grant privileged MCP tools",
+            system_tools=["create_agent"],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "create_agent" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_create_agent_with_delegation(
+        self,
+        org_user_context,
+    ):
+        result = await create_agent(
+            org_user_context,
+            name="Delegating Agent",
+            system_prompt="Try to grant delegation",
+            delegated_agent_ids=[str(uuid4())],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "delegation" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_create_agent_with_knowledge_sources(
+        self,
+        org_user_context,
+    ):
+        result = await create_agent(
+            org_user_context,
+            name="Knowledge Agent",
+            system_prompt="Try to grant knowledge sources",
+            knowledge_sources=["sensitive-namespace"],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "knowledge sources" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_create_agent_in_foreign_org(
+        self,
+        org_user_context,
+    ):
+        result = await create_agent(
+            org_user_context,
+            name="Foreign Org Agent",
+            system_prompt="Try to create outside caller org",
+            organization_id=str(uuid4()),
+        )
+
+        assert result.structured_content is not None
+        assert "another organization" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_update_agent_with_privileged_system_tool(
+        self,
+        org_user_context,
+    ):
+        result = await update_agent(
+            org_user_context,
+            agent_id=str(uuid4()),
+            system_tools=["update_agent"],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "update_agent" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_update_agent_with_delegation(
+        self,
+        org_user_context,
+    ):
+        result = await update_agent(
+            org_user_context,
+            agent_id=str(uuid4()),
+            delegated_agent_ids=[str(uuid4())],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "delegation" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_update_agent_with_knowledge_sources(
+        self,
+        org_user_context,
+    ):
+        result = await update_agent(
+            org_user_context,
+            agent_id=str(uuid4()),
+            knowledge_sources=["sensitive-namespace"],
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins" in result.structured_content["error"]
+        assert "knowledge sources" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_without_org_context_cannot_update_agent(
+        self,
+    ):
+        context = MCPContext(
+            user_id=uuid4(),
+            org_id=None,
+            is_platform_admin=False,
+            user_email="user@org.local",
+            user_name="Org User",
+        )
+
+        result = await update_agent(
+            context,
+            agent_id=str(uuid4()),
+            name="No Org Update",
+        )
+
+        assert result.structured_content is not None
+        assert "Organization context is required" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_admin_cannot_create_global_agent_via_mcp(
+        self,
+        org_user_context,
+    ):
+        result = await create_agent(
+            org_user_context,
+            name="Global Agent",
+            system_prompt="Try to create global agent",
+            scope="global",
+        )
+
+        assert result.structured_content is not None
+        assert "Only platform admins can create global agents" in result.structured_content["error"]

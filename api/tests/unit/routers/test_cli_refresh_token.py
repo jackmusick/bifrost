@@ -77,8 +77,12 @@ class TestRefreshTokenClientCredentials:
 
             result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
 
-        assert result.access_token == "fresh-pax8-token"
+        assert result.refreshed is True
         assert result.expires_at is not None
+        response_payload = result.model_dump()
+        assert "access_token" not in response_payload
+        assert "refresh_token" not in response_payload
+        assert "client_secret" not in response_payload
         mock_instance.get_client_credentials_token.assert_called_once_with(
             token_url="https://login.pax8.com/oauth/token",
             client_id="pax8-client-id",
@@ -149,7 +153,11 @@ class TestRefreshTokenClientCredentials:
 
             result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
 
-        assert result.access_token == "new-token"
+        assert result.refreshed is True
+        response_payload = result.model_dump()
+        assert "access_token" not in response_payload
+        assert "refresh_token" not in response_payload
+        assert "client_secret" not in response_payload
         # Existing token should be updated, not a new one added
         mock_db.add.assert_not_called()
         assert mock_existing_token.expires_at == expires_at
@@ -226,7 +234,11 @@ class TestRefreshTokenAuthorizationCode:
 
             result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
 
-        assert result.access_token == "refreshed-ms-token"
+        assert result.refreshed is True
+        response_payload = result.model_dump()
+        assert "access_token" not in response_payload
+        assert "refresh_token" not in response_payload
+        assert "client_secret" not in response_payload
         mock_instance.refresh_access_token.assert_called_once()
 
     @pytest.mark.asyncio
@@ -440,8 +452,8 @@ class TestRefreshTokenSDKModel:
     """Test the OAuthCredentials.refresh() SDK method."""
 
     @pytest.mark.asyncio
-    async def test_refresh_updates_access_token(self):
-        """refresh() should update access_token and expires_at in place."""
+    async def test_refresh_updates_expires_at_without_token_material(self):
+        """refresh() should update expires_at without requiring returned tokens."""
         from bifrost.models import OAuthCredentials
 
         creds = OAuthCredentials(
@@ -459,7 +471,7 @@ class TestRefreshTokenSDKModel:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "access_token": "fresh-token",
+            "refreshed": True,
             "expires_at": "2026-03-02T00:00:00+00:00",
         }
 
@@ -473,7 +485,7 @@ class TestRefreshTokenSDKModel:
             result = await creds.refresh()
 
         assert result is creds  # returns self
-        assert creds.access_token == "fresh-token"
+        assert creds.access_token == "old-token"
         assert creds.expires_at == "2026-03-02T00:00:00+00:00"
         mock_client.post.assert_called_once_with(
             "/api/cli/integrations/refresh_token",
@@ -481,8 +493,8 @@ class TestRefreshTokenSDKModel:
         )
 
     @pytest.mark.asyncio
-    async def test_refresh_registers_secret(self):
-        """refresh() should register the new token as a secret."""
+    async def test_refresh_does_not_register_response_secrets(self):
+        """refresh() should not receive or register secret material."""
         from bifrost.models import OAuthCredentials
 
         creds = OAuthCredentials(
@@ -500,7 +512,7 @@ class TestRefreshTokenSDKModel:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "access_token": "secret-token",
+            "refreshed": True,
             "expires_at": None,
         }
 
@@ -513,7 +525,8 @@ class TestRefreshTokenSDKModel:
         ):
             await creds.refresh()
 
-        mock_register.assert_called_once_with("secret-token")
+        mock_register.assert_not_called()
+        assert creds.access_token == "old-token"
 
     @pytest.mark.asyncio
     async def test_refresh_raises_on_failure(self):
