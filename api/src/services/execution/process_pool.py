@@ -1157,6 +1157,7 @@ class ProcessPoolManager:
                         await self._handle_result(handle, result)
                         continue
                 except Empty:
+                    # No queued result: handle this dead process as a crash below.
                     pass
 
                 # Case A: unexpected crash
