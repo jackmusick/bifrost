@@ -37,7 +37,13 @@ RUN npm run build
 # nginx:alpine
 FROM nginx@sha256:1881968aff6f7cdcc4b888c00a11f4ce241ad7ec957e0cb4a9e19e93a3ff87ea AS production
 
-RUN apk add --no-cache libcap && \
+RUN if command -v apk >/dev/null 2>&1; then \
+        apk add --no-cache libcap; \
+    else \
+        apt-get update && \
+        apt-get install -y --no-install-recommends libcap2-bin && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi && \
     setcap 'cap_net_bind_service=+ep' /usr/sbin/nginx
 
 # Copy built assets from builder
