@@ -10,15 +10,15 @@ describe("InfrastructureStatus", () => {
 			screen.getByRole("heading", { name: /Infrastructure Status/i }),
 		).toBeInTheDocument();
 		expect(screen.getByText("dev.bifrost.midtowntg.com")).toBeInTheDocument();
-		expect(screen.getAllByText("Degraded").length).toBeGreaterThan(0);
-		expect(screen.getAllByText("Limited impact").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("Degraded")).toHaveLength(5);
+		expect(screen.getAllByText("Limited impact")).toHaveLength(3);
 
-		const apiNode = screen.getByRole("button", {
+		const apiNode = screen.getByRole("article", {
 			name: /API readiness Healthy/i,
 		});
 		expect(within(apiNode).getByText("/health/ready")).toBeInTheDocument();
 
-		const executionNode = screen.getByRole("button", {
+		const executionNode = screen.getByRole("article", {
 			name: /Execution plane Degraded/i,
 		});
 		expect(
@@ -36,7 +36,7 @@ describe("InfrastructureStatus", () => {
 	it("keeps external integrations advisory in the instance rollup", () => {
 		renderWithProviders(<InfrastructureStatus />);
 
-		const externalNode = screen.getByRole("button", {
+		const externalNode = screen.getByRole("article", {
 			name: /External integrations Advisory/i,
 		});
 

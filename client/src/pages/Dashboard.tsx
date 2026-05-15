@@ -414,13 +414,7 @@ export function Dashboard() {
 							</CardHeader>
 							<CardContent>
 								<div className="flex flex-wrap items-center gap-2">
-									<Badge
-										variant="outline"
-										className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-									>
-										Degraded
-									</Badge>
-									<Badge variant="outline">Limited impact</Badge>
+									<Badge variant="outline">View live status</Badge>
 								</div>
 								<p className="mt-2 text-xs text-muted-foreground">
 									Deployment, host, API, execution, adjacent

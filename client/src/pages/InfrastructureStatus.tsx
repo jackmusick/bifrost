@@ -281,8 +281,7 @@ function InfrastructureNode({ node }: { node: GraphNode }) {
 	const Icon = nodeIcons[node.domain] ?? Info;
 
 	return (
-		<button
-			type="button"
+		<article
 			className="group flex h-full min-h-44 w-full flex-col rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			aria-label={`${node.label} ${node.status}`}
 		>
@@ -323,7 +322,7 @@ function InfrastructureNode({ node }: { node: GraphNode }) {
 					</div>
 				) : null}
 			</div>
-		</button>
+		</article>
 	);
 }
 
@@ -354,6 +353,16 @@ export function InfrastructureStatus() {
 	const degradedNodes = graphStatus.nodes.filter(
 		(node) => node.status === "Degraded" || node.status === "Blocked",
 	);
+	const blockedCount = degradedNodes.filter(
+		(node) => node.status === "Blocked",
+	).length;
+	const degradedCount = degradedNodes.filter(
+		(node) => node.status === "Degraded",
+	).length;
+	const attentionDescription =
+		blockedCount > 0
+			? `${blockedCount} ${blockedCount === 1 ? "domain is" : "domains are"} blocked and ${degradedCount} ${degradedCount === 1 ? "domain is" : "domains are"} degraded.`
+			: `The instance is not blocked, but ${degradedCount} ${degradedCount === 1 ? "domain is" : "domains are"} degraded.`;
 
 	return (
 		<div className="space-y-6">
@@ -391,9 +400,7 @@ export function InfrastructureStatus() {
 							<AlertTriangle className="h-4 w-4 text-amber-600" />
 							Needs operator attention
 						</CardTitle>
-						<CardDescription>
-							The instance is not blocked, but one domain is degraded.
-						</CardDescription>
+						<CardDescription>{attentionDescription}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-2">
 						{degradedNodes.map((node) => (
