@@ -35,16 +35,27 @@ import pytest
 
 
 @pytest.fixture
-def engine_creds() -> None:
+def engine_creds():
     """Populate ``~/.bifrost/credentials.json`` with an engine token.
 
     Mirrors what ``_run_execution`` does at the top of every workflow
     invocation in the worker (`api/src/services/execution/worker.py:134`).
     Without this, the CLI has nothing to authenticate with.
+
+    Cleans up on teardown so other e2e tests that rely on "no credentials
+    present" semantics (e.g. ``test_sdk_from_workflow``) aren't poisoned by
+    a leftover credentials file from this module.
     """
+    from bifrost.credentials import get_credentials_path
     from src.core.security import authenticate_engine
 
     authenticate_engine()
+    try:
+        yield
+    finally:
+        path = get_credentials_path()
+        if path.exists():
+            path.unlink()
 
 
 def _run_bifrost(args: list[str]) -> subprocess.CompletedProcess[str]:
