@@ -8,6 +8,7 @@ This is separate from oauth_sso.py which handles user authentication.
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -29,12 +30,15 @@ from src.models import (
 from src.core.auth import Context, CurrentSuperuser
 from src.core.log_safety import log_safe
 from src.models import OAuthProvider, OAuthToken
+from src.models.orm.integrations import IntegrationMapping
+from src.services.oauth_entity_id import extract_entity_id
 from src.services.oauth_provider import (
     build_token_refresh_context,
     get_url_resolution_defaults,
     refresh_oauth_token_http,
     resolve_url_template,
 )
+from src.services.oauth_state import decode_state, OAuthStateError
 
 # Import cache invalidation
 try:
@@ -767,6 +771,37 @@ async def refresh_token(
     )
 
 
+async def _apply_callback_to_mapping(
+    db: AsyncSession,
+    mapping_id: UUID,
+    token: OAuthToken,
+    provider: OAuthProvider,
+    callback_url_params: dict[str, str],
+    token_response: dict[str, Any],
+) -> None:
+    """Link the freshly-stored token to the mapping and capture entity_id.
+
+    Idempotent for the ``oauth_token_id`` link. Does NOT overwrite a non-empty
+    ``mapping.entity_id`` — manual overrides win over auto-capture.
+    """
+    mapping = await db.get(IntegrationMapping, mapping_id)
+    if not mapping:
+        return  # silently skip — the connection still happened at the provider level
+
+    mapping.oauth_token_id = token.id
+
+    if not mapping.entity_id:
+        captured = extract_entity_id(
+            provider.entity_id_source,
+            callback_url_params=callback_url_params,
+            token_response=token_response,
+        )
+        if captured:
+            mapping.entity_id = captured
+
+    await db.flush()
+
+
 @router.post(
     "/callback/{connection_name}",
     response_model=OAuthCallbackResponse,
@@ -891,6 +926,32 @@ async def oauth_callback(
     )
 
     logger.info(f"OAuth callback completed for {log_safe(connection_name)}")
+
+    # If state carries a mapping_id, link the freshly-stored token to that mapping
+    # and capture entity_id from the provider's configured source.
+    mapping_id: UUID | None = None
+    if request.state:
+        try:
+            payload = decode_state(request.state)
+            mid = payload.get("mapping_id")
+            if mid:
+                mapping_id = UUID(mid)
+        except OAuthStateError as e:
+            # Legacy integration-level flows use secrets.token_urlsafe() as state — not a
+            # signed token. Decoding is expected to fail for those; just skip the mapping step.
+            logger.warning(f"OAuth state decode failed (mapping link skipped): {e}")
+
+    if mapping_id is not None:
+        stored = await repo.get_token(connection_name, org_id)
+        if stored:
+            await _apply_callback_to_mapping(
+                db=ctx.db,
+                mapping_id=mapping_id,
+                token=stored,
+                provider=provider,
+                callback_url_params=request.callback_url_params or {},
+                token_response=result,
+            )
 
     # Invalidate cache (token was stored)
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:

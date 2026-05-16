@@ -439,6 +439,10 @@ class OAuthCallbackRequest(BaseModel):
         default=None,
         description="Organization ID for org-specific token storage (optional, for org overrides)"
     )
+    callback_url_params: dict[str, str] | None = Field(
+        default=None,
+        description="Raw query params from the OAuth callback URL (used to capture entity_id)",
+    )
 
 
 class OAuthCallbackResponse(BaseModel):
