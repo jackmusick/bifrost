@@ -244,10 +244,7 @@ class TestPerMappingDisconnect:
         self, e2e_client, platform_admin, db_session, org1, integration_with_oauth
     ):
         """Disconnect clears oauth_token_id and deletes the OAuthToken row."""
-        from uuid import uuid4
-
         integration = integration_with_oauth["integration"]
-        integration_id = UUID(integration["id"])
 
         # Create a mapping
         mapping_resp = e2e_client.post(
