@@ -3472,22 +3472,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5464,6 +5464,46 @@ export interface paths {
          * @description Create or update multiple mappings in a single request (Platform admin only)
          */
         post: operations["batch_upsert_mappings_api_integrations__integration_id__mappings_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/mappings/{mapping_id}/oauth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin OAuth authorize flow for a mapping
+         * @description Returns the authorization URL with a signed state token carrying mapping_id (Platform admin only)
+         */
+        post: operations["authorize_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{integration_id}/mappings/{mapping_id}/oauth/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect a mapping's per-row OAuth connection
+         * @description Deletes the mapping's OAuth token and clears oauth_token_id. Fallback to integration-level token resumes (Platform admin only).
+         */
+        post: operations["disconnect_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_disconnect_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -14397,6 +14437,21 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
+             * Connection Status
+             * @description Per-mapping OAuth token status (mirrors OAuthToken.status); None if no per-row token
+             */
+            connection_status?: string | null;
+            /**
+             * Connection Message
+             * @description Last status message from the per-mapping token (e.g., refresh error)
+             */
+            connection_message?: string | null;
+            /**
+             * Last Refresh At
+             * @description When the per-mapping token was last refreshed
+             */
+            last_refresh_at?: string | null;
+            /**
              * Created At
              * Format: date-time
              * @description Creation timestamp
@@ -15860,6 +15915,28 @@ export interface components {
             entity_changes?: {
                 [key: string]: string;
             }[];
+        };
+        /**
+         * MappingAuthorizeRequest
+         * @description Request to begin OAuth authorize flow for a specific mapping.
+         */
+        MappingAuthorizeRequest: {
+            /**
+             * Redirect Uri
+             * @description Frontend callback URL
+             */
+            redirect_uri: string;
+        };
+        /**
+         * MappingAuthorizeResponse
+         * @description Response with the authorization URL to redirect the user to.
+         */
+        MappingAuthorizeResponse: {
+            /**
+             * Authorization Url
+             * @description URL to redirect user for authorization
+             */
+            authorization_url: string;
         };
         /**
          * MessagePublic
@@ -20875,6 +20952,13 @@ export interface components {
              * @description Organization ID for org-specific token storage (optional, for org overrides)
              */
             organization_id?: string | null;
+            /**
+             * Callback Url Params
+             * @description Raw query params from the OAuth callback URL (used to capture entity_id)
+             */
+            callback_url_params?: {
+                [key: string]: string;
+            } | null;
         };
         /**
          * UserCreate
@@ -26342,7 +26426,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26375,7 +26459,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26408,7 +26492,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -26441,7 +26525,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -29846,6 +29930,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IntegrationMappingBatchResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MappingAuthorizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MappingAuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

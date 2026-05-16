@@ -23,6 +23,8 @@ export type IntegrationMappingCreate =
 	components["schemas"]["IntegrationMappingCreate"];
 export type IntegrationMappingUpdate =
 	components["schemas"]["IntegrationMappingUpdate"];
+export type MappingAuthorizeResponse =
+	components["schemas"]["MappingAuthorizeResponse"];
 
 /**
  * Hook to fetch all integrations
@@ -266,4 +268,53 @@ export type IntegrationTestResponse =
  */
 export function useTestIntegration() {
 	return $api.useMutation("post", "/api/integrations/{integration_id}/test");
+}
+
+/**
+ * Hook to begin OAuth authorize flow for a specific mapping.
+ * Returns an authorization URL the caller should redirect the user to.
+ */
+export function useAuthorizeMapping() {
+	const queryClient = useQueryClient();
+
+	return $api.useMutation(
+		"post",
+		"/api/integrations/{integration_id}/mappings/{mapping_id}/oauth/authorize",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
+		},
+	);
+}
+
+/**
+ * Hook to disconnect (revoke) the OAuth token for a specific mapping.
+ */
+export function useDisconnectMapping() {
+	const queryClient = useQueryClient();
+
+	return $api.useMutation(
+		"post",
+		"/api/integrations/{integration_id}/mappings/{mapping_id}/oauth/disconnect",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
+		},
+	);
 }
