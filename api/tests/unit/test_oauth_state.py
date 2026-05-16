@@ -3,6 +3,11 @@ import pytest
 from src.services.oauth_state import encode_state, decode_state, OAuthStateError
 
 
+@pytest.fixture(autouse=True)
+def _oauth_secret(monkeypatch):
+    monkeypatch.setenv("OAUTH_STATE_SECRET", "test-secret")
+
+
 def test_round_trip_no_mapping():
     token = encode_state({"provider_id": "abc"})
     payload = decode_state(token)

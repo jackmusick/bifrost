@@ -7,6 +7,7 @@ storing nonces server-side.
 """
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -58,13 +59,13 @@ def decode_state(token: str) -> dict:
     expected_sig = hmac.new(_secret(), encoded_body.encode(), hashlib.sha256).digest()
     try:
         actual_sig = _b64url_decode(encoded_sig)
-    except Exception as e:
+    except (ValueError, binascii.Error) as e:
         raise OAuthStateError("malformed signature") from e
     if not hmac.compare_digest(expected_sig, actual_sig):
         raise OAuthStateError("invalid signature")
     try:
         payload = json.loads(_b64url_decode(encoded_body))
-    except Exception as e:
+    except (ValueError, json.JSONDecodeError) as e:
         raise OAuthStateError("malformed payload") from e
     if payload.get("exp", 0) < int(time.time()):
         raise OAuthStateError("state token expired")
