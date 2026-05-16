@@ -936,9 +936,11 @@ async def oauth_callback(
             mid = payload.get("mapping_id")
             if mid:
                 mapping_id = UUID(mid)
-        except OAuthStateError as e:
+        except (OAuthStateError, ValueError) as e:
             # Legacy integration-level flows use secrets.token_urlsafe() as state — not a
             # signed token. Decoding is expected to fail for those; just skip the mapping step.
+            # `UUID(...)` raises ValueError on a malformed mapping_id in the payload.
+            # Both degrade gracefully — the OAuth grant itself already succeeded.
             logger.warning(f"OAuth state decode failed (mapping link skipped): {e}")
 
     if mapping_id is not None:
