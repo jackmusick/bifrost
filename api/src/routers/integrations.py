@@ -47,7 +47,7 @@ from src.models.orm import Config as ConfigModel
 from src.models.orm import IntegrationConfigSchema
 from src.models.orm import OAuthToken
 from src.services.oauth_provider import get_url_resolution_defaults, resolve_url_template
-from src.services.oauth_state import encode_state
+from src.services.oauth_state import encode_state, remember_nonce
 
 logger = logging.getLogger(__name__)
 
@@ -1278,10 +1278,8 @@ async def authorize_mapping(
 
     defaults = await get_url_resolution_defaults(ctx.db, provider)
     resolved_url = resolve_url_template(url=provider.authorization_url, defaults=defaults)
-    state = encode_state({
-        "provider_id": str(provider.id),
-        "mapping_id": str(mapping_id),
-    })
+    state, nonce = encode_state(provider_id=provider.id, mapping_id=mapping_id)
+    await remember_nonce(nonce)
     params = {
         "client_id": provider.client_id,
         "response_type": "code",

@@ -38,7 +38,7 @@ from src.services.oauth_provider import (
     refresh_oauth_token_http,
     resolve_url_template,
 )
-from src.services.oauth_state import decode_state, OAuthStateError
+from src.services.oauth_state import consume_nonce, decode_state, OAuthStateError
 
 # Import cache invalidation
 try:
@@ -933,9 +933,14 @@ async def oauth_callback(
     if request.state:
         try:
             payload = decode_state(request.state)
-            mid = payload.get("mapping_id")
-            if mid:
-                mapping_id = UUID(mid)
+            # Single-use enforcement: reject replays of valid-signature state.
+            nonce = payload.get("nonce")
+            if nonce and not await consume_nonce(nonce):
+                logger.warning("OAuth state nonce already consumed — possible replay, skipping mapping link")
+            else:
+                mid = payload.get("mapping_id")
+                if mid:
+                    mapping_id = UUID(mid)
         except (OAuthStateError, ValueError) as e:
             # Legacy integration-level flows use secrets.token_urlsafe() as state — not a
             # signed token. Decoding is expected to fail for those; just skip the mapping step.

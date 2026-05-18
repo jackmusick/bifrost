@@ -1,72 +1,83 @@
-"""Signed, timestamped state tokens for OAuth authorize/callback round-trip.
+"""Tamper-proof ``state`` parameter for per-mapping integration OAuth.
 
-Carries optional `mapping_id` so the callback can attribute the resulting
-token to a specific IntegrationMapping. HMAC-signed against
-`OAUTH_STATE_SECRET` so the callback can trust the payload without
-storing nonces server-side.
+Thin wrapper over :mod:`src.services.oauth_state_core` that pins the audience
+to integration OAuth and validates the payload shape (``provider_id``,
+``mapping_id``).
+
+The per-mapping authorize endpoint encodes; the callback decodes and
+verifies the nonce hasn't been seen before. Replay protection is critical
+because the same state can otherwise be replayed for the full TTL window.
 """
 
-import base64
-import binascii
-import hashlib
-import hmac
-import json
-import os
-import secrets
-import time
+from __future__ import annotations
 
-_DEFAULT_TTL = 600  # 10 minutes
+from typing import Any
+from uuid import UUID
 
+from src.services.oauth_state_core import (
+    StateDecodeError,
+    consume_nonce as _consume_nonce,
+    decode_state_jwt,
+    encode_state_jwt,
+    remember_nonce as _remember_nonce,
+)
 
-class OAuthStateError(Exception):
-    """Raised when state decoding fails (bad signature, expired, malformed)."""
-
-
-def _secret() -> bytes:
-    raw = os.environ.get("OAUTH_STATE_SECRET")
-    if not raw:
-        raise RuntimeError("OAUTH_STATE_SECRET env var must be set")
-    return raw.encode()
+# Distinct from MCP state tokens AND from JWT access tokens so neither can
+# masquerade as the other.
+_STATE_AUDIENCE = "bifrost-integration-oauth-state"
 
 
-def _b64url_encode(b: bytes) -> str:
-    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+# Backwards-compat alias for existing callers / tests that imported the old name.
+OAuthStateError = StateDecodeError
 
 
-def _b64url_decode(s: str) -> bytes:
-    pad = "=" * (-len(s) % 4)
-    return base64.urlsafe_b64decode(s + pad)
+def encode_state(
+    *,
+    provider_id: UUID,
+    mapping_id: UUID,
+) -> tuple[str, str]:
+    """Encode a per-mapping OAuth ``state`` token and return ``(token, nonce)``.
 
-
-def encode_state(payload: dict, ttl_seconds: int = _DEFAULT_TTL) -> str:
-    """Encode `payload` as a signed, timestamped state token.
-
-    Adds `nonce` and `exp` automatically; do not pass them.
+    The caller is expected to record the nonce via :func:`remember_nonce`
+    so the callback can reject replays.
     """
-    body = dict(payload)
-    body["nonce"] = secrets.token_urlsafe(16)
-    body["exp"] = int(time.time()) + ttl_seconds
-    encoded_body = _b64url_encode(json.dumps(body, sort_keys=True).encode())
-    sig = hmac.new(_secret(), encoded_body.encode(), hashlib.sha256).digest()
-    return f"{encoded_body}.{_b64url_encode(sig)}"
+    claims: dict[str, Any] = {
+        "provider_id": str(provider_id),
+        "mapping_id": str(mapping_id),
+    }
+    return encode_state_jwt(audience=_STATE_AUDIENCE, claims=claims)
 
 
-def decode_state(token: str) -> dict:
-    """Verify signature + expiry and return the decoded payload."""
-    if "." not in token:
-        raise OAuthStateError("malformed state token")
-    encoded_body, encoded_sig = token.rsplit(".", 1)
-    expected_sig = hmac.new(_secret(), encoded_body.encode(), hashlib.sha256).digest()
-    try:
-        actual_sig = _b64url_decode(encoded_sig)
-    except (ValueError, binascii.Error) as e:
-        raise OAuthStateError("malformed signature") from e
-    if not hmac.compare_digest(expected_sig, actual_sig):
-        raise OAuthStateError("invalid signature")
-    try:
-        payload = json.loads(_b64url_decode(encoded_body))
-    except (ValueError, json.JSONDecodeError) as e:
-        raise OAuthStateError("malformed payload") from e
-    if payload.get("exp", 0) < int(time.time()):
-        raise OAuthStateError("state token expired")
+def decode_state(token: str) -> dict[str, Any]:
+    """Verify the per-mapping ``state`` JWT and return its payload.
+
+    Raises:
+        OAuthStateError: any signature/expiry/format issue, or missing
+        per-mapping fields.
+    """
+    payload = decode_state_jwt(token, audience=_STATE_AUDIENCE)
+
+    for required in ("provider_id", "mapping_id"):
+        if required not in payload:
+            raise OAuthStateError(f"state missing required field: {required}")
+
     return payload
+
+
+async def remember_nonce(nonce: str) -> None:
+    """Persist a per-mapping state nonce in Redis. Best-effort."""
+    await _remember_nonce(nonce, audience=_STATE_AUDIENCE)
+
+
+async def consume_nonce(nonce: str) -> bool:
+    """Atomically check-and-delete a per-mapping state nonce. See core docstring."""
+    return await _consume_nonce(nonce, audience=_STATE_AUDIENCE)
+
+
+__all__ = [
+    "OAuthStateError",
+    "consume_nonce",
+    "decode_state",
+    "encode_state",
+    "remember_nonce",
+]
