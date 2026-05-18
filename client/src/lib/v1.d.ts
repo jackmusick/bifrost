@@ -5580,7 +5580,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Clear entity_id_source on the integration's OAuth provider
+         * @description Resets the provider's entity_id_source to NULL. Picker will reappear on next OAuth connect so the admin can pick a different source. When clear_mappings=true, also clears entity_id on every mapping under this integration so they re-capture on reconnect. Platform admin only.
+         */
+        delete: operations["clear_entity_id_source_api_integrations__integration_id__oauth_entity_id_source_delete"];
         options?: never;
         head?: never;
         /**
@@ -16279,7 +16283,7 @@ export interface components {
             error_message?: string | null;
             /**
              * Entity Id Picker
-             * @description Candidate entity_id sources for the admin to pick from. Populated only when entity_id_source is unset on the provider AND the callback response contains non-protocol fields. Null means 'don't show the picker'.
+             * @description Candidate entity_id sources for the admin to pick from. Populated when entity_id_source is unset on the provider, OR when it is set but extraction returned no value (the configured field wasn't in this response). Null means 'don't show the picker'.
              */
             entity_id_picker?: components["schemas"]["EntityIdPickerCandidate"][] | null;
             /**
@@ -16287,6 +16291,16 @@ export interface components {
              * @description When the callback was triggered by a per-mapping connect, the ID of that mapping. Used by the picker UI to backfill the mapping's entity_id with the chosen value.
              */
             triggering_mapping_id?: string | null;
+            /**
+             * Captured Entity Id
+             * @description Value captured into the mapping's entity_id via the provider's entity_id_source. Null when nothing was captured (no source, extraction missed, or no triggering mapping).
+             */
+            captured_entity_id?: string | null;
+            /**
+             * Captured Entity Id From
+             * @description Display string identifying where captured_entity_id came from, e.g. 'id_token_claim:tid'. Null when captured_entity_id is null.
+             */
+            captured_entity_id_from?: string | null;
         };
         /**
          * OAuthConfigListResponse
@@ -16426,6 +16440,13 @@ export interface components {
              * @default false
              */
             has_refresh_token: boolean;
+            /**
+             * Entity Id Source
+             * @description Configured entity_id source ({'type': ..., 'key': ...}) or null
+             */
+            entity_id_source?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * OAuthConfigTestRequest
@@ -30195,6 +30216,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OAuthAuthorizeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_entity_id_source_api_integrations__integration_id__oauth_entity_id_source_delete: {
+        parameters: {
+            query?: {
+                /** @description When true, also clear entity_id on every mapping for this integration */
+                clear_mappings?: boolean;
+            };
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

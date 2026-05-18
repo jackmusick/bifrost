@@ -403,6 +403,10 @@ class OAuthConfigSummary(BaseModel):
     expires_at: datetime | None = Field(default=None, description="Token expiration time")
     last_refresh_at: datetime | None = Field(default=None, description="Last token refresh time")
     has_refresh_token: bool = Field(default=False, description="Whether a refresh token is available")
+    entity_id_source: dict | None = Field(
+        default=None,
+        description="Configured entity_id source ({'type': ..., 'key': ...}) or null",
+    )
 
 
 class IntegrationDetailResponse(BaseModel):

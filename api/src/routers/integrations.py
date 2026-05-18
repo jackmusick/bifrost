@@ -743,6 +743,7 @@ async def get_integration(
             expires_at=token.expires_at if token else None,
             last_refresh_at=provider.last_token_refresh,
             has_refresh_token=token.encrypted_refresh_token is not None if token else False,
+            entity_id_source=provider.entity_id_source,
         )
 
     # Build mapping responses with org-specific overrides only (not merged with defaults)

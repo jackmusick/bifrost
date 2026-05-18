@@ -43,6 +43,7 @@ import {
 	type IntegrationTestResponse,
 } from "@/services/integrations";
 import { $api } from "@/lib/api-client";
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	useAuthorizeOAuthConnection,
 	useRefreshOAuthToken,
@@ -92,6 +93,8 @@ export function IntegrationDetail() {
 	const [testEndpoint, setTestEndpoint] = useState<string>("/");
 	const [testResult, setTestResult] =
 		useState<IntegrationTestResponse | null>(null);
+
+	const queryClient = useQueryClient();
 
 	// Fetch integration details (includes mappings and OAuth config)
 	const {
@@ -229,6 +232,21 @@ export function IntegrationDetail() {
 			if (event.data?.type === "oauth_success") {
 				// Refresh integration (includes OAuth config)
 				refetchIntegration();
+				// Also refresh per-mapping data (entity_id, oauth_token_id) so
+				// the table row updates without a manual page refresh.
+				if (integrationId) {
+					queryClient.invalidateQueries({
+						queryKey: [
+							"get",
+							"/api/integrations/{integration_id}/mappings",
+							{
+								params: {
+									path: { integration_id: integrationId },
+								},
+							},
+						],
+					});
+				}
 				toast.success("OAuth connection established successfully");
 			}
 		};
@@ -239,7 +257,7 @@ export function IntegrationDetail() {
 		return () => {
 			window.removeEventListener("message", handleMessage);
 		};
-	}, [refetchIntegration]);
+	}, [refetchIntegration, queryClient, integrationId]);
 
 	const saveMappings = async (
 		mappingsToSave: Array<{ organization_id: string; entity_id: string; entity_name?: string }>,

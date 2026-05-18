@@ -367,3 +367,36 @@ export function useSetEntityIdSource() {
 		},
 	);
 }
+
+/**
+ * Hook to clear the entity_id_source on an integration's OAuth provider.
+ * When clearMappings=true, also clears entity_id on every mapping under
+ * this integration so they re-capture on reconnect.
+ */
+export function useResetEntityIdSource() {
+	const queryClient = useQueryClient();
+
+	return $api.useMutation(
+		"delete",
+		"/api/integrations/{integration_id}/oauth/entity_id_source",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}/mappings",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
+		},
+	);
+}
