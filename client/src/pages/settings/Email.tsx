@@ -494,6 +494,7 @@ def send_email(
 			</Dialog>
 
 			<EmailTestDialog
+				key={showTestDialog ? "open" : "closed"}
 				open={showTestDialog}
 				onOpenChange={setShowTestDialog}
 				currentUserEmail={currentUser?.email ?? ""}

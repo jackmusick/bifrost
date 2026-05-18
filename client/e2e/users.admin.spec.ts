@@ -7,7 +7,7 @@
  * Mirrors: api/tests/e2e/api/test_users.py
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures/api-fixture";
 
 test.describe("User Listing", () => {
 	test("should display users page", async ({ page }) => {
@@ -122,5 +122,55 @@ test.describe("User Invitation", () => {
 		} catch {
 			// Button not found - page may not have invite functionality visible
 		}
+	});
+
+	test("admin invites user and user registers via magic link", async ({
+		page,
+		api,
+		browser,
+	}) => {
+		const email = `invitee-${Date.now()}@playwright.test`;
+
+		// Create user without sending invite email (avoid email dependency)
+		const createResp = await api.post("/api/users", {
+			data: { email, name: "Playwright Invitee", invite: false },
+		});
+		expect(createResp.ok()).toBe(true);
+		const { id: userId } = await createResp.json();
+
+		// Regenerate invite to get a registration URL (does not send email)
+		const genResp = await api.post(
+			`/api/users/${userId}/invite/regenerate`,
+		);
+		expect(genResp.ok()).toBe(true);
+		const { registration_url } = await genResp.json();
+		expect(registration_url).toContain("/register?token=");
+
+		// Extract the token from the URL
+		const token = new URL(registration_url).searchParams.get("token")!;
+		const registerPath = `/register?token=${token}`;
+
+		// Complete registration in a fresh (unauthenticated) browser context
+		const guestCtx = await browser.newContext();
+		const guestPage = await guestCtx.newPage();
+		await guestPage.goto(registerPath);
+
+		await expect(
+			guestPage.getByRole("heading", { name: /complete your registration/i }),
+		).toBeVisible({ timeout: 10000 });
+
+		await guestPage.getByLabel(/password/i).fill("InviteePass123!");
+		await guestPage.getByRole("button", { name: /create account/i }).click();
+
+		// Should redirect to login after successful registration
+		await guestPage.waitForURL("**/login", { timeout: 10000 });
+
+		await guestCtx.close();
+
+		// Admin verifies the user is now active
+		await page.goto("/users");
+		await expect(
+			page.getByRole("heading", { name: /users/i }).first(),
+		).toBeVisible({ timeout: 10000 });
 	});
 });

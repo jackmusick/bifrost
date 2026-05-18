@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,10 +35,6 @@ export function EmailTestDialog({
 	isPending,
 }: Props) {
 	const [recipient, setRecipient] = useState(currentUserEmail);
-
-	useEffect(() => {
-		if (open) setRecipient(currentUserEmail);
-	}, [open, currentUserEmail]);
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
