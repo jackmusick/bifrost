@@ -36,49 +36,47 @@ export function EntityIdSourcePicker({
 				</p>
 			</div>
 
-			<div className="max-h-80 overflow-y-auto rounded-md border">
-				<table className="w-full text-sm">
-					<thead className="border-b bg-muted/50 text-left">
-						<tr>
-							<th className="p-2 w-8"></th>
-							<th className="p-2">Source</th>
-							<th className="p-2">Field</th>
-							<th className="p-2">Value</th>
-						</tr>
-					</thead>
-					<tbody>
-						{candidates.map((c) => (
-							<tr
-								key={keyId(c)}
-								className={`border-b cursor-pointer hover:bg-muted/30 ${
-									selectedKey === keyId(c) ? "bg-blue-50" : ""
-								}`}
-								onClick={() => setSelectedKey(keyId(c))}
-							>
-								<td className="p-2">
-									<input
-										type="radio"
-										name="entity_id_source"
-										checked={selectedKey === keyId(c)}
-										onChange={() => setSelectedKey(keyId(c))}
-									/>
-								</td>
-								<td className="p-2">
-									<Badge variant="outline" className="text-xs">
+			<div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+				{candidates.map((c) => {
+					const isSelected = selectedKey === keyId(c);
+					return (
+						<label
+							key={keyId(c)}
+							className={`flex gap-2 rounded-md border p-2 cursor-pointer transition-colors ${
+								isSelected
+									? "border-primary bg-primary/5"
+									: "hover:bg-muted/30"
+							}`}
+						>
+							<input
+								type="radio"
+								name="entity_id_source"
+								checked={isSelected}
+								onChange={() => setSelectedKey(keyId(c))}
+								className="mt-1 shrink-0"
+							/>
+							<div className="min-w-0 flex-1 space-y-1">
+								<div className="flex items-center gap-2 min-w-0">
+									<span className="font-mono text-xs truncate">
+										{c.key}
+									</span>
+									<Badge
+										variant="outline"
+										className="text-[10px] shrink-0"
+									>
 										{c.type}
 									</Badge>
-								</td>
-								<td className="p-2 font-mono text-xs">{c.key}</td>
-								<td
-									className="p-2 font-mono text-xs truncate max-w-[200px]"
+								</div>
+								<div
+									className="font-mono text-xs text-muted-foreground break-all"
 									title={c.value}
 								>
 									{c.value}
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
+								</div>
+							</div>
+						</label>
+					);
+				})}
 			</div>
 
 			<div className="flex justify-end gap-2">
