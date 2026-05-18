@@ -6,6 +6,7 @@ import {
 	Unlink,
 	PlugZap,
 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -77,7 +78,7 @@ export interface IntegrationMappingsTabProps {
 	onUpdateOrgMapping: (orgId: string, entityId: string, entityName?: string) => void;
 	onOpenConfigDialog: (orgId: string) => void;
 	onDeleteMapping: (org: OrgWithMapping) => void;
-	onConnectMapping: (mappingId: string) => void;
+	onConnectMapping: (org: OrgWithMapping) => void;
 	onDisconnectMapping: (mappingId: string) => void;
 }
 
@@ -218,16 +219,10 @@ export function IntegrationMappingsTab({
 												</DataTableCell>
 												<DataTableCell>
 													{!hasDataProvider ? (
-														<Input
+														<ManualEntityIdInput
+															orgId={org.id}
 															value={org.formData.entity_id}
-															onChange={(e) =>
-																onUpdateOrgMapping(
-																	org.id,
-																	e.target.value,
-																	e.target.value,
-																)
-															}
-															placeholder="Entity ID"
+															onCommit={onUpdateOrgMapping}
 														/>
 													) : autoMatchSuggestions.has(
 														org.id,
@@ -309,16 +304,14 @@ export function IntegrationMappingsTab({
 														</Badge>
 													) : org.mapping?.connection_status === "expired" ? (
 														<Badge className="bg-yellow-600">Expired</Badge>
-													) : org.mapping ? (
+													) : (
 														<Button
 															size="sm"
 															variant="outline"
-															onClick={() => onConnectMapping(org.mapping!.id)}
+															onClick={() => onConnectMapping(org)}
 														>
 															Connect
 														</Button>
-													) : (
-														<span className="text-xs text-muted-foreground">Save row first</span>
 													)}
 												</DataTableCell>
 												<DataTableCell className="text-right">
@@ -388,5 +381,30 @@ export function IntegrationMappingsTab({
 				)}
 			</CardContent>
 		</Card>
+	);
+}
+
+function ManualEntityIdInput({
+	orgId,
+	value,
+	onCommit,
+}: {
+	orgId: string;
+	value: string;
+	onCommit: (orgId: string, entityId: string, entityName: string) => void;
+}) {
+	const [local, setLocal] = useState(value);
+
+	return (
+		<Input
+			value={local}
+			onChange={(e) => setLocal(e.target.value)}
+			onBlur={() => {
+				if (local !== value) {
+					onCommit(orgId, local, local);
+				}
+			}}
+			placeholder="Entity ID"
+		/>
 	);
 }

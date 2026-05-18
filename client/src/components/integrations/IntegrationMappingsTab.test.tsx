@@ -178,6 +178,34 @@ describe("IntegrationMappingsTab — no data provider manual input", () => {
 		});
 		expect(screen.getByPlaceholderText(/entity id/i)).toBeInTheDocument();
 	});
+
+	it("manual entity_id input does not call onUpdateOrgMapping on each keystroke (saves on blur)", async () => {
+		const onUpdateOrgMapping = vi.fn();
+		const { user } = renderTab({
+			hasDataProvider: false,
+			onUpdateOrgMapping,
+			orgsWithMappings: [
+				{
+					id: "org-1",
+					name: "Org 1",
+					formData: {
+						organization_id: "org-1",
+						entity_id: "",
+						entity_name: "",
+						config: {},
+					},
+				},
+			],
+		});
+		const input = screen.getByPlaceholderText(/entity id/i);
+		await user.type(input, "abc");
+		// Typing should NOT trigger save
+		expect(onUpdateOrgMapping).not.toHaveBeenCalled();
+		// Blur triggers exactly one save with the final value
+		await user.tab();
+		expect(onUpdateOrgMapping).toHaveBeenCalledTimes(1);
+		expect(onUpdateOrgMapping).toHaveBeenCalledWith("org-1", "abc", "abc");
+	});
 });
 
 describe("IntegrationMappingsTab — OAuth connection column", () => {
@@ -231,20 +259,41 @@ describe("IntegrationMappingsTab — OAuth connection column", () => {
 		expect(screen.getByText(/connected/i)).toBeInTheDocument();
 	});
 
-	it("calls onConnectMapping when Connect button is clicked", async () => {
+	it("calls onConnectMapping with the org when Connect button is clicked", async () => {
 		const onConnectMapping = vi.fn();
+		const org = {
+			id: "org-1",
+			name: "Org 1",
+			mapping: {
+				id: "m-1",
+				oauth_token_id: null,
+				connection_status: null,
+			} as unknown as IntegrationMapping,
+			formData: {
+				organization_id: "org-1",
+				entity_id: "",
+				entity_name: "",
+				config: {},
+			},
+		};
 		const props = {
 			hasOAuth: true,
 			onConnectMapping,
+			orgsWithMappings: [org],
+		};
+		const { user } = renderTab(props);
+		await user.click(screen.getByRole("button", { name: /connect/i }));
+		expect(onConnectMapping).toHaveBeenCalledWith(org);
+	});
+
+	it("shows Connect button (not 'Save row first') when no mapping exists yet", () => {
+		const props = {
+			hasOAuth: true,
 			orgsWithMappings: [
 				{
 					id: "org-1",
 					name: "Org 1",
-					mapping: {
-						id: "m-1",
-						oauth_token_id: null,
-						connection_status: null,
-					} as unknown as IntegrationMapping,
+					mapping: undefined,
 					formData: {
 						organization_id: "org-1",
 						entity_id: "",
@@ -254,9 +303,9 @@ describe("IntegrationMappingsTab — OAuth connection column", () => {
 				},
 			],
 		};
-		const { user } = renderTab(props);
-		await user.click(screen.getByRole("button", { name: /connect/i }));
-		expect(onConnectMapping).toHaveBeenCalledWith("m-1");
+		renderTab(props);
+		expect(screen.getByRole("button", { name: /connect/i })).toBeInTheDocument();
+		expect(screen.queryByText(/save row first/i)).not.toBeInTheDocument();
 	});
 
 	it("renders Disconnect button when mapping has an oauth_token_id", () => {

@@ -36,6 +36,7 @@ import {
 	useUpdateIntegrationConfig,
 	useTestIntegration,
 	useBatchUpsertMappings,
+	useCreateMapping,
 	useAuthorizeMapping,
 	useDisconnectMapping,
 	type IntegrationTestResponse,
@@ -113,6 +114,7 @@ export function IntegrationDetail() {
 	const deleteOAuthMutation = useDeleteOAuthConnection();
 	const testMutation = useTestIntegration();
 	const batchMutation = useBatchUpsertMappings();
+	const createMappingMutation = useCreateMapping();
 	const authorizeMappingMutation = useAuthorizeMapping();
 	const disconnectMappingMutation = useDisconnectMapping();
 
@@ -255,7 +257,6 @@ export function IntegrationDetail() {
 		entityId: string,
 		entityName?: string,
 	) => {
-		if (!entityId) return;
 		try {
 			await saveMappings([{ organization_id: orgId, entity_id: entityId, entity_name: entityName }]);
 		} catch {
@@ -267,9 +268,32 @@ export function IntegrationDetail() {
 		setDeleteMappingConfirm(org);
 	};
 
-	const handleConnectMapping = (mappingId: string) => {
+	const handleConnectMapping = async (org: OrgWithMapping) => {
 		if (!integrationId) return;
 		const redirectUri = `${window.location.origin}/oauth/callback`;
+
+		// If there's no mapping row yet, create an empty one so the OAuth
+		// callback has something to link the token to. entity_id will be
+		// auto-populated from the callback when the provider has entity_id_source
+		// configured.
+		let mappingId = org.mapping?.id;
+		if (!mappingId) {
+			try {
+				const created = await createMappingMutation.mutateAsync({
+					params: { path: { integration_id: integrationId } },
+					body: {
+						organization_id: org.id,
+						entity_id: org.formData.entity_id ?? "",
+						entity_name: org.formData.entity_name ?? "",
+					},
+				});
+				mappingId = created.id;
+			} catch {
+				toast.error("Failed to create mapping for OAuth connection");
+				return;
+			}
+		}
+
 		authorizeMappingMutation.mutate(
 			{
 				params: {
