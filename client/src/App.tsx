@@ -252,7 +252,7 @@ function AppRoutes() {
 					{/* Public routes - no auth required */}
 					<Route path="login" element={<Login />} />
 					<Route path="setup" element={<Setup />} />
-					<Route path="register" element={<Register />} />
+					<Route path="accept-invite" element={<Register />} />
 					<Route path="mfa-setup" element={<MFASetup />} />
 					<Route
 						path="auth/callback/:provider"

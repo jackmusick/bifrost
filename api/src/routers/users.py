@@ -160,7 +160,7 @@ async def create_user(
             user_id=new_user.id, created_by=user.user_id
         )
         registration_url = (
-            f"{get_settings().public_url.rstrip('/')}/register?token={raw_token}"
+            f"{get_settings().public_url.rstrip('/')}/accept-invite?token={raw_token}"
         )
         send_result = await send_email(
             recipient=new_user.email,
@@ -242,7 +242,7 @@ async def _generate_invite(
         user_id=user_id, created_by=actor.user_id
     )
     registration_url = (
-        f"{get_settings().public_url.rstrip('/')}/register?token={raw_token}"
+        f"{get_settings().public_url.rstrip('/')}/accept-invite?token={raw_token}"
     )
 
     email_sent = False

@@ -129,13 +129,20 @@ test.describe("User Invitation", () => {
 		api,
 		browser,
 	}) => {
-		const email = `invitee-${Date.now()}@playwright.test`;
+		test.setTimeout(90000); // Vite dev server cold-loads modules on first visit to new routes
+		const email = `invitee-${crypto.randomUUID()}@playwright-e2e.com`;
+
+		// Resolve an organization ID to satisfy the non-superuser org constraint
+		const orgsResp = await api.get("/api/organizations");
+		expect(orgsResp.ok()).toBe(true);
+		const orgs = await orgsResp.json();
+		const organizationId = orgs[0]?.id as string | undefined;
 
 		// Create user without sending invite email (avoid email dependency)
 		const createResp = await api.post("/api/users", {
-			data: { email, name: "Playwright Invitee", invite: false },
+			data: { email, name: "Playwright Invitee", invite: false, organization_id: organizationId },
 		});
-		expect(createResp.ok()).toBe(true);
+		expect(createResp.ok(), `Create user failed: ${await createResp.text()}`).toBe(true);
 		const { id: userId } = await createResp.json();
 
 		// Regenerate invite to get a registration URL (does not send email)
@@ -144,20 +151,30 @@ test.describe("User Invitation", () => {
 		);
 		expect(genResp.ok()).toBe(true);
 		const { registration_url } = await genResp.json();
-		expect(registration_url).toContain("/register?token=");
+		expect(registration_url).toContain("/accept-invite?token=");
 
 		// Extract the token from the URL
 		const token = new URL(registration_url).searchParams.get("token")!;
-		const registerPath = `/register?token=${token}`;
+		const registerPath = `/accept-invite?token=${token}`;
 
 		// Complete registration in a fresh (unauthenticated) browser context
-		const guestCtx = await browser.newContext();
+		const baseURL = process.env.TEST_BASE_URL || "http://localhost:3000";
+		const guestCtx = await browser.newContext({ baseURL });
 		const guestPage = await guestCtx.newPage();
+		// Navigate to login first to warm up the Vite module graph, then go to the invite page.
+		// The Vite dev server transforms modules on-demand; the first cold load of a new browser
+		// context takes 5-15 seconds. Waiting for the login heading ensures modules are cached.
+		await guestPage.goto("/login");
+		await expect(
+			guestPage.getByRole("heading", { name: /sign in/i }).or(
+				guestPage.getByRole("heading", { name: /bifrost/i }),
+			),
+		).toBeVisible({ timeout: 30000 });
 		await guestPage.goto(registerPath);
 
 		await expect(
 			guestPage.getByRole("heading", { name: /complete your registration/i }),
-		).toBeVisible({ timeout: 10000 });
+		).toBeVisible({ timeout: 15000 });
 
 		await guestPage.getByLabel(/password/i).fill("InviteePass123!");
 		await guestPage.getByRole("button", { name: /create account/i }).click();

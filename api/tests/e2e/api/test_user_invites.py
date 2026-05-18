@@ -76,7 +76,7 @@ class TestInviteEndpoints:
         )
         assert regen_resp.status_code == 200
         body = regen_resp.json()
-        assert "register?token=" in body["registration_url"]
+        assert "accept-invite?token=" in body["registration_url"]
         assert body["email_sent"] is False
 
         # User should now show invite_status=pending

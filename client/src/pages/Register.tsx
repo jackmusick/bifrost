@@ -9,7 +9,6 @@ import {
 	CardContent,
 	CardDescription,
 	CardHeader,
-	CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiClient } from "@/lib/api-client";
@@ -55,9 +54,9 @@ export function Register() {
 		<div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
 			<Card className="w-full max-w-md border-primary/10 shadow-xl shadow-primary/5">
 				<CardHeader className="text-center space-y-2 pb-2">
-					<CardTitle className="text-2xl font-bold tracking-tight">
+					<h1 className="text-2xl font-bold tracking-tight">
 						Complete your registration
-					</CardTitle>
+					</h1>
 					<CardDescription>
 						Set a password to finish creating your account.
 					</CardDescription>
