@@ -1568,6 +1568,58 @@ async def set_entity_id_source(
     return {"entity_id_source": provider.entity_id_source}
 
 
+@router.delete(
+    "/{integration_id}/oauth/entity_id_source",
+    summary="Clear entity_id_source on the integration's OAuth provider",
+    description=(
+        "Resets the provider's entity_id_source to NULL. Picker will reappear "
+        "on next OAuth connect so the admin can pick a different source. "
+        "When clear_mappings=true, also clears entity_id on every mapping "
+        "under this integration so they re-capture on reconnect. "
+        "Platform admin only."
+    ),
+)
+async def clear_entity_id_source(
+    integration_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+    clear_mappings: bool = Query(
+        False,
+        description="When true, also clear entity_id on every mapping for this integration",
+    ),
+) -> dict:
+    from src.models.orm import IntegrationMapping as _IM
+    from src.models.orm import OAuthProvider as _OP
+
+    result = await ctx.db.execute(
+        select(_OP).where(_OP.integration_id == integration_id)
+    )
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration has no OAuth provider",
+        )
+
+    provider.entity_id_source = None
+    cleared_mapping_count = 0
+
+    if clear_mappings:
+        mappings_result = await ctx.db.execute(
+            select(_IM).where(_IM.integration_id == integration_id)
+        )
+        for mapping in mappings_result.scalars().all():
+            if mapping.entity_id:
+                mapping.entity_id = ""
+                cleared_mapping_count += 1
+
+    await ctx.db.flush()
+    return {
+        "entity_id_source": None,
+        "cleared_mapping_count": cleared_mapping_count,
+    }
+
+
 # =============================================================================
 # HTTP Endpoints - SDK Data
 # =============================================================================

@@ -465,8 +465,9 @@ class OAuthCallbackResponse(BaseModel):
         default=None,
         description=(
             "Candidate entity_id sources for the admin to pick from. Populated "
-            "only when entity_id_source is unset on the provider AND the callback "
-            "response contains non-protocol fields. Null means 'don't show the picker'."
+            "when entity_id_source is unset on the provider, OR when it is set "
+            "but extraction returned no value (the configured field wasn't in "
+            "this response). Null means 'don't show the picker'."
         ),
     )
     triggering_mapping_id: UUID | None = Field(
@@ -475,6 +476,21 @@ class OAuthCallbackResponse(BaseModel):
             "When the callback was triggered by a per-mapping connect, the ID of "
             "that mapping. Used by the picker UI to backfill the mapping's "
             "entity_id with the chosen value."
+        ),
+    )
+    captured_entity_id: str | None = Field(
+        default=None,
+        description=(
+            "Value captured into the mapping's entity_id via the provider's "
+            "entity_id_source. Null when nothing was captured (no source, "
+            "extraction missed, or no triggering mapping)."
+        ),
+    )
+    captured_entity_id_from: str | None = Field(
+        default=None,
+        description=(
+            "Display string identifying where captured_entity_id came from, "
+            "e.g. 'id_token_claim:tid'. Null when captured_entity_id is null."
         ),
     )
 

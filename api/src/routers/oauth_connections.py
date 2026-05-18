@@ -799,28 +799,35 @@ async def _apply_callback_to_mapping(
     provider: OAuthProvider,
     callback_url_params: dict[str, str],
     token_response: dict[str, Any],
-) -> None:
+) -> str | None:
     """Link the freshly-stored token to the mapping and capture entity_id.
 
     Idempotent for the ``oauth_token_id`` link. Does NOT overwrite a non-empty
     ``mapping.entity_id`` — manual overrides win over auto-capture.
+
+    Returns the captured entity_id value when extraction succeeded AND was
+    actually written to the mapping. Returns None otherwise (no source set,
+    extraction missed, mapping already had a value, or mapping not found).
     """
     mapping = await db.get(IntegrationMapping, mapping_id)
     if not mapping:
-        return  # silently skip — the connection still happened at the provider level
+        return None  # silently skip — the connection still happened at the provider level
 
     mapping.oauth_token_id = token.id
 
+    captured: str | None = None
     if not mapping.entity_id:
-        captured = extract_entity_id(
+        extracted = extract_entity_id(
             provider.entity_id_source,
             callback_url_params=callback_url_params,
             token_response=token_response,
         )
-        if captured:
-            mapping.entity_id = captured
+        if extracted:
+            mapping.entity_id = extracted
+            captured = extracted
 
     await db.flush()
+    return captured
 
 
 @router.post(
@@ -975,6 +982,7 @@ async def oauth_callback(
     # Per-mapping flow: link the freshly-stored (org-scoped) token to the mapping
     # and capture entity_id from the provider's configured source. State + org_id
     # were already decoded at the top of this handler — see mapping_id_from_state.
+    captured_value: str | None = None
     if mapping_id_from_state is not None:
         # Single-use enforcement: reject replays of valid-signature state.
         if nonce_from_state and not await consume_nonce(nonce_from_state):
@@ -984,7 +992,7 @@ async def oauth_callback(
         else:
             stored = await repo.get_token(connection_name, org_id)
             if stored:
-                await _apply_callback_to_mapping(
+                captured_value = await _apply_callback_to_mapping(
                     db=ctx.db,
                     mapping_id=mapping_id_from_state,
                     token=stored,
@@ -997,13 +1005,19 @@ async def oauth_callback(
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:
         await invalidate_oauth_token(None, connection_name)  # org_id is None in callback
 
-    # If the provider has no entity_id_source set, offer the admin a picker
-    # of candidate fields discovered in the callback artifacts. The UI renders
-    # the picker in the popup before closing; selecting a candidate hits
-    # PATCH /api/integrations/{id}/oauth/entity_id_source and (if the connect
-    # was per-mapping) populates the triggering mapping's entity_id.
+    # Surface the picker when the admin needs to make (or correct) a choice:
+    #   (a) entity_id_source is unset — first-time setup, any connect path
+    #   (b) entity_id_source IS set, this was a per-mapping connect, but
+    #       extraction returned nothing (the configured field wasn't in this
+    #       response). Re-show candidates so admin can pick a different source.
+    # When source is set AND extraction succeeded, we skip the picker.
     picker: list[EntityIdPickerCandidate] | None = None
-    if provider.entity_id_source is None:
+    extraction_missed = (
+        provider.entity_id_source is not None
+        and mapping_id_from_state is not None
+        and captured_value is None
+    )
+    if provider.entity_id_source is None or extraction_missed:
         from src.services.oauth_entity_id import enumerate_candidate_fields
         candidates = enumerate_candidate_fields(
             callback_url_params=request.callback_url_params or {},
@@ -1011,6 +1025,13 @@ async def oauth_callback(
         )
         if candidates:
             picker = [EntityIdPickerCandidate(**c) for c in candidates]
+        if extraction_missed:
+            src = provider.entity_id_source or {}
+            logger.warning(
+                f"entity_id auto-capture missed: source={src.get('type')}:{src.get('key')} "
+                f"not found in callback artifacts for {log_safe(connection_name)}; "
+                f"re-showing picker"
+            )
 
     # Build response with optional warning
     warning_msg = None
@@ -1019,6 +1040,11 @@ async def oauth_callback(
             "No refresh token received. The connection may require re-authorization "
             "when the access token expires."
         )
+
+    captured_from: str | None = None
+    if captured_value and provider.entity_id_source:
+        src = provider.entity_id_source
+        captured_from = f"{src.get('type')}:{src.get('key')}"
 
     return OAuthCallbackResponse(
         success=True,
@@ -1029,6 +1055,8 @@ async def oauth_callback(
         error_message=None,
         entity_id_picker=picker,
         triggering_mapping_id=mapping_id_from_state,
+        captured_entity_id=captured_value,
+        captured_entity_id_from=captured_from,
     )
 
 

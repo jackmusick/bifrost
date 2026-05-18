@@ -817,3 +817,128 @@ class TestEntityIdSourceConfig:
                 f"/api/integrations/{integration['id']}",
                 headers=platform_admin.headers,
             )
+
+
+@pytest.mark.e2e
+class TestClearEntityIdSource:
+    """DELETE /oauth/entity_id_source nulls the source and optionally clears mappings."""
+
+    @pytest.mark.asyncio
+    async def test_delete_clears_source_only_by_default(
+        self, e2e_client, platform_admin, db_session, org1
+    ):
+        from uuid import uuid4
+        from src.models.orm import OAuthProvider as _OP
+
+        integration_name = f"e2e_clear_eid_{uuid4().hex[:8]}"
+        integ_resp = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={"name": integration_name},
+        )
+        assert integ_resp.status_code == 201
+        integration = integ_resp.json()
+        integration_id = UUID(integration["id"])
+
+        provider = _OP(
+            provider_name=f"prov_{uuid4().hex[:6]}",
+            oauth_flow_type="authorization_code",
+            client_id="x",
+            encrypted_client_secret=b"x",
+            token_url="https://example.com/token",
+            integration_id=integration_id,
+            entity_id_source={"type": "id_token_claim", "key": "tid"},
+        )
+        db_session.add(provider)
+        await db_session.commit()
+        await db_session.refresh(provider)
+        provider_id = provider.id
+
+        mapping_resp = e2e_client.post(
+            f"/api/integrations/{integration['id']}/mappings",
+            headers=platform_admin.headers,
+            json={"organization_id": str(org1["id"]), "entity_id": "tenant-abc"},
+        )
+        assert mapping_resp.status_code == 201
+        mapping_id = mapping_resp.json()["id"]
+
+        try:
+            resp = e2e_client.delete(
+                f"/api/integrations/{integration['id']}/oauth/entity_id_source",
+                headers=platform_admin.headers,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["entity_id_source"] is None
+            assert resp.json()["cleared_mapping_count"] == 0
+
+            db_session.expire_all()
+            refetched = await db_session.get(_OP, provider_id)
+            assert refetched.entity_id_source is None
+
+            # Mapping value untouched by default
+            get_resp = e2e_client.get(
+                f"/api/integrations/{integration['id']}/mappings/{mapping_id}",
+                headers=platform_admin.headers,
+            )
+            assert get_resp.json()["entity_id"] == "tenant-abc"
+        finally:
+            e2e_client.delete(
+                f"/api/integrations/{integration['id']}",
+                headers=platform_admin.headers,
+            )
+
+    @pytest.mark.asyncio
+    async def test_delete_with_clear_mappings_blanks_entity_ids(
+        self, e2e_client, platform_admin, db_session, org1
+    ):
+        from uuid import uuid4
+        from src.models.orm import OAuthProvider as _OP
+
+        integration_name = f"e2e_clear_eid_full_{uuid4().hex[:8]}"
+        integ_resp = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={"name": integration_name},
+        )
+        integration = integ_resp.json()
+        integration_id = UUID(integration["id"])
+
+        provider = _OP(
+            provider_name=f"prov_{uuid4().hex[:6]}",
+            oauth_flow_type="authorization_code",
+            client_id="x",
+            encrypted_client_secret=b"x",
+            token_url="https://example.com/token",
+            integration_id=integration_id,
+            entity_id_source={"type": "id_token_claim", "key": "tid"},
+        )
+        db_session.add(provider)
+        await db_session.commit()
+
+        mapping_resp = e2e_client.post(
+            f"/api/integrations/{integration['id']}/mappings",
+            headers=platform_admin.headers,
+            json={"organization_id": str(org1["id"]), "entity_id": "tenant-xyz"},
+        )
+        mapping_id = mapping_resp.json()["id"]
+
+        try:
+            resp = e2e_client.delete(
+                f"/api/integrations/{integration['id']}/oauth/entity_id_source"
+                "?clear_mappings=true",
+                headers=platform_admin.headers,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["entity_id_source"] is None
+            assert resp.json()["cleared_mapping_count"] == 1
+
+            get_resp = e2e_client.get(
+                f"/api/integrations/{integration['id']}/mappings/{mapping_id}",
+                headers=platform_admin.headers,
+            )
+            assert get_resp.json()["entity_id"] == ""
+        finally:
+            e2e_client.delete(
+                f"/api/integrations/{integration['id']}",
+                headers=platform_admin.headers,
+            )
