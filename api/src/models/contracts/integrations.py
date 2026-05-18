@@ -148,9 +148,12 @@ class IntegrationMappingCreate(BaseModel):
     )
     entity_id: str = Field(
         ...,
-        min_length=1,
         max_length=255,
-        description="External entity ID (e.g., tenant ID, company ID)",
+        description=(
+            "External entity ID (e.g., tenant ID, company ID). May be empty when "
+            "creating a mapping ahead of an OAuth Connect flow that will fill it "
+            "from the callback via OAuthProvider.entity_id_source."
+        ),
     )
     entity_name: str | None = Field(
         default=None,
@@ -175,9 +178,8 @@ class IntegrationMappingUpdate(BaseModel):
 
     entity_id: str | None = Field(
         default=None,
-        min_length=1,
         max_length=255,
-        description="External entity ID",
+        description="External entity ID (empty string allowed; see IntegrationMappingCreate)",
     )
     entity_name: str | None = Field(
         default=None,
@@ -203,9 +205,8 @@ class IntegrationMappingBatchItem(BaseModel):
     )
     entity_id: str = Field(
         ...,
-        min_length=1,
         max_length=255,
-        description="External entity ID",
+        description="External entity ID (empty string allowed; see IntegrationMappingCreate)",
     )
     entity_name: str | None = Field(
         default=None,

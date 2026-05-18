@@ -385,3 +385,124 @@ class TestPerMappingDisconnect:
                 f"/api/integrations/{integration['id']}/mappings/{mapping_id}",
                 headers=platform_admin.headers,
             )
+
+
+@pytest.mark.e2e
+class TestEmptyEntityId:
+    """Mappings can be created and updated with an empty entity_id.
+
+    This supports the per-mapping OAuth Connect flow: a user can create a
+    mapping ahead of time (or implicitly by clicking Connect) and the OAuth
+    callback fills entity_id from the provider's entity_id_source config.
+    """
+
+    @pytest.mark.asyncio
+    async def test_create_mapping_with_empty_entity_id(
+        self, e2e_client, platform_admin, org1
+    ):
+        """POST /mappings accepts entity_id="" (was previously blocked by min_length=1)."""
+        from uuid import uuid4
+
+        integration_name = f"e2e_empty_entity_{uuid4().hex[:8]}"
+        integ_resp = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={"name": integration_name},
+        )
+        assert integ_resp.status_code == 201
+        integration = integ_resp.json()
+
+        try:
+            mapping_resp = e2e_client.post(
+                f"/api/integrations/{integration['id']}/mappings",
+                headers=platform_admin.headers,
+                json={
+                    "organization_id": str(org1["id"]),
+                    "entity_id": "",
+                    "entity_name": "",
+                },
+            )
+            assert mapping_resp.status_code == 201, mapping_resp.text
+            mapping = mapping_resp.json()
+            assert mapping["entity_id"] == ""
+        finally:
+            e2e_client.delete(
+                f"/api/integrations/{integration['id']}",
+                headers=platform_admin.headers,
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_mapping_clears_entity_id(
+        self, e2e_client, platform_admin, org1
+    ):
+        """PUT /mappings/{id} accepts entity_id="" so a user can clear the field."""
+        from uuid import uuid4
+
+        integration_name = f"e2e_clear_entity_{uuid4().hex[:8]}"
+        integ_resp = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={"name": integration_name},
+        )
+        assert integ_resp.status_code == 201
+        integration = integ_resp.json()
+
+        try:
+            mapping_resp = e2e_client.post(
+                f"/api/integrations/{integration['id']}/mappings",
+                headers=platform_admin.headers,
+                json={
+                    "organization_id": str(org1["id"]),
+                    "entity_id": "initial-value",
+                    "entity_name": "Initial",
+                },
+            )
+            assert mapping_resp.status_code == 201
+            mapping_id = mapping_resp.json()["id"]
+
+            put_resp = e2e_client.put(
+                f"/api/integrations/{integration['id']}/mappings/{mapping_id}",
+                headers=platform_admin.headers,
+                json={"entity_id": ""},
+            )
+            assert put_resp.status_code == 200, put_resp.text
+            assert put_resp.json()["entity_id"] == ""
+        finally:
+            e2e_client.delete(
+                f"/api/integrations/{integration['id']}",
+                headers=platform_admin.headers,
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_upsert_accepts_empty_entity_id(
+        self, e2e_client, platform_admin, org1
+    ):
+        """POST /mappings/batch accepts entity_id="" entries."""
+        from uuid import uuid4
+
+        integration_name = f"e2e_batch_empty_{uuid4().hex[:8]}"
+        integ_resp = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={"name": integration_name},
+        )
+        assert integ_resp.status_code == 201
+        integration = integ_resp.json()
+
+        try:
+            batch_resp = e2e_client.post(
+                f"/api/integrations/{integration['id']}/mappings/batch",
+                headers=platform_admin.headers,
+                json={
+                    "mappings": [
+                        {"organization_id": str(org1["id"]), "entity_id": ""}
+                    ]
+                },
+            )
+            assert batch_resp.status_code == 200, batch_resp.text
+            assert batch_resp.json()["created"] == 1
+        finally:
+            e2e_client.delete(
+                f"/api/integrations/{integration['id']}",
+                headers=platform_admin.headers,
+            )
