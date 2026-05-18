@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import (
     CreateOAuthConnectionRequest,
+    EntityIdPickerCandidate,
     UpdateOAuthConnectionRequest,
     OAuthConnectionDetail,
     OAuthCredentialsResponse,
@@ -315,11 +316,15 @@ class OAuthConnectionRepository:
         # Check for existing token and update, or create new
         existing_token = await self.get_token(connection_name, org_id)
 
+        now = datetime.now(timezone.utc)
         if existing_token:
             existing_token.encrypted_access_token = encrypted_access
             existing_token.encrypted_refresh_token = encrypted_refresh
             existing_token.expires_at = expires_at
             existing_token.scopes = scopes or []
+            existing_token.status = "completed"
+            existing_token.status_message = None
+            existing_token.last_refresh_at = now
             token = existing_token
         else:
             token = OAuthToken(
@@ -329,14 +334,17 @@ class OAuthConnectionRepository:
                 encrypted_refresh_token=encrypted_refresh,
                 expires_at=expires_at,
                 scopes=scopes or [],
+                status="completed",
+                status_message=None,
+                last_refresh_at=now,
             )
             self.db.add(token)
 
-        # Update provider status
+        # Update provider status (integration-level fallback health view)
         provider.status = "completed"
         provider.status_message = "Token acquired successfully"
-        provider.last_token_refresh = datetime.now(timezone.utc)
-        provider.updated_at = datetime.now(timezone.utc)
+        provider.last_token_refresh = now
+        provider.updated_at = now
 
         await self.db.flush()
         await self.db.refresh(token)
@@ -989,6 +997,21 @@ async def oauth_callback(
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:
         await invalidate_oauth_token(None, connection_name)  # org_id is None in callback
 
+    # If the provider has no entity_id_source set, offer the admin a picker
+    # of candidate fields discovered in the callback artifacts. The UI renders
+    # the picker in the popup before closing; selecting a candidate hits
+    # PATCH /api/integrations/{id}/oauth/entity_id_source and (if the connect
+    # was per-mapping) populates the triggering mapping's entity_id.
+    picker: list[EntityIdPickerCandidate] | None = None
+    if provider.entity_id_source is None:
+        from src.services.oauth_entity_id import enumerate_candidate_fields
+        candidates = enumerate_candidate_fields(
+            callback_url_params=request.callback_url_params or {},
+            token_response=result,
+        )
+        if candidates:
+            picker = [EntityIdPickerCandidate(**c) for c in candidates]
+
     # Build response with optional warning
     warning_msg = None
     if not refresh_token:
@@ -1004,6 +1027,8 @@ async def oauth_callback(
         connection_name=connection_name,
         warning_message=warning_msg,
         error_message=None,
+        entity_id_picker=picker,
+        triggering_mapping_id=mapping_id_from_state,
     )
 
 

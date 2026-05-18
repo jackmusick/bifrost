@@ -4,6 +4,7 @@ OAuth connection contract models for Bifrost.
 
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -445,6 +446,13 @@ class OAuthCallbackRequest(BaseModel):
     )
 
 
+class EntityIdPickerCandidate(BaseModel):
+    """A candidate entity_id field surfaced from an OAuth callback."""
+    type: str = Field(..., description="One of: url_param, token_response_field, id_token_claim")
+    key: str = Field(..., description="Dotted path (e.g. 'team.id' or 'tid')")
+    value: str = Field(..., description="Stringified value found at that path")
+
+
 class OAuthCallbackResponse(BaseModel):
     """Response model for OAuth callback endpoint"""
     success: bool = Field(..., description="Whether the OAuth connection was successful")
@@ -453,6 +461,22 @@ class OAuthCallbackResponse(BaseModel):
     connection_name: str = Field(..., description="Name of the OAuth connection")
     warning_message: str | None = Field(default=None, description="Warning message displayed to user (e.g., missing refresh token)")
     error_message: str | None = Field(default=None, description="Error message displayed to user")
+    entity_id_picker: list[EntityIdPickerCandidate] | None = Field(
+        default=None,
+        description=(
+            "Candidate entity_id sources for the admin to pick from. Populated "
+            "only when entity_id_source is unset on the provider AND the callback "
+            "response contains non-protocol fields. Null means 'don't show the picker'."
+        ),
+    )
+    triggering_mapping_id: UUID | None = Field(
+        default=None,
+        description=(
+            "When the callback was triggered by a per-mapping connect, the ID of "
+            "that mapping. Used by the picker UI to backfill the mapping's "
+            "entity_id with the chosen value."
+        ),
+    )
 
 
 class OAuthProviderBase(BaseModel):

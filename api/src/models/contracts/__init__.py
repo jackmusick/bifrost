@@ -180,6 +180,7 @@ from src.models.contracts.config import (
 # OAuth Connections
 from src.models.contracts.oauth import (
     CreateOAuthConnectionRequest,
+    EntityIdPickerCandidate,
     OAuthCallbackRequest,
     OAuthCallbackResponse,
     OAuthConnection,
@@ -705,6 +706,7 @@ __all__ = [
     "OAuthCredentials",
     "OAuthCredentialsModel",
     "OAuthCredentialsResponse",
+    "EntityIdPickerCandidate",
     "OAuthCallbackRequest",
     "OAuthCallbackResponse",
     "OAuthProviderBase",

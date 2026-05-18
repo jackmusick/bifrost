@@ -66,3 +66,86 @@ def extract_entity_id(
 
     logger.warning(f"Unknown entity_id_source type: {source_type}")
     return None
+
+
+# Deny-list for secret-bearing and protocol field names. Case-insensitive.
+# Protocol fields (expires_in, scope, token_type) aren't secret but aren't
+# useful for entity_id either — excluding them prevents noise and lets the
+# caller decide "skip picker" when only protocol fields remain.
+_PROTOCOL_FIELDS_EXACT = frozenset({
+    "access_token", "refresh_token", "id_token", "code", "client_secret",
+    "code_verifier", "assertion", "password", "state", "nonce",
+    "expires_in", "scope", "token_type", "expires_at",
+})
+
+# Suffix matches (lowercased key endswith one of these). The bare variants
+# (token/secret/...) catch camelCase forms like AccessToken; the underscored
+# variants catch snake_case like access_token. A few common-English false
+# positives (monkey, smokey) are accepted — this is the picker deny-list, not
+# a security boundary, and the admin can still set entity_id_source via the
+# provider config dialog if a useful field gets hidden.
+_SCRUB_SUFFIXES = (
+    "_token", "token",
+    "_secret", "secret",
+    "_key",
+    "_password", "password",
+    "_signature", "signature",
+    "_hmac", "hmac",
+)
+
+
+def _is_scrubbed(key: str) -> bool:
+    lower = key.lower()
+    if lower in _PROTOCOL_FIELDS_EXACT:
+        return True
+    return any(lower.endswith(s) for s in _SCRUB_SUFFIXES)
+
+
+def _walk_leaves(obj: Any, prefix: str = "") -> list[tuple[str, str]]:
+    """Walk a dict, emitting (dotted_path, str_value) pairs for non-None leaves.
+    Lists are not walked (entity_id is never inside a list in practice)."""
+    out: list[tuple[str, str]] = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            path = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                out.extend(_walk_leaves(v, path))
+            elif v is not None and not isinstance(v, (list, bytes)):
+                out.append((path, str(v)))
+    return out
+
+
+def enumerate_candidate_fields(
+    callback_url_params: dict[str, str],
+    token_response: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Enumerate possible entity_id sources from OAuth callback artifacts.
+
+    Returns a list of {"type", "key", "value"} dicts the picker UI can render.
+    Secret-bearing fields are scrubbed via _is_scrubbed. id_token is decoded
+    and its claims are walked separately.
+    """
+    candidates: list[dict[str, str]] = []
+
+    for key, value in callback_url_params.items():
+        if _is_scrubbed(key) or value is None:
+            continue
+        candidates.append({"type": "url_param", "key": key, "value": str(value)})
+
+    for key, value in _walk_leaves(
+        {k: v for k, v in token_response.items() if k != "id_token"}
+    ):
+        if any(_is_scrubbed(seg) for seg in key.split(".")):
+            continue
+        candidates.append({"type": "token_response_field", "key": key, "value": value})
+
+    id_token = token_response.get("id_token")
+    if id_token:
+        claims = _decode_id_token_claims(id_token)
+        if claims:
+            for key, value in _walk_leaves(claims):
+                if any(_is_scrubbed(seg) for seg in key.split(".")):
+                    continue
+                candidates.append({"type": "id_token_claim", "key": key, "value": value})
+
+    return candidates
