@@ -965,12 +965,14 @@ async def _mapping_to_response(
     status_val = None
     message = None
     last_refresh = None
+    expires_at = None
     if m.oauth_token_id:
         token = await db.get(OAuthToken, m.oauth_token_id)
         if token:
             status_val = token.status
             message = token.status_message
             last_refresh = token.last_refresh_at
+            expires_at = token.expires_at
     return IntegrationMappingResponse(
         id=m.id,
         integration_id=m.integration_id,
@@ -982,6 +984,7 @@ async def _mapping_to_response(
         connection_status=status_val,
         connection_message=message,
         last_refresh_at=last_refresh,
+        connection_expires_at=expires_at,
         created_at=m.created_at,
         updated_at=m.updated_at,
     )
@@ -1324,6 +1327,98 @@ async def disconnect_mapping(
         if token:
             await ctx.db.delete(token)
             await ctx.db.flush()
+
+
+@router.post(
+    "/{integration_id}/mappings/{mapping_id}/oauth/refresh",
+    response_model=IntegrationMappingResponse,
+    summary="Refresh a mapping's per-row OAuth token",
+    description=(
+        "Proactively refresh the OAuth access token linked to this mapping. "
+        "Uses the stored refresh token (authorization_code) or re-mints with "
+        "client credentials (client_credentials). Updates token.status and "
+        "token.last_refresh_at; provider.status is NOT touched (per-mapping "
+        "tokens don't poison the integration-level fallback's health). "
+        "Platform admin only."
+    ),
+)
+async def refresh_mapping_oauth(
+    integration_id: UUID,
+    mapping_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> IntegrationMappingResponse:
+    from src.services.oauth_provider import (
+        build_token_refresh_context,
+        refresh_oauth_token_http,
+    )
+
+    repo = IntegrationsRepository(ctx.db)
+    mapping = await repo.get_mapping_by_id(integration_id, mapping_id)
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    if not mapping.oauth_token_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Mapping has no per-row OAuth connection to refresh",
+        )
+
+    token = await ctx.db.get(OAuthToken, mapping.oauth_token_id)
+    if not token:
+        # The FK is set but the row is gone — clean up the dangling pointer.
+        mapping.oauth_token_id = None
+        await ctx.db.flush()
+        raise HTTPException(
+            status_code=404,
+            detail="OAuth token row not found (mapping link cleared)",
+        )
+
+    integration = await repo.get_integration_by_id(integration_id)
+    if not integration or not integration.oauth_provider:
+        raise HTTPException(status_code=400, detail="Integration has no OAuth provider")
+    provider = integration.oauth_provider
+
+    if provider.oauth_flow_type != "client_credentials" and not token.encrypted_refresh_token:
+        raise HTTPException(
+            status_code=400,
+            detail="No refresh token available — reconnect this mapping to acquire one",
+        )
+
+    td = await build_token_refresh_context(
+        db=ctx.db,
+        provider=provider,
+        token=token,
+        org_id=mapping.organization_id,
+    )
+    outcome = await refresh_oauth_token_http(td)
+
+    now = datetime.now(timezone.utc)
+    if outcome["success"]:
+        token.encrypted_access_token = outcome["encrypted_access_token"]
+        token.expires_at = outcome["expires_at"]
+        if outcome.get("encrypted_refresh_token"):
+            token.encrypted_refresh_token = outcome["encrypted_refresh_token"]
+        if outcome.get("scopes"):
+            token.scopes = outcome["scopes"]
+        token.status = "completed"
+        token.status_message = None
+        token.last_refresh_at = now
+    else:
+        token.status = "failed"
+        token.status_message = (outcome.get("error", "Refresh failed"))[:200]
+        token.last_refresh_at = now
+        await ctx.db.flush()
+        raise HTTPException(
+            status_code=502,
+            detail=token.status_message or "Refresh failed",
+        )
+
+    await ctx.db.flush()
+    logger.info(
+        f"Refreshed per-mapping OAuth token for mapping {log_safe(mapping_id)}"
+    )
+
+    return await _mapping_to_response(ctx.db, mapping)
 
 
 # =============================================================================

@@ -330,6 +330,10 @@ class IntegrationMappingResponse(BaseModel):
         default=None,
         description="When the per-mapping token was last refreshed",
     )
+    connection_expires_at: datetime | None = Field(
+        default=None,
+        description="When the per-mapping OAuth token expires; None if no per-row token",
+    )
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 

@@ -388,6 +388,57 @@ class TestPerMappingDisconnect:
 
 
 @pytest.mark.e2e
+class TestPerMappingRefresh:
+    """POST /mappings/{id}/oauth/refresh proactively refreshes a per-row token."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_404_when_no_mapping(self, e2e_client, platform_admin):
+        from uuid import uuid4
+
+        resp = e2e_client.post(
+            f"/api/integrations/{uuid4()}/mappings/{uuid4()}/oauth/refresh",
+            headers=platform_admin.headers,
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_refresh_400_when_mapping_has_no_token(
+        self, e2e_client, platform_admin, org1
+    ):
+        from uuid import uuid4
+
+        # Create a bare integration + mapping with no oauth_token_id
+        integ_resp = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={"name": f"e2e_refresh_no_token_{uuid4().hex[:8]}"},
+        )
+        assert integ_resp.status_code == 201
+        integration = integ_resp.json()
+
+        try:
+            mapping_resp = e2e_client.post(
+                f"/api/integrations/{integration['id']}/mappings",
+                headers=platform_admin.headers,
+                json={"organization_id": str(org1["id"]), "entity_id": "x"},
+            )
+            assert mapping_resp.status_code == 201
+            mapping_id = mapping_resp.json()["id"]
+
+            refresh_resp = e2e_client.post(
+                f"/api/integrations/{integration['id']}/mappings/{mapping_id}/oauth/refresh",
+                headers=platform_admin.headers,
+            )
+            assert refresh_resp.status_code == 400
+            assert "no per-row oauth connection" in refresh_resp.json()["detail"].lower()
+        finally:
+            e2e_client.delete(
+                f"/api/integrations/{integration['id']}",
+                headers=platform_admin.headers,
+            )
+
+
+@pytest.mark.e2e
 class TestEmptyEntityId:
     """Mappings can be created and updated with an empty entity_id.
 

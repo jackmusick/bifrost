@@ -39,6 +39,7 @@ import {
 	useCreateMapping,
 	useAuthorizeMapping,
 	useDisconnectMapping,
+	useRefreshMapping,
 	type IntegrationTestResponse,
 } from "@/services/integrations";
 import { $api } from "@/lib/api-client";
@@ -117,6 +118,7 @@ export function IntegrationDetail() {
 	const createMappingMutation = useCreateMapping();
 	const authorizeMappingMutation = useAuthorizeMapping();
 	const disconnectMappingMutation = useDisconnectMapping();
+	const refreshMappingMutation = useRefreshMapping();
 
 	// Memoize to stabilize references for the useEffect that combines them
 	const organizations = useMemo(
@@ -348,6 +350,31 @@ export function IntegrationDetail() {
 				},
 				onError: () => {
 					toast.error("Failed to disconnect OAuth connection");
+				},
+			},
+		);
+	};
+
+	const handleRefreshMapping = (mappingId: string) => {
+		if (!integrationId) return;
+		refreshMappingMutation.mutate(
+			{
+				params: {
+					path: {
+						integration_id: integrationId,
+						mapping_id: mappingId,
+					},
+				},
+			},
+			{
+				onSuccess: () => {
+					toast.success("Token refreshed");
+				},
+				onError: (err: unknown) => {
+					const msg =
+						(err as { detail?: string } | undefined)?.detail ??
+						"Failed to refresh token";
+					toast.error(msg);
 				},
 			},
 		);
@@ -766,6 +793,7 @@ export function IntegrationDetail() {
 						onDeleteMapping={handleDeleteMappingClick}
 						onConnectMapping={handleConnectMapping}
 						onDisconnectMapping={handleDisconnectMapping}
+						onRefreshMapping={handleRefreshMapping}
 					/>
 				</TabsContent>
 

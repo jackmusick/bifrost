@@ -5,6 +5,7 @@ import {
 	Settings,
 	Unlink,
 	PlugZap,
+	RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,11 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
 	DataTable,
 	DataTableBody,
@@ -80,6 +86,7 @@ export interface IntegrationMappingsTabProps {
 	onDeleteMapping: (org: OrgWithMapping) => void;
 	onConnectMapping: (org: OrgWithMapping) => void;
 	onDisconnectMapping: (mappingId: string) => void;
+	onRefreshMapping: (mappingId: string) => void;
 }
 
 export function IntegrationMappingsTab({
@@ -105,6 +112,7 @@ export function IntegrationMappingsTab({
 	onDeleteMapping,
 	onConnectMapping,
 	onDisconnectMapping,
+	onRefreshMapping,
 }: IntegrationMappingsTabProps) {
 	const hasNonDefaultConfig = (org: OrgWithMapping): boolean => {
 		if (!org.mapping?.config || !configSchema) return false;
@@ -297,7 +305,12 @@ export function IntegrationMappingsTab({
 													{!hasOAuth ? (
 														<span className="text-xs text-muted-foreground">—</span>
 													) : org.mapping?.connection_status === "completed" ? (
-														<Badge className="bg-green-600">Connected</Badge>
+														<ConnectedBadge
+															expiresAt={org.mapping?.connection_expires_at ?? null}
+															onRefresh={() =>
+																onRefreshMapping(org.mapping!.id)
+															}
+														/>
 													) : org.mapping?.connection_status === "failed" ? (
 														<Badge variant="destructive" title={org.mapping?.connection_message ?? ""}>
 															Failed
@@ -381,6 +394,51 @@ export function IntegrationMappingsTab({
 				)}
 			</CardContent>
 		</Card>
+	);
+}
+
+function formatTimeUntil(expiresAt: string | null): string {
+	if (!expiresAt) return "Expiry unknown";
+	const ms = new Date(expiresAt).getTime() - Date.now();
+	if (Number.isNaN(ms)) return "Expiry unknown";
+	if (ms <= 0) return "Expired";
+	const totalMinutes = Math.floor(ms / 60000);
+	const days = Math.floor(totalMinutes / (60 * 24));
+	const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+	const minutes = totalMinutes % 60;
+	if (days > 0) return `Expires in ${days}d ${hours}h`;
+	if (hours > 0) return `Expires in ${hours}h ${minutes}m`;
+	return `Expires in ${minutes}m`;
+}
+
+function ConnectedBadge({
+	expiresAt,
+	onRefresh,
+}: {
+	expiresAt: string | null;
+	onRefresh: () => void;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Badge className="bg-green-600 inline-flex items-center gap-1 pr-1">
+					<span>Connected</span>
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onRefresh();
+						}}
+						className="rounded p-0.5 hover:bg-green-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-white"
+						title="Refresh token"
+						aria-label="Refresh token"
+					>
+						<RefreshCw className="h-3 w-3" />
+					</button>
+				</Badge>
+			</TooltipTrigger>
+			<TooltipContent>{formatTimeUntil(expiresAt)}</TooltipContent>
+		</Tooltip>
 	);
 }
 

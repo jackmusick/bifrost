@@ -318,3 +318,27 @@ export function useDisconnectMapping() {
 		},
 	);
 }
+
+/**
+ * Hook to proactively refresh a specific mapping's OAuth token.
+ */
+export function useRefreshMapping() {
+	const queryClient = useQueryClient();
+
+	return $api.useMutation(
+		"post",
+		"/api/integrations/{integration_id}/mappings/{mapping_id}/oauth/refresh",
+		{
+			onSuccess: (_, variables) => {
+				const integrationId = variables.params.path.integration_id;
+				queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/integrations/{integration_id}",
+						{ params: { path: { integration_id: integrationId } } },
+					],
+				});
+			},
+		},
+	);
+}

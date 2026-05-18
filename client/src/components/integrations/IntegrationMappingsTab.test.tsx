@@ -26,6 +26,7 @@ function renderTab(
 		onDeleteMapping: vi.fn(),
 		onConnectMapping: vi.fn(),
 		onDisconnectMapping: vi.fn(),
+		onRefreshMapping: vi.fn(),
 	};
 	const utils = renderWithProviders(
 		<IntegrationMappingsTab
@@ -257,6 +258,38 @@ describe("IntegrationMappingsTab — OAuth connection column", () => {
 		};
 		renderTab(props);
 		expect(screen.getByText(/connected/i)).toBeInTheDocument();
+	});
+
+	it("Connected badge has an inline refresh button that calls onRefreshMapping", async () => {
+		const onRefreshMapping = vi.fn();
+		const props = {
+			hasOAuth: true,
+			onRefreshMapping,
+			orgsWithMappings: [
+				{
+					id: "org-1",
+					name: "Org 1",
+					mapping: {
+						id: "m-1",
+						oauth_token_id: "tok-1",
+						connection_status: "completed",
+						connection_expires_at: new Date(
+							Date.now() + 60 * 60 * 1000,
+						).toISOString(),
+					} as unknown as IntegrationMapping,
+					formData: {
+						organization_id: "org-1",
+						entity_id: "x",
+						entity_name: "X",
+						config: {},
+					},
+				},
+			],
+		};
+		const { user } = renderTab(props);
+		const refreshBtn = screen.getByRole("button", { name: /refresh token/i });
+		await user.click(refreshBtn);
+		expect(onRefreshMapping).toHaveBeenCalledWith("m-1");
 	});
 
 	it("calls onConnectMapping with the org when Connect button is clicked", async () => {
