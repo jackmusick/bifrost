@@ -5,8 +5,8 @@
 # =============================================================================
 # Stage 1: Builder
 # =============================================================================
-# python:3.14-slim
-FROM python@sha256:511f025a0718f01b977d5ad572bc431745b31887ceccc538c85b87e82ad2956f AS builder
+# python:3.14.5-slim-trixie
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 # =============================================================================
 # Keep npm and its Debian node-* dependency tree out of the runtime image.
 # The runtime services execute Node scripts directly with `node`.
-FROM python@sha256:511f025a0718f01b977d5ad572bc431745b31887ceccc538c85b87e82ad2956f AS node-deps
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS node-deps
 
 WORKDIR /app
 
@@ -55,14 +55,15 @@ RUN cd /app/src/services/app_bundler && \
 # =============================================================================
 # Stage 3: Runtime
 # =============================================================================
-# python:3.14-slim
-FROM python@sha256:511f025a0718f01b977d5ad572bc431745b31887ceccc538c85b87e82ad2956f
+# python:3.14.5-slim-trixie
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856
 
 WORKDIR /app
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    libcap2 \
     curl \
     gosu \
     git \
