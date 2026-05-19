@@ -6,10 +6,38 @@ from pydantic import ValidationError
 from shared.policies.compile import compile_to_sql
 from shared.policies.evaluate import evaluate
 from src.models.contracts.policies import Expr
+from src.models.orm.tables import Document
 
 
 # Reuse the FakeUser shape from test_evaluate
 from tests.unit.policies.test_evaluate import FakeUser
+
+
+class _TableBindingForTest:
+    """Local stub mirroring the pre-Task-5 hardcoded {row: ...} → Document
+    column logic. Replaced by the real TableBinding from
+    shared.table_policies in Task 6."""
+    namespace = "row"
+
+    _COLUMN_MAPPED_ROW_FIELDS = {
+        "id": Document.id,
+        "organization_id": None,
+        "created_by": Document.created_by,
+        "updated_by": Document.updated_by,
+        "created_at": Document.created_at,
+        "updated_at": Document.updated_at,
+        "table_id": Document.table_id,
+    }
+
+    def resolve_reference(self, path):
+        parts = path.split(".")
+        if len(parts) == 1 and parts[0] in self._COLUMN_MAPPED_ROW_FIELDS:
+            col = self._COLUMN_MAPPED_ROW_FIELDS[parts[0]]
+            if col is not None:
+                return col
+        if len(parts) == 1:
+            return Document.data[parts[0]].astext
+        return Document.data[parts].astext
 
 
 class _RowResolverForTest:
@@ -85,7 +113,7 @@ def test_round_trip(expr_dict, row, user_kwargs, expected):
     )
 
     # Compile the expression to a literal value via a SELECT 1 WHERE <expr>
-    sql_expr = compile_to_sql(expr, user)
+    sql_expr = compile_to_sql(expr, user, _TableBindingForTest())
     # We can't run SQL without the DB; instead, verify the rendered SQL
     # contains expected literals/columns. The actual SQL execution is
     # tested in the e2e test_policies.py via real document rows.

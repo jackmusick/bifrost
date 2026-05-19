@@ -36,6 +36,33 @@ class _RowResolverForEngine:
         return cur
 
 
+# TEMPORARY: Task 6 replaces this with `from shared.table_policies import TableBinding`.
+# Mirrors the pre-Task-5 hardcoded column mapping inside compile.py.
+class _TableBindingForEngine:
+    """Mirrors the pre-Task-5 hardcoded {row: ...} → Document column logic."""
+    namespace = "row"
+
+    def resolve_reference(self, path):
+        from src.models.orm.tables import Document
+        _COLUMN_MAPPED_ROW_FIELDS = {
+            "id": Document.id,
+            "organization_id": None,
+            "created_by": Document.created_by,
+            "updated_by": Document.updated_by,
+            "created_at": Document.created_at,
+            "updated_at": Document.updated_at,
+            "table_id": Document.table_id,
+        }
+        parts = path.split(".")
+        if len(parts) == 1 and parts[0] in _COLUMN_MAPPED_ROW_FIELDS:
+            col = _COLUMN_MAPPED_ROW_FIELDS[parts[0]]
+            if col is not None:
+                return col
+        if len(parts) == 1:
+            return Document.data[parts[0]].astext
+        return Document.data[parts].astext
+
+
 def evaluate_action(
     action: str,
     policies: TablePolicies,
@@ -68,7 +95,7 @@ def compile_read_filter(
         if policy.when is None:
             fragments.append(sa_true())
             continue
-        fragments.append(compile_to_sql(policy.when, user))
+        fragments.append(compile_to_sql(policy.when, user, _TableBindingForEngine()))
     if not fragments:
         return None
     if len(fragments) == 1:

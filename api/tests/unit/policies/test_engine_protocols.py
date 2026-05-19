@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from sqlalchemy import column
+from sqlalchemy import Column, Integer, String, column
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import ColumnElement
 
 from shared.policies.ast import (
@@ -16,6 +17,7 @@ from shared.policies.ast import (
     PolicyDocument,
 )
 from shared.policies.binding import Binding
+from shared.policies.compile import compile_to_sql
 from shared.policies.evaluate import evaluate as _engine_evaluate
 from shared.policies.resolver import Resolver
 
@@ -118,3 +120,30 @@ def test_evaluate_with_alternate_namespace():
     expr = Expr.model_validate({"eq": [{"file": "created_by"}, {"user": "user_id"}]})
     resolver = FileResolverStub()
     assert _engine_evaluate(expr, ctx={"created_by": "u-1"}, user=_UserForEvalTest(), resolver=resolver) is True
+
+
+_Base = declarative_base()
+
+
+class _DocFixture(_Base):
+    __tablename__ = "_test_doc_for_compile"
+    id = Column(Integer, primary_key=True)
+    owner_id = Column(String)
+
+
+class _StubBindingForCompile:
+    namespace = "row"
+
+    def resolve_reference(self, path: str):
+        col = getattr(_DocFixture, path, None)
+        if col is None:
+            raise ValueError(f"unknown column: {path}")
+        return col
+
+
+def test_compile_with_stub_binding():
+    """compile_to_sql delegates {row: ...} resolution to the Binding — no Document import in walker."""
+    expr = Expr.model_validate({"eq": [{"row": "owner_id"}, {"user": "user_id"}]})
+    sql = compile_to_sql(expr, user=_UserForEvalTest(), binding=_StubBindingForCompile())
+    rendered = str(sql.compile(compile_kwargs={"literal_binds": True}))
+    assert "owner_id" in rendered

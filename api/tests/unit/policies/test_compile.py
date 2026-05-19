@@ -20,10 +20,37 @@ class FakeUser:
     role_names: list[str] = field(default_factory=list)
 
 
+class _TableBindingForTest:
+    """Local stub mirroring the pre-Task-5 hardcoded {row: ...} → Document
+    column logic. Replaced by the real TableBinding from
+    shared.table_policies in Task 6."""
+    namespace = "row"
+
+    _COLUMN_MAPPED_ROW_FIELDS = {
+        "id": Document.id,
+        "organization_id": None,
+        "created_by": Document.created_by,
+        "updated_by": Document.updated_by,
+        "created_at": Document.created_at,
+        "updated_at": Document.updated_at,
+        "table_id": Document.table_id,
+    }
+
+    def resolve_reference(self, path):
+        parts = path.split(".")
+        if len(parts) == 1 and parts[0] in self._COLUMN_MAPPED_ROW_FIELDS:
+            col = self._COLUMN_MAPPED_ROW_FIELDS[parts[0]]
+            if col is not None:
+                return col
+        if len(parts) == 1:
+            return Document.data[parts[0]].astext
+        return Document.data[parts].astext
+
+
 def _compile(d: dict, user=None) -> str:
     """Compile to SQL, return the rendered string."""
     expr = Expr.model_validate(d)
-    sql_expr = compile_to_sql(expr, user or FakeUser())
+    sql_expr = compile_to_sql(expr, user or FakeUser(), _TableBindingForTest())
     # Use a SELECT to render WHERE clause for inspection
     stmt = select(Document.id).where(sql_expr)
     return str(stmt.compile(compile_kwargs={"literal_binds": True}))
@@ -142,4 +169,4 @@ def test_call_with_row_reference_arg_raises():
     user = FakeUser()
     expr = Expr.model_validate({"call": "has_role", "args": [{"row": "x"}]})
     with pytest.raises(ValueError, match="cannot resolve"):
-        compile_to_sql(expr, user)
+        compile_to_sql(expr, user, _TableBindingForTest())
