@@ -147,3 +147,79 @@ def test_compile_with_stub_binding():
     sql = compile_to_sql(expr, user=_UserForEvalTest(), binding=_StubBindingForCompile())
     rendered = str(sql.compile(compile_kwargs={"literal_binds": True}))
     assert "owner_id" in rendered
+
+
+_FORBIDDEN_DOMAIN_PREFIXES = (
+    "src.models.orm",
+    "shared.table_policies",
+    "shared.file_policies",
+)
+
+
+def _scan_for_forbidden_imports(source: str, label: str) -> list[str]:
+    """Return a list of forbidden imports found in `source`.
+
+    Shared between the real-engine assertion and a negative self-check
+    that proves the scanner actually catches what it claims to.
+    """
+    import ast as _ast
+
+    bad: list[str] = []
+    tree = _ast.parse(source)
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.ImportFrom) and node.module:
+            if any(node.module.startswith(p) for p in _FORBIDDEN_DOMAIN_PREFIXES):
+                bad.append(f"{label}: from {node.module}")
+        elif isinstance(node, _ast.Import):
+            for alias in node.names:
+                if any(alias.name.startswith(p) for p in _FORBIDDEN_DOMAIN_PREFIXES):
+                    bad.append(f"{label}: import {alias.name}")
+    return bad
+
+
+def test_engine_does_not_import_domain_code():
+    """The shared engine modules must not import any table-specific code.
+
+    Static analysis: parse each module under `shared/policies/` and assert
+    nothing imports `src.models.orm`, `shared.table_policies`, or
+    `shared.file_policies`. This guards against future regressions that
+    would re-couple the engine to a specific domain.
+    """
+    import pathlib
+
+    here = pathlib.Path(__file__).resolve()
+    # tests/unit/policies/test_engine_protocols.py -> api/shared/policies/
+    engine_root = here.parents[3] / "shared" / "policies"
+    assert engine_root.is_dir(), f"engine root not found at {engine_root}"
+
+    bad: list[str] = []
+    for py in sorted(engine_root.rglob("*.py")):
+        bad.extend(_scan_for_forbidden_imports(py.read_text(), py.name))
+
+    assert not bad, "engine reaches into domain code:\n" + "\n".join(bad)
+
+
+def test_forbidden_import_scanner_catches_violations():
+    """Self-check: prove the scanner actually flags violations.
+
+    Without this, a buggy scanner that always returned [] would make the
+    engine isolation test silently pass forever.
+    """
+    cases = [
+        "from src.models.orm.tables import Document",
+        "from shared.table_policies import RowResolver",
+        "from shared.file_policies import FileResolver",
+        "import src.models.orm.tables",
+    ]
+    for src in cases:
+        assert _scan_for_forbidden_imports(src, "synthetic"), (
+            f"scanner missed forbidden import: {src!r}"
+        )
+
+    # And the inverse — clean imports must NOT be flagged.
+    clean = (
+        "from shared.policies.ast import Expr\n"
+        "from typing import Any\n"
+        "import sqlalchemy\n"
+    )
+    assert _scan_for_forbidden_imports(clean, "synthetic") == []
