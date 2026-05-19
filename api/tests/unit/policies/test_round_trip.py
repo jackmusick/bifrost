@@ -12,6 +12,23 @@ from src.models.contracts.policies import Expr
 from tests.unit.policies.test_evaluate import FakeUser
 
 
+class _RowResolverForTest:
+    """Local stub for the {row: ...} resolver semantics. Replaced by the
+    real RowResolver from shared.table_policies in Task 6."""
+    namespace = "row"
+
+    def resolve(self, path, ctx):
+        parts = path.split(".")
+        cur = ctx
+        for p in parts:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(p)
+            if cur is None:
+                return None
+        return cur
+
+
 # Each case is (expr_dict, row_dict, user_kwargs, expected_bool)
 CASES = [
     # Literals
@@ -62,7 +79,7 @@ def test_round_trip(expr_dict, row, user_kwargs, expected):
     expr = Expr.model_validate(expr_dict)
     user = FakeUser(**user_kwargs)
 
-    eval_result = evaluate(expr, row=row, user=user)
+    eval_result = evaluate(expr, ctx=row, user=user, resolver=_RowResolverForTest())
     assert eval_result is expected, (
         f"evaluator: {eval_result}, expected {expected}, expr={expr_dict}"
     )

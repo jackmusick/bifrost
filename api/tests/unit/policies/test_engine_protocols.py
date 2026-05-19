@@ -16,6 +16,7 @@ from shared.policies.ast import (
     PolicyDocument,
 )
 from shared.policies.binding import Binding
+from shared.policies.evaluate import evaluate as _engine_evaluate
 from shared.policies.resolver import Resolver
 
 
@@ -86,3 +87,34 @@ def test_expr_validator_still_works():
 
     with pytest.raises(PydanticValidationError):
         Expr.model_validate({"user": "not_a_real_field"})
+
+
+class _UserForEvalTest:
+    user_id = "u-1"
+    email = "u@x"
+    organization_id = None
+    is_platform_admin = False
+    role_ids: list = []
+    role_names: list = []
+
+
+def test_evaluate_with_stub_resolver():
+    """Engine evaluates `{row: ...}` references via the Resolver — no domain code in walker."""
+    expr = Expr.model_validate({"eq": [{"row": "owner_id"}, {"user": "user_id"}]})
+    resolver = StubResolver()
+    assert _engine_evaluate(expr, ctx={"owner_id": "u-1"}, user=_UserForEvalTest(), resolver=resolver) is True
+    assert _engine_evaluate(expr, ctx={"owner_id": "u-2"}, user=_UserForEvalTest(), resolver=resolver) is False
+
+
+def test_evaluate_with_alternate_namespace():
+    """A different-namespace resolver handles its own references."""
+
+    class FileResolverStub:
+        namespace = "file"
+
+        def resolve(self, path: str, ctx):
+            return (ctx or {}).get(path)
+
+    expr = Expr.model_validate({"eq": [{"file": "created_by"}, {"user": "user_id"}]})
+    resolver = FileResolverStub()
+    assert _engine_evaluate(expr, ctx={"created_by": "u-1"}, user=_UserForEvalTest(), resolver=resolver) is True

@@ -17,6 +17,25 @@ from shared.policies.evaluate import evaluate
 from src.models.contracts.policies import TablePolicies
 
 
+# TEMPORARY: Task 6 replaces this with `from shared.table_policies import RowResolver`.
+# Defined inline here so the engine refactor of Task 4 keeps tests green without
+# requiring shared.table_policies (which doesn't exist yet).
+class _RowResolverForEngine:
+    """Mirrors the pre-Task-4 hardcoded {row: ...} resolution semantics."""
+    namespace = "row"
+
+    def resolve(self, path: str, ctx: Any) -> Any:
+        parts = path.split(".")
+        cur = ctx
+        for p in parts:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(p)
+            if cur is None:
+                return None
+        return cur
+
+
 def evaluate_action(
     action: str,
     policies: TablePolicies,
@@ -29,7 +48,7 @@ def evaluate_action(
             continue
         if policy.when is None:
             return True
-        if evaluate(policy.when, row=row, user=user):
+        if evaluate(policy.when, ctx=row, user=user, resolver=_RowResolverForEngine()):
             return True
     return False
 
@@ -71,7 +90,7 @@ def is_subscribe_authorized(policies: TablePolicies, user: Any) -> bool:
             return True
         if _is_purely_user_dependent(policy.when.root):
             # Resolve immediately — no row context affects the answer
-            if evaluate(policy.when, row={}, user=user):
+            if evaluate(policy.when, ctx={}, user=user, resolver=_RowResolverForEngine()):
                 return True
             continue
         # Row-data-dependent → conservatively allow

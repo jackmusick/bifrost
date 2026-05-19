@@ -25,6 +25,25 @@ from shared.policies.evaluate import evaluate
 from shared.policies.probe import evaluate_action
 from src.models.contracts.policies import Expr, TablePolicies
 
+
+# TEMPORARY: Task 6 replaces this with `from shared.table_policies import RowResolver`.
+# Defined inline here so the engine refactor of Task 4 keeps tests green without
+# requiring shared.table_policies (which doesn't exist yet).
+class _RowResolverForEngine:
+    """Mirrors the pre-Task-4 hardcoded {row: ...} resolution semantics."""
+    namespace = "row"
+
+    def resolve(self, path: str, ctx: Any) -> Any:
+        parts = path.split(".")
+        cur = ctx
+        for p in parts:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(p)
+            if cur is None:
+                return None
+        return cur
+
 Action = Literal["insert", "update", "delete"]
 
 
@@ -42,7 +61,7 @@ def is_row_visible(
         return False
     if not evaluate_action("read", policies, row, user):
         return False
-    if user_filter is not None and not evaluate(user_filter, row=row, user=user):
+    if user_filter is not None and not evaluate(user_filter, ctx=row, user=user, resolver=_RowResolverForEngine()):
         return False
     return True
 
