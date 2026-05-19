@@ -5,8 +5,8 @@
 # =============================================================================
 # Stage 1: Builder
 # =============================================================================
-# python:3.14-slim
-FROM python@sha256:511f025a0718f01b977d5ad572bc431745b31887ceccc538c85b87e82ad2956f AS builder
+# python:3.14.5-slim-trixie
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS builder
 
 WORKDIR /app
 
@@ -29,21 +29,48 @@ COPY pyproject.toml requirements.lock ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # =============================================================================
-# Stage 2: Runtime
+# Stage 2: Node dependencies
 # =============================================================================
-# python:3.14-slim
-FROM python@sha256:511f025a0718f01b977d5ad572bc431745b31887ceccc538c85b87e82ad2956f
+# Keep npm and its Debian node-* dependency tree out of the runtime image.
+# The runtime services execute Node scripts directly with `node`.
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS node-deps
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install app compiler Node.js dependencies
+COPY api/src/services/app_compiler/package.json api/src/services/app_compiler/package-lock.json* /app/src/services/app_compiler/
+RUN cd /app/src/services/app_compiler && \
+    test -f package-lock.json || { echo "package-lock.json is required for app_compiler"; exit 1; } && \
+    npm ci --omit=dev
+
+# Install app bundler Node.js dependencies (esbuild)
+COPY api/src/services/app_bundler/package.json api/src/services/app_bundler/package-lock.json* /app/src/services/app_bundler/
+RUN cd /app/src/services/app_bundler && \
+    test -f package-lock.json || { echo "package-lock.json is required for app_bundler"; exit 1; } && \
+    npm ci --omit=dev
+
+# =============================================================================
+# Stage 3: Runtime
+# =============================================================================
+# python:3.14.5-slim-trixie
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856
 
 WORKDIR /app
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    libcap2 \
     curl \
     gosu \
     git \
     awscli \
-    nodejs npm \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
@@ -59,15 +86,13 @@ COPY api/bifrost.py /app/
 COPY api/scripts/ /app/scripts/
 COPY api/shared/ /app/shared/
 
-# Install app compiler Node.js dependencies
-COPY api/src/services/app_compiler/package.json api/src/services/app_compiler/package-lock.json* /app/src/services/app_compiler/
+# Copy app compiler Node.js runtime
 COPY api/src/services/app_compiler/compile.js /app/src/services/app_compiler/
 COPY api/src/services/app_compiler/tailwind.js /app/src/services/app_compiler/
-RUN cd /app/src/services/app_compiler && npm install --production
+COPY --from=node-deps /app/src/services/app_compiler/node_modules /app/src/services/app_compiler/node_modules
 
-# Install app bundler Node.js dependencies (esbuild)
-COPY api/src/services/app_bundler/package.json api/src/services/app_bundler/package-lock.json* /app/src/services/app_bundler/
-RUN cd /app/src/services/app_bundler && npm install --production
+# Copy app bundler Node.js runtime (esbuild)
+COPY --from=node-deps /app/src/services/app_bundler/node_modules /app/src/services/app_bundler/node_modules
 
 # Create non-root user
 RUN useradd -m -u 1000 bifrost && \
@@ -81,8 +106,9 @@ RUN mkdir -p /workspace /tmp/bifrost && \
 COPY api/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Don't switch to bifrost here - entrypoint handles user switching
-# This allows the entrypoint to fix volume permissions when needed
+# Run non-root by default. Compose/test harnesses that need startup ownership
+# repair can still override this to root; entrypoint drops back to bifrost.
+USER bifrost
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Environment variables
