@@ -17,7 +17,6 @@ from src.core.database import DbSession
 from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.services.audit import emit_audit
-from src.services.email_service import send_email
 from src.services.user_invite_service import UserInviteService
 from src.models import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
 from src.models import (
@@ -159,23 +158,7 @@ async def create_user(
         raw_token, invite = await svc.create_or_replace(
             user_id=new_user.id, created_by=user.user_id
         )
-        registration_url = (
-            f"{get_settings().public_url.rstrip('/')}/accept-invite?token={raw_token}"
-        )
-        send_result = await send_email(
-            recipient=new_user.email,
-            subject="You're invited to Bifrost",
-            body=(
-                f"Hello{(' ' + new_user.name) if new_user.name else ''},\n\n"
-                f"You've been invited to Bifrost. Complete your registration here:\n\n"
-                f"{registration_url}\n\n"
-                f"This link expires {invite.expires_at.isoformat()}."
-            ),
-        )
-        if not send_result.success:
-            logger.warning(
-                f"Invite email failed for {new_user.email}: {send_result.error}"
-            )
+        # TODO(task-23): emit user.invited event
         invite_status = InviteStatus.PENDING
 
     response = UserPublic.model_validate(new_user)
@@ -245,26 +228,15 @@ async def _generate_invite(
         f"{get_settings().public_url.rstrip('/')}/accept-invite?token={raw_token}"
     )
 
-    email_sent = False
-    email_error = None
     if send:
-        send_result = await send_email(
-            recipient=target.email,
-            subject="You're invited to Bifrost",
-            body=(
-                f"Complete your registration: {registration_url}\n\n"
-                f"Link expires {invite.expires_at.isoformat()}."
-            ),
-        )
-        email_sent = send_result.success
-        email_error = send_result.error
+        pass  # TODO(task-23): emit user.invited event
 
     return CreateInviteResponse(
         user_id=user_id,
         expires_at=invite.expires_at,
         registration_url=registration_url,
-        email_sent=email_sent,
-        email_error=email_error,
+        email_sent=False,
+        email_error=None,
     )
 
 

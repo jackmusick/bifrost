@@ -82,7 +82,6 @@ Example:
 from .api import api
 from .config import config
 from .executions import executions
-from .email import email
 from .files import files
 from .forms import forms
 from .integrations import integrations
@@ -221,7 +220,6 @@ __all__ = [
     'api',
     'ai',
     'config',
-    'email',
     'executions',
     'files',
     'forms',
