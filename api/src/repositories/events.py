@@ -272,6 +272,37 @@ class EventSubscriptionRepository(BaseRepository[EventSubscription]):
         result = await self.session.execute(stmt)
         return result.unique().scalars().all()
 
+    async def get_active_for_internal_event(
+        self,
+        event_type: str,
+        organization_id: UUID | None = None,
+    ) -> Sequence[EventSubscription]:
+        """
+        Get active subscriptions for an internal event (no event_source_id).
+
+        Matches subscriptions with NULL event_source_id and either no event_type
+        filter or an event_type filter matching the given event_type.
+
+        Args:
+            event_type: The internal event type (e.g. "user.invited")
+            organization_id: Scope; NULL subscriptions match all orgs
+        """
+        stmt = (
+            select(EventSubscription)
+            .options(
+                joinedload(EventSubscription.workflow),
+            )
+            .where(EventSubscription.event_source_id.is_(None))
+            .where(EventSubscription.is_active.is_(True))
+            .where(
+                (EventSubscription.event_type.is_(None))
+                | (EventSubscription.event_type == event_type)
+            )
+        )
+
+        result = await self.session.execute(stmt)
+        return result.unique().scalars().all()
+
     async def count_by_source(self, source_id: UUID, active_only: bool = True) -> int:
         """Count subscriptions for an event source."""
         stmt = select(func.count(EventSubscription.id)).where(

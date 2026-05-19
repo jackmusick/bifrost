@@ -282,6 +282,91 @@ class EventProcessor:
             status_code=500,
         )
 
+    async def emit_internal(
+        self,
+        *,
+        event_type: str,
+        data: dict,
+        organization_id: UUID | None = None,
+        triggered_by: str | None = None,
+    ) -> UUID:
+        """Emit an internal platform event. Returns the event_id.
+
+        Creates an Event row with event_source_id=NULL (INTERNAL source),
+        finds matching subscriptions (those with NULL event_source_id and
+        matching event_type), creates deliveries, and marks them PENDING for
+        queue_event_deliveries to pick up after commit.
+        """
+        event = Event(
+            id=uuid.uuid4(),
+            event_source_id=None,
+            event_type=event_type,
+            received_at=datetime.now(timezone.utc),
+            headers=None,
+            data=data,
+            source_ip=None,
+            status=EventStatus.RECEIVED,
+        )
+        self.session.add(event)
+        await self.session.flush()
+
+        logger.info(
+            f"Internal event emitted: {event.id}",
+            extra={
+                "event_id": str(event.id),
+                "event_type": event_type,
+                "triggered_by": triggered_by,
+            },
+        )
+
+        subscriptions = await self._subscription_repo.get_active_for_internal_event(
+            event_type=event_type,
+            organization_id=organization_id,
+        )
+
+        if not subscriptions:
+            event.status = EventStatus.COMPLETED
+            await self.session.flush()
+            logger.info(f"No subscriptions for internal event {event_type}: {event.id}")
+            return event.id
+
+        event.status = EventStatus.PROCESSING
+        await self.session.flush()
+
+        for subscription in subscriptions:
+            target_type = getattr(subscription, "target_type", "workflow") or "workflow"
+            if target_type == "agent":
+                if not subscription.agent_id:
+                    logger.warning(
+                        f"Subscription {subscription.id} is agent type but has no agent_id, skipping"
+                    )
+                    continue
+            else:
+                if not subscription.workflow_id or not subscription.workflow:
+                    logger.warning(
+                        f"Subscription {subscription.id} has no workflow, skipping"
+                    )
+                    continue
+
+            delivery = EventDelivery(
+                id=uuid.uuid4(),
+                event_id=event.id,
+                event_subscription_id=subscription.id,
+                workflow_id=subscription.workflow_id,
+                status=EventDeliveryStatus.PENDING,
+            )
+            self.session.add(delivery)
+
+        await self.session.flush()
+        logger.info(
+            f"Created deliveries for internal event {event_type}: {event.id}",
+            extra={
+                "event_id": str(event.id),
+                "subscription_count": len(subscriptions),
+            },
+        )
+        return event.id
+
     async def _process_delivery(
         self,
         webhook_source: WebhookSource,

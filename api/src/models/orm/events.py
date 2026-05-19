@@ -229,8 +229,9 @@ class EventSubscription(Base):
     __tablename__ = "event_subscriptions"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    event_source_id: Mapped[UUID] = mapped_column(
-        ForeignKey("event_sources.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    # NULL for internal-event subscriptions (matched by event_type only); set for webhook/schedule
+    event_source_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("event_sources.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
     )
     workflow_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("workflows.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
@@ -266,7 +267,7 @@ class EventSubscription(Base):
     )
 
     # Relationships
-    event_source: Mapped["EventSource"] = relationship(back_populates="subscriptions")
+    event_source: Mapped["EventSource | None"] = relationship(back_populates="subscriptions")
     workflow: Mapped["Workflow | None"] = relationship(lazy="joined", foreign_keys=[workflow_id])
     agent = relationship("Agent", lazy="joined", foreign_keys=[agent_id])
     deliveries: Mapped[list["EventDelivery"]] = relationship(
@@ -294,8 +295,9 @@ class Event(Base):
     __tablename__ = "events"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    event_source_id: Mapped[UUID] = mapped_column(
-        ForeignKey("event_sources.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    # NULL for internal events; set for webhook/schedule events
+    event_source_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("event_sources.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=True
     )
 
     # Event metadata
@@ -332,7 +334,7 @@ class Event(Base):
     )
 
     # Relationships
-    event_source: Mapped["EventSource"] = relationship(back_populates="events")
+    event_source: Mapped["EventSource | None"] = relationship(back_populates="events")
     deliveries: Mapped[list["EventDelivery"]] = relationship(
         back_populates="event",
         cascade="all, delete-orphan",
