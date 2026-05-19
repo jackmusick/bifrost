@@ -2,6 +2,10 @@
 
 MSP automation platform built with FastAPI and React.
 
+## Agent Guidance
+
+Start with [`AGENTS.md`](./AGENTS.md) for the tool-neutral agent contract. This file is the detailed Bifrost/Claude playbook and remains authoritative for repo-specific commands, invariants, and verification details.
+
 ## Technologies
 
 -   **Backend**: Python 3.11 (FastAPI), SQLAlchemy, Pydantic, PostgreSQL, RabbitMQ, Redis

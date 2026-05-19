@@ -1,6 +1,6 @@
 # Contributing to Bifrost
 
-Thanks for contributing. This doc is the friendly front door — it covers the *spirit* of how we work. The mechanical rules live in [`CLAUDE.md`](./CLAUDE.md) (which both humans and LLMs read), and the reviewer-side checks live in [`.claude/skills/reviewing-prs/`](./.claude/skills/reviewing-prs/).
+Thanks for contributing. This doc is the friendly front door — it covers the *spirit* of how we work. Tool-neutral agent guidance lives in [`AGENTS.md`](./AGENTS.md), the detailed Bifrost playbook lives in [`CLAUDE.md`](./CLAUDE.md), and Claude-specific workflow skills live under [`.claude/skills/`](./.claude/skills/).
 
 ## Before you open a PR
 
@@ -24,7 +24,7 @@ All work ships with tests. The full matrix of what goes where lives in [`CLAUDE.
 
 ## Sensitive paths
 
-Some areas of the codebase need a higher bar — auth, execution engine, multi-tenancy filters, migrations, secrets, manifest round-trip, audit logging. The canonical list (with rationale and reviewer focus areas) is [`.claude/skills/reviewing-prs/sensitive-paths.md`](./.claude/skills/reviewing-prs/sensitive-paths.md).
+Some areas of the codebase need a higher bar — auth, execution engine, multi-tenancy filters, migrations, secrets, manifest round-trip, audit logging.
 
 If your change touches any of those, expect:
 - A manual review regardless of PR size.
