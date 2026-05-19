@@ -19,6 +19,7 @@ import {
 	Table as TableIcon,
 	Eye,
 } from "lucide-react";
+import { EntityLogo } from "@/components/EntityLogo";
 import { CreateAppModal } from "@/components/app-builder/CreateAppModal";
 import { Button } from "@/components/ui/button";
 import {
@@ -268,6 +269,17 @@ export function Applications() {
 							>
 								<CardHeader className="pb-3">
 									<div className="flex items-start justify-between gap-3">
+										<EntityLogo
+											entityType="app"
+											entityId={app.id}
+											fallback={
+												<div className="h-8 w-8 rounded bg-muted flex items-center justify-center shrink-0">
+													<AppWindow className="h-4 w-4 text-muted-foreground" />
+												</div>
+											}
+											size={32}
+											className="h-8 w-8 rounded object-cover shrink-0"
+										/>
 										<div className="flex-1 min-w-0">
 											<div className="flex items-center gap-2 flex-wrap">
 												<CardTitle className="text-base break-all">

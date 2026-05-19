@@ -53,6 +53,7 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { AppLogoPicker } from "@/components/applications/AppLogoPicker";
 import { AppReplacePathDialog } from "@/components/applications/AppReplacePathDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -369,6 +370,20 @@ export function AppInfoDialog({
 									</FormItem>
 								)}
 							/>
+
+							{/* Logo — only available when editing an existing app */}
+							{isEditing && existingApp && (
+								<FormItem>
+									<FormLabel>Logo</FormLabel>
+									<FormControl>
+										<AppLogoPicker
+											applicationId={existingApp.id}
+											onUploaded={() => {}}
+											onRemoved={() => {}}
+										/>
+									</FormControl>
+								</FormItem>
+							)}
 
 							{/* Description */}
 							<FormField
