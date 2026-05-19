@@ -5,6 +5,7 @@ import { LLMConfig } from "./LLMConfig";
 const mockUseQuery = vi.fn();
 const mockUseMutation = vi.fn();
 const mockTestConnection = vi.fn();
+const mockTestSavedConnection = vi.fn();
 const mockSaveConfig = vi.fn();
 const mockRefetchConfig = vi.fn();
 const mockRefetchEmbedding = vi.fn();
@@ -26,8 +27,9 @@ vi.mock("@/lib/api-client", () => ({
 }));
 
 vi.mock("@/stores/notificationStore", () => ({
-	useNotificationStore: (selector: (state: { notifications: unknown[] }) => unknown) =>
-		selector({ notifications: [] }),
+	useNotificationStore: (
+		selector: (state: { notifications: unknown[] }) => unknown,
+	) => selector({ notifications: [] }),
 }));
 
 vi.mock("@/services/ai-pricing", () => ({
@@ -52,6 +54,7 @@ describe("LLMConfig", () => {
 		mockUseQuery.mockReset();
 		mockUseMutation.mockReset();
 		mockTestConnection.mockReset();
+		mockTestSavedConnection.mockReset();
 		mockSaveConfig.mockReset();
 		mockRefetchConfig.mockReset();
 		mockRefetchEmbedding.mockReset();
@@ -66,7 +69,22 @@ describe("LLMConfig", () => {
 				},
 			],
 		});
+		mockTestSavedConnection.mockResolvedValue({
+			success: true,
+			message: "Connected to Azure OpenAI. Listed 1 model(s).",
+			models: [
+				{
+					id: "AI21-Jamba-1.5-Large",
+					display_name: "AI21 Jamba 1.5 Large",
+				},
+			],
+		});
 		mockSaveConfig.mockResolvedValue({});
+
+		const testMutation = { mutateAsync: mockTestConnection };
+		const testSavedMutation = { mutateAsync: mockTestSavedConnection };
+		const saveMutation = { mutateAsync: mockSaveConfig };
+		const defaultMutation = { mutateAsync: vi.fn() };
 
 		mockUseQuery.mockImplementation((_method: string, path: string) => {
 			if (path === "/api/admin/llm/config") {
@@ -92,12 +110,15 @@ describe("LLMConfig", () => {
 
 		mockUseMutation.mockImplementation((_method: string, path: string) => {
 			if (path === "/api/admin/llm/test") {
-				return { mutateAsync: mockTestConnection };
+				return testMutation;
+			}
+			if (path === "/api/admin/llm/test-saved") {
+				return testSavedMutation;
 			}
 			if (path === "/api/admin/llm/config") {
-				return { mutateAsync: mockSaveConfig };
+				return saveMutation;
 			}
-			return { mutateAsync: vi.fn() };
+			return defaultMutation;
 		});
 	});
 
@@ -139,6 +160,67 @@ describe("LLMConfig", () => {
 				model: "azure-gpt-4.1",
 				api_key: "sk-test-key",
 				endpoint: "https://example.openai.azure.com/openai/v1",
+			}),
+		});
+	});
+
+	it("preserves saved deployment model when provider model list omits it", async () => {
+		const savedConfig = {
+			provider: "openai",
+			model: "DeepSeek-V4-Flash",
+			endpoint:
+				"https://bifrost-integrations-resource.openai.azure.com/openai/v1",
+			max_tokens: 4096,
+			default_system_prompt: null,
+			summarization_model: null,
+			tuning_model: null,
+			is_configured: true,
+			api_key_set: true,
+		};
+
+		mockUseQuery.mockImplementation((_method: string, path: string) => {
+			if (path === "/api/admin/llm/config") {
+				return {
+					data: savedConfig,
+					isLoading: false,
+					refetch: mockRefetchConfig,
+				};
+			}
+			if (path === "/api/admin/llm/embedding-config") {
+				return {
+					data: embeddingConfig,
+					isLoading: false,
+					refetch: mockRefetchEmbedding,
+				};
+			}
+			return {
+				data: undefined,
+				isLoading: false,
+				refetch: vi.fn(),
+			};
+		});
+
+		const { user } = renderWithProviders(<LLMConfig />);
+
+		await waitFor(() => expect(mockTestSavedConnection).toHaveBeenCalled());
+		await waitFor(() =>
+			expect(
+				screen.getByText("DeepSeek-V4-Flash (configured)"),
+			).toBeInTheDocument(),
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /save configuration/i }),
+		);
+
+		await waitFor(() => expect(mockSaveConfig).toHaveBeenCalled());
+		expect(mockSaveConfig).toHaveBeenCalledWith({
+			body: expect.objectContaining({
+				provider: "openai",
+				model: "DeepSeek-V4-Flash",
+				api_key: undefined,
+				endpoint:
+					"https://bifrost-integrations-resource.openai.azure.com/openai/v1",
 			}),
 		});
 	});
