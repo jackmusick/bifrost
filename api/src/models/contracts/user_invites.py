@@ -32,8 +32,8 @@ class CreateInviteResponse(BaseModel):
     user_id: UUID
     expires_at: datetime
     registration_url: str  # full URL with raw token, e.g. https://app/accept-invite?token=...
-    email_sent: bool
-    email_error: str | None = None
+    event_emitted: bool
+    event_id: UUID | None = None
 
 
 class RegisterFromInviteRequest(BaseModel):

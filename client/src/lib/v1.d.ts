@@ -3556,22 +3556,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5970,92 +5970,6 @@ export interface paths {
          * @description Delete an existing model pricing entry.
          */
         delete: operations["delete_pricing_api_settings_ai_pricing__pricing_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/email/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Email Config
-         * @description Get current email workflow configuration.
-         *
-         *     Requires platform admin access.
-         */
-        get: operations["get_email_config_api_admin_email_config_get"];
-        put?: never;
-        /**
-         * Set Email Config
-         * @description Set email workflow configuration.
-         *
-         *     Validates the workflow has the correct signature before saving.
-         *     Requires platform admin access.
-         */
-        post: operations["set_email_config_api_admin_email_config_post"];
-        /**
-         * Delete Email Config
-         * @description Delete email workflow configuration.
-         *
-         *     Requires platform admin access.
-         */
-        delete: operations["delete_email_config_api_admin_email_config_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/email/validate/{workflow_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Validate Email Workflow
-         * @description Validate a workflow for use as email provider, optionally dispatching a test send.
-         *
-         *     Checks that the workflow has the required signature:
-         *     - Required: recipient (str), subject (str), body (str)
-         *     - Optional: html_body (str | None)
-         *
-         *     If `request.recipient` is set, also dispatches a real test message to that recipient
-         *     via the configured email workflow.
-         *
-         *     Requires platform admin access.
-         */
-        post: operations["validate_email_workflow_api_admin_email_validate__workflow_id__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/email/send": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send Email Sdk
-         * @description Send an email via the configured email workflow.
-         *
-         *     Used by SDK's email.send() method. Requires superuser auth (workflow engine token).
-         */
-        post: operations["send_email_sdk_api_email_send_post"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -10853,10 +10767,10 @@ export interface components {
             expires_at: string;
             /** Registration Url */
             registration_url: string;
-            /** Email Sent */
-            email_sent: boolean;
-            /** Email Error */
-            email_error?: string | null;
+            /** Event Emitted */
+            event_emitted: boolean;
+            /** Event Id */
+            event_id?: string | null;
         };
         /**
          * CreateOAuthConnectionRequest
@@ -11840,112 +11754,6 @@ export interface components {
             items: {
                 [key: string]: unknown;
             }[];
-        };
-        /**
-         * EmailSendRequest
-         * @description Request to send an email via SDK.
-         */
-        EmailSendRequest: {
-            /**
-             * Recipient
-             * @description Recipient email address
-             */
-            recipient: string;
-            /**
-             * Subject
-             * @description Email subject
-             */
-            subject: string;
-            /**
-             * Body
-             * @description Plain text body
-             */
-            body: string;
-            /**
-             * Html Body
-             * @description Optional HTML body
-             */
-            html_body?: string | null;
-            /**
-             * Scope
-             * @description Organization scope for config resolution
-             */
-            scope?: string | null;
-        };
-        /**
-         * EmailSendResponse
-         * @description Response from email send.
-         */
-        EmailSendResponse: {
-            /** Success */
-            success: boolean;
-            /** Execution Id */
-            execution_id?: string | null;
-            /** Error */
-            error?: string | null;
-        };
-        /**
-         * EmailTestRequest
-         * @description Request to test an email workflow with an optional real send.
-         */
-        EmailTestRequest: {
-            /** Recipient */
-            recipient?: string | null;
-        };
-        /**
-         * EmailWorkflowConfigRequest
-         * @description Request to set the email workflow.
-         */
-        EmailWorkflowConfigRequest: {
-            /**
-             * Workflow Id
-             * @description UUID of the workflow to use for sending emails
-             */
-            workflow_id: string;
-        };
-        /**
-         * EmailWorkflowConfigResponse
-         * @description Email workflow configuration response.
-         */
-        EmailWorkflowConfigResponse: {
-            /** Workflow Id */
-            workflow_id: string;
-            /** Workflow Name */
-            workflow_name: string;
-            /**
-             * Is Configured
-             * @default true
-             */
-            is_configured: boolean;
-            /** Configured At */
-            configured_at?: string | null;
-            /** Configured By */
-            configured_by?: string | null;
-        };
-        /**
-         * EmailWorkflowValidationResponse
-         * @description Response from validating a workflow for email sending.
-         */
-        EmailWorkflowValidationResponse: {
-            /** Valid */
-            valid: boolean;
-            /** Message */
-            message: string;
-            /** Workflow Name */
-            workflow_name?: string | null;
-            /** Missing Params */
-            missing_params?: string[] | null;
-            /** Extra Required Params */
-            extra_required_params?: string[] | null;
-            /**
-             * Email Sent
-             * @default false
-             */
-            email_sent: boolean;
-            /** Send Error */
-            send_error?: string | null;
-            /** Execution Id */
-            execution_id?: string | null;
         };
         /**
          * EmbedSecretCreate
@@ -21050,6 +20858,8 @@ export interface components {
              * @default false
              */
             invite: boolean;
+            /** Trigger Automation */
+            trigger_automation?: boolean | null;
         };
         /**
          * MFASetupResponse
@@ -26614,7 +26424,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26647,7 +26457,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26680,7 +26490,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -26713,7 +26523,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__delete: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -30828,145 +30638,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_email_config_api_admin_email_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailWorkflowConfigResponse"] | null;
-                };
-            };
-        };
-    };
-    set_email_config_api_admin_email_config_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailWorkflowConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailWorkflowConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_email_config_api_admin_email_config_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    validate_email_workflow_api_admin_email_validate__workflow_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workflow_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["EmailTestRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailWorkflowValidationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_email_sdk_api_email_send_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailSendRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EmailSendResponse"];
-                };
             };
             /** @description Validation Error */
             422: {

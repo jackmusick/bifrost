@@ -17,6 +17,7 @@ from src.core.database import DbSession
 from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter, OrgFilterType
 from src.services.audit import emit_audit
+from src.services.events import emit_internal_event
 from src.services.user_invite_service import UserInviteService
 from src.models import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
 from src.models import (
@@ -158,8 +159,30 @@ async def create_user(
         raw_token, invite = await svc.create_or_replace(
             user_id=new_user.id, created_by=user.user_id
         )
-        # TODO(task-23): emit user.invited event
         invite_status = InviteStatus.PENDING
+        should_emit = request.trigger_automation is True or request.trigger_automation is None
+        if should_emit:
+            registration_url = (
+                f"{get_settings().public_url.rstrip('/')}/accept-invite?token={raw_token}"
+            )
+            await emit_internal_event(
+                "user.invited",
+                {
+                    "user_id": str(new_user.id),
+                    "email": new_user.email,
+                    "name": new_user.name or "",
+                    "registration_url": registration_url,
+                    "expires_at": invite.expires_at.isoformat(),
+                    "invited_by": {
+                        "user_id": str(user.user_id),
+                        "email": user.email,
+                        "name": getattr(user, "name", None) or "",
+                    },
+                    "reason": "created",
+                },
+                organization_id=new_user.organization_id,
+                triggered_by=str(user.user_id),
+            )
 
     response = UserPublic.model_validate(new_user)
     response.invite_status = invite_status
@@ -228,15 +251,33 @@ async def _generate_invite(
         f"{get_settings().public_url.rstrip('/')}/accept-invite?token={raw_token}"
     )
 
+    event_id = None
     if send:
-        pass  # TODO(task-23): emit user.invited event
+        event_id = await emit_internal_event(
+            "user.invited",
+            {
+                "user_id": str(user_id),
+                "email": target.email,
+                "name": target.name or "",
+                "registration_url": registration_url,
+                "expires_at": invite.expires_at.isoformat(),
+                "invited_by": {
+                    "user_id": str(actor.user_id),
+                    "email": actor.email,
+                    "name": getattr(actor, "name", None) or "",
+                },
+                "reason": "resent",
+            },
+            organization_id=target.organization_id,
+            triggered_by=str(actor.user_id),
+        )
 
     return CreateInviteResponse(
         user_id=user_id,
         expires_at=invite.expires_at,
         registration_url=registration_url,
-        email_sent=False,
-        email_error=None,
+        event_emitted=send,
+        event_id=event_id,
     )
 
 

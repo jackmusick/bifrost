@@ -77,7 +77,7 @@ class TestInviteEndpoints:
         assert regen_resp.status_code == 200
         body = regen_resp.json()
         assert "accept-invite?token=" in body["registration_url"]
-        assert body["email_sent"] is False
+        assert body["event_emitted"] is False
 
         # User should now show invite_status=pending
         list_resp = e2e_client.get(
@@ -210,6 +210,168 @@ class TestRegisterFromInvite:
             json={"token": "garbage-token", "password": "x"},
         )
         assert resp.status_code == 400
+
+
+@pytest.mark.e2e
+class TestUserInvitedEvent:
+    """user.invited event is emitted at the right times."""
+
+    def test_create_with_invite_emits_event(self, e2e_client, platform_admin, org1):
+        """POST /users with invite=True returns event_emitted=True and an event_id."""
+        resp = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": "inv-event-create@gobifrost.dev",
+                "name": "Event Create",
+                "organization_id": org1["id"],
+                "is_superuser": False,
+                "invite": True,
+            },
+        )
+        assert resp.status_code == 201
+        user_id = resp.json()["id"]
+
+        # The resend endpoint reveals event_emitted
+        resend_resp = e2e_client.post(
+            f"/api/users/{user_id}/invite/resend",
+            headers=platform_admin.headers,
+        )
+        assert resend_resp.status_code == 200
+        body = resend_resp.json()
+        assert body["event_emitted"] is True
+        assert body["event_id"] is not None
+        assert "accept-invite?token=" in body["registration_url"]
+
+        # Cleanup
+        e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        e2e_client.delete(f"/api/users/{user_id}", headers=platform_admin.headers)
+
+    def test_resend_invite_emits_event(self, e2e_client, platform_admin, org1):
+        """POST /users/{id}/invite/resend returns event_emitted=True."""
+        create_resp = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": "inv-event-resend@gobifrost.dev",
+                "name": "Event Resend",
+                "organization_id": org1["id"],
+                "is_superuser": False,
+            },
+        )
+        user_id = create_resp.json()["id"]
+
+        resend_resp = e2e_client.post(
+            f"/api/users/{user_id}/invite/resend",
+            headers=platform_admin.headers,
+        )
+        assert resend_resp.status_code == 200
+        body = resend_resp.json()
+        assert body["event_emitted"] is True
+        assert body["event_id"] is not None
+
+        # Cleanup
+        e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        e2e_client.delete(f"/api/users/{user_id}", headers=platform_admin.headers)
+
+    def test_regenerate_does_not_emit_event(self, e2e_client, platform_admin, org1):
+        """POST /users/{id}/invite/regenerate returns event_emitted=False."""
+        create_resp = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": "inv-event-regen@gobifrost.dev",
+                "name": "Event Regen",
+                "organization_id": org1["id"],
+                "is_superuser": False,
+            },
+        )
+        user_id = create_resp.json()["id"]
+
+        regen_resp = e2e_client.post(
+            f"/api/users/{user_id}/invite/regenerate",
+            headers=platform_admin.headers,
+        )
+        assert regen_resp.status_code == 200
+        body = regen_resp.json()
+        assert body["event_emitted"] is False
+        assert body["event_id"] is None
+
+        # Cleanup
+        e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        e2e_client.delete(f"/api/users/{user_id}", headers=platform_admin.headers)
+
+    def test_create_with_trigger_automation_false_skips_event(
+        self, e2e_client, platform_admin, org1
+    ):
+        """POST /users with invite=True and trigger_automation=False: invite record created, no event."""
+        resp = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": "inv-no-auto@gobifrost.dev",
+                "name": "No Auto",
+                "organization_id": org1["id"],
+                "is_superuser": False,
+                "invite": True,
+                "trigger_automation": False,
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["invite_status"] == "pending"
+        user_id = body["id"]
+
+        # Cleanup
+        e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        e2e_client.delete(f"/api/users/{user_id}", headers=platform_admin.headers)
+
+    def test_registration_url_in_event_payload_contains_token(
+        self, e2e_client, platform_admin, org1
+    ):
+        """Resend returns a registration_url with the token embedded."""
+        create_resp = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": "inv-url-check@gobifrost.dev",
+                "name": "URL Check",
+                "organization_id": org1["id"],
+                "is_superuser": False,
+            },
+        )
+        user_id = create_resp.json()["id"]
+
+        resend_resp = e2e_client.post(
+            f"/api/users/{user_id}/invite/resend",
+            headers=platform_admin.headers,
+        )
+        body = resend_resp.json()
+        assert "accept-invite?token=" in body["registration_url"]
+
+        # Cleanup
+        e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        e2e_client.delete(f"/api/users/{user_id}", headers=platform_admin.headers)
 
 
 @pytest.mark.e2e
