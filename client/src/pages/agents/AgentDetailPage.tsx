@@ -14,7 +14,6 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner";
 import {
 	ArrowLeft,
-	Bot,
 	Loader2,
 	MessageSquare,
 	Pause,
@@ -30,6 +29,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AgentLogoDropZone } from "@/components/agents/AgentLogoDropZone";
 import { AgentOverviewTab } from "@/components/agents/AgentOverviewTab";
 import { AgentRunsTab } from "@/components/agents/AgentRunsTab";
 import { AgentSettingsTab } from "@/components/agents/AgentSettingsTab";
@@ -137,31 +137,42 @@ export function AgentDetailPage() {
 
 			{/* Header */}
 			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div className="min-w-0 flex-1">
-					<h1 className={cn("flex items-center gap-2.5", TYPE_PAGE_TITLE)}>
-						<Bot className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
-						<span className="truncate">
-							{isCreate
-								? "New agent"
-								: isLoading
-									? "Loading…"
-									: (agent?.name ?? "Unknown agent")}
-						</span>
-						{!isCreate && agent ? (
-							isActive ? (
-								<span className={PILL_ACTIVE}>Active</span>
-							) : (
-								<Badge variant="secondary" className="text-[11px]">
-									Paused
-								</Badge>
-							)
-						) : null}
-					</h1>
-					{!isCreate && agent?.description ? (
-						<p className={cn("mt-1 line-clamp-2", TYPE_BODY, TONE_MUTED)}>
-							{agent.description}
-						</p>
+				<div className="flex items-start gap-3 min-w-0 flex-1">
+					{!isCreate && agent ? (
+						<AgentLogoDropZone
+							agentId={agent.id ?? ""}
+							agentName={agent.name ?? ""}
+							onUploaded={() => {
+								/* EntityLogo internally cache-busts via cacheKey; no refetch needed */
+							}}
+							size={40}
+						/>
 					) : null}
+					<div className="min-w-0 flex-1">
+						<h1 className={cn("flex items-center gap-2.5", TYPE_PAGE_TITLE)}>
+							<span className="truncate">
+								{isCreate
+									? "New agent"
+									: isLoading
+										? "Loading…"
+										: (agent?.name ?? "Unknown agent")}
+							</span>
+							{!isCreate && agent ? (
+								isActive ? (
+									<span className={PILL_ACTIVE}>Active</span>
+								) : (
+									<Badge variant="secondary" className="text-[11px]">
+										Paused
+									</Badge>
+								)
+							) : null}
+						</h1>
+						{!isCreate && agent?.description ? (
+							<p className={cn("mt-1 line-clamp-2", TYPE_BODY, TONE_MUTED)}>
+								{agent.description}
+							</p>
+						) : null}
+					</div>
 				</div>
 				{!isCreate && agent ? (
 					<div className="flex items-center gap-2">
