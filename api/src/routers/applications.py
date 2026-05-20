@@ -1348,7 +1348,6 @@ async def rollback_application(
 async def upload_application_logo(
     app_id: UUID,
     ctx: Context,
-    user: CurrentUser,
     file: UploadFile = File(..., description="Logo image (PNG/JPEG/SVG, ≤5MB)"),
 ) -> dict:
     """Upload a square logo for an application.
@@ -1396,7 +1395,6 @@ async def upload_application_logo(
 async def get_application_logo(
     app_id: UUID,
     ctx: Context,
-    user: CurrentUser,
 ) -> Response:
     application = await get_application_by_id_or_404(ctx, app_id)
     if not application.logo_data:
@@ -1418,7 +1416,6 @@ async def get_application_logo(
 async def delete_application_logo(
     app_id: UUID,
     ctx: Context,
-    user: CurrentUser,
 ) -> Response:
     application = await get_application_by_id_or_404(ctx, app_id)
     application.logo_data = None

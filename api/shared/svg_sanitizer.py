@@ -33,8 +33,8 @@ def _strip(element: Element) -> None:
         if local.startswith("on"):
             del element.attrib[attr]
             continue
-        if local in ("href",) or attr == f"{{{_XLINK_NS}}}href":
-            if _JS_URI.match(element.attrib[attr] or ""):
+        if local == "href" or attr == f"{{{_XLINK_NS}}}href":
+            if _JS_URI.match(element.attrib[attr]):
                 del element.attrib[attr]
 
     # Recurse, removing forbidden children in place
