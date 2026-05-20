@@ -3,6 +3,7 @@ import { Image as ImageIcon, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EntityLogo } from "@/components/EntityLogo";
+import { getCsrfToken } from "@/lib/api-client";
 
 export type AppLogoPickerProps = {
 	applicationId: string;
@@ -23,10 +24,12 @@ export function AppLogoPicker({
 		setBusy(true);
 		const fd = new FormData();
 		fd.append("file", file);
+		const csrf = getCsrfToken();
 		try {
 			const resp = await fetch(`/api/applications/${applicationId}/logo`, {
 				method: "POST",
 				body: fd,
+				headers: csrf ? { "X-CSRF-Token": csrf } : {},
 			});
 			if (!resp.ok) {
 				const txt = await resp.text();
@@ -44,9 +47,11 @@ export function AppLogoPicker({
 
 	async function handleRemove() {
 		setBusy(true);
+		const csrf = getCsrfToken();
 		try {
 			const resp = await fetch(`/api/applications/${applicationId}/logo`, {
 				method: "DELETE",
+				headers: csrf ? { "X-CSRF-Token": csrf } : {},
 			});
 			if (!resp.ok && resp.status !== 204) {
 				throw new Error(`Remove failed (${resp.status})`);

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { EntityLogo } from "@/components/EntityLogo";
+import { getCsrfToken } from "@/lib/api-client";
 
 export type AgentLogoDropZoneProps = {
 	agentId: string;
@@ -35,10 +36,12 @@ export function AgentLogoDropZone({
 		setBusy(true);
 		const fd = new FormData();
 		fd.append("file", file);
+		const csrf = getCsrfToken();
 		try {
 			const resp = await fetch(`/api/agents/${agentId}/logo`, {
 				method: "POST",
 				body: fd,
+				headers: csrf ? { "X-CSRF-Token": csrf } : {},
 			});
 			if (!resp.ok) throw new Error(`Upload failed (${resp.status})`);
 			setCacheKey(String(Date.now()));
@@ -53,9 +56,11 @@ export function AgentLogoDropZone({
 
 	async function remove() {
 		setBusy(true);
+		const csrf = getCsrfToken();
 		try {
 			const resp = await fetch(`/api/agents/${agentId}/logo`, {
 				method: "DELETE",
+				headers: csrf ? { "X-CSRF-Token": csrf } : {},
 			});
 			if (!resp.ok && resp.status !== 204) {
 				throw new Error(`Remove failed (${resp.status})`);
