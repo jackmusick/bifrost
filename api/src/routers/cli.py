@@ -749,8 +749,8 @@ async def _build_oauth_data(
 
     # Check if we should auto-fetch a fresh token
     if should_auto_refresh_token(provider, entity_id, oauth_scope):
-        scope_info = f"oauth_scope={log_safe(oauth_scope)}" if oauth_scope else f"entity_id={entity_id}"
-        logger.info(f"Auto-refreshing token ({scope_info})")
+        refresh_mode = "oauth_scope" if oauth_scope else "entity_id"
+        logger.info("Auto-refreshing token using %s selector", refresh_mode)
 
         if client_secret and resolved_token_url:
             from src.services.oauth_provider import OAuthProviderClient

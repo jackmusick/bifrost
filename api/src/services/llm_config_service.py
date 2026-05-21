@@ -367,7 +367,11 @@ class LLMConfigService:
                         message=f"Authentication failed at {endpoint_label}: {e}",
                     )
                 # Listing not supported — that's OK, key still seems live.
-                logger.info(f"Model listing not supported at {endpoint_label}: {e}")
+                logger.info(
+                    "Model listing not supported at %s: %s",
+                    log_safe(endpoint_label),
+                    log_safe(e),
+                )
                 return LLMTestResult(
                     success=True,
                     message=f"Connected to {endpoint_label}. Model listing not available — enter the model id manually.",
@@ -411,7 +415,11 @@ class LLMConfigService:
                         success=False,
                         message=f"Authentication failed at {endpoint_label}: {e}",
                     )
-                logger.info(f"Model listing not supported at {endpoint_label}: {e}")
+                logger.info(
+                    "Model listing not supported at %s: %s",
+                    log_safe(endpoint_label),
+                    log_safe(e),
+                )
                 return LLMTestResult(
                     success=True,
                     message=f"Connected to {endpoint_label}. Model listing not available — enter the model id manually.",
