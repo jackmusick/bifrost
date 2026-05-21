@@ -156,4 +156,56 @@ describe("CreateUserDialog — happy path", () => {
 		});
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
+
+	it("auto-selects the provider organization for platform admins after orgs load", async () => {
+		const onOpenChange = vi.fn();
+		let orgsLoaded = false;
+		mockOrganizations.mockImplementation(() => ({
+			data: orgsLoaded
+				? [
+						{
+							id: "org-1",
+							name: "Acme",
+							domain: "acme.com",
+							is_provider: false,
+						},
+						{
+							id: "org-provider",
+							name: "Provider",
+							domain: null,
+							is_provider: true,
+						},
+					]
+				: undefined,
+			isLoading: !orgsLoaded,
+		}));
+
+		const { user, rerender } = renderWithProviders(
+			<CreateUserDialog open={true} onOpenChange={onOpenChange} />,
+		);
+
+		await user.type(
+			screen.getByLabelText(/email address/i),
+			"admin@example.com",
+		);
+		await user.type(screen.getByLabelText(/display name/i), "Admin User");
+		await user.selectOptions(screen.getByLabelText(/userType/i), "platform");
+
+		orgsLoaded = true;
+		rerender(<CreateUserDialog open={true} onOpenChange={onOpenChange} />);
+
+		await user.click(screen.getByRole("button", { name: /create user/i }));
+
+		await waitFor(() => expect(mockCreateMutate).toHaveBeenCalled());
+		expect(mockCreateMutate.mock.calls[0]![0]).toEqual({
+			body: {
+				email: "admin@example.com",
+				name: "Admin User",
+				is_active: true,
+				is_superuser: true,
+				organization_id: "org-provider",
+			},
+		});
+		expect(screen.queryByText(/select an organization/i)).not.toBeInTheDocument();
+	});
 });
