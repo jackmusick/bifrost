@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -67,6 +67,12 @@ function CreateUserDialogContent({
 
 	// Find the provider org (for auto-selecting when platform admin is chosen)
 	const providerOrg = organizations?.find((org: Organization) => org.is_provider);
+
+	useEffect(() => {
+		if (isPlatformAdmin && providerOrg && orgId !== providerOrg.id) {
+			setOrgId(providerOrg.id);
+		}
+	}, [isPlatformAdmin, orgId, providerOrg]);
 
 	// Auto-select provider org when switching to platform admin
 	const handleUserTypeChange = (value: string) => {
