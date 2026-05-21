@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { authFetch } from "@/lib/api-client";
 
 export type LogoDropZoneProps = {
@@ -130,106 +129,90 @@ export function LogoDropZone({
 	const src = `${previewUrl}?v=${encodeURIComponent(cacheKey)}`;
 
 	return (
-		<div className="flex items-start gap-4">
-			<div
-				data-testid="logo-drop-zone"
-				role="button"
-				tabIndex={0}
-				aria-label={ariaLabel}
-				onClick={() => fileInputRef.current?.click()}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						fileInputRef.current?.click();
-					}
-				}}
-				onDragOver={handleDragOver}
-				onDragLeave={handleDragLeave}
-				onDrop={handleDrop}
-				style={{ width: size, height: size }}
-				className={`relative group cursor-pointer overflow-hidden ${rounded} border bg-muted/40 flex items-center justify-center ${
-					isDragging ? "ring-2 ring-primary ring-offset-2" : ""
-				}`}
-			>
-				{!isErrored && (
-					<img
-						data-testid="logo-drop-zone-img"
-						src={src}
-						alt=""
-						width={size}
-						height={size}
-						className="h-full w-full object-cover"
-						onLoad={() => setImageLoaded(true)}
-						onError={() => {
-							setIsErrored(true);
-							setImageLoaded(false);
-						}}
-					/>
-				)}
-				{(isErrored || !imageLoaded) && (
-					<div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-						{fallback}
-					</div>
-				)}
-				<div
-					className={`absolute inset-0 flex items-center justify-center bg-black/50 ${rounded} transition-opacity ${
-						uploading
-							? "opacity-100"
-							: "opacity-0 group-hover:opacity-100"
-					}`}
-				>
-					{uploading ? (
-						<Loader2 className="h-6 w-6 text-white animate-spin" />
-					) : (
-						<Camera className="h-6 w-6 text-white" />
-					)}
-				</div>
-				<input
-					ref={fileInputRef}
-					type="file"
-					accept={accept}
-					className="hidden"
-					onChange={(e) => {
-						const f = e.target.files?.[0];
-						if (f) void handleUpload(f);
-						e.target.value = "";
+		<div
+			data-testid="logo-drop-zone"
+			role="button"
+			tabIndex={0}
+			aria-label={ariaLabel}
+			title={ariaLabel}
+			onClick={() => fileInputRef.current?.click()}
+			onKeyDown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					fileInputRef.current?.click();
+				}
+			}}
+			onDragOver={handleDragOver}
+			onDragLeave={handleDragLeave}
+			onDrop={handleDrop}
+			style={{ width: size, height: size }}
+			className={`relative group cursor-pointer overflow-hidden ${rounded} border bg-muted/40 flex items-center justify-center shrink-0 ${
+				isDragging ? "ring-2 ring-primary ring-offset-2" : ""
+			}`}
+		>
+			{!isErrored && (
+				<img
+					data-testid="logo-drop-zone-img"
+					src={src}
+					alt=""
+					width={size}
+					height={size}
+					className="h-full w-full object-cover"
+					onLoad={() => setImageLoaded(true)}
+					onError={() => {
+						setIsErrored(true);
+						setImageLoaded(false);
 					}}
 				/>
-			</div>
-
-			<div className="flex-1 space-y-3">
-				<div className="text-sm text-muted-foreground">
-					<p>Click or drag and drop an image.</p>
-					<p className="mt-1">
-						PNG, JPEG, or SVG — max{" "}
-						{Math.round(maxBytes / 1024 / 1024)}MB.
-					</p>
+			)}
+			{(isErrored || !imageLoaded) && (
+				<div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+					{fallback}
 				</div>
-				{imageLoaded && !isErrored && (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={removing}
-						onClick={(e) => {
-							e.stopPropagation();
-							void handleDelete();
-						}}
-					>
-						{removing ? (
-							<>
-								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-								Removing…
-							</>
-						) : (
-							<>
-								<Trash2 className="h-4 w-4 mr-2" />
-								Remove
-							</>
-						)}
-					</Button>
+			)}
+			<div
+				className={`absolute inset-0 flex items-center justify-center bg-black/50 ${rounded} transition-opacity ${
+					uploading
+						? "opacity-100"
+						: "opacity-0 group-hover:opacity-100"
+				}`}
+			>
+				{uploading ? (
+					<Loader2 className="h-6 w-6 text-white animate-spin" />
+				) : (
+					<Camera className="h-6 w-6 text-white" />
 				)}
 			</div>
+			{imageLoaded && !isErrored && (
+				<button
+					type="button"
+					aria-label="Remove image"
+					title="Remove image"
+					disabled={removing}
+					onClick={(e) => {
+						e.stopPropagation();
+						void handleDelete();
+					}}
+					className="absolute top-1 right-1 rounded-full bg-black/70 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/90 disabled:opacity-50"
+				>
+					{removing ? (
+						<Loader2 className="h-3 w-3 animate-spin" />
+					) : (
+						<Trash2 className="h-3 w-3" />
+					)}
+				</button>
+			)}
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept={accept}
+				className="hidden"
+				onChange={(e) => {
+					const f = e.target.files?.[0];
+					if (f) void handleUpload(f);
+					e.target.value = "";
+				}}
+			/>
 		</div>
 	);
 }
