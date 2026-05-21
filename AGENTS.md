@@ -57,7 +57,9 @@ Hot reload is expected. Do not restart containers for ordinary code changes. Use
 
 ## Testing And Verification
 
-Use `./test.sh`; do not run raw host `pytest` for repo tests. The script manages the Dockerized test dependencies and writes result artifacts.
+Route testing through an e2e testing VM on `pve-t340` unless the user explicitly asks for a local-only check. Do not treat host-side runs on the operator workstation as the verification bar for Bifrost changes.
+
+On the VM, use `./test.sh`; do not run raw host `pytest` for repo tests. The script manages the Dockerized test dependencies and writes result artifacts.
 
 Match verification to the change:
 
