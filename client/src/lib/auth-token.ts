@@ -21,6 +21,12 @@ export const ACCESS_TOKEN_KEY = "bifrost_access_token";
 export const EMBED_TOKEN_KEY = "bifrost_embed_token";
 
 const EMBED_HASH_PREFIX = "#embed_token=";
+const JWT_SEGMENT = /^[A-Za-z0-9_-]+$/;
+
+function looksLikeJwt(token: string): boolean {
+	const parts = token.split(".");
+	return parts.length === 3 && parts.every((part) => JWT_SEGMENT.test(part));
+}
 
 /**
  * Detect whether this browsing context is rendered inside an iframe.
@@ -58,7 +64,7 @@ export function consumeEmbedTokenFromHash(): void {
 		window.location.pathname + window.location.search,
 	);
 
-	if (token && isInIframe()) {
+	if (token && looksLikeJwt(token) && isInIframe()) {
 		sessionStorage.setItem(EMBED_TOKEN_KEY, token);
 	}
 }

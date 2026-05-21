@@ -48,12 +48,9 @@ export function AuthCallback() {
 			// Get stored state
 			// Note: code_verifier is now handled server-side (stored in Redis when init is called)
 			const storedState = sessionStorage.getItem("oauth_state");
-			const redirectFrom =
-				sessionStorage.getItem("oauth_redirect_from") || "/";
 
 			// Clear stored OAuth data
 			sessionStorage.removeItem("oauth_state");
-			sessionStorage.removeItem("oauth_redirect_from");
 			sessionStorage.removeItem("oauth_provider");
 
 			// Verify state matches
@@ -66,16 +63,7 @@ export function AuthCallback() {
 				// Exchange code for tokens (server handles PKCE verification)
 				await loginWithOAuth(provider, code, state);
 
-				// Redirect to original destination
-				// Use full page navigation for API routes (bypasses React Router),
-				// React Router for normal app routes
-				if (redirectFrom.startsWith("/api/")) {
-					// Small delay to ensure cookies are fully set before redirect
-					await new Promise((resolve) => setTimeout(resolve, 100));
-					window.location.href = redirectFrom;
-				} else {
-					navigate(redirectFrom, { replace: true });
-				}
+				navigate("/", { replace: true });
 			} catch (err) {
 				setError(
 					err instanceof Error ? err.message : "OAuth login failed",

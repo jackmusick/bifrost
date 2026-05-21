@@ -29,7 +29,9 @@ function stripExecutableAttributes(markup: string) {
 		markup.trim().toLowerCase().startsWith("<!doctype") ||
 		markup.trim().toLowerCase().startsWith("<html");
 
-	doc.querySelectorAll("script").forEach((element) => element.remove());
+	doc.querySelectorAll("script, iframe, object, embed").forEach((element) =>
+		element.remove(),
+	);
 	doc.querySelectorAll("*").forEach((element) => {
 		Array.from(element.attributes).forEach((attribute) => {
 			if (attribute.name.toLowerCase().startsWith("on")) {
@@ -234,8 +236,9 @@ export function SafeHTMLRenderer({
 	})();
 
 	const openInNewWindow = () => {
-		const newWindow = window.open("", "_blank");
+		const newWindow = window.open("", "_blank", "noopener,noreferrer");
 		if (newWindow) {
+			newWindow.opener = null;
 			newWindow.document.write(sanitizedHTML);
 			newWindow.document.close();
 		}

@@ -248,9 +248,11 @@ export function Login() {
 		setIsLoading(true);
 
 		try {
-			// Store redirect info for callback
+			if (!oauthProviders.some((known) => known.name === provider)) {
+				throw new Error("OAuth provider is not available");
+			}
+
 			// Note: PKCE (code_verifier) is now handled server-side
-			sessionStorage.setItem("oauth_redirect_from", from);
 			sessionStorage.setItem("oauth_provider", provider);
 
 			// Build callback URL

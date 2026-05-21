@@ -525,6 +525,23 @@ type AgentRunUpdateCallback = (update: AgentRunUpdate) => void;
 type SummaryBackfillUpdateCallback = (update: SummaryBackfillUpdate) => void;
 type AgentRunStepCallback = (update: AgentRunStepUpdate) => void;
 
+function stripControlChars(value: string): string {
+	return Array.from(value, (char) => {
+		const code = char.charCodeAt(0);
+		return code <= 31 || (code >= 127 && code <= 159) ? " " : char;
+	}).join("");
+}
+
+export function sanitizeLogText(value: unknown): string {
+	if (value instanceof Error) {
+		return stripControlChars(value.message);
+	}
+	if (typeof value === "string") {
+		return stripControlChars(value);
+	}
+	return Object.prototype.toString.call(value);
+}
+
 /**
  * Check if a JWT token is an embed token by inspecting its claims.
  */
@@ -678,14 +695,13 @@ class WebSocketService {
 					this.handleMessage(message);
 				} catch (error) {
 					console.error(
-						"[WebSocket] Failed to parse message:",
-						error,
+						`[WebSocket] Failed to parse message: ${sanitizeLogText(error)}`,
 					);
 				}
 			};
 
 			this.ws.onerror = (error) => {
-				console.error("[WebSocket] Error:", error);
+				console.error(`[WebSocket] Error: ${sanitizeLogText(error)}`);
 			};
 
 			this.ws.onclose = (event) => {
@@ -740,7 +756,9 @@ class WebSocketService {
 				}
 			});
 		} catch (error) {
-			console.error("[WebSocket] Failed to connect:", error);
+			console.error(
+				`[WebSocket] Failed to connect: ${sanitizeLogText(error)}`,
+			);
 			this.ws = null;
 			throw error;
 		}
@@ -840,9 +858,13 @@ class WebSocketService {
 				// Git sync log message - dispatch to job-specific subscribers
 				const gitLogJobId = message.jobId;
 				if (gitLogJobId) {
-					const callbacks = this.gitLogCallbacks.get(gitLogJobId);
-					callbacks?.forEach((cb) =>
-						cb({ level: message.level, message: message.message }),
+					const gitLogCallbacks =
+						this.gitLogCallbacks.get(gitLogJobId);
+					gitLogCallbacks?.forEach((callback) =>
+						callback({
+							level: message.level,
+							message: message.message,
+						}),
 					);
 				}
 				break;
@@ -852,9 +874,10 @@ class WebSocketService {
 				// Git sync progress message - dispatch to job-specific subscribers
 				const gitProgressJobId = message.jobId;
 				if (gitProgressJobId) {
-					const callbacks = this.gitProgressCallbacks.get(gitProgressJobId);
-					callbacks?.forEach((cb) =>
-						cb({
+					const gitProgressCallbacks =
+						this.gitProgressCallbacks.get(gitProgressJobId);
+					gitProgressCallbacks?.forEach((callback) =>
+						callback({
 							phase: message.phase,
 							current: message.current,
 							total: message.total,
@@ -870,8 +893,13 @@ class WebSocketService {
 				const gitCompleteJobId = message.jobId;
 				if (gitCompleteJobId) {
 					const { type: _type, jobId: _jobId, ...gitCompleteData } = message;
-					const callbacks = this.gitCompleteCallbacks.get(gitCompleteJobId);
-					callbacks?.forEach((cb) => cb(gitCompleteData as Parameters<GitCompleteCallback>[0]));
+					const gitCompleteCallbacks =
+						this.gitCompleteCallbacks.get(gitCompleteJobId);
+					gitCompleteCallbacks?.forEach((callback) =>
+						callback(
+							gitCompleteData as Parameters<GitCompleteCallback>[0],
+						),
+					);
 				}
 				break;
 			}
@@ -879,13 +907,16 @@ class WebSocketService {
 			case "git_op_complete": {
 				const gitOpJobId = message.jobId;
 				if (gitOpJobId) {
-					const callbacks = this.gitOpCompleteCallbacks.get(gitOpJobId);
-					callbacks?.forEach((cb) => cb({
-						status: message.status,
-						resultType: message.resultType,
-						data: message.data,
-						error: message.error,
-					}));
+					const gitOpCompleteCallbacks =
+						this.gitOpCompleteCallbacks.get(gitOpJobId);
+					gitOpCompleteCallbacks?.forEach((callback) =>
+						callback({
+							status: message.status,
+							resultType: message.resultType,
+							data: message.data,
+							error: message.error,
+						}),
+					);
 				}
 				break;
 			}
@@ -1163,12 +1194,7 @@ class WebSocketService {
 	 * Handle notification message from backend
 	 */
 	private handleNotification(payload: NotificationPayload) {
-		console.warn(
-			"[WS] Notification received:",
-			payload.status,
-			payload.id,
-			payload,
-		);
+		console.warn("[WS] Notification received");
 
 		// Convert snake_case to camelCase for frontend
 		const notification: Notification = {

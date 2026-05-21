@@ -31,10 +31,13 @@ describe("SafeHTMLRenderer — rendering", () => {
 
 	it("strips executable tags and inline event handlers", () => {
 		const { container } = renderWithProviders(
-			<SafeHTMLRenderer html='<div onclick="alert(1)"><img src="x" onerror="alert(2)" /><script>alert(3)</script><p onload="alert(4)">safe text</p></div>' />,
+			<SafeHTMLRenderer html='<div onclick="alert(1)"><img src="x" onerror="alert(2)" /><script>alert(3)</script><iframe></iframe><object data="x"></object><embed src="x"><p onload="alert(4)">safe text</p></div>' />,
 		);
 
 		expect(container.querySelector("script")).toBeNull();
+		expect(container.querySelector("iframe")).toBeNull();
+		expect(container.querySelector("object")).toBeNull();
+		expect(container.querySelector("embed")).toBeNull();
 		expect(container.querySelector("[onclick]")).toBeNull();
 		expect(container.querySelector("[onerror]")).toBeNull();
 		expect(container.querySelector("[onload]")).toBeNull();
@@ -84,7 +87,11 @@ describe("SafeHTMLRenderer — open in new window", () => {
 			<SafeHTMLRenderer html="<p>hi</p>" />,
 		);
 		await user.click(screen.getByRole("button", { name: /open/i }));
-		expect(openSpy).toHaveBeenCalledWith("", "_blank");
+		expect(openSpy).toHaveBeenCalledWith(
+			"",
+			"_blank",
+			"noopener,noreferrer",
+		);
 	});
 
 	it("writes sanitized HTML to the new window", async () => {

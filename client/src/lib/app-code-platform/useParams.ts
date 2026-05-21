@@ -28,6 +28,7 @@ import { useParams as useRouterParams } from "react-router-dom";
 // but we also skip these keys explicitly so a parent route accidentally named
 // `__proto__` (or similar) doesn't end up shadowing real params.
 const FORBIDDEN_PARAM_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const SAFE_PARAM_KEY = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 export function useParams(): Record<string, string> {
 	const params = useRouterParams();
@@ -41,6 +42,7 @@ export function useParams(): Record<string, string> {
 	for (const [key, value] of Object.entries(params)) {
 		if (value === undefined) continue;
 		if (FORBIDDEN_PARAM_KEYS.has(key)) continue;
+		if (!SAFE_PARAM_KEY.test(key)) continue;
 		Object.defineProperty(result, key, {
 			value,
 			enumerable: true,

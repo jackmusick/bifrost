@@ -61,4 +61,17 @@ describe("useParams", () => {
 		const { result } = renderHook(() => useParams());
 		expect(Object.getPrototypeOf(result.current)).toBeNull();
 	});
+
+	it("drops unsafe dynamic parameter names", () => {
+		mockedUseRouterParams.mockReturnValue({
+			clientId: "123",
+			"bad-key": "x",
+			"1startsWithNumber": "x",
+		});
+
+		const { result } = renderHook(() => useParams());
+		expect(result.current.clientId).toBe("123");
+		expect(Object.hasOwn(result.current, "bad-key")).toBe(false);
+		expect(Object.hasOwn(result.current, "1startsWithNumber")).toBe(false);
+	});
 });
