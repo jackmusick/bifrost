@@ -262,13 +262,18 @@ export function Applications() {
 				)
 			) : filteredApps && filteredApps.length > 0 ? (
 				viewMode === "grid" || !canManageApps ? (
-					<div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
+					<div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
 						{filteredApps.map((app) => {
 							const defaultTarget = app.is_published
 								? () => handleLaunch(app.slug)
 								: () => handlePreview(app.slug);
+							const orgLabel = isPlatformAdmin
+								? app.organization_id
+									? getOrgName(app.organization_id)
+									: "Global"
+								: null;
 							return (
-								<Card
+								<div
 									key={app.id}
 									role="button"
 									tabIndex={0}
@@ -279,113 +284,154 @@ export function Applications() {
 											defaultTarget();
 										}
 									}}
-									className="group relative cursor-pointer hover:border-primary transition-colors flex flex-col overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									className="group relative flex cursor-pointer flex-col overflow-hidden rounded-[10px] border bg-card transition-colors hover:border-border/80 hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 								>
-									{/* Body: logo + name + status badges */}
-									<div className="flex items-center gap-3 p-4">
-										<EntityLogo
-											entityType="app"
-											entityId={app.id}
-											fallback={
-												<div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
-													<AppWindow className="h-5 w-5 text-muted-foreground" />
+									{/* Header — logo + name + admin toolbar */}
+									<div className="border-b px-4 py-3">
+										<div className="flex items-start justify-between gap-3">
+											<div className="flex min-w-0 items-center gap-2">
+												<EntityLogo
+													entityType="app"
+													entityId={app.id}
+													fallback={
+														<AppWindow className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+													}
+													size={20}
+													className="h-5 w-5 rounded object-cover shrink-0"
+												/>
+												<span className="truncate text-[14.5px] font-semibold">
+													{app.name}
+												</span>
+											</div>
+											{canManageApps ? (
+												<div className="flex shrink-0 gap-1">
+													<Button
+														type="button"
+														variant="ghost"
+														size="icon"
+														className="h-6 w-6"
+														onClick={(e) => {
+															e.stopPropagation();
+															handleOpenSettings(
+																app.slug,
+															);
+														}}
+														title="Settings"
+														aria-label="Settings"
+													>
+														<Pencil className="h-3.5 w-3.5" />
+													</Button>
+													<Button
+														type="button"
+														variant="ghost"
+														size="icon"
+														className="h-6 w-6"
+														onClick={(e) => {
+															e.stopPropagation();
+															handleOpenCode(
+																app.slug,
+															);
+														}}
+														title="Code editor"
+														aria-label="Code editor"
+													>
+														<Code2 className="h-3.5 w-3.5" />
+													</Button>
 												</div>
-											}
-											size={40}
-											className="h-10 w-10 rounded object-cover shrink-0 transition-[filter] group-hover:blur-sm"
-										/>
-										<div className="min-w-0 flex-1">
-											<div className="font-medium truncate">
-												{app.name}
-											</div>
-											<div className="mt-1 flex items-center gap-1.5 flex-wrap">
-												{app.is_published && (
-													<Badge
-														variant="default"
-														className="text-[10px] px-1.5 py-0"
-													>
-														Published
-													</Badge>
-												)}
-												{app.has_unpublished_changes && (
-													<Badge
-														variant="outline"
-														className="text-[10px] px-1.5 py-0"
-													>
-														Draft
-													</Badge>
-												)}
-											</div>
+											) : null}
 										</div>
 									</div>
 
-									{/* Hover overlay: admin-only quick actions */}
-									{canManageApps && (
-										<>
-											{/* Vertical "Open" menu, centered over the blurred logo area */}
-											<div className="absolute inset-x-0 top-0 bottom-12 flex flex-col items-start justify-center gap-1 pl-5 bg-background/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-												{app.is_published && (
-													<button
-														type="button"
-														className="pointer-events-auto text-sm font-medium text-foreground hover:text-primary text-left"
-														onClick={(e) => {
-															e.stopPropagation();
-															handleLaunch(app.slug);
-														}}
-													>
-														<PlayCircle className="inline mr-1.5 h-3.5 w-3.5 -mt-0.5" />
-														Open Published
-													</button>
-												)}
+									{/* Body — description (or quiet placeholder), hover reveals open menu */}
+									<div className="relative flex-1 px-4 py-3 min-h-[72px]">
+										{app.description ? (
+											<p className="line-clamp-2 text-[13px] text-muted-foreground">
+												{app.description}
+											</p>
+										) : (
+											<p className="text-[13px] italic text-muted-foreground/50">
+												No description
+											</p>
+										)}
+
+										{/* Hover overlay: vertical Open menu over a blurred body */}
+										<div className="pointer-events-none absolute inset-0 flex flex-col items-start justify-center gap-1.5 bg-background/85 px-4 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+											{app.is_published && (
 												<button
 													type="button"
-													className="pointer-events-auto text-sm font-medium text-foreground hover:text-primary text-left"
+													className="pointer-events-auto text-left text-[13px] font-medium text-foreground hover:text-primary"
 													onClick={(e) => {
 														e.stopPropagation();
-														handlePreview(app.slug);
+														handleLaunch(app.slug);
 													}}
 												>
-													<Eye className="inline mr-1.5 h-3.5 w-3.5 -mt-0.5" />
+													<PlayCircle className="-mt-0.5 mr-1.5 inline h-3.5 w-3.5" />
+													Open Published
+												</button>
+											)}
+											{canManageApps && (
+												<button
+													type="button"
+													className="pointer-events-auto text-left text-[13px] font-medium text-foreground hover:text-primary"
+													onClick={(e) => {
+														e.stopPropagation();
+														handlePreview(
+															app.slug,
+														);
+													}}
+												>
+													<Eye className="-mt-0.5 mr-1.5 inline h-3.5 w-3.5" />
 													Open Preview
 												</button>
-											</div>
+											)}
+										</div>
+									</div>
 
-											{/* Top-right toolbar: Edit (settings dialog) + Code editor */}
-											<div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-												<Button
-													type="button"
-													variant="secondary"
-													size="icon"
-													className="h-7 w-7"
-													onClick={(e) => {
-														e.stopPropagation();
-														handleOpenSettings(
-															app.slug,
-														);
-													}}
-													title="Settings"
+									{/* Footer — status + org */}
+									<div className="flex items-center justify-between gap-2 border-t px-4 py-2.5">
+										<div className="flex items-center gap-1.5">
+											{app.is_published && (
+												<Badge
+													variant="default"
+													className="text-[10px] px-1.5 py-0"
 												>
-													<Pencil className="h-3.5 w-3.5" />
-												</Button>
-												<Button
-													type="button"
-													variant="secondary"
-													size="icon"
-													className="h-7 w-7"
-													onClick={(e) => {
-														e.stopPropagation();
-														handleOpenCode(
-															app.slug,
-														);
-													}}
-													title="Code editor"
+													Published
+												</Badge>
+											)}
+											{app.has_unpublished_changes && (
+												<Badge
+													variant="outline"
+													className="text-[10px] px-1.5 py-0"
 												>
-													<Code2 className="h-3.5 w-3.5" />
-												</Button>
-											</div>
-										</>
-									)}
-								</Card>
+													Draft
+												</Badge>
+											)}
+											{!app.is_published &&
+												!app.has_unpublished_changes && (
+													<span className="text-[11px] text-muted-foreground">
+														Empty
+													</span>
+												)}
+										</div>
+										{orgLabel ? (
+											<Badge
+												variant={
+													app.organization_id
+														? "outline"
+														: "default"
+												}
+												className="text-[10px] px-1.5 py-0"
+											>
+												{app.organization_id ? (
+													<Building2 className="mr-1 h-3 w-3" />
+												) : (
+													<Globe className="mr-1 h-3 w-3" />
+												)}
+												{orgLabel}
+											</Badge>
+										) : null}
+									</div>
+								</div>
 							);
 						})}
 					</div>
