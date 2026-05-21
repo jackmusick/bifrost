@@ -1986,7 +1986,795 @@ git commit -m "chore: pre-completion verification fixups" || echo "nothing to co
 
 ---
 
-### Task 19: Open the PR
+---
+
+## Phase 4: Pivot from email-workflow plumbing to events (added 2026-05-19)
+
+**Why this exists.** During smoke testing the configured email workflow flow failed end-to-end with `ValueError: badly formed hexadecimal UUID string` originating in `api/src/repositories/executions.py:111` (`parsed_user_id = UUID(user_id)`). Root cause: `api/src/services/email_service.py:289` and `api/src/routers/email_config.py:222` (SDK `/api/email/send`) both construct an `ExecutionContext` with the literal string `user_id="system"` instead of the real sentinel UUID `SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"` that the existing system-execution helper (`api/src/services/execution/async_executor.py:223 enqueue_system_workflow_execution`) uses correctly. The same bug applies to all three send paths: invite send, admin "validate-and-test" button, and the user-facing `bifrost.email.send()` SDK module — meaning `bifrost.email.send()` has never worked against a configured email workflow.
+
+Rather than patching the `user_id` value, we pivot the invite flow (and **delete the email subsystem outright**) to use the platform's existing event system. This:
+- Removes the parallel email-config machinery that duplicates what events already do.
+- Eliminates the broken `bifrost.email.send()` SDK module entirely (hard delete — call out in release notes).
+- Gives users a native, debuggable smoke path: subscribe a no-op workflow to the event, view its execution in History.
+- Establishes the first **internal-source event** in the platform (`EventSourceType.INTERNAL` already exists in the enum but has no callers yet).
+
+### Conventions locked
+
+- **Event type name:** `user.invited` — past-tense, dotted `resource.action`, matches existing `microsoft_graph.py:396` convention `f"{resource_type}.{event_type}"`.
+- **Event source kind:** `EventSourceType.INTERNAL` (already in `api/src/models/enums.py:113`).
+- **Emit on regenerate-without-send:** NO. The "copy link" path returns the URL to the admin; emitting would surprise admins by sending email on every link copy. Only emit when the admin's intent is "notify the user."
+- **UI language for the create-user/resend toggle:** rename "Send invite email" → ambiguous-but-accurate phrasing that reflects "this fires automations subscribed to `user.invited`." Working candidates: **"Trigger invite automations"** (Recommended), **"Call invite event?"**, **"Notify subscribed workflows"**. Final wording decided when implementing Task 25.
+- **Backwards compatibility for `bifrost.email.send()`:** none. Hard delete; release notes call out the removal. Zero in-repo callers confirmed via `grep -rn "from bifrost import email\|bifrost\.email" apps/ workflows/`.
+
+### Deletion inventory
+
+| File | Action |
+|------|--------|
+| `api/src/services/email_service.py` | DELETE |
+| `api/src/routers/email_config.py` | DELETE (admin router + SDK `/api/email/send`) |
+| `api/bifrost/email.py` | DELETE |
+| `api/bifrost/__init__.py` | Remove `from .email import email` + any `__all__` entry |
+| `client/src/pages/settings/Email.tsx` | DELETE |
+| `client/src/components/settings/EmailTestDialog.tsx` | DELETE |
+| `client/src/components/settings/EmailTestDialog.test.tsx` (if present) | DELETE |
+| Settings navigation entry pointing at `/settings/email` | REMOVE |
+| Route registration for the Email settings page | REMOVE |
+| `api/tests/**/test_email*` and similar | DELETE |
+| `api/tests/**/test_send_email*` | DELETE |
+| Email-config OpenAPI types in `client/src/lib/v1.d.ts` | Regenerated automatically after backend deletion |
+| Any `docs/llm.txt` mentions of email config | STRIP |
+| `Config` / `SystemConfig` row with key `email/workflow_config` | DROP via Alembic migration |
+
+Run `grep -rn "email_service\|email_config\|bifrost\.email\|EmailTestDialog\|/settings/email" api/ client/` before committing the deletion to make sure nothing leaks. Anything that grep finds outside the deleted files is a missed reference.
+
+### Task 20: Delete the email subsystem (backend)
+
+**Files:**
+- DELETE: `api/src/services/email_service.py`
+- DELETE: `api/src/routers/email_config.py`
+- DELETE: `api/bifrost/email.py`
+- Modify: `api/bifrost/__init__.py` (drop the import + `__all__` entry)
+- Modify: `api/src/main.py` (or wherever routers are registered) — remove inclusion of `email_config.router` and `email_config.sdk_router`
+- Modify: `api/src/routers/users.py` — remove the two `await send_email(...)` blocks (lines ~165, ~251); leave the routes themselves but with the email-send call removed. Phase 4 will replace them with `await emit_internal_event(...)`.
+
+- [ ] **Step 1: Identify all router registrations**
+
+```bash
+grep -rn "email_config\|email_service\|bifrost\.email" api/src api/bifrost --include="*.py" | grep -v __pycache__
+```
+
+Map every hit to a delete-or-edit decision.
+
+- [ ] **Step 2: Stub the invite-send calls**
+
+In `api/src/routers/users.py` `create_user` and `_generate_invite`, replace `await send_email(...)` with a TODO marker comment `# TODO(task-23): emit user.invited event`. The function still needs `email_sent`/`email_error` values in its return for now — set them to `False`/`None` until Task 22 changes the response contract. Keep the code compiling.
+
+- [ ] **Step 3: Delete the files**
+
+```bash
+git rm api/src/services/email_service.py api/src/routers/email_config.py api/bifrost/email.py
+```
+
+- [ ] **Step 4: Remove imports & router registrations**
+
+Edit `api/bifrost/__init__.py` and the main router file. Verify with:
+
+```bash
+grep -rn "email_service\|email_config\|bifrost\.email" api/ --include="*.py" | grep -v test_
+```
+
+Expect zero hits.
+
+- [ ] **Step 5: pyright + ruff**
+
+```bash
+cd api && pyright && ruff check .
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(email): remove email_service, email_config router, and bifrost.email SDK module"
+```
+
+---
+
+### Task 21: Alembic migration to drop email-config DB row
+
+**File:** new migration under `api/alembic/versions/`.
+
+- [ ] **Step 1: Generate the migration**
+
+```bash
+cd api && alembic revision -m "drop email_workflow_config system config row"
+```
+
+- [ ] **Step 2: Write the migration**
+
+```python
+def upgrade() -> None:
+    op.execute(
+        "DELETE FROM system_configs WHERE category = 'email' AND key = 'workflow_config'"
+    )
+
+def downgrade() -> None:
+    # No restore — the consuming code has been deleted.
+    pass
+```
+
+Replace `system_configs` with the actual table name — confirm by reading the existing `SystemConfig` ORM model.
+
+- [ ] **Step 3: Apply**
+
+```bash
+docker compose -p bifrost-debug-d301cb77 restart bifrost-init
+docker compose -p bifrost-debug-d301cb77 restart api
+```
+
+(Compose project name derived from the worktree — confirm with `./debug.sh status`.)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git commit -m "chore(db): drop orphan email_workflow_config row after email subsystem removal"
+```
+
+---
+
+### Task 22: Internal-event emitter primitive
+
+Goal: provide a callable that any internal code can use to emit an `EventSourceType.INTERNAL` event without going through the webhook adapter pipeline. Webhooks have `EventProcessor.process_webhook(...)`; we need an internal analogue that does steps 2 (event logging) + 3 (subscription matching) + 4 (delivery tracking) + 5 (workflow enqueue) but skips step 1 (adapter routing).
+
+**Files:**
+- Modify: `api/src/services/events/processor.py` — add `EventProcessor.emit_internal(...)`
+- Add: a top-level helper `emit_internal_event(event_type, data, *, organization_id=None)` in `api/src/services/events/__init__.py` that opens its own DB session, instantiates `EventProcessor`, and calls `emit_internal`. Internal callers (routers, services) use the helper; tests can call the method directly.
+
+- [ ] **Step 1: Inspect `EventProcessor.process_webhook` end-to-end**
+
+Read `api/src/services/events/processor.py` to understand: how the `Event` ORM row is created (`event_repo.create_event(...)`), how subscriptions are looked up by `event_type` + scope (`subscription_repo.match(...)` or similar), how each match becomes a `Deliver` and ultimately calls `enqueue_system_workflow_execution(...)`. Confirm the subscription-matching query already handles `EventSourceType.INTERNAL` sources, or extend it.
+
+- [ ] **Step 2: Failing unit test**
+
+Add `api/tests/unit/services/events/test_emit_internal.py`:
+
+```python
+# Test cases:
+# - emit_internal creates an Event row with event_type, source_type=INTERNAL, scope
+# - given a subscription on event_type "user.invited", a delivery is created and a workflow execution enqueued
+# - no subscribers => event logged, zero deliveries, no error
+# - payload is round-trippable: subscribed workflow receives it as context.event.data
+```
+
+Use existing event/subscription fixtures from `api/tests/conftest.py` or the events test module.
+
+- [ ] **Step 3: Implement `emit_internal`**
+
+Mirrors `process_webhook` minus adapter routing. Signature:
+
+```python
+async def emit_internal(
+    self,
+    *,
+    event_type: str,
+    data: dict,
+    organization_id: UUID | None = None,
+    triggered_by: str | None = None,  # actor user_id for audit; system if None
+) -> UUID:
+    """Emit an internal event. Returns event_id."""
+```
+
+Internally:
+1. Resolve-or-create the `EventSource` row for source_type=INTERNAL, name=event_type, organization_id=scope. (Or, simpler: don't materialize an EventSource row at all for internal events — store `event_source_id=NULL` on the Event. Decide based on what `event_repo.create_event` requires. **Prefer the simpler path: nullable event_source_id**, and update the FK if it isn't nullable already.)
+2. Insert `Event` row with payload, event_type, status=RECEIVED.
+3. Find matching subscriptions (by event_type + scope; same logic as webhook delivery).
+4. For each subscription: create `EventDelivery` row, call `enqueue_system_workflow_execution(workflow_id, parameters={"event": {"type": event_type, "data": data, "id": event_id}}, source=f"event: {event_type}", org_id=...)`.
+
+Use `enqueue_system_workflow_execution` for the workflow dispatch — this guarantees the correct `SYSTEM_USER_ID` UUID and avoids re-introducing the bug we're fixing.
+
+- [ ] **Step 4: Wire the top-level helper**
+
+```python
+# api/src/services/events/__init__.py
+async def emit_internal_event(
+    event_type: str,
+    data: dict,
+    *,
+    organization_id: UUID | None = None,
+    triggered_by: str | None = None,
+) -> UUID:
+    from src.core.database import get_session_factory
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        processor = EventProcessor(db)
+        event_id = await processor.emit_internal(
+            event_type=event_type,
+            data=data,
+            organization_id=organization_id,
+            triggered_by=triggered_by,
+        )
+        await db.commit()
+        return event_id
+```
+
+- [ ] **Step 5: Run tests**
+
+```bash
+./test.sh tests/unit/services/events/test_emit_internal.py -v
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(events): emit_internal primitive for internal-source events"
+```
+
+---
+
+### Task 23: Emit `user.invited` from invite paths
+
+**Files:**
+- Modify: `api/src/routers/users.py` — replace the Task 20 TODO markers with `await emit_internal_event("user.invited", payload, organization_id=...)`.
+- Modify: `api/src/models/contracts/user_invites.py` — update `CreateInviteResponse` to drop `email_sent`/`email_error` and add `event_emitted: bool` + `event_id: UUID | None`.
+- Modify: `api/shared/models.py` if the response model lives there (Pydantic source of truth).
+
+**Payload shape:**
+
+```python
+{
+    "user_id": str(new_user.id),
+    "email": new_user.email,
+    "name": new_user.name or "",
+    "registration_url": registration_url,
+    "expires_at": invite.expires_at.isoformat(),
+    "invited_by": {
+        "user_id": str(actor.user_id),
+        "email": actor.email,
+        "name": actor.name or "",
+    },
+    "reason": "created" | "resent",  # NOT "regenerated" — see below
+}
+```
+
+- [ ] **Step 1: Failing e2e test**
+
+Add to `api/tests/e2e/api/test_user_invites.py`:
+
+```python
+# Test cases:
+# - POST /users {invite: true} emits user.invited with reason="created" and the full payload
+# - POST /users/{id}/invite/resend emits user.invited with reason="resent"
+# - POST /users/{id}/invite/regenerate does NOT emit (returns the link only)
+# - emitted event_id appears on the response
+# - the registration_url field in the payload contains /accept-invite?token=
+```
+
+Use the existing event-emission test pattern (look at webhook delivery tests for the assertion style).
+
+- [ ] **Step 2: Wire emission in `create_user` and `_generate_invite(send=True)`**
+
+Construct the payload, call `emit_internal_event`, capture the returned event_id, populate the response. Drop the Task 20 TODO markers.
+
+**Gate emission on `trigger_automation`:**
+- `create_user`: emit only if `request.invite is True AND (request.trigger_automation is True OR request.trigger_automation is None)`. (None defaults to True for contract compatibility — see Task 25 Step 1.)
+- `_generate_invite(send=True)`: this is the "Resend invite" path which is explicitly opting into automation; always emit.
+- `_generate_invite(send=False)`: this is "Regenerate / Copy link"; never emit.
+
+Add `trigger_automation: bool = True` to `UserCreate` in `api/shared/models.py`.
+
+- [ ] **Step 3: Update `CreateInviteResponse`**
+
+Drop `email_sent`/`email_error`. Add `event_emitted: bool` (always True if we emitted) and `event_id: UUID | None`. Update `api/src/models/contracts/user_invites.py`.
+
+- [ ] **Step 4: Regenerate types**
+
+```bash
+./debug.sh status | grep -q "Status:   UP" || ./debug.sh
+cd client && npm run generate:types
+```
+
+- [ ] **Step 5: Run tests**
+
+```bash
+./test.sh tests/e2e/api/test_user_invites.py -v
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(invites): emit user.invited event instead of calling email_service"
+```
+
+---
+
+### Task 24: Document the `user.invited` event
+
+**Files:**
+- Modify: `docs/llm.txt` (Bifrost-LLM reference) — add an `Events` section listing internal events.
+- Add: `docs/events/internal.md` (or wherever your event docs live — confirm by grepping for existing event documentation).
+
+Document:
+- Event type: `user.invited`
+- Source type: internal
+- When emitted: a platform admin creates a user with `invite=True`, or calls `POST /users/{id}/invite/resend`. NOT emitted on `regenerate` (link-only return).
+- Payload: full schema (mirror Task 23 payload).
+- Scope: scoped to the inviting user's organization (or GLOBAL if platform-admin context).
+- Subscriber contract: workflow receives `context.event.data` with the payload above. Recommended subscriber actions: send email, post to Slack, log to audit system.
+
+- [ ] **Step 1: Find existing event docs**
+
+```bash
+grep -rln "webhook event\|event_type\|event payload" docs/ 2>/dev/null
+```
+
+Match style.
+
+- [ ] **Step 2: Write the doc**
+
+Plain markdown, payload as a fenced code block with comments per field.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git commit -m "docs(events): document user.invited internal event"
+```
+
+---
+
+### Task 25: Frontend cleanup + UX relabeling
+
+**Files:**
+- DELETE: `client/src/pages/settings/Email.tsx`
+- DELETE: `client/src/components/settings/EmailTestDialog.tsx`
+- DELETE: corresponding `.test.tsx` files
+- Modify: settings navigation (grep for `/settings/email` in `client/src/`)
+- Modify: route registration (grep `client/src/App.tsx` for the route)
+- Modify: `client/src/components/users/CreateUserDialog.tsx` — change "Send invite email" checkbox label + its hover/help copy
+- Modify: any frontend code referencing `email_sent`/`email_error` on `CreateInviteResponse` — drop those toast branches; use the new `event_emitted` value
+- Modify: vitest covering the dialog assertion (the prior commit `0f7b2e76` checked the `invite` flag — that stays; update label expectations)
+- Modify: `client/e2e/users.admin.spec.ts` — label selector change only; the test logic still works because Playwright pulls the registration URL via the API, not via email
+
+- [ ] **Step 1: Implement the "Trigger invite automation" control**
+
+Final label: **"Trigger invite automation"** (singular — one toggle, but it fans out to multiple events as the platform grows).
+
+UX: checkbox (default on) + an info `<HoverCard>` or `<Popover>` revealing the list of events that will fire. For now the list is just `user.invited`, but the component should accept an array so future events (`user.welcomed`, `user.password_reset_requested`, etc.) drop into the same disclosure without rework.
+
+Suggested shape:
+
+```tsx
+<TriggerAutomationToggle
+  checked={triggerAutomation}
+  onCheckedChange={setTriggerAutomation}
+  events={["user.invited"]}
+/>
+```
+
+The component renders:
+- Checkbox with label "Trigger invite automation"
+- An adjacent info icon (e.g., `Info` from lucide-react) that opens a popover listing each event as a code-style chip and a one-line caption: "Workflows subscribed to these events will run when you create this user. If unchecked, the registration link is generated but no automations run."
+
+If unchecked, the submit body still includes `invite: true` (the invite RECORD is created so the link works) but a new `trigger_automation: false` field tells the backend to skip emission. If checked, both `invite: true` and `trigger_automation: true` (which is the default — backend treats absence-of-field as `true` for backwards-compatible reading of the contract during the transition). Update `UserCreate` accordingly.
+
+**Important:** the existing `invite` flag stays. It controls whether an invite record is created at all (i.e., is this even a pending-invite user?). The new `trigger_automation` flag controls whether the event fires. The reason to split them: an admin might want to create a pending-invite user, eyeball the link in the API response, and hand-deliver it to a user outside the automation pipeline.
+
+- [ ] **Step 2: Delete frontend email-config files**
+
+```bash
+git rm client/src/pages/settings/Email.tsx client/src/components/settings/EmailTestDialog.tsx
+git rm client/src/components/settings/EmailTestDialog.test.tsx 2>/dev/null || true
+```
+
+- [ ] **Step 3: Strip route + nav references**
+
+Grep, remove, run `npm run tsc` until clean.
+
+- [ ] **Step 4: Update `CreateUserDialog` + toast handlers**
+
+Apply the new label + tooltip. In `Users.tsx`, the `onResend` handler currently toasts based on `email_sent`; change it to toast based on `event_emitted`/`event_id` (e.g., "Invite event fired"). For `onRegenerate`/`onCopyLink`, the existing "Link copied" toasts stay.
+
+- [ ] **Step 5: Update vitest + e2e selectors**
+
+```bash
+./test.sh client unit
+./test.sh client e2e e2e/users.admin.spec.ts
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(users): replace email-config UI with event-driven invite UX"
+```
+
+---
+
+### Task 26: Smoke test — subscribed noop workflow
+
+End-to-end manual smoke. Confirms: the event emits, a subscribed workflow receives it, the registration URL works.
+
+- [ ] **Step 1: Create a noop workflow via the UI or CLI**
+
+Workflow body:
+
+```python
+from bifrost.sdk import workflow
+
+@workflow(name="Show Invite Event")
+async def show_invite_event(context):
+    return context.event["data"]  # or however your event payload surfaces
+```
+
+(Confirm the exact `context.event` shape against your event-system docs; the pattern is documented for webhooks and should be identical here.)
+
+- [ ] **Step 2: Subscribe the workflow to `user.invited`**
+
+Via the events UI or CLI. Scope: GLOBAL for the smoke test.
+
+- [ ] **Step 3: Trigger an invite**
+
+Navigate to `/users`, click "Create User", check "Trigger invite automations", submit.
+
+- [ ] **Step 4: Verify in Execution History**
+
+- An execution row for the noop workflow appears.
+- Open it; the result panel shows the JSON payload with `user_id`, `email`, `registration_url` (containing `/accept-invite?token=...`), `expires_at`, `invited_by`, `reason: "created"`.
+
+- [ ] **Step 5: Visit the registration URL**
+
+Copy `registration_url` from the execution result, open in a private window, complete registration with a password, log in.
+
+- [ ] **Step 6: Test regenerate-doesn't-emit**
+
+In `/users`, open the invite-actions menu on a pending user, click "Copy registration link". Verify no new execution appears in History.
+
+- [ ] **Step 7: Test resend-does-emit**
+
+Click "Resend invite" on a pending user. Verify a new execution appears with `reason: "resent"`.
+
+If all steps pass, the pivot is functionally complete.
+
+---
+
+### Task 27: Pre-completion verification (replaces old Task 18)
+
+The previous Task 18 verification ran against the pre-pivot state. Re-run after the pivot.
+
+- [ ] `./test.sh stack up` then `./test.sh all` — 0 failures (excluding known embed-slug state pollution per project memory).
+- [ ] `./test.sh client unit` + `./test.sh client e2e e2e/users.admin.spec.ts`.
+- [ ] `cd api && pyright && ruff check .` + `cd client && npm run tsc && npm run lint`.
+- [ ] Grep sweep: `grep -rn "email_service\|email_config\|bifrost\.email\|EmailTestDialog\|/settings/email\|/api/email" api/ client/ docs/ --include="*.py" --include="*.ts" --include="*.tsx" --include="*.md"`. Zero hits expected.
+- [ ] Confirm no orphan Alembic heads: `cd api && alembic heads`.
+- [ ] Report summary to orchestrator.
+
+---
+
+## Phase 5: Topic sources + Events SDK (added 2026-05-21)
+
+**Why this exists.** Phase 4 shipped `emit_internal_event` with `event_source_id=NULL` to keep changes minimal while we figured out the right UX. After working through the model with the user, we landed on:
+
+- **EventSourceType.INTERNAL → TOPIC.** The user-facing term is "Topic" — pub/sub language, accurate.
+- **Topic sources are real EventSource rows.** No more NULL-source kludge. Subscriptions hang under them via the normal nested form.
+- **No scope-based subscription matching.** A topic source's `organization_id` does NOT filter who subscribes or what fires. All subscriptions on a matching topic source fire on every emit. Org context is metadata stamped on Events, not a routing key.
+- **Two emit paths with different scope-resolution semantics:**
+  - **Server-side `emit_event(topic, data)`** (called from routers like the invite flow): looks up the topic source by `event_type`, stamps `Event.organization_id = source.organization_id`. The source row IS the org identity for server-originated events on that topic.
+  - **SDK `events.emit(topic, data, scope=None)`** (called from workflows): uses `resolve_scope(scope)` exactly like `config.get` — defaults to caller's current execution context org, explicit org_id requires provider-org auth, the resolved value is stamped on the Event. **Source row's org is ignored on the SDK path.**
+- **`X-Organization-Id` header has no part in this.** The header is on its way out platform-wide; new code uses explicit `scope` body parameters.
+- **`context.event` field added to ExecutionContext** carrying `{type, data, organization_id, id, received_at}`. Populated whenever a workflow is triggered by an Event row, regardless of source type (topic, webhook, schedule — uniform).
+- **Topics are arbitrary strings.** Validated server-side as `^[a-z0-9_.]+$`, at-least-one-dot, max 100 chars. Curated registry provides autocomplete suggestions; users can type new topics that get added to the suggestion list as they accumulate.
+- **Events SDK package added.** `from bifrost import events; await events.emit("acme.deal_won", {...})`. Mirrors the shape of the deleted `bifrost.email.send` (different verb, same wiring conventions).
+
+### Conventions locked
+
+- Topic regex: `^[a-z0-9_.]+$`, requires at least one dot, max 100 chars
+- Auth on `/api/events/emit`: same as the deleted `email.send` (superuser / function-key)
+- Fire-and-forget: subscribers run async via `enqueue_system_workflow_execution`; emit returns event_id immediately
+- Scope param on SDK: optional, defaults to current context org via `resolve_scope`
+- `Event.organization_id` precedence:
+  - Server-side `emit_event(topic, data)`: `source.organization_id`
+  - SDK `events.emit(topic, data, scope=X)`: `resolve_scope(X)` (X explicit, or None → current context org)
+
+### Task 28: Rename EventSourceType.INTERNAL → TOPIC
+
+**Files:**
+- `api/src/models/enums.py` — rename enum value
+- New Alembic migration: `ALTER TYPE event_source_type RENAME VALUE 'internal' TO 'topic'`
+- `api/src/models/orm/events.py` — PgEnum string list
+- `api/src/services/mcp_server/tools/events.py` — error message string list (two locations)
+- `client/src/components/events/EventSourceDetail.tsx` — switch case strings + display label
+- `client/src/components/events/CreateEventSourceDialog.tsx` — handled by Task 30
+- `docs/events/internal.md` → rename to `docs/events/topics.md` (handled by Task 35)
+
+- [ ] Create migration: `cd api && alembic revision -m "rename event source type internal to topic"`
+- [ ] Implement: `op.execute("ALTER TYPE event_source_type RENAME VALUE 'internal' TO 'topic'")` upgrade; downgrade reverses
+- [ ] Apply: restart bifrost-init, then api
+- [ ] Rename in Python enum + all string literals + frontend
+- [ ] Run pyright + ruff + tsc + lint
+- [ ] Commit: `refactor(events): rename internal source type to topic`
+
+### Task 29: Restore event_source_id NOT NULL + delete get_active_for_internal_event + rewrite emit primitive
+
+**Files:**
+- New Alembic migration: revert Phase 4's nullability migration
+- `api/src/repositories/events.py` — delete `get_active_for_internal_event`
+- `api/src/services/events/processor.py` — rewrite `emit_internal(...)` (rename to `emit_topic`) to use the topic source row
+- `api/src/services/events/__init__.py` — rename `emit_internal_event` → `emit_event`; update signature semantics
+
+**Behavior changes:**
+
+The new `EventProcessor.emit_topic` (or just `emit`) signature:
+
+```python
+async def emit_topic(
+    self,
+    *,
+    topic: str,
+    data: dict,
+    organization_id: UUID | None = None,  # explicit override; if None, use source.organization_id
+    triggered_by: str | None = None,
+) -> tuple[UUID, int]:
+    """Emit a topic event. Returns (event_id, subscribers_notified)."""
+```
+
+Algorithm:
+1. Validate topic against `validate_topic(topic)` — see Task 31
+2. Look up `EventSource` where `source_type='topic' AND event_type=topic`. If not found: log + no-op + return `(generated_event_id_for_audit, 0)` OR raise — pick the no-op path so missing-source doesn't break the invite flow.
+3. Determine stamped org: `organization_id if organization_id is not None else source.organization_id`.
+4. Insert Event row with `event_source_id=source.id`, `event_type=topic`, `data`, `organization_id=<resolved>`.
+5. Find subscriptions via the existing `get_subscriptions_for_source(source.id)` matcher — no scope filtering.
+6. For each subscription: create EventDelivery, dispatch via `enqueue_system_workflow_execution` (carries `SYSTEM_USER_ID` correctly).
+7. Return `(event_id, len(subscriptions))`.
+
+The top-level helper `emit_event(topic, data, *, organization_id=None, triggered_by=None)` opens its own session and calls `processor.emit_topic(...)`.
+
+**NULL safeguard in the revert migration:**
+
+```python
+def upgrade() -> None:
+    # Safeguard: if any internal events were emitted in Phase 4, we cannot revert.
+    conn = op.get_bind()
+    null_count = conn.execute(
+        sa.text("SELECT COUNT(*) FROM events WHERE event_source_id IS NULL")
+    ).scalar()
+    if null_count and null_count > 0:
+        raise RuntimeError(
+            f"{null_count} events with NULL event_source_id exist; cannot revert nullability"
+        )
+    op.alter_column("events", "event_source_id", nullable=False)
+    op.alter_column("event_subscriptions", "event_source_id", nullable=False)
+```
+
+- [ ] Write migration with NULL safeguard
+- [ ] Delete `get_active_for_internal_event` from the subscription repo
+- [ ] Rewrite `emit_internal` → `emit_topic` per algorithm above
+- [ ] Rename `emit_internal_event` → `emit_event` (top-level helper)
+- [ ] Update Phase 4 tests in `tests/unit/services/events/test_emit_internal.py` → rename file to `test_emit_topic.py`, rewrite assertions for new behavior (source row exists, subscriptions matched via source, no scope filtering)
+- [ ] Update tests in `tests/e2e/api/test_user_invites.py` that asserted on NULL source_id
+- [ ] Commit: `refactor(events): topic sources + emit primitive uses source rows`
+
+### Task 30: Frontend grouped source picker + topic form
+
+**Files:**
+- `client/src/components/events/CreateEventSourceDialog.tsx`
+
+UX:
+- Replace the flat `<Select>` with a grouped picker. Groups: **Built-In** (Webhook, Schedule) and **Topics** (registry entries + "Custom topic…" option that reveals a free-text input).
+- When a topic is chosen (registry or custom): hide webhook adapter / schedule cron sections. Show: **Name** (optional, derive default from topic like `User Invited` from `user.invited`), **Topic** (the value, displayed as a code-style chip when picked from registry, editable input when "Custom topic…"), **Organization** (picker — defaults to GLOBAL; this is the org stamped on Events emitted server-side for this topic).
+- Submit body includes `source_type: "topic"`, `event_type: <chosen-or-typed>`, `organization_id` (or null), `name`.
+- Validation: topic must match `^[a-z0-9_.]+$` and contain at least one dot; max 100. Show inline error.
+
+- [ ] Refactor the source-type input as a grouped combobox (or a primary "Type" select + conditional sub-fields, whichever fits the existing shadcn vocabulary best)
+- [ ] Add the topic combobox driven by `GET /api/events/topics` (Task 32)
+- [ ] Implement client-side topic validation matching server regex
+- [ ] Update existing CreateEventSourceDialog test for the new fields
+- [ ] Verify the "Internal (Coming Soon)" string is gone
+- [ ] Commit: `feat(events): topic source picker in CreateEventSourceDialog`
+
+### Task 31: validate_topic helper
+
+**Files:**
+- `api/src/services/events/validation.py` (new)
+- Used by: server primitive `emit_event`, HTTP endpoint `POST /api/events/emit`, EventSource create router
+
+```python
+TOPIC_REGEX = re.compile(r"^[a-z0-9_.]+$")
+TOPIC_MAX_LEN = 100
+
+def validate_topic(topic: str) -> None:
+    """Raise ValueError if topic is invalid."""
+    if not topic or len(topic) > TOPIC_MAX_LEN:
+        raise ValueError(f"Topic must be 1-{TOPIC_MAX_LEN} chars")
+    if not TOPIC_REGEX.match(topic):
+        raise ValueError("Topic must match ^[a-z0-9_.]+$")
+    if "." not in topic:
+        raise ValueError("Topic must contain at least one dot (e.g. 'user.invited')")
+```
+
+- [ ] Unit test the validator (valid + invalid cases)
+- [ ] Wire into the three call sites
+- [ ] Commit: `feat(events): validate_topic helper`
+
+### Task 32: POST /api/events/emit endpoint + GET /api/events/topics registry
+
+**Files:**
+- `api/src/routers/events.py` (or wherever event endpoints live — confirm via grep)
+- Add response/request models in `api/shared/models.py` (per CLAUDE.md: Pydantic source of truth)
+
+**POST /api/events/emit:**
+- Auth: superuser / function-key (same as the deleted `/api/email/send`)
+- Body: `{topic: str, data: dict, scope: str | None}` (scope is "GLOBAL" or org UUID string)
+- Resolves scope → `organization_id`
+- Calls `validate_topic(topic)` — return 400 with message on failure
+- Calls `await emit_event(topic, data, organization_id=resolved_org, triggered_by=user.user_id)`
+- Returns `{event_id, subscribers_notified}`
+- Does NOT read `X-Organization-Id` header
+
+**GET /api/events/topics:**
+- Returns `{curated: [{topic, description}], in_use: [topic strings]}` for combobox autocomplete
+- Curated list: hand-maintained constant in `api/src/services/events/registry.py`. Initial entry: `user.invited`.
+- `in_use`: `SELECT DISTINCT event_type FROM event_sources WHERE source_type='topic'`
+- No auth required beyond standard session (so the UI can populate the combobox)
+
+- [ ] Write the registry constant
+- [ ] Implement both endpoints
+- [ ] E2E tests for both (valid emit, invalid topic 400, registry returns curated + in_use)
+- [ ] Commit: `feat(events): POST /events/emit + GET /events/topics`
+
+### Task 33: bifrost.events SDK module
+
+**Files:**
+- `api/bifrost/events.py` (new)
+- `api/bifrost/__init__.py` — export `events`
+
+```python
+"""
+Events SDK for Bifrost.
+
+Publish events to topics; subscribed workflows receive them.
+
+Usage:
+    from bifrost import events
+
+    result = await events.emit(
+        "acme.deal_won",
+        {"deal_id": "...", "amount": 50000},
+    )
+"""
+
+from .client import get_client, raise_for_status_with_detail
+from ._context import resolve_scope
+
+
+class events:
+    """Event publishing operations (async)."""
+
+    @staticmethod
+    async def emit(
+        topic: str,
+        data: dict,
+        scope: str | None = None,
+    ) -> dict:
+        """
+        Publish an event to a topic. Workflows subscribed to this topic will run.
+
+        Args:
+            topic: Lowercase string, dot-separated (e.g. "acme.deal_won").
+                   Validated server-side: ^[a-z0-9_.]+$, must contain a dot.
+            data: JSON-serializable payload. Available to subscribers as
+                  context.parameters (or via input_mapping templates) and as
+                  context.event.data.
+            scope: Organization scope override. Omit to use the execution
+                   context org (default — most workflows want this). Pass an
+                   org UUID to target a specific org (provider org context
+                   required, same rule as config.get).
+
+        Returns:
+            dict with keys: event_id (str), subscribers_notified (int)
+        """
+        client = get_client()
+        resolved = resolve_scope(scope)
+        response = await client.post(
+            "/api/events/emit",
+            json={"topic": topic, "data": data, "scope": resolved},
+        )
+        raise_for_status_with_detail(response)
+        return response.json()
+```
+
+- [ ] Implement
+- [ ] Add to `__all__` in bifrost/__init__.py
+- [ ] Confirm allowed in `import_restrictor.py` (bifrost.email was on the allowlist; mirror that)
+- [ ] Unit test the SDK shape (mocked HTTP client; valid + scope override + error propagation)
+- [ ] Commit: `feat(sdk): bifrost.events module`
+
+### Task 34: context.event field on ExecutionContext
+
+**Files:**
+- `api/bifrost/_execution_context.py` — add `event` field
+- `api/src/jobs/consumers/workflow_execution.py` (or wherever event-triggered executions populate context) — set the field when triggered by an Event
+
+```python
+@dataclass
+class EventContext:
+    """Event metadata for event-triggered workflow executions."""
+    id: str            # Event UUID
+    type: str          # The topic (e.g. "user.invited")
+    data: dict         # The event payload
+    organization_id: str | None  # Stamped org (None for GLOBAL)
+    received_at: str   # ISO timestamp
+
+
+@dataclass
+class ExecutionContext:
+    # ... existing fields ...
+    event: EventContext | None = field(default=None)
+```
+
+Populated for: topic-triggered workflows AND webhook/schedule-triggered workflows (symmetric — `context.event` exists whenever an Event row triggered the execution). Set via `enqueue_system_workflow_execution` taking an `event` kwarg.
+
+- [ ] Add EventContext dataclass + field
+- [ ] Update the executor to populate it
+- [ ] Update existing webhook-triggered workflow tests to assert `context.event` is set
+- [ ] Commit: `feat(sdk): context.event field for event-triggered workflows`
+
+### Task 35: Docs — topics + SDK + context.event
+
+**Files:**
+- `docs/events/internal.md` → rename to `docs/events/topics.md`
+- `docs/llm.txt` — update Events section
+- Add a section to `bifrost.events` SDK docs
+
+Document:
+- Topic concept (pub/sub, free-form strings, validated regex)
+- Topic sources (UI organizes subscriptions; `source.organization_id` stamps events emitted server-side; SDK path uses its own scope resolution)
+- `context.event` shape and population rules
+- `events.emit(topic, data, scope=...)` SDK signature with scope semantics matching config.get
+- The `user.invited` topic (existing payload schema from Task 24, updated for new context.event structure)
+
+- [ ] Write the docs
+- [ ] Commit: `docs(events): topics + SDK + context.event`
+
+### Task 36: Re-wire user.invited emission
+
+**Files:**
+- `api/src/routers/users.py`
+
+The emission calls in `create_user` and `_generate_invite(send=True)` already pass `organization_id`. With the new `emit_event` signature using `source.organization_id` as the default, an explicit `organization_id=actor.organization_id` keeps the existing behavior. Confirm semantics:
+
+- Acme admin creates a user → `emit_event("user.invited", payload, organization_id=acme_id)` → stamps Acme on the Event. Same outcome as today.
+- If admin omitted `organization_id` (we don't, but hypothetically) → `emit_event` would fall back to `source.organization_id`, which is whatever the admin set when creating the source. Also reasonable.
+
+No code change required beyond renaming `emit_internal_event` → `emit_event` (Task 29 handles the rename platform-wide). Validate the call sites compile and tests pass.
+
+- [ ] Confirm users.py uses the new function name
+- [ ] Run invite e2e + unit tests
+- [ ] Commit: `refactor(invites): use renamed emit_event` (skip if absorbed into Task 29's rename commit)
+
+### Task 37: Smoke test (replaces old Task 26)
+
+End-to-end manual smoke through the new UI.
+
+1. Open the Events page in the debug UI.
+2. **Create an Event Source.** Type = Topic. Topic = `user.invited` (from registry autocomplete). Organization = GLOBAL. Name = "User Invited".
+3. **Create a workflow** that returns `context.event.data` (and possibly `context.event.organization_id` for sanity).
+4. **Create a subscription** under the topic source, target = the noop workflow.
+5. **Trigger an invite** from /users with "Trigger invite automation" checked.
+6. **Verify in Execution History:** new execution exists; result panel shows `{user_id, email, registration_url, expires_at, invited_by, reason: "created"}` plus the org_id you set on the source if it's exposed in context.event.
+7. **Visit the registration_url** in a private window, complete registration, log in.
+8. **Negative cases:** Copy-link doesn't trigger an execution; trigger_automation=false doesn't trigger an execution; Resend produces a new execution with reason "resent".
+
+Drive this with the user — UI smoke needs a human.
+
+### Task 38: Phase 5 verification (replaces old Task 27)
+
+- [ ] `./test.sh stack up` then `./test.sh all` (excluding known embed-slug state pollution)
+- [ ] `./test.sh client unit` + `./test.sh client e2e e2e/users.admin.spec.ts`
+- [ ] `cd api && pyright && ruff check .` + `cd client && npm run tsc && npm run lint`
+- [ ] Grep sweep for stale references: `grep -rn "internal_event\|EventSourceType.INTERNAL\|get_active_for_internal" api/ client/ --include="*.py" --include="*.ts" --include="*.tsx"` — should only hit migration revision IDs
+- [ ] `alembic heads` — single head
+- [ ] Report summary
+
+---
+
+### Task 28: Open the PR
 
 - [ ] **Step 1: Push the branch**
 
@@ -1994,22 +2782,31 @@ git commit -m "chore: pre-completion verification fixups" || echo "nothing to co
 git push -u origin 226-users-invite-flow
 ```
 
-- [ ] **Step 2: Open PR with all three Fixes lines**
+- [ ] **Step 2: Open PR**
 
 ```bash
-gh pr create --title "feat(users): invite flow + table redesign + email test" --body "$(cat <<'EOF'
+gh pr create --title "feat(users): invite flow via events + table redesign" --body "$(cat <<'EOF'
 ## Summary
-- Magic-link invite flow (`UserInvite` model, hashed tokens, 7d TTL, single-use, revocable)
-- Users table redesign: two-line name cell, sticky Actions column, no horizontal scroll
-- Email Configuration: Validate → Test, real send to recipient (prefilled with current user's email)
+- **Magic-link invite flow** (`UserInvite` model, hashed tokens, 7d TTL, single-use, revocable)
+- **Event-driven invite delivery**: emits the new `user.invited` internal event. Any workflow subscribed to this event handles delivery (email, Slack, etc.) — no more bespoke email-config UI.
+- **Users table redesign**: two-line name cell, sticky Actions column, no horizontal scroll, Status column with Active / Pending invite / Invite expired / Not invited badges.
+- **`/accept-invite?token=...` page** for completing registration (password-based; passkey-from-invite is a follow-up, see below).
+
+## Breaking changes
+- **Removed `bifrost.email.send()` SDK module.** It never worked against a configured email workflow (passed `user_id="system"` as a string into a UUID parser). Zero in-repo callers; if downstream code depends on it, migrate to `events.emit("email.send_requested", {...})` or subscribe a workflow to the relevant domain event.
+- **Removed Settings → Email page** and the `/api/email/send` SDK endpoint. Configure email delivery by subscribing a workflow to `user.invited` (and future `*.send_requested` events).
+
+## Follow-ups
+- **Passkey-from-invite.** `passkey_service.py` has no token-gated registration path. `/accept-invite` is password-only. Adding passkey support requires a new endpoint that accepts an invite token as the credential.
+- **Generic email-send event** (`email.send_requested`) if anyone wants the old `bifrost.email.send()` ergonomics back as a thin sugar wrapper.
 
 ## Test plan
-- [ ] `./test.sh all` (backend unit + e2e)
-- [ ] `./test.sh client unit`
-- [ ] `./test.sh client e2e e2e/users.spec.ts`
-- [ ] Manual: invite a user, complete registration via magic link, log in
-- [ ] Manual: long org name no longer causes horizontal scroll
-- [ ] Manual: Email settings → Test → real message lands in inbox
+- [x] `./test.sh all` (backend unit + e2e)
+- [x] `./test.sh client unit`
+- [x] `./test.sh client e2e e2e/users.admin.spec.ts`
+- [x] Manual: smoke per Task 26 (noop subscriber → trigger invite → execution shows payload → registration completes)
+- [x] Manual: long org name no longer causes horizontal scroll
+- [x] Manual: regenerate-without-send does NOT trigger automations
 
 Fixes #226
 Fixes #227
