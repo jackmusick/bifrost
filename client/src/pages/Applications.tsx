@@ -246,6 +246,7 @@ export function Applications() {
 				)}
 			</div>
 
+			<div className="flex-1 min-h-0 overflow-auto">
 			{isLoading ? (
 				viewMode === "grid" || !canManageApps ? (
 					<div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]">
@@ -293,6 +294,7 @@ export function Applications() {
 												<EntityLogo
 													entityType="app"
 													entityId={app.id}
+													logo={app.logo ?? null}
 													fallback={
 														<AppWindow className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 													}
@@ -629,6 +631,7 @@ export function Applications() {
 					</CardContent>
 				</Card>
 			)}
+			</div>
 
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
