@@ -22,7 +22,7 @@ from src.core.constants import SYSTEM_USER_ID, SYSTEM_USER_EMAIL
 from src.core.log_safety import log_safe
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import publish_message
-from src.sdk.context import ExecutionContext
+from src.sdk.context import EventContext, ExecutionContext
 from src.services.execution.queue_tracker import add_to_queue
 
 logger = logging.getLogger(__name__)
@@ -225,19 +225,21 @@ async def enqueue_system_workflow_execution(
     parameters: dict[str, Any],
     source: str,
     org_id: str | None = None,
+    event: EventContext | None = None,
 ) -> str:
     """
     Enqueue a system-triggered workflow execution.
 
     Handles execution_id generation internally - callers don't need to pre-generate.
     Uses the system user for executions not triggered by a real user
-    (webhooks, schedules, internal events).
+    (webhooks, schedules, topic events).
 
     Args:
         workflow_id: UUID of workflow to execute
         parameters: Workflow parameters
         source: Display name for what triggered this (e.g., "Event System", "Scheduled Execution")
         org_id: Optional organization scope (UUID string, not "ORG:" prefixed)
+        event: Optional EventContext populated for event-triggered executions
 
     Returns:
         execution_id: UUID string of the queued execution
@@ -258,6 +260,7 @@ async def enqueue_system_workflow_execution(
         execution_id=execution_id,
         workflow_name="",  # Will be set by worker when loading workflow
         public_url=get_settings().public_url,
+        event=event,
     )
 
     return await enqueue_workflow_execution(

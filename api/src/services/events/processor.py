@@ -669,6 +669,16 @@ class EventProcessor:
             "source_ip": event.source_ip,
         }
 
+        from src.sdk.context import EventContext
+
+        event_context = EventContext(
+            id=str(event.id),
+            type=event.event_type or "",
+            data=event.data if isinstance(event.data, dict) else {},
+            organization_id=str(event.organization_id) if getattr(event, "organization_id", None) else None,
+            received_at=event.received_at.isoformat() if event.received_at else "",
+        )
+
         # Use the centralized system execution helper
         # Use workflow's org_id so org-scoped workflows only access their org's data
         execution_id = await enqueue_system_workflow_execution(
@@ -676,6 +686,7 @@ class EventProcessor:
             parameters=parameters,
             source="Event System",
             org_id=str(workflow.organization_id) if workflow.organization_id else None,
+            event=event_context,
         )
 
         # Store the execution ID on the delivery for tracking
