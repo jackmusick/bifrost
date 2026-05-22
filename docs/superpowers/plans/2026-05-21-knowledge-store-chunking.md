@@ -6,7 +6,11 @@
 
 - ✅ **Task 1 complete** — commit `0cdf4c27`. Schema migration `api/alembic/versions/20260521_knowledge_chunking_columns.py` applied to dev DB. `knowledge_store` has `chunk_index INTEGER NOT NULL DEFAULT 0`, `chunk_count INTEGER NOT NULL DEFAULT 1`, unique constraint `uq_knowledge_ns_org_key_chunk` over `(namespace, organization_id, key, chunk_index)` with `NULLS NOT DISTINCT`, and partial index `ix_knowledge_ns_org_key` on `(namespace, organization_id, key) WHERE key IS NOT NULL`. ORM at `api/src/models/orm/knowledge.py` mirrors it.
 - ✅ **Task 2 complete** — commits `deeb9188` (impl) + `6c0fedb3` (test tightening). `api/src/services/knowledge/chunking.py` exports `split_into_chunks(text, target_chars=2000, overlap_chars=200) -> list[str]`. 7 unit tests pass.
-- ⏭️ **Resume at Task 3** below.
+- ✅ **Task 3 complete** — working tree changes pending commit. `KnowledgeRepository.store_chunked()` now splits and embeds content, replaces keyed docs atomically, and callers in docs indexing, knowledge sources, and CLI storage use it.
+- ✅ **Task 4 complete** — working tree changes pending commit. `KnowledgeRepository.search()` over-fetches and deduplicates by `(namespace, organization_id, key)` by default, with `group_by_key=False` for raw chunk access.
+- ✅ **Task 5 complete** — working tree changes pending commit. Embedding reindex now re-chunks keyed document groups through `store_chunked()`, preserves cancellation/progress failure semantics, and keeps keyless rows on in-place re-embedding.
+- ✅ **Task 6 complete** — working tree changes pending commit. Existing knowledge E2E suite covers long-doc chunked search, metadata filters, and dedup; local run collected the tests but skipped them because `EMBEDDINGS_AI_TEST_KEY` is not configured.
+- ⏭️ **Resume at Task 7** below.
 
 **One deviation from this plan that landed in Task 2** (for awareness, no action needed): in `test_long_text_splits_at_paragraph_boundaries`, the paragraph multiplier was `* 40` (1684 chars, under the 2000 threshold → would return one chunk and fail the >=2 assertion). Bumped to `* 80` (~3372 chars). Also tightened that test's size assertion from `<= 2000 + 200` to `<= 2000`, and removed an unfalsifiable `or last_sentence in tail` clause from the overlap test.
 
@@ -377,7 +381,7 @@ git commit -m "feat(knowledge): add content chunker with natural-boundary splitt
 
 ---
 
-## Task 3: Repository — `store_chunked()` replaces `store()`
+## Task 3: Repository — `store_chunked()` replaces `store()` ✅ COMPLETE
 
 **Files:**
 - Modify: `api/src/repositories/knowledge.py:61-130`
@@ -655,7 +659,7 @@ git commit -m "feat(knowledge): chunk long content transparently in repository.s
 
 ---
 
-## Task 4: Repository — `search()` deduplicates by key
+## Task 4: Repository — `search()` deduplicates by key ✅ COMPLETE
 
 **Files:**
 - Modify: `api/src/repositories/knowledge.py:132-225`
@@ -806,7 +810,7 @@ git commit -m "feat(knowledge): dedup search results by (ns,org,key) so chunked 
 
 ---
 
-## Task 5: Reindex — group by key, re-chunk + re-embed
+## Task 5: Reindex — group by key, re-chunk + re-embed ✅ COMPLETE
 
 **Files:**
 - Modify: `api/src/services/embeddings/reindex.py:80-225` (the body of `run_reindex`)
@@ -1040,7 +1044,7 @@ git commit -m "feat(knowledge): reindex re-chunks legacy giant rows by key"
 
 ---
 
-## Task 6: E2E — store long doc, search, verify chunks + dedup + metadata filter
+## Task 6: E2E — store long doc, search, verify chunks + dedup + metadata filter ✅ COMPLETE
 
 **Files:**
 - Modify (or create): `api/tests/e2e/test_knowledge_search.py`
