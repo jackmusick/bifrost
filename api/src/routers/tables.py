@@ -20,12 +20,13 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
+from shared.claims.preresolve import preresolve_for_policies
+from shared.claims.registry import referenced_claim_names
 from shared.policies.probe import (
     compile_read_filter,
     evaluate_action,
     make_seed_admin_bypass,
 )
-from shared.claims.registry import referenced_claim_names
 from src.core.auth import Context, CurrentSuperuser, UserPrincipal
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.log_safety import log_safe
@@ -52,8 +53,8 @@ from src.models.contracts.tables import (
     TablePublic,
     TableUpdate,
 )
-from src.models.orm.tables import Document, Table
 from src.models.orm.custom_claims import CustomClaim as CustomClaimORM
+from src.models.orm.tables import Document, Table
 from src.repositories.org_scoped import OrgScopedRepository
 from src.core.pubsub import publish_document_change, publish_policy_changed
 from src.services.audit import emit_audit
@@ -158,6 +159,12 @@ async def _check_action_or_403(
     mutation or only after read-only operations.
     """
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        user,
+        policies,
+        db,
+        table.organization_id,
+    )
     if evaluate_action(action, policies, row, user):
         return
 
@@ -1199,6 +1206,12 @@ async def count_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
 
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
     read_filter = compile_read_filter(policies, ctx.user)
     if read_filter is None:
         # No rule grants read → count zero. Same existence-leak rationale
@@ -1325,6 +1338,12 @@ async def query_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
 
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
     read_filter = compile_read_filter(policies, ctx.user)
     if read_filter is None:
         # No rule grants read → empty result. Don't 403 to avoid leaking
@@ -1373,6 +1392,12 @@ async def batch_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
 
     # Pre-resolve attribution per item up front so any forged-attribution
     # 403 surfaces before we do work and applies all-or-nothing across
@@ -1479,6 +1504,12 @@ async def batch_delete_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
 
     # Pre-flight: load each existing row and check `delete` against policy.
     denied: list[int] = []
