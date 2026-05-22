@@ -115,7 +115,7 @@ Each block ends with a green-status preview. If a block is too big for one sessi
 
 **Commit boundary:** end of block 2 is a natural commit. Push it. ✅
 
-### Block 3: C4 — Backend endpoints (do BEFORE the Roles UI)
+### Block 3: C4 — Backend endpoints (do BEFORE the Roles UI) ✅ DONE
 
 Why first: the new Roles UI calls these endpoints. Building UI against missing endpoints means stubs, which violates the no-stubs constraint.
 
@@ -145,10 +145,12 @@ Why first: the new Roles UI calls these endpoints. Building UI against missing e
 - Existing `test_roles.py` updated for the new count field
 
 **Definition of done for block 3:**
-- All 6 consumer types have working list/assign/unassign endpoints
-- `GET /api/roles` returns counts that survive a round-trip assignment + unassignment
-- All e2e tests green
-- Push commit
+- [x] All 6 consumer types have working list/assign/unassign endpoints
+- [x] `GET /api/roles` returns counts that survive a round-trip assignment + unassignment
+- [x] All e2e tests green — `test_roles_bulk.py` (4) + `test_roles_consumers.py` (6) + existing `test_roles.py` (4) = 14 green
+- [x] Commit `0cbc7369` pushed
+
+**Knowledge note (different from plan):** `KnowledgeNamespaceRole` is keyed by `(namespace, organization_id, role_id)`, not a single UUID entity. The role-side surface accepts `{namespace, organization_id?}` pairs for assign, and `{assignment_ids: [...]}` (assignment row UUIDs) for unassign. The frontend tab in Block 5 will render namespace+org per row and unassign by id.
 
 ### Block 4: C1 — Roles list rewrite with inline counts
 
