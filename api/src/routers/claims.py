@@ -8,7 +8,6 @@ as ``{claims: <name>}``. See
 
 from __future__ import annotations
 
-import logging
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
@@ -30,8 +29,6 @@ from src.models.contracts.claims import (
 )
 from src.models.orm.custom_claims import CustomClaim as ClaimORM
 from src.models.orm.tables import Table
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/claims", tags=["Claims"])
 
@@ -148,15 +145,21 @@ async def create_claim(
     )
     ctx.db.add(row)
     try:
-        await ctx.db.commit()
+        await ctx.db.flush()
     except IntegrityError as exc:
         await ctx.db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"claim {body.name!r} already exists in this org",
         ) from exc
+    # Cycle check sees the new row via the same session (post-flush).
+    try:
+        await _check_no_cycles(ctx.db, org_id)
+    except HTTPException:
+        await ctx.db.rollback()
+        raise
+    await ctx.db.commit()
     await ctx.db.refresh(row)
-    await _check_no_cycles(ctx.db, org_id)
     return ClaimDTO.model_validate(row)
 
 
@@ -191,9 +194,14 @@ async def update_claim(
         await _check_source_table_exists(ctx.db, org_id, body.query.table)
         row.query = body.query.model_dump(mode="json")
 
+    await ctx.db.flush()
+    try:
+        await _check_no_cycles(ctx.db, org_id)
+    except HTTPException:
+        await ctx.db.rollback()
+        raise
     await ctx.db.commit()
     await ctx.db.refresh(row)
-    await _check_no_cycles(ctx.db, org_id)
     return ClaimDTO.model_validate(row)
 
 
