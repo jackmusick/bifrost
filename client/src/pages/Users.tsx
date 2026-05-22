@@ -10,6 +10,7 @@ import {
 	ArrowDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	DataTable,
 	DataTableBody,
@@ -43,6 +44,7 @@ import {
 	useDeleteUser,
 	useUpdateUser,
 } from "@/hooks/useUsers";
+import { useUserSelection } from "@/hooks/useUserSelection";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
@@ -51,13 +53,21 @@ import { CreateUserDialog } from "@/components/users/CreateUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
 import { UserActionsMenu } from "@/components/users/UserActionsMenu";
 import { UserStatusBadge } from "@/components/users/UserStatusBadge";
+import { BulkActionBar } from "@/components/users/BulkActionBar";
+import { UserEmailCell } from "@/components/users/UserEmailCell";
+import {
+	BulkMoveOrgDialog,
+	BulkReplaceRolesDialog,
+	BulkResultDialog,
+	BulkSetActiveDialog,
+} from "@/components/users/BulkUserDialogs";
 import {
 	useRegenerateInvite,
 	useResendInvite,
 	useRevokeInvite,
 } from "@/hooks/useUserInvites";
 import { toast } from "sonner";
-import type { components } from "@/lib/v1";
+import type { components, components as v1 } from "@/lib/v1";
 type User = components["schemas"]["UserPublic"];
 type Organization = components["schemas"]["OrganizationPublic"];
 
@@ -155,6 +165,48 @@ export function Users() {
 			setSortColumn(column);
 			setSortDirection("asc");
 		}
+	};
+
+	// ===== Bulk selection + actions =====
+	const disabledSelectionIds = useMemo(
+		() => (currentUser ? [currentUser.id] : []),
+		[currentUser],
+	);
+	const selection = useUserSelection(sortedUsers, disabledSelectionIds);
+
+	type BulkMode = "move_org" | "replace_roles" | "disable" | "enable" | null;
+	const [bulkMode, setBulkMode] = useState<BulkMode>(null);
+	const [bulkResult, setBulkResult] = useState<
+		v1["schemas"]["BulkUserResponse"] | null
+	>(null);
+	const [bulkResultUsers, setBulkResultUsers] = useState<User[]>([]);
+
+	const activeMix: "all_active" | "all_inactive" | "mixed" = useMemo(() => {
+		const selected = selection.selectedItems;
+		if (selected.length === 0) return "all_active";
+		const anyActive = selected.some((u) => u.is_active);
+		const anyInactive = selected.some((u) => !u.is_active);
+		if (anyActive && anyInactive) return "mixed";
+		return anyActive ? "all_active" : "all_inactive";
+	}, [selection.selectedItems]);
+
+	const handlePartialFailure = (
+		result: v1["schemas"]["BulkUserResponse"],
+		opUsers: User[],
+	) => {
+		setBulkResult(result);
+		setBulkResultUsers(opUsers);
+	};
+
+	// Cancel/dismiss: just close the dialog, keep the selection so the user
+	// can pivot to a different action without re-ticking every row. Selection
+	// is cleared via `onSuccess` (below) only after a successful submit.
+	const closeBulk = () => {
+		setBulkMode(null);
+	};
+
+	const onBulkSuccess = () => {
+		selection.clear();
 	};
 
 	const handleEditUser = (user: User) => {
@@ -330,6 +382,22 @@ export function Users() {
 					<DataTable>
 						<DataTableHeader>
 							<DataTableRow>
+								<DataTableHead className="w-0 whitespace-nowrap">
+									<Checkbox
+										aria-label="Select all visible users"
+										checked={
+											selection.allVisibleSelected
+												? true
+												: selection.someVisibleSelected
+													? "indeterminate"
+													: false
+										}
+										onCheckedChange={() => selection.toggleAllVisible()}
+									/>
+								</DataTableHead>
+								<DataTableHead className="w-0 whitespace-nowrap">
+									Organization
+								</DataTableHead>
 								<DataTableHead
 									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("name")}
@@ -381,40 +449,72 @@ export function Users() {
 											(!user.is_active ? " opacity-60" : "")
 										}
 									>
-										<DataTableCell className="w-0 whitespace-nowrap">
-											<div className="flex flex-col">
-												<div className="flex items-center gap-1.5">
-													<span className="font-medium">
-														{user.name || user.email}
-													</span>
-													{user.is_superuser && (
-														<Tooltip>
-															<TooltipTrigger asChild>
-																<Crown className="h-4 w-4 shrink-0 text-amber-500 fill-amber-500" />
-															</TooltipTrigger>
-															<TooltipContent>Platform Admin</TooltipContent>
-														</Tooltip>
+										<DataTableCell
+											className="w-0 whitespace-nowrap"
+											onClick={(e) => e.stopPropagation()}
+										>
+											{isSelf(user) ? (
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span>
+															<Checkbox
+																checked={false}
+																disabled
+																aria-label="Cannot select yourself"
+															/>
+														</span>
+													</TooltipTrigger>
+													<TooltipContent>
+														You can't include yourself in a bulk action
+													</TooltipContent>
+												</Tooltip>
+											) : (
+												<Checkbox
+													aria-label={`Select ${user.name || user.email}`}
+													checked={selection.isSelected(user.id)}
+													onClick={(e) => {
+														selection.toggle(user.id, {
+															shiftKey: e.shiftKey,
+														});
+														e.preventDefault();
+													}}
+												/>
+											)}
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap text-sm">
+											{user.is_superuser ? (
+												<span className="text-muted-foreground">—</span>
+											) : (
+												<span className="inline-flex items-center gap-1">
+													{orgInfo.isProvider ? (
+														<Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+													) : (
+														<Building2 className="h-3.5 w-3.5 text-muted-foreground" />
 													)}
-												</div>
-												{!user.is_superuser && (
-													<div className="flex items-center gap-1 text-xs text-muted-foreground">
-														{orgInfo.isProvider ? (
-															<Star className="h-3 w-3 shrink-0 text-amber-500 fill-amber-500" />
-														) : (
-															<Building2 className="h-3 w-3 shrink-0" />
-														)}
-														<span>{orgInfo.name}</span>
-													</div>
+													<span>{orgInfo.name}</span>
+												</span>
+											)}
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap">
+											<div className="flex items-center gap-1.5">
+												<span className="font-medium">
+													{user.name || user.email}
+												</span>
+												{user.is_superuser && (
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Crown className="h-4 w-4 shrink-0 text-amber-500 fill-amber-500" />
+														</TooltipTrigger>
+														<TooltipContent>Platform Admin</TooltipContent>
+													</Tooltip>
 												)}
 											</div>
 										</DataTableCell>
-										<DataTableCell className="text-muted-foreground">
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<span className="block truncate">{user.email}</span>
-												</TooltipTrigger>
-												<TooltipContent>{user.email}</TooltipContent>
-											</Tooltip>
+										<DataTableCell
+											className="text-muted-foreground max-w-0"
+											onClick={(e) => e.stopPropagation()}
+										>
+											<UserEmailCell email={user.email} />
 										</DataTableCell>
 										<DataTableCell className="w-0 whitespace-nowrap">
 											<UserStatusBadge
@@ -516,6 +616,53 @@ export function Users() {
 					</div>
 				)}
 			</div>
+
+			<BulkActionBar
+				count={selection.count}
+				activeMix={activeMix}
+				onClear={selection.clear}
+				onMoveOrg={() => setBulkMode("move_org")}
+				onReplaceRoles={() => setBulkMode("replace_roles")}
+				onDisable={() => setBulkMode("disable")}
+				onEnable={() => setBulkMode("enable")}
+			/>
+
+			<BulkMoveOrgDialog
+				open={bulkMode === "move_org"}
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkReplaceRolesDialog
+				open={bulkMode === "replace_roles"}
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkSetActiveDialog
+				open={bulkMode === "disable"}
+				mode="disable"
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkSetActiveDialog
+				open={bulkMode === "enable"}
+				mode="enable"
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkResultDialog
+				open={bulkResult !== null}
+				onOpenChange={(o) => !o && setBulkResult(null)}
+				result={bulkResult}
+				users={bulkResultUsers}
+			/>
 
 			<CreateUserDialog
 				open={isCreateOpen}

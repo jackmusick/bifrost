@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select, delete
+from sqlalchemy import func, select, delete
 
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
@@ -26,6 +26,11 @@ from src.models import (
     User as UserORM,
     Agent as AgentORM,
 )
+from src.models.orm.applications import Application as ApplicationORM
+from src.models.orm.app_roles import AppRole as AppRoleORM
+from src.models.orm.workflows import Workflow as WorkflowORM
+from src.models.orm.workflow_roles import WorkflowRole as WorkflowRoleORM
+from src.models.orm.knowledge_sources import KnowledgeNamespaceRole as KnowledgeNamespaceRoleORM
 from src.models import (
     RoleCreate,
     RolePublic,
@@ -33,9 +38,23 @@ from src.models import (
     RoleUsersResponse,
     RoleFormsResponse,
     RoleAgentsResponse,
+    RoleAppsResponse,
+    RoleWorkflowsResponse,
+    RoleKnowledgeResponse,
+    RoleKnowledgeEntry,
+    RoleConsumerCounts,
     AssignUsersToRoleRequest,
     AssignFormsToRoleRequest,
     AssignAgentsToRoleRequest,
+    AssignAppsToRoleRequest,
+    AssignWorkflowsToRoleRequest,
+    AssignKnowledgeToRoleRequest,
+    UnassignUsersFromRoleRequest,
+    UnassignFormsFromRoleRequest,
+    UnassignAgentsFromRoleRequest,
+    UnassignAppsFromRoleRequest,
+    UnassignWorkflowsFromRoleRequest,
+    UnassignKnowledgeFromRoleRequest,
 )
 
 # Per-user role cache (Redis-backed, used by table-policy `has_role` lookups
@@ -85,11 +104,42 @@ async def list_roles(
     user: CurrentSuperuser,
     db: DbSession,
 ) -> list[RolePublic]:
-    """List all roles."""
+    """List all roles with inline consumer counts (users/forms/agents/apps/workflows/knowledge)."""
     query = select(RoleORM).order_by(RoleORM.name)
     result = await db.execute(query)
     roles = result.scalars().all()
-    return [RolePublic.model_validate(r) for r in roles]
+
+    counts_by_role: dict[UUID, RoleConsumerCounts] = {
+        r.id: RoleConsumerCounts() for r in roles
+    }
+
+    # Six grouped COUNT queries — one per consumer type. Cheap on small/medium
+    # workspaces; if the role count ever explodes, replace with a single UNION
+    # ALL query.
+    aggregates: list[tuple[str, "object"]] = [
+        ("users", UserRoleORM),
+        ("forms", FormRoleORM),
+        ("agents", AgentRoleORM),
+        ("apps", AppRoleORM),
+        ("workflows", WorkflowRoleORM),
+        ("knowledge", KnowledgeNamespaceRoleORM),
+    ]
+    for field, orm in aggregates:
+        agg = await db.execute(
+            select(orm.role_id, func.count()).group_by(orm.role_id)  # type: ignore[attr-defined]
+        )
+        for role_id, count in agg.all():
+            entry = counts_by_role.get(role_id)
+            if entry is None:
+                continue
+            setattr(entry, field, int(count))
+
+    out: list[RolePublic] = []
+    for r in roles:
+        public = RolePublic.model_validate(r)
+        public.consumer_counts = counts_by_role[r.id]
+        out.append(public)
+    return out
 
 
 @router.post(
@@ -649,3 +699,433 @@ async def remove_agent_from_role(
     # Invalidate cache if available (roles are global, no org_id needed)
     if AGENT_CACHE_INVALIDATION_AVAILABLE and invalidate_role_agents:
         await invalidate_role_agents(None, str(role_id))
+
+
+# =============================================================================
+# Bulk Unassign — list-body shortcuts for existing surfaces (users/forms/agents)
+# Kept alongside the per-id DELETE forms; the per-id paths stay for callers
+# that already use them.
+# =============================================================================
+
+
+@router.delete(
+    "/{role_id}/users",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Bulk unassign users from role",
+    description=(
+        "Bulk unassign N users from a role in one call. Pass the user UUIDs in the "
+        "request body as {user_ids: [...]}. Unknown ids are silently skipped."
+    ),
+)
+async def bulk_unassign_users(
+    role_id: UUID,
+    request: UnassignUsersFromRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    """Remove multiple users from a role in one statement."""
+    uuids: list[UUID] = []
+    for uid in request.user_ids:
+        try:
+            uuids.append(UUID(uid))
+        except ValueError:
+            logger.warning(f"Invalid user id {log_safe(uid)} in bulk unassign — skipping")
+
+    if not uuids:
+        return
+
+    await db.execute(
+        delete(UserRoleORM).where(
+            UserRoleORM.role_id == role_id,
+            UserRoleORM.user_id.in_(uuids),
+        )
+    )
+    await db.flush()
+    logger.info(f"Bulk unassigned {len(uuids)} users from role {log_safe(role_id)}")
+
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role_users:
+        await invalidate_role_users(None, str(role_id))
+    for uid_u in uuids:
+        await invalidate_user_role_cache(uid_u)
+
+    await emit_audit(
+        db,
+        "role.users_bulk_unassigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"user_ids": [str(u) for u in uuids]},
+    )
+
+
+@router.delete(
+    "/{role_id}/forms",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Bulk unassign forms from role",
+)
+async def bulk_unassign_forms(
+    role_id: UUID,
+    request: UnassignFormsFromRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    """Remove multiple forms from a role in one statement."""
+    uuids = [UUID(fid) for fid in request.form_ids]
+    await db.execute(
+        delete(FormRoleORM).where(
+            FormRoleORM.role_id == role_id,
+            FormRoleORM.form_id.in_(uuids),
+        )
+    )
+    await db.flush()
+    logger.info(f"Bulk unassigned {len(uuids)} forms from role {log_safe(role_id)}")
+
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_role_forms:
+        await invalidate_role_forms(None, str(role_id))
+
+    await emit_audit(
+        db,
+        "role.forms_bulk_unassigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"form_ids": [str(u) for u in uuids]},
+    )
+
+
+@router.delete(
+    "/{role_id}/agents",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Bulk unassign agents from role",
+)
+async def bulk_unassign_agents(
+    role_id: UUID,
+    request: UnassignAgentsFromRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    """Remove multiple agents from a role in one statement."""
+    uuids = [UUID(aid) for aid in request.agent_ids]
+    await db.execute(
+        delete(AgentRoleORM).where(
+            AgentRoleORM.role_id == role_id,
+            AgentRoleORM.agent_id.in_(uuids),
+        )
+    )
+    await db.flush()
+    logger.info(f"Bulk unassigned {len(uuids)} agents from role {log_safe(role_id)}")
+
+    if AGENT_CACHE_INVALIDATION_AVAILABLE and invalidate_role_agents:
+        await invalidate_role_agents(None, str(role_id))
+
+    await emit_audit(
+        db,
+        "role.agents_bulk_unassigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"agent_ids": [str(u) for u in uuids]},
+    )
+
+
+# =============================================================================
+# Role-App Assignments
+# =============================================================================
+
+
+@router.get(
+    "/{role_id}/apps",
+    response_model=RoleAppsResponse,
+    summary="Get role apps",
+)
+async def get_role_apps(
+    role_id: UUID,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> RoleAppsResponse:
+    result = await db.execute(
+        select(AppRoleORM.app_id).where(AppRoleORM.role_id == role_id)
+    )
+    return RoleAppsResponse(app_ids=[str(aid) for aid in result.scalars().all()])
+
+
+@router.post(
+    "/{role_id}/apps",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Assign apps to role",
+)
+async def assign_apps_to_role(
+    role_id: UUID,
+    request: AssignAppsToRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    now = datetime.now(timezone.utc)
+    for app_id_str in request.app_ids:
+        app_uuid = UUID(app_id_str)
+        app_exists = await db.execute(
+            select(ApplicationORM.id).where(ApplicationORM.id == app_uuid)
+        )
+        if not app_exists.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Application with ID '{app_id_str}' not found",
+            )
+        existing = await db.execute(
+            select(AppRoleORM).where(
+                AppRoleORM.app_id == app_uuid,
+                AppRoleORM.role_id == role_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        db.add(AppRoleORM(
+            app_id=app_uuid,
+            role_id=role_id,
+            assigned_by=user.email,
+            assigned_at=now,
+        ))
+    await db.flush()
+    logger.info(f"Assigned apps to role {log_safe(role_id)}")
+    await emit_audit(
+        db,
+        "role.apps_assigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"app_ids": request.app_ids},
+    )
+
+
+@router.delete(
+    "/{role_id}/apps",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Bulk unassign apps from role",
+)
+async def bulk_unassign_apps(
+    role_id: UUID,
+    request: UnassignAppsFromRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    uuids = [UUID(aid) for aid in request.app_ids]
+    await db.execute(
+        delete(AppRoleORM).where(
+            AppRoleORM.role_id == role_id,
+            AppRoleORM.app_id.in_(uuids),
+        )
+    )
+    await db.flush()
+    logger.info(f"Bulk unassigned {len(uuids)} apps from role {log_safe(role_id)}")
+    await emit_audit(
+        db,
+        "role.apps_bulk_unassigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"app_ids": [str(u) for u in uuids]},
+    )
+
+
+# =============================================================================
+# Role-Workflow Assignments
+# =============================================================================
+
+
+@router.get(
+    "/{role_id}/workflows",
+    response_model=RoleWorkflowsResponse,
+    summary="Get role workflows",
+)
+async def get_role_workflows(
+    role_id: UUID,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> RoleWorkflowsResponse:
+    result = await db.execute(
+        select(WorkflowRoleORM.workflow_id).where(WorkflowRoleORM.role_id == role_id)
+    )
+    return RoleWorkflowsResponse(
+        workflow_ids=[str(wid) for wid in result.scalars().all()]
+    )
+
+
+@router.post(
+    "/{role_id}/workflows",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Assign workflows to role",
+)
+async def assign_workflows_to_role(
+    role_id: UUID,
+    request: AssignWorkflowsToRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    now = datetime.now(timezone.utc)
+    for wf_id_str in request.workflow_ids:
+        wf_uuid = UUID(wf_id_str)
+        wf_exists = await db.execute(
+            select(WorkflowORM.id).where(WorkflowORM.id == wf_uuid)
+        )
+        if not wf_exists.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow with ID '{wf_id_str}' not found",
+            )
+        existing = await db.execute(
+            select(WorkflowRoleORM).where(
+                WorkflowRoleORM.workflow_id == wf_uuid,
+                WorkflowRoleORM.role_id == role_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        db.add(WorkflowRoleORM(
+            workflow_id=wf_uuid,
+            role_id=role_id,
+            assigned_by=user.email,
+            assigned_at=now,
+        ))
+    await db.flush()
+    logger.info(f"Assigned workflows to role {log_safe(role_id)}")
+    await emit_audit(
+        db,
+        "role.workflows_assigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"workflow_ids": request.workflow_ids},
+    )
+
+
+@router.delete(
+    "/{role_id}/workflows",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Bulk unassign workflows from role",
+)
+async def bulk_unassign_workflows(
+    role_id: UUID,
+    request: UnassignWorkflowsFromRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    uuids = [UUID(wid) for wid in request.workflow_ids]
+    await db.execute(
+        delete(WorkflowRoleORM).where(
+            WorkflowRoleORM.role_id == role_id,
+            WorkflowRoleORM.workflow_id.in_(uuids),
+        )
+    )
+    await db.flush()
+    logger.info(f"Bulk unassigned {len(uuids)} workflows from role {log_safe(role_id)}")
+    await emit_audit(
+        db,
+        "role.workflows_bulk_unassigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"workflow_ids": [str(u) for u in uuids]},
+    )
+
+
+# =============================================================================
+# Role-Knowledge Assignments
+# =============================================================================
+
+
+@router.get(
+    "/{role_id}/knowledge",
+    response_model=RoleKnowledgeResponse,
+    summary="Get role knowledge-namespace assignments",
+)
+async def get_role_knowledge(
+    role_id: UUID,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> RoleKnowledgeResponse:
+    result = await db.execute(
+        select(KnowledgeNamespaceRoleORM).where(
+            KnowledgeNamespaceRoleORM.role_id == role_id
+        )
+    )
+    return RoleKnowledgeResponse(
+        entries=[
+            RoleKnowledgeEntry(
+                id=row.id,
+                namespace=row.namespace,
+                organization_id=row.organization_id,
+            )
+            for row in result.scalars().all()
+        ]
+    )
+
+
+@router.post(
+    "/{role_id}/knowledge",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Assign knowledge namespaces to role",
+)
+async def assign_knowledge_to_role(
+    role_id: UUID,
+    request: AssignKnowledgeToRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    now = datetime.now(timezone.utc)
+    for entry in request.entries:
+        existing = await db.execute(
+            select(KnowledgeNamespaceRoleORM).where(
+                KnowledgeNamespaceRoleORM.namespace == entry.namespace,
+                KnowledgeNamespaceRoleORM.organization_id == entry.organization_id,
+                KnowledgeNamespaceRoleORM.role_id == role_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        db.add(KnowledgeNamespaceRoleORM(
+            namespace=entry.namespace,
+            organization_id=entry.organization_id,
+            role_id=role_id,
+            assigned_by=user.email,
+            assigned_at=now,
+        ))
+    await db.flush()
+    logger.info(f"Assigned knowledge namespaces to role {log_safe(role_id)}")
+    await emit_audit(
+        db,
+        "role.knowledge_assigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={
+            "entries": [
+                {
+                    "namespace": e.namespace,
+                    "organization_id": str(e.organization_id) if e.organization_id else None,
+                }
+                for e in request.entries
+            ]
+        },
+    )
+
+
+@router.delete(
+    "/{role_id}/knowledge",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Bulk unassign knowledge namespaces from role",
+)
+async def bulk_unassign_knowledge(
+    role_id: UUID,
+    request: UnassignKnowledgeFromRoleRequest,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> None:
+    await db.execute(
+        delete(KnowledgeNamespaceRoleORM).where(
+            KnowledgeNamespaceRoleORM.role_id == role_id,
+            KnowledgeNamespaceRoleORM.id.in_(request.assignment_ids),
+        )
+    )
+    await db.flush()
+    logger.info(
+        f"Bulk unassigned {len(request.assignment_ids)} knowledge assignments from role {log_safe(role_id)}"
+    )
+    await emit_audit(
+        db,
+        "role.knowledge_bulk_unassigned",
+        resource_type="role",
+        resource_id=role_id,
+        details={"assignment_ids": [str(a) for a in request.assignment_ids]},
+    )
