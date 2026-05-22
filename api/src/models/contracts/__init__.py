@@ -35,6 +35,9 @@ from src.models.contracts.users import (
     RoleUpdate,
     RoleUsersResponse,
     UpdateRoleRequest,
+    BulkUserFailure,
+    BulkUserOperation,
+    BulkUserResponse,
     UpdateUserRequest,
     UserBase,
     UserCreate,
@@ -573,6 +576,10 @@ __all__ = [
     "UserUpdate",
     "UserPublic",
     "UserResponse",
+    # Bulk user operations
+    "BulkUserFailure",
+    "BulkUserOperation",
+    "BulkUserResponse",
     # Roles - use RolePublic for responses
     "CreateRoleRequest",
     "UpdateRoleRequest",

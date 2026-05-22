@@ -21,6 +21,9 @@ from src.services.events import emit_event
 from src.services.user_invite_service import UserInviteService
 from src.models import User as UserORM, UserRole as UserRoleORM, FormRole as FormRoleORM
 from src.models import (
+    BulkUserFailure,
+    BulkUserOperation,
+    BulkUserResponse,
     UserCreate,
     UserPublic,
     UserUpdate,
@@ -187,6 +190,92 @@ async def create_user(
     response = UserPublic.model_validate(new_user)
     response.invite_status = invite_status
     return response
+
+
+@router.patch(
+    "/bulk",
+    response_model=BulkUserResponse,
+    summary="Bulk user operation",
+    description=(
+        "Apply one operation (move_org, replace_roles, set_active) to a batch of users "
+        "in a single transaction. Returns per-user pass/fail."
+    ),
+)
+async def bulk_update_users(
+    request: BulkUserOperation,
+    actor: CurrentSuperuser,
+    db: DbSession,
+) -> BulkUserResponse:
+    """Apply a single bulk operation across N users in one transaction."""
+    succeeded: list[UUID] = []
+    failed: list[BulkUserFailure] = []
+
+    rows = await db.execute(
+        select(UserORM).where(UserORM.id.in_(request.user_ids))
+    )
+    users_by_id = {u.id: u for u in rows.scalars().all()}
+
+    actor_id = (
+        UUID(str(actor.user_id))
+        if not isinstance(actor.user_id, UUID)
+        else actor.user_id
+    )
+
+    for uid in request.user_ids:
+        u = users_by_id.get(uid)
+        if u is None:
+            failed.append(BulkUserFailure(user_id=uid, reason="User not found"))
+            continue
+        if u.is_system:
+            failed.append(BulkUserFailure(user_id=uid, reason="System user cannot be modified"))
+            continue
+
+        if request.operation == "move_org":
+            target = request.organization_id  # may be None (= platform)
+            if u.is_superuser and target is not None and target != PROVIDER_ORG_ID:
+                failed.append(BulkUserFailure(
+                    user_id=uid,
+                    reason="Platform admin must be demoted before moving to a non-provider org",
+                ))
+                continue
+            u.organization_id = target
+            u.updated_at = datetime.now(timezone.utc)
+            succeeded.append(uid)
+
+        elif request.operation == "replace_roles":
+            if uid == actor_id:
+                failed.append(BulkUserFailure(user_id=uid, reason="Cannot change your own roles via bulk action"))
+                continue
+            await db.execute(
+                UserRoleORM.__table__.delete().where(UserRoleORM.user_id == uid)
+            )
+            for rid in (request.role_ids or []):
+                db.add(UserRoleORM(user_id=uid, role_id=rid, assigned_by=actor_id))
+            u.updated_at = datetime.now(timezone.utc)
+            succeeded.append(uid)
+
+        elif request.operation == "set_active":
+            if uid == actor_id:
+                failed.append(BulkUserFailure(user_id=uid, reason="Cannot change your own active state"))
+                continue
+            u.is_active = bool(request.is_active)
+            u.updated_at = datetime.now(timezone.utc)
+            succeeded.append(uid)
+
+    await db.flush()
+    await emit_audit(
+        db,
+        "user.bulk_update",
+        resource_type="user",
+        resource_id=None,
+        details={
+            "operation": request.operation,
+            "requested": len(request.user_ids),
+            "succeeded": len(succeeded),
+            "failed": len(failed),
+        },
+    )
+    return BulkUserResponse(succeeded=succeeded, failed=failed)
 
 
 @router.post(

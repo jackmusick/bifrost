@@ -130,6 +130,57 @@ class UserResponse(BaseModel):
     is_verified: bool
 
 
+# ==================== BULK USER OPERATIONS ====================
+
+
+class BulkUserOperation(BaseModel):
+    """One bulk operation on a set of users.
+
+    Exactly one of `organization_id`, `role_ids`, or `is_active` is required;
+    `operation` identifies which.
+    """
+    user_ids: list[UUID] = Field(..., min_length=1, max_length=500)
+    operation: str = Field(..., description="One of: move_org, replace_roles, set_active")
+    organization_id: UUID | None = Field(
+        default=None,
+        description="Target org for move_org. None means move to platform/provider org.",
+    )
+    role_ids: list[UUID] | None = Field(
+        default=None,
+        description="Full role set for replace_roles. Empty list clears all roles.",
+    )
+    is_active: bool | None = Field(default=None, description="Target active state for set_active.")
+
+    @model_validator(mode="after")
+    def validate_operation(self):
+        if self.operation == "move_org":
+            # organization_id may be None (= platform)
+            pass
+        elif self.operation == "replace_roles":
+            if self.role_ids is None:
+                raise ValueError("role_ids is required for replace_roles")
+        elif self.operation == "set_active":
+            if self.is_active is None:
+                raise ValueError("is_active is required for set_active")
+        else:
+            raise ValueError(
+                f"Unknown operation '{self.operation}'. Must be move_org, replace_roles, or set_active."
+            )
+        return self
+
+
+class BulkUserFailure(BaseModel):
+    """A single user the bulk op couldn't apply to."""
+    user_id: UUID
+    reason: str
+
+
+class BulkUserResponse(BaseModel):
+    """Result of a bulk user operation."""
+    succeeded: list[UUID]
+    failed: list[BulkUserFailure]
+
+
 # ==================== ROLE MODELS ====================
 
 
