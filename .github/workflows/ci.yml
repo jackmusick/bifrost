@@ -32,6 +32,7 @@ on:
       - "**/*.ico"
       - ".claude/**"
       - ".claude-plugin/**"
+      - ".codex/**"
       - "docs/**"
       - "LICENSE"
       - ".github/CODEOWNERS"
