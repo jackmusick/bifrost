@@ -250,7 +250,7 @@ async def bulk_update_users(
                 UserRoleORM.__table__.delete().where(UserRoleORM.user_id == uid)
             )
             for rid in (request.role_ids or []):
-                db.add(UserRoleORM(user_id=uid, role_id=rid, assigned_by=actor_id))
+                db.add(UserRoleORM(user_id=uid, role_id=rid, assigned_by=str(actor_id)))
             u.updated_at = datetime.now(timezone.utc)
             succeeded.append(uid)
 
