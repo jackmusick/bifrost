@@ -243,6 +243,13 @@ class RolePublic(RoleBase):
     created_by: str
     created_at: datetime
     updated_at: datetime
+    consumer_counts: "RoleConsumerCounts | None" = Field(
+        default=None,
+        description=(
+            "Inline counts of every consumer type. Populated on list-roles for the "
+            "Roles UI; may be None on single-role responses where it's not needed."
+        ),
+    )
 
     @field_serializer("created_at", "updated_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -277,6 +284,41 @@ class AssignFormsToRoleRequest(BaseModel):
                                description="List of form IDs to assign")
 
 
+class UnassignUsersFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning users from a role."""
+    user_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignFormsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning forms from a role."""
+    form_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignAgentsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning agents from a role."""
+    agent_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class AssignAppsToRoleRequest(BaseModel):
+    """Request body for bulk assigning apps to a role."""
+    app_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignAppsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning apps from a role."""
+    app_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class AssignWorkflowsToRoleRequest(BaseModel):
+    """Request body for bulk assigning workflows to a role."""
+    workflow_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignWorkflowsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning workflows from a role."""
+    workflow_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
 class RoleUsersResponse(BaseModel):
     """Response model for getting users assigned to a role"""
     user_ids: list[str] = Field(..., description="List of user IDs assigned to the role")
@@ -285,6 +327,54 @@ class RoleUsersResponse(BaseModel):
 class RoleFormsResponse(BaseModel):
     """Response model for getting forms assigned to a role"""
     form_ids: list[str] = Field(..., description="List of form IDs assigned to the role")
+
+
+class RoleAppsResponse(BaseModel):
+    """Response model for getting apps assigned to a role."""
+    app_ids: list[str] = Field(..., description="App IDs assigned to the role")
+
+
+class RoleWorkflowsResponse(BaseModel):
+    """Response model for getting workflows assigned to a role."""
+    workflow_ids: list[str] = Field(..., description="Workflow IDs assigned to the role")
+
+
+class RoleKnowledgeEntry(BaseModel):
+    """A single knowledge-namespace assignment under a role."""
+    id: UUID
+    namespace: str
+    organization_id: UUID | None = None
+
+
+class RoleKnowledgeResponse(BaseModel):
+    """Response model for getting knowledge namespaces assigned to a role."""
+    entries: list[RoleKnowledgeEntry] = Field(default_factory=list)
+
+
+class KnowledgeAssignmentInput(BaseModel):
+    """One namespace+org pair to assign to a role."""
+    namespace: str = Field(..., min_length=1, max_length=255)
+    organization_id: UUID | None = None
+
+
+class AssignKnowledgeToRoleRequest(BaseModel):
+    """Request body for bulk assigning knowledge namespaces to a role."""
+    entries: list[KnowledgeAssignmentInput] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignKnowledgeFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning knowledge namespaces from a role."""
+    assignment_ids: list[UUID] = Field(..., min_length=1, max_length=500)
+
+
+class RoleConsumerCounts(BaseModel):
+    """Inline counts of every consumer type for a role."""
+    users: int = 0
+    forms: int = 0
+    agents: int = 0
+    apps: int = 0
+    workflows: int = 0
+    knowledge: int = 0
 
 
 # ==================== PERMISSION MODELS ====================

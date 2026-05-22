@@ -1519,7 +1519,11 @@ export interface paths {
          * @description Assign users to a role (batch operation)
          */
         post: operations["assign_users_to_role_api_roles__role_id__users_post"];
-        delete?: never;
+        /**
+         * Bulk unassign users from role
+         * @description Bulk unassign N users from a role in one call. Pass the user UUIDs in the request body as {user_ids: [...]}. Unknown ids are silently skipped.
+         */
+        delete: operations["bulk_unassign_users_api_roles__role_id__users_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1563,7 +1567,11 @@ export interface paths {
          * @description Assign forms to a role (batch operation)
          */
         post: operations["assign_forms_to_role_api_roles__role_id__forms_post"];
-        delete?: never;
+        /**
+         * Bulk unassign forms from role
+         * @description Remove multiple forms from a role in one statement.
+         */
+        delete: operations["bulk_unassign_forms_api_roles__role_id__forms_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1607,7 +1615,11 @@ export interface paths {
          * @description Assign agents to a role (batch operation)
          */
         post: operations["assign_agents_to_role_api_roles__role_id__agents_post"];
-        delete?: never;
+        /**
+         * Bulk unassign agents from role
+         * @description Remove multiple agents from a role in one statement.
+         */
+        delete: operations["bulk_unassign_agents_api_roles__role_id__agents_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1628,6 +1640,63 @@ export interface paths {
          * @description Remove an agent from a role
          */
         delete: operations["remove_agent_from_role_api_roles__role_id__agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/roles/{role_id}/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get role apps */
+        get: operations["get_role_apps_api_roles__role_id__apps_get"];
+        put?: never;
+        /** Assign apps to role */
+        post: operations["assign_apps_to_role_api_roles__role_id__apps_post"];
+        /** Bulk unassign apps from role */
+        delete: operations["bulk_unassign_apps_api_roles__role_id__apps_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/roles/{role_id}/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get role workflows */
+        get: operations["get_role_workflows_api_roles__role_id__workflows_get"];
+        put?: never;
+        /** Assign workflows to role */
+        post: operations["assign_workflows_to_role_api_roles__role_id__workflows_post"];
+        /** Bulk unassign workflows from role */
+        delete: operations["bulk_unassign_workflows_api_roles__role_id__workflows_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/roles/{role_id}/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get role knowledge-namespace assignments */
+        get: operations["get_role_knowledge_api_roles__role_id__knowledge_get"];
+        put?: never;
+        /** Assign knowledge namespaces to role */
+        post: operations["assign_knowledge_to_role_api_roles__role_id__knowledge_post"];
+        /** Bulk unassign knowledge namespaces from role */
+        delete: operations["bulk_unassign_knowledge_api_roles__role_id__knowledge_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3576,22 +3645,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9502,6 +9571,14 @@ export interface components {
             agent_ids: string[];
         };
         /**
+         * AssignAppsToRoleRequest
+         * @description Request body for bulk assigning apps to a role.
+         */
+        AssignAppsToRoleRequest: {
+            /** App Ids */
+            app_ids: string[];
+        };
+        /**
          * AssignFormsToRoleRequest
          * @description Request model for assigning forms to a role
          */
@@ -9511,6 +9588,14 @@ export interface components {
              * @description List of form IDs to assign
              */
             form_ids: string[];
+        };
+        /**
+         * AssignKnowledgeToRoleRequest
+         * @description Request body for bulk assigning knowledge namespaces to a role.
+         */
+        AssignKnowledgeToRoleRequest: {
+            /** Entries */
+            entries: components["schemas"]["KnowledgeAssignmentInput"][];
         };
         /**
          * AssignRolesToWorkflowRequest
@@ -9533,6 +9618,14 @@ export interface components {
              * @description List of user IDs to assign
              */
             user_ids: string[];
+        };
+        /**
+         * AssignWorkflowsToRoleRequest
+         * @description Request body for bulk assigning workflows to a role.
+         */
+        AssignWorkflowsToRoleRequest: {
+            /** Workflow Ids */
+            workflow_ids: string[];
         };
         /** AssistantTurn */
         AssistantTurn: {
@@ -15024,6 +15117,16 @@ export interface components {
             }[] | null;
         };
         /**
+         * KnowledgeAssignmentInput
+         * @description One namespace+org pair to assign to a role.
+         */
+        KnowledgeAssignmentInput: {
+            /** Namespace */
+            namespace: string;
+            /** Organization Id */
+            organization_id?: string | null;
+        };
+        /**
          * KnowledgeDocumentBulkScopeUpdate
          * @description Request model for bulk-updating document scope.
          */
@@ -18492,6 +18595,53 @@ export interface components {
             agent_ids?: string[];
         };
         /**
+         * RoleAppsResponse
+         * @description Response model for getting apps assigned to a role.
+         */
+        RoleAppsResponse: {
+            /**
+             * App Ids
+             * @description App IDs assigned to the role
+             */
+            app_ids: string[];
+        };
+        /**
+         * RoleConsumerCounts
+         * @description Inline counts of every consumer type for a role.
+         */
+        RoleConsumerCounts: {
+            /**
+             * Users
+             * @default 0
+             */
+            users: number;
+            /**
+             * Forms
+             * @default 0
+             */
+            forms: number;
+            /**
+             * Agents
+             * @default 0
+             */
+            agents: number;
+            /**
+             * Apps
+             * @default 0
+             */
+            apps: number;
+            /**
+             * Workflows
+             * @default 0
+             */
+            workflows: number;
+            /**
+             * Knowledge
+             * @default 0
+             */
+            knowledge: number;
+        };
+        /**
          * RoleCreate
          * @description Input for creating a role.
          *
@@ -18519,6 +18669,29 @@ export interface components {
             form_ids: string[];
         };
         /**
+         * RoleKnowledgeEntry
+         * @description A single knowledge-namespace assignment under a role.
+         */
+        RoleKnowledgeEntry: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Namespace */
+            namespace: string;
+            /** Organization Id */
+            organization_id?: string | null;
+        };
+        /**
+         * RoleKnowledgeResponse
+         * @description Response model for getting knowledge namespaces assigned to a role.
+         */
+        RoleKnowledgeResponse: {
+            /** Entries */
+            entries?: components["schemas"]["RoleKnowledgeEntry"][];
+        };
+        /**
          * RolePublic
          * @description Role output for API responses.
          *
@@ -18544,6 +18717,8 @@ export interface components {
             created_at: string | null;
             /** Updated At */
             updated_at: string | null;
+            /** @description Inline counts of every consumer type. Populated on list-roles for the Roles UI; may be None on single-role responses where it's not needed. */
+            consumer_counts?: components["schemas"]["RoleConsumerCounts"] | null;
         };
         /**
          * RoleUpdate
@@ -18569,6 +18744,17 @@ export interface components {
              * @description List of user IDs assigned to the role
              */
             user_ids: string[];
+        };
+        /**
+         * RoleWorkflowsResponse
+         * @description Response model for getting workflows assigned to a role.
+         */
+        RoleWorkflowsResponse: {
+            /**
+             * Workflow Ids
+             * @description Workflow IDs assigned to the role
+             */
+            workflow_ids: string[];
         };
         /**
          * SDKIntegrationsDeleteMappingRequest
@@ -19680,6 +19866,54 @@ export interface components {
         TrustedDevicesResponse: {
             /** Devices */
             devices: components["schemas"]["TrustedDeviceResponse"][];
+        };
+        /**
+         * UnassignAgentsFromRoleRequest
+         * @description Request body for bulk unassigning agents from a role.
+         */
+        UnassignAgentsFromRoleRequest: {
+            /** Agent Ids */
+            agent_ids: string[];
+        };
+        /**
+         * UnassignAppsFromRoleRequest
+         * @description Request body for bulk unassigning apps from a role.
+         */
+        UnassignAppsFromRoleRequest: {
+            /** App Ids */
+            app_ids: string[];
+        };
+        /**
+         * UnassignFormsFromRoleRequest
+         * @description Request body for bulk unassigning forms from a role.
+         */
+        UnassignFormsFromRoleRequest: {
+            /** Form Ids */
+            form_ids: string[];
+        };
+        /**
+         * UnassignKnowledgeFromRoleRequest
+         * @description Request body for bulk unassigning knowledge namespaces from a role.
+         */
+        UnassignKnowledgeFromRoleRequest: {
+            /** Assignment Ids */
+            assignment_ids: string[];
+        };
+        /**
+         * UnassignUsersFromRoleRequest
+         * @description Request body for bulk unassigning users from a role.
+         */
+        UnassignUsersFromRoleRequest: {
+            /** User Ids */
+            user_ids: string[];
+        };
+        /**
+         * UnassignWorkflowsFromRoleRequest
+         * @description Request body for bulk unassigning workflows from a role.
+         */
+        UnassignWorkflowsFromRoleRequest: {
+            /** Workflow Ids */
+            workflow_ids: string[];
         };
         /**
          * UpdateConfigRequest
@@ -23310,6 +23544,39 @@ export interface operations {
             };
         };
     };
+    bulk_unassign_users_api_roles__role_id__users_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnassignUsersFromRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     remove_user_from_role_api_roles__role_id__users__user_id__delete: {
         parameters: {
             query?: never;
@@ -23383,6 +23650,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AssignFormsToRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_unassign_forms_api_roles__role_id__forms_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnassignFormsFromRoleRequest"];
             };
         };
         responses: {
@@ -23498,6 +23798,39 @@ export interface operations {
             };
         };
     };
+    bulk_unassign_agents_api_roles__role_id__agents_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnassignAgentsFromRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     remove_agent_from_role_api_roles__role_id__agents__agent_id__delete: {
         parameters: {
             query?: never;
@@ -23509,6 +23842,297 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_role_apps_api_roles__role_id__apps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAppsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_apps_to_role_api_roles__role_id__apps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignAppsToRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_unassign_apps_api_roles__role_id__apps_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnassignAppsFromRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_role_workflows_api_roles__role_id__workflows_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleWorkflowsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_workflows_to_role_api_roles__role_id__workflows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignWorkflowsToRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_unassign_workflows_api_roles__role_id__workflows_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnassignWorkflowsFromRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_role_knowledge_api_roles__role_id__knowledge_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleKnowledgeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_knowledge_to_role_api_roles__role_id__knowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignKnowledgeToRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_unassign_knowledge_api_roles__role_id__knowledge_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnassignKnowledgeFromRoleRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -26931,7 +27555,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -26964,7 +27588,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -26997,7 +27621,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
@@ -27030,7 +27654,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__post: {
         parameters: {
             query?: never;
             header: {
