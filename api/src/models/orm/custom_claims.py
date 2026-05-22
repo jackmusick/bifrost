@@ -46,9 +46,11 @@ class CustomClaim(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    organization: Mapped["Organization"] = relationship(
-        "Organization", back_populates="custom_claims"
-    )
+    # One-way ref to Organization (no back-populates on the other side —
+    # see organizations.py). Kept for ORM-level navigation from a claim
+    # row to its org without a second query; the import lives under
+    # TYPE_CHECKING because the annotation is a string forward-reference.
+    organization: Mapped["Organization"] = relationship("Organization")
 
     __table_args__ = (
         UniqueConstraint("organization_id", "name", name="uq_custom_claims_org_name"),
