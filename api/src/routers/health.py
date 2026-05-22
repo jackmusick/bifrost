@@ -26,9 +26,58 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 CHECK_TIMEOUT_SECONDS = 2.0
 ComponentStatus = dict[str, str]
-_rabbitmq_health_connection: AbstractRobustConnection | None = None
-_rabbitmq_health_connection_url: str | None = None
-_rabbitmq_health_lock = asyncio.Lock()
+
+
+class RabbitMQHealthConnection:
+    def __init__(self) -> None:
+        self.connection: AbstractRobustConnection | None = None
+        self.url: str | None = None
+        self.lock = asyncio.Lock()
+
+    @staticmethod
+    def _is_open(connection: AbstractRobustConnection) -> bool:
+        return not bool(connection.is_closed)
+
+    async def close(self) -> None:
+        connection = self.connection
+        self.connection = None
+        self.url = None
+        if connection is not None and self._is_open(connection):
+            await connection.close()
+
+    async def get(self, settings: Settings) -> AbstractRobustConnection:
+        connection = self.connection
+        if (
+            connection is not None
+            and self.url == settings.rabbitmq_url
+            and self._is_open(connection)
+        ):
+            return connection
+
+        async with self.lock:
+            connection = self.connection
+            if (
+                connection is not None
+                and self.url == settings.rabbitmq_url
+                and self._is_open(connection)
+            ):
+                return connection
+
+            if connection is not None and self._is_open(connection):
+                await connection.close()
+
+            self.connection = await aio_pika.connect_robust(settings.rabbitmq_url)
+            self.url = settings.rabbitmq_url
+            return self.connection
+
+    async def discard(self, connection: AbstractRobustConnection) -> None:
+        await connection.close()
+        if self.connection is connection:
+            self.connection = None
+            self.url = None
+
+
+_rabbitmq_health_connection = RabbitMQHealthConnection()
 
 
 class HealthCheck(BaseModel):
@@ -90,46 +139,12 @@ async def check_redis(settings: Settings) -> tuple[str, ComponentStatus]:
     return await _checked_component("redis", "redis", ping())
 
 
-def _rabbitmq_connection_is_open(connection: AbstractRobustConnection) -> bool:
-    return not bool(connection.is_closed)
-
-
 async def close_rabbitmq_health_connection() -> None:
-    global _rabbitmq_health_connection, _rabbitmq_health_connection_url
-
-    connection = _rabbitmq_health_connection
-    _rabbitmq_health_connection = None
-    _rabbitmq_health_connection_url = None
-    if connection is not None and _rabbitmq_connection_is_open(connection):
-        await connection.close()
+    await _rabbitmq_health_connection.close()
 
 
 async def _get_rabbitmq_health_connection(settings: Settings) -> AbstractRobustConnection:
-    global _rabbitmq_health_connection, _rabbitmq_health_connection_url
-
-    connection = _rabbitmq_health_connection
-    if (
-        connection is not None
-        and _rabbitmq_health_connection_url == settings.rabbitmq_url
-        and _rabbitmq_connection_is_open(connection)
-    ):
-        return connection
-
-    async with _rabbitmq_health_lock:
-        connection = _rabbitmq_health_connection
-        if (
-            connection is not None
-            and _rabbitmq_health_connection_url == settings.rabbitmq_url
-            and _rabbitmq_connection_is_open(connection)
-        ):
-            return connection
-
-        if connection is not None and _rabbitmq_connection_is_open(connection):
-            await connection.close()
-
-        _rabbitmq_health_connection = await aio_pika.connect_robust(settings.rabbitmq_url)
-        _rabbitmq_health_connection_url = settings.rabbitmq_url
-        return _rabbitmq_health_connection
+    return await _rabbitmq_health_connection.get(settings)
 
 
 async def check_rabbitmq(settings: Settings) -> tuple[str, ComponentStatus]:
@@ -139,11 +154,7 @@ async def check_rabbitmq(settings: Settings) -> tuple[str, ComponentStatus]:
             channel = await connection.channel()
             await channel.close()
         except Exception:
-            await connection.close()
-            global _rabbitmq_health_connection, _rabbitmq_health_connection_url
-            if _rabbitmq_health_connection is connection:
-                _rabbitmq_health_connection = None
-                _rabbitmq_health_connection_url = None
+            await _rabbitmq_health_connection.discard(connection)
             raise
 
     return await _checked_component("rabbitmq", "rabbitmq", open_channel())
