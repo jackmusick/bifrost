@@ -29,6 +29,7 @@ export interface CustomClaimEditorProps {
 	onChange: (next: CustomClaim) => void;
 	onSave: (value: CustomClaim) => void;
 	onCancel: () => void;
+	nameDisabled?: boolean;
 }
 
 function isClaimQuery(value: unknown): value is ClaimQuery {
@@ -56,6 +57,7 @@ export function CustomClaimEditor({
 	onChange,
 	onSave,
 	onCancel,
+	nameDisabled = false,
 }: CustomClaimEditorProps) {
 	const queryValid = isClaimQuery(value.query);
 
@@ -78,6 +80,7 @@ export function CustomClaimEditor({
 				<Input
 					id="claim-name"
 					value={value.name}
+					disabled={nameDisabled}
 					onChange={(event) =>
 						onChange({ ...value, name: event.target.value })
 					}
