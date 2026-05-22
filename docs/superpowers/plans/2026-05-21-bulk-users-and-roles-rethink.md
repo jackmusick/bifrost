@@ -4,6 +4,52 @@
 **Worktree:** `/home/jack/GitHub/bifrost/.worktrees/phase-b-c-preview`
 **Debug stack URL:** `http://bifrost-debug-phase-b-c-preview-248-33.netbird.cloud` (current — get from `./debug.sh status`)
 **CLI install:** `/tmp/bifrost-cli-226/.venv/bin/bifrost` (worktree-agnostic; logged into the old 226 stack — re-login required, see below)
+**PR:** https://github.com/jackmusick/bifrost/pull/277
+
+---
+
+## 🚧 Resume here — 2026-05-22
+
+**Everything is implemented and pushed.** Last design+impl commit on the branch is `10ee9741` (test cleanup fix; rebased onto Kodiak's main-merge). Auto-merge + Kodiak `automerge` label are armed.
+
+**Where it's stuck:** CI's E2E Tests job has been flaking on this PR. The same head SHA shows two E2E runs — one `FAILURE`, one `SUCCESS`. GitHub Actions records both as required-check results, and the most recent one decides the gate, so merge is `BLOCKED` whenever the flake is the latest result. This is the third E2E run; previous flakes were:
+1. **Real failure** (commit `6562b926`): `test_cli_import.py::test_round_trip_same_env_is_noop_update` — dangling `WorkflowRole` row left behind by `test_counts_reflect_assignments`. Fixed in `b10cfa63` (rebased as `10ee9741`) by wrapping role+workflow cleanup in `try/finally` on both `TestRoleWorkflows.test_assign_list_unassign_workflows` and `TestRoleConsumerCounts.test_counts_reflect_assignments`.
+2. **Mystery FAILURE** (commit `10ee9741`): a second E2E run on the same SHA failed *after* a first run on the same SHA had passed. **Not yet diagnosed** — the classifier went down mid-investigation. **Step 1 when resuming: pull the failure log for this run.**
+
+**To resume in a new session:**
+
+```bash
+cd /home/jack/GitHub/bifrost/.worktrees/phase-b-c-preview
+
+# 1. Find the failing E2E run for the current PR head SHA
+SHA=$(gh pr view 277 --json headRefOid --jq .headRefOid)
+gh api repos/jackmusick/bifrost/commits/$SHA/check-runs \
+  --jq '.check_runs[] | "\(.name): \(.status)/\(.conclusion) \(.html_url)"' | sort -u
+
+# 2. For the row with conclusion=failure, click into its run via the URL,
+#    OR pull failed-job logs by run id:
+gh run view <RUN_ID> --log-failed 2>&1 | grep -A 4 "FAILED\|##\[error\]" | head -50
+
+# 3. If it's the same flake (state-pollution pattern from memory:
+#    feedback_flaky_tests.md), find the dirty test, add try/finally cleanup.
+#    If it's a different test, diagnose accordingly.
+
+# 4. Push the fix. Kodiak will rebase + re-run automatically; the
+#    automerge label is still attached. No need to re-queue --auto.
+git push
+
+# 5. Re-arm the watcher (skill: bifrost-issues, step 7 combined watcher).
+```
+
+**State of the PR as of pause:**
+- 1021 vitest green, all backend e2e green *locally*
+- tsc / lint / pyright / ruff clean
+- Auto-merge: enabled (squash), Kodiak `automerge` label: attached
+- Required checks: Lint & Type Check ✅, Python CodeQL ✅, JS/TS CodeQL ✅, Unit Tests ✅. E2E Tests is the only flapping check.
+
+**Don't:** re-queue `gh pr merge --auto` or re-add the `automerge` label. Both are already on; verify with `gh pr view 277 --json autoMergeRequest,labels`.
+
+---
 
 ## How to use this doc
 
