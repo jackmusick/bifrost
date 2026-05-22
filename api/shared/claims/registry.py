@@ -22,7 +22,9 @@ def load_org_claims(db: Session, organization_id: UUID) -> dict[str, CustomClaim
 def referenced_claim_names(where: object | None) -> set[str]:
     """Walk an Expr-shaped node and collect every {claims: <name>} reference."""
     found: set[str] = set()
-    _walk(where, found)
+    # Unwrap Expr / RootModel so the walker sees the underlying dict.
+    node = getattr(where, "root", where)
+    _walk(node, found)
     return found
 
 

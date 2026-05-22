@@ -7,12 +7,10 @@ from typing import Any
 from src.models.contracts.claims import CustomClaim
 
 
-def resolve_claim(claim: CustomClaim, user: Any, db: Any) -> list | object | None:
+def resolve_claim(claim: CustomClaim, user: Any, db: Any) -> Any:
     """Resolve a claim for the calling user; cache on `user.claims[<name>]`.
 
-    Returns:
-      - list[scalar] for `type == "list"` (empty list if no rows match)
-      - scalar | None for `type == "scalar"` (None if no rows match)
+    Returns list for type=list, scalar or None for type=scalar.
     """
     cache = _get_or_init_cache(user)
     if claim.name in cache:
@@ -20,12 +18,7 @@ def resolve_claim(claim: CustomClaim, user: Any, db: Any) -> list | object | Non
 
     rows = _run_claim_query(claim, user, db)
     values = [row.get(claim.query.select) for row in rows]
-
-    if claim.type == "list":
-        result: object = values
-    else:  # scalar
-        result = values[0] if values else None
-
+    result = values if claim.type == "list" else (values[0] if values else None)
     cache[claim.name] = result
     return result
 
@@ -34,11 +27,7 @@ def _get_or_init_cache(user: Any) -> dict:
     cache = getattr(user, "claims", None)
     if cache is None:
         cache = {}
-        try:
-            setattr(user, "claims", cache)
-        except AttributeError:
-            # Fall back: principal is read-only — return a transient cache.
-            return cache
+        setattr(user, "claims", cache)  # principal must be mutable; raises if not
     return cache
 
 
