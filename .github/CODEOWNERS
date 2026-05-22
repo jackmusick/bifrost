@@ -18,7 +18,9 @@
 
 # Docs and tooling
 /docs/                          @jackmusick
+/.agents/                       @jackmusick
 /.claude/                       @jackmusick
+/.codex-plugin/                 @jackmusick
 /.codex/                        @jackmusick
 /scripts/                       @jackmusick
 

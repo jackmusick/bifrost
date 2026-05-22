@@ -1,6 +1,6 @@
 ---
 name: bifrost-issues
-description: Track work on Bifrost via GitHub Issues + isolated worktrees. Use when the user expresses work intent ("let's build/fix/add X", "work on Y"), pastes a list of todos/notes to triage, is about to open a PR, or asks about existing issues. Light-touch — nudges and helps, never blocks. Trigger phrases - "let's build", "let's fix", "work on", "add a feature", "triage", "todo", "what should I work on", "open a PR", "create an issue", "help wanted".
+description: Track work on Bifrost via GitHub Issues + isolated worktrees, AND own the PR/merge lifecycle (opening, queuing auto-merge, watching CI + reviews). Use when the user expresses work intent ("let's build/fix/add X", "work on Y"), pastes a list of todos/notes to triage, asks about existing issues, OR you (or the user) are about to open a PR, queue auto-merge, or merge a PR on this repo. Kodiak owns merges here — raw `gh pr merge --auto` alone leaves the PR stuck when the branch falls behind main; the skill knows the Kodiak `automerge` label is also required. Invoke this skill BEFORE running `gh pr create` or `gh pr merge`, not after. Light-touch on issue/work-intent triggers — nudges and helps, never blocks. Trigger phrases - "let's build", "let's fix", "work on", "add a feature", "triage", "todo", "what should I work on", "open a PR", "create an issue", "merge this PR", "queue auto-merge", "ship it", "help wanted".
 ---
 
 # Bifrost Issues + Worktrees
@@ -185,7 +185,10 @@ done
 **Path A — protection exists (preferred for ship-when-green):**
 
 1. Confirm with the user once ("Queue auto-merge so it ships when CI is green?").
-2. On approval: `gh pr merge <N> --auto --squash --delete-branch=false` (keep the remote branch; worktree still references it, cleanup in step 8).
+2. On approval, do BOTH:
+   - `gh pr merge <N> --auto --squash --delete-branch=false` (GitHub-native auto-merge; keeps the remote branch — worktree still references it, cleanup in step 8).
+   - `gh api -X POST repos/jackmusick/bifrost/issues/<N>/labels -f "labels[]=automerge"` (Kodiak label; required by `kodiak.toml` `require_automerge_label = true`).
+   Both are needed: GitHub-native auto-merge alone will sit idle when the branch goes `BEHIND` main, because Kodiak owns the rebase (`update_branch_immediately = true`) and Kodiak only acts on labeled PRs.
 3. **Arm the combined watcher above.** `--auto` does not exempt you from picking up review comments — CodeQL still fires after queueing, and the auto-merge will not proceed past a `BLOCKED`/`DIRTY` mergeStateStatus.
 4. If a review is required (`required_pull_request_reviews` is set) and the user isn't admin, surface that the merge is gated on approval and offer to request reviewers via `gh pr edit <N> --add-reviewer <login>`. Don't pick reviewers unprompted.
 
