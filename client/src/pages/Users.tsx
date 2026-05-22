@@ -10,6 +10,7 @@ import {
 	ArrowDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	DataTable,
 	DataTableBody,
@@ -43,6 +44,7 @@ import {
 	useDeleteUser,
 	useUpdateUser,
 } from "@/hooks/useUsers";
+import { useUserSelection } from "@/hooks/useUserSelection";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
@@ -51,6 +53,14 @@ import { CreateUserDialog } from "@/components/users/CreateUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
 import { UserActionsMenu } from "@/components/users/UserActionsMenu";
 import { UserStatusBadge } from "@/components/users/UserStatusBadge";
+import { BulkActionBar } from "@/components/users/BulkActionBar";
+import {
+	BulkMoveOrgDialog,
+	BulkReplaceRolesDialog,
+	BulkResultDialog,
+	BulkSetActiveDialog,
+} from "@/components/users/BulkUserDialogs";
+import type { components as v1 } from "@/lib/v1";
 import {
 	useRegenerateInvite,
 	useResendInvite,
@@ -155,6 +165,42 @@ export function Users() {
 			setSortColumn(column);
 			setSortDirection("asc");
 		}
+	};
+
+	// ===== Bulk selection + actions =====
+	const disabledSelectionIds = useMemo(
+		() => (currentUser ? [currentUser.id] : []),
+		[currentUser],
+	);
+	const selection = useUserSelection(sortedUsers, disabledSelectionIds);
+
+	type BulkMode = "move_org" | "replace_roles" | "disable" | "enable" | null;
+	const [bulkMode, setBulkMode] = useState<BulkMode>(null);
+	const [bulkResult, setBulkResult] = useState<
+		v1["schemas"]["BulkUserResponse"] | null
+	>(null);
+	const [bulkResultUsers, setBulkResultUsers] = useState<User[]>([]);
+
+	const activeMix: "all_active" | "all_inactive" | "mixed" = useMemo(() => {
+		const selected = selection.selectedItems;
+		if (selected.length === 0) return "all_active";
+		const anyActive = selected.some((u) => u.is_active);
+		const anyInactive = selected.some((u) => !u.is_active);
+		if (anyActive && anyInactive) return "mixed";
+		return anyActive ? "all_active" : "all_inactive";
+	}, [selection.selectedItems]);
+
+	const handlePartialFailure = (
+		result: v1["schemas"]["BulkUserResponse"],
+		opUsers: User[],
+	) => {
+		setBulkResult(result);
+		setBulkResultUsers(opUsers);
+	};
+
+	const closeBulk = () => {
+		setBulkMode(null);
+		selection.clear();
 	};
 
 	const handleEditUser = (user: User) => {
@@ -330,6 +376,19 @@ export function Users() {
 					<DataTable>
 						<DataTableHeader>
 							<DataTableRow>
+								<DataTableHead className="w-0 whitespace-nowrap">
+									<Checkbox
+										aria-label="Select all visible users"
+										checked={
+											selection.allVisibleSelected
+												? true
+												: selection.someVisibleSelected
+													? "indeterminate"
+													: false
+										}
+										onCheckedChange={() => selection.toggleAllVisible()}
+									/>
+								</DataTableHead>
 								<DataTableHead
 									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("name")}
@@ -381,6 +440,38 @@ export function Users() {
 											(!user.is_active ? " opacity-60" : "")
 										}
 									>
+										<DataTableCell
+											className="w-0 whitespace-nowrap"
+											onClick={(e) => e.stopPropagation()}
+										>
+											{isSelf(user) ? (
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span>
+															<Checkbox
+																checked={false}
+																disabled
+																aria-label="Cannot select yourself"
+															/>
+														</span>
+													</TooltipTrigger>
+													<TooltipContent>
+														You can't include yourself in a bulk action
+													</TooltipContent>
+												</Tooltip>
+											) : (
+												<Checkbox
+													aria-label={`Select ${user.name || user.email}`}
+													checked={selection.isSelected(user.id)}
+													onClick={(e) => {
+														selection.toggle(user.id, {
+															shiftKey: e.shiftKey,
+														});
+														e.preventDefault();
+													}}
+												/>
+											)}
+										</DataTableCell>
 										<DataTableCell className="w-0 whitespace-nowrap">
 											<div className="flex flex-col">
 												<div className="flex items-center gap-1.5">
@@ -516,6 +607,49 @@ export function Users() {
 					</div>
 				)}
 			</div>
+
+			<BulkActionBar
+				count={selection.count}
+				activeMix={activeMix}
+				onClear={selection.clear}
+				onMoveOrg={() => setBulkMode("move_org")}
+				onReplaceRoles={() => setBulkMode("replace_roles")}
+				onDisable={() => setBulkMode("disable")}
+				onEnable={() => setBulkMode("enable")}
+			/>
+
+			<BulkMoveOrgDialog
+				open={bulkMode === "move_org"}
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+			/>
+			<BulkReplaceRolesDialog
+				open={bulkMode === "replace_roles"}
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+			/>
+			<BulkSetActiveDialog
+				open={bulkMode === "disable"}
+				mode="disable"
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+			/>
+			<BulkSetActiveDialog
+				open={bulkMode === "enable"}
+				mode="enable"
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+			/>
+			<BulkResultDialog
+				open={bulkResult !== null}
+				onOpenChange={(o) => !o && setBulkResult(null)}
+				result={bulkResult}
+				users={bulkResultUsers}
+			/>
 
 			<CreateUserDialog
 				open={isCreateOpen}

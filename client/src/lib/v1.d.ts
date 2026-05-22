@@ -1301,6 +1301,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Bulk user operation
+         * @description Apply one operation (move_org, replace_roles, set_active) to a batch of users in a single transaction. Returns per-user pass/fail.
+         */
+        patch: operations["bulk_update_users_api_users_bulk_patch"];
+        trace?: never;
+    };
     "/api/users/{user_id}/invite/resend": {
         parameters: {
             query?: never;
@@ -3556,22 +3576,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9949,6 +9969,60 @@ export interface components {
             config_ids?: string[];
             /** Integration Ids */
             integration_ids?: string[];
+        };
+        /**
+         * BulkUserFailure
+         * @description A single user the bulk op couldn't apply to.
+         */
+        BulkUserFailure: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * BulkUserOperation
+         * @description One bulk operation on a set of users.
+         *
+         *     Exactly one of `organization_id`, `role_ids`, or `is_active` is required;
+         *     `operation` identifies which.
+         */
+        BulkUserOperation: {
+            /** User Ids */
+            user_ids: string[];
+            /**
+             * Operation
+             * @description One of: move_org, replace_roles, set_active
+             */
+            operation: string;
+            /**
+             * Organization Id
+             * @description Target org for move_org. None means move to platform/provider org.
+             */
+            organization_id?: string | null;
+            /**
+             * Role Ids
+             * @description Full role set for replace_roles. Empty list clears all roles.
+             */
+            role_ids?: string[] | null;
+            /**
+             * Is Active
+             * @description Target active state for set_active.
+             */
+            is_active?: boolean | null;
+        };
+        /**
+         * BulkUserResponse
+         * @description Result of a bulk user operation.
+         */
+        BulkUserResponse: {
+            /** Succeeded */
+            succeeded: string[];
+            /** Failed */
+            failed: components["schemas"]["BulkUserFailure"][];
         };
         /**
          * CLIAICompleteRequest
@@ -22743,6 +22817,39 @@ export interface operations {
             };
         };
     };
+    bulk_update_users_api_users_bulk_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkUserOperation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkUserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resend_invite_api_users__user_id__invite_resend_post: {
         parameters: {
             query?: never;
@@ -26824,7 +26931,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26857,7 +26964,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26890,7 +26997,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -26923,7 +27030,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {

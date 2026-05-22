@@ -114,3 +114,19 @@ export function useDeleteUser() {
 		},
 	});
 }
+
+/**
+ * Bulk user operation — move_org / replace_roles / set_active.
+ *
+ * Returns BulkUserResponse with succeeded[] and failed[{user_id, reason}].
+ * Always invalidates the users list on success so the table reflects new
+ * org/role/active state.
+ */
+export function useBulkUserOperation() {
+	const queryClient = useQueryClient();
+	return $api.useMutation("patch", "/api/users/bulk", {
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/users"] });
+		},
+	});
+}
