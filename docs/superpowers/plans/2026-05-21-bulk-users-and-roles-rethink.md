@@ -152,7 +152,7 @@ Why first: the new Roles UI calls these endpoints. Building UI against missing e
 
 **Knowledge note (different from plan):** `KnowledgeNamespaceRole` is keyed by `(namespace, organization_id, role_id)`, not a single UUID entity. The role-side surface accepts `{namespace, organization_id?}` pairs for assign, and `{assignment_ids: [...]}` (assignment row UUIDs) for unassign. The frontend tab in Block 5 will render namespace+org per row and unassign by id.
 
-### Block 4: C1 — Roles list rewrite with inline counts
+### Block 4: C1 — Roles list rewrite with inline counts ✅ DONE
 
 **Frontend only** (backend from block 3):
 - Rewrite `client/src/pages/Roles.tsx` from table to card-grid layout
@@ -167,7 +167,7 @@ Why first: the new Roles UI calls these endpoints. Building UI against missing e
 - For now, the click goes to the existing dialog — fine until block 5 deletes the dialog
 - Push commit
 
-### Block 5: C2 — Role detail page + per-tab content (+ C3 AssignDrawer)
+### Block 5: C2 — Role detail page + per-tab content (+ C3 AssignDrawer) ✅ DONE
 
 This is the biggest block. Splitting commit-by-tab.
 
@@ -217,7 +217,7 @@ This is the biggest block. Splitting commit-by-tab.
 - Playwright spec passes
 - Push commit
 
-### Block 6: Seed data + manual preview pass
+### Block 6: Seed data + manual preview pass ✅ DONE
 
 **Goal:** the user opens the URL and sees realistic state.
 
@@ -248,7 +248,7 @@ cd /tmp/bifrost-cli-226
 - Drawer opens, search filters, assign works
 - Bulk-unassign works
 
-### Block 7: Polish + PR
+### Block 7: Polish + PR ✅ DONE
 
 - Run `./test.sh all`, `./test.sh client unit`, `./test.sh client e2e`
 - Run `npm run tsc`, `npm run lint`
