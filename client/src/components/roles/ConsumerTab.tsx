@@ -196,16 +196,16 @@ export function ConsumerTab({
 									aria-label={`Select all visible ${consumerLabel}`}
 								/>
 							</DataTableHead>
+							{showOrgColumn && (
+								<DataTableHead className="w-0 whitespace-nowrap">
+									Organization
+								</DataTableHead>
+							)}
 							<DataTableHead className="w-0 whitespace-nowrap">
 								{primaryColumnLabel}
 							</DataTableHead>
 							{!hideSecondary && (
 								<DataTableHead>{secondaryColumnLabel}</DataTableHead>
-							)}
-							{showOrgColumn && (
-								<DataTableHead className="w-0 whitespace-nowrap">
-									Organization
-								</DataTableHead>
 							)}
 						</DataTableRow>
 					</DataTableHeader>
@@ -219,6 +219,11 @@ export function ConsumerTab({
 										aria-label={`Select ${item.primary}`}
 									/>
 								</DataTableCell>
+								{showOrgColumn && (
+									<DataTableCell className="w-0 whitespace-nowrap text-sm">
+										<OrgBadge org={item.org ?? null} />
+									</DataTableCell>
+								)}
 								<DataTableCell className="w-0 whitespace-nowrap font-medium">
 									{item.primary}
 								</DataTableCell>
@@ -236,11 +241,6 @@ export function ConsumerTab({
 										) : (
 											<span className="text-muted-foreground/60">-</span>
 										)}
-									</DataTableCell>
-								)}
-								{showOrgColumn && (
-									<DataTableCell className="w-0 whitespace-nowrap text-sm">
-										<OrgBadge org={item.org ?? null} />
 									</DataTableCell>
 								)}
 							</DataTableRow>

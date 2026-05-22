@@ -199,8 +199,14 @@ export function Users() {
 		setBulkResultUsers(opUsers);
 	};
 
+	// Cancel/dismiss: just close the dialog, keep the selection so the user
+	// can pivot to a different action without re-ticking every row. Selection
+	// is cleared via `onSuccess` (below) only after a successful submit.
 	const closeBulk = () => {
 		setBulkMode(null);
+	};
+
+	const onBulkSuccess = () => {
 		selection.clear();
 	};
 
@@ -390,6 +396,9 @@ export function Users() {
 										onCheckedChange={() => selection.toggleAllVisible()}
 									/>
 								</DataTableHead>
+								<DataTableHead className="w-0 whitespace-nowrap">
+									Organization
+								</DataTableHead>
 								<DataTableHead
 									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("name")}
@@ -473,30 +482,32 @@ export function Users() {
 												/>
 											)}
 										</DataTableCell>
-										<DataTableCell className="w-0 whitespace-nowrap">
-											<div className="flex flex-col">
-												<div className="flex items-center gap-1.5">
-													<span className="font-medium">
-														{user.name || user.email}
-													</span>
-													{user.is_superuser && (
-														<Tooltip>
-															<TooltipTrigger asChild>
-																<Crown className="h-4 w-4 shrink-0 text-amber-500 fill-amber-500" />
-															</TooltipTrigger>
-															<TooltipContent>Platform Admin</TooltipContent>
-														</Tooltip>
+										<DataTableCell className="w-0 whitespace-nowrap text-sm">
+											{user.is_superuser ? (
+												<span className="text-muted-foreground">—</span>
+											) : (
+												<span className="inline-flex items-center gap-1">
+													{orgInfo.isProvider ? (
+														<Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+													) : (
+														<Building2 className="h-3.5 w-3.5 text-muted-foreground" />
 													)}
-												</div>
-												{!user.is_superuser && (
-													<div className="flex items-center gap-1 text-xs text-muted-foreground">
-														{orgInfo.isProvider ? (
-															<Star className="h-3 w-3 shrink-0 text-amber-500 fill-amber-500" />
-														) : (
-															<Building2 className="h-3 w-3 shrink-0" />
-														)}
-														<span>{orgInfo.name}</span>
-													</div>
+													<span>{orgInfo.name}</span>
+												</span>
+											)}
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap">
+											<div className="flex items-center gap-1.5">
+												<span className="font-medium">
+													{user.name || user.email}
+												</span>
+												{user.is_superuser && (
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Crown className="h-4 w-4 shrink-0 text-amber-500 fill-amber-500" />
+														</TooltipTrigger>
+														<TooltipContent>Platform Admin</TooltipContent>
+													</Tooltip>
 												)}
 											</div>
 										</DataTableCell>
@@ -622,12 +633,14 @@ export function Users() {
 				onOpenChange={(o) => !o && closeBulk()}
 				users={selection.selectedItems}
 				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
 			/>
 			<BulkReplaceRolesDialog
 				open={bulkMode === "replace_roles"}
 				onOpenChange={(o) => !o && closeBulk()}
 				users={selection.selectedItems}
 				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
 			/>
 			<BulkSetActiveDialog
 				open={bulkMode === "disable"}
@@ -635,6 +648,7 @@ export function Users() {
 				onOpenChange={(o) => !o && closeBulk()}
 				users={selection.selectedItems}
 				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
 			/>
 			<BulkSetActiveDialog
 				open={bulkMode === "enable"}
@@ -642,6 +656,7 @@ export function Users() {
 				onOpenChange={(o) => !o && closeBulk()}
 				users={selection.selectedItems}
 				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
 			/>
 			<BulkResultDialog
 				open={bulkResult !== null}

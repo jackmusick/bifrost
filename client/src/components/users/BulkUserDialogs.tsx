@@ -27,6 +27,12 @@ export interface BulkDialogSharedProps {
 	users: User[];
 	/** Fires when the operation resolved with at least one failed entry. */
 	onPartialFailure: (result: BulkUserResponse, users: User[]) => void;
+	/**
+	 * Fires after a successful submit (any rows succeeded). Parent uses this
+	 * to clear the row selection. Cancel/dismiss intentionally does NOT call
+	 * this — the user keeps their selection if they back out.
+	 */
+	onSuccess?: () => void;
 }
 
 function summarize(result: BulkUserResponse, action: string) {
@@ -58,6 +64,7 @@ function BulkMoveOrgDialogInner({
 	onOpenChange,
 	users,
 	onPartialFailure,
+	onSuccess,
 }: BulkDialogSharedProps) {
 	const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
 	const bulkOp = useBulkUserOperation();
@@ -78,6 +85,7 @@ function BulkMoveOrgDialogInner({
 			})) as BulkUserResponse;
 			summarize(result, "Move to org");
 			if (result.failed.length > 0) onPartialFailure(result, users);
+			if (result.succeeded.length > 0) onSuccess?.();
 			onOpenChange(false);
 		} catch (e) {
 			toast.error(
@@ -135,6 +143,7 @@ function BulkReplaceRolesDialogInner({
 	onOpenChange,
 	users,
 	onPartialFailure,
+	onSuccess,
 }: BulkDialogSharedProps) {
 	const [selected, setSelected] = useState<string[]>([]);
 	const bulkOp = useBulkUserOperation();
@@ -150,6 +159,7 @@ function BulkReplaceRolesDialogInner({
 			})) as BulkUserResponse;
 			summarize(result, "Replace roles");
 			if (result.failed.length > 0) onPartialFailure(result, users);
+			if (result.succeeded.length > 0) onSuccess?.();
 			onOpenChange(false);
 		} catch (e) {
 			toast.error(
@@ -211,6 +221,7 @@ export function BulkSetActiveDialog({
 	users,
 	mode,
 	onPartialFailure,
+	onSuccess,
 }: BulkSetActiveDialogProps) {
 	const bulkOp = useBulkUserOperation();
 
@@ -225,6 +236,7 @@ export function BulkSetActiveDialog({
 			})) as BulkUserResponse;
 			summarize(result, mode === "enable" ? "Enable users" : "Disable users");
 			if (result.failed.length > 0) onPartialFailure(result, users);
+			if (result.succeeded.length > 0) onSuccess?.();
 			onOpenChange(false);
 		} catch (e) {
 			toast.error(
