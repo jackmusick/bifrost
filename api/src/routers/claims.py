@@ -58,6 +58,38 @@ async def _check_source_table_exists(
         )
 
 
+async def _check_known_claim_refs(
+    db: AsyncSession, org_id: UUID, where: object | None, *, exclude_name: str | None = None
+) -> None:
+    """422 if ``where`` references claim names that don't exist in this org.
+
+    Equivalent to the policy-save check on tables, but for a claim's own
+    ``query.where``. A self-reference (``exclude_name``) is permitted —
+    that's a cycle, caught separately by ``_check_no_cycles``.
+    """
+    refs = referenced_claim_names(where)
+    if exclude_name is not None:
+        refs.discard(exclude_name)
+    if not refs:
+        return
+    rows = (
+        await db.execute(
+            select(ClaimORM.name).where(
+                ClaimORM.organization_id == org_id, ClaimORM.name.in_(refs)
+            )
+        )
+    ).scalars().all()
+    missing = refs - set(rows)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "claim query references unknown claim names",
+                "unknown": sorted(missing),
+            },
+        )
+
+
 async def _check_no_cycles(db: AsyncSession, org_id: UUID) -> None:
     """Run cycle detection over the full set of claims in the org."""
     # registry.load_org_claims is sync (uses db.execute().scalars()); inline
@@ -136,6 +168,9 @@ async def create_claim(
 ) -> ClaimDTO:
     org_id = _require_org(ctx)
     await _check_source_table_exists(ctx.db, org_id, body.query.table)
+    await _check_known_claim_refs(
+        ctx.db, org_id, body.query.where, exclude_name=body.name
+    )
     row = ClaimORM(
         organization_id=org_id,
         name=body.name,
@@ -192,6 +227,9 @@ async def update_claim(
         row.type = body.type
     if "query" in fields and body.query is not None:
         await _check_source_table_exists(ctx.db, org_id, body.query.table)
+        await _check_known_claim_refs(
+            ctx.db, org_id, body.query.where, exclude_name=name
+        )
         row.query = body.query.model_dump(mode="json")
 
     await ctx.db.flush()

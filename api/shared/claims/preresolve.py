@@ -9,8 +9,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import ValidationError
+
 from shared.claims.registry import referenced_claim_names
 from shared.policies.compile import compile_to_sql
+from shared.policies.probe import compile_read_filter
 from src.models.contracts.claims import CustomClaim
 from src.models.contracts.policies import Expr, TablePolicies
 from src.models.orm.custom_claims import CustomClaim as CustomClaimORM
@@ -80,7 +83,7 @@ async def _resolve_claim(
             if dependency_claim is not None:
                 await _resolve_claim(dependency_claim, claims, user, db, resolving)
 
-        rows = await _run_claim_query(claim, user, db)
+        rows = await _run_claim_query(claim, claims, user, db, resolving)
         values = [row.get(claim.query.select) for row in rows]
         result = values if claim.type == "list" else (values[0] if values else None)
         cache[claim.name] = result
@@ -99,8 +102,10 @@ def _get_or_init_cache(user: Any) -> dict[str, Any]:
 
 async def _run_claim_query(
     claim: CustomClaim,
+    claims: dict[str, CustomClaim],
     user: Any,
     db: AsyncSession,
+    resolving: set[str],
 ) -> list[dict[str, Any]]:
     table_name = claim.query.table
     org_id = claim.organization_id
@@ -119,7 +124,22 @@ async def _run_claim_query(
         )
         return []
 
-    stmt = select(Document).where(Document.table_id == source.id)
+    # Strict refinement of the caller's read access: claims must NEVER expose
+    # rows the user couldn't read directly from the source table. We pre-resolve
+    # any claims the source table's read policy itself depends on (a cycle
+    # back to the in-progress claim resolves to [] via the existing `resolving`
+    # set, which compiles to `IN ()` → false → fail-closed).
+    source_policies = _load_source_policies(source)
+    for dep_name in _read_policy_claim_deps(source_policies):
+        dep_claim = claims.get(dep_name)
+        if dep_claim is not None:
+            await _resolve_claim(dep_claim, claims, user, db, resolving)
+    read_filter = compile_read_filter(source_policies, user)
+    if read_filter is None:
+        # No rule grants read on the source table → claim resolves to [].
+        return []
+
+    stmt = select(Document).where(Document.table_id == source.id, read_filter)
     if claim.query.where is not None:
         try:
             expr = (
@@ -139,6 +159,30 @@ async def _run_claim_query(
     select_key = claim.query.select
     rows = (await db.execute(stmt)).scalars().all()
     return [{select_key: _extract(row, select_key)} for row in rows]
+
+
+def _load_source_policies(source: Table) -> TablePolicies:
+    """Mirror tables._load_policies — fail-closed on malformed JSONB."""
+    if not source.access:
+        return TablePolicies()
+    try:
+        return TablePolicies.model_validate(source.access)
+    except ValidationError as exc:
+        logger.warning(
+            "malformed policies on source table %s; defaulting to deny: %s",
+            source.id,
+            exc,
+        )
+        return TablePolicies()
+
+
+def _read_policy_claim_deps(policies: TablePolicies) -> set[str]:
+    deps: set[str] = set()
+    for policy in policies.policies:
+        if "read" not in policy.actions or policy.when is None:
+            continue
+        deps |= referenced_claim_names(policy.when)
+    return deps
 
 
 def _extract(row: Document, select_key: str) -> Any:

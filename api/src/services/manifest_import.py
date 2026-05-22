@@ -2415,11 +2415,16 @@ class ManifestResolver:
             existing_by_natural = (await self.db.execute(natural_q)).scalar_one_or_none()
 
         if existing_by_natural is not None:
+            # Keep the DB-assigned id stable. Claims are referenced by
+            # (org_id, name) everywhere (policies, manifest dependency graph),
+            # so realigning the PK to match a foreign manifest UUID would
+            # invalidate any in-flight ORM identity map without buying us
+            # anything. Matches the upsert pattern in _resolve_config /
+            # _resolve_integration.
             await self.db.execute(
                 update(CustomClaim)
                 .where(CustomClaim.id == existing_by_natural)
                 .values(
-                    id=claim_id,
                     name=claim_name,
                     description=mclaim.description,
                     organization_id=org_id,

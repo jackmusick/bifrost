@@ -106,3 +106,44 @@ async def test_preresolve_noops_when_no_claim_refs(monkeypatch):
         db=None,  # type: ignore[arg-type]
         org_id=uuid4(),
     )
+
+
+@pytest.mark.asyncio
+async def test_run_claim_query_returns_empty_when_source_table_denies_read(monkeypatch):
+    """Regression: claims must NOT bypass the source table's read filter.
+
+    If `compile_read_filter` returns None for the source table (no rule grants
+    read to the caller), the claim resolves to [] without touching Document.
+    """
+    from shared.claims import preresolve
+    from src.models.contracts.policies import TablePolicies
+
+    source = SimpleNamespace(id=uuid4(), access=None)
+
+    class _FakeResult:
+        def scalar_one_or_none(self):
+            return source
+
+        def scalars(self):
+            raise AssertionError(
+                "Document scan must not happen when source table denies read"
+            )
+
+    class _FakeDB:
+        async def execute(self, _stmt):
+            return _FakeResult()
+
+    # Source table has no read-granting policies → compile_read_filter is None.
+    monkeypatch.setattr(
+        preresolve, "_load_source_policies", lambda _s: TablePolicies()
+    )
+
+    claim = _claim("locked")
+    rows = await preresolve._run_claim_query(
+        claim,
+        claims={},
+        user=SimpleNamespace(claims={}),
+        db=_FakeDB(),  # type: ignore[arg-type]
+        resolving=set(),
+    )
+    assert rows == []
