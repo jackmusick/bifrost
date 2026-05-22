@@ -18,7 +18,10 @@
 
 # Docs and tooling
 /docs/                          @jackmusick
+/.agents/                       @jackmusick
 /.claude/                       @jackmusick
+/.codex-plugin/                 @jackmusick
+/.codex/                        @jackmusick
 /scripts/                       @jackmusick
 
 # Repo-level config (Dependabot does NOT touch these)
@@ -30,6 +33,7 @@
 
 # Top-level
 /CLAUDE.md                      @jackmusick
+/AGENTS.md                      @jackmusick
 /README.md                      @jackmusick
 /LICENSE                        @jackmusick
 /SECURITY.md                    @jackmusick

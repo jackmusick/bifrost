@@ -88,6 +88,8 @@ class UserCreate(BaseModel):
     is_active: bool = True
     is_superuser: bool = False
     organization_id: UUID | None = None
+    invite: bool = False  # If True, generate invite record; link returned and event optionally fired
+    trigger_automation: bool | None = None  # None treated as True for contract compat during transition
 
 
 class UserUpdate(BaseModel):
@@ -111,6 +113,7 @@ class UserPublic(UserBase):
     last_login: datetime | None
     created_at: datetime
     updated_at: datetime
+    invite_status: str = "active"  # one of InviteStatus values; populated by router
 
     @field_serializer("created_at", "updated_at", "last_login")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -125,6 +128,57 @@ class UserResponse(BaseModel):
     is_active: bool
     is_superuser: bool
     is_verified: bool
+
+
+# ==================== BULK USER OPERATIONS ====================
+
+
+class BulkUserOperation(BaseModel):
+    """One bulk operation on a set of users.
+
+    Exactly one of `organization_id`, `role_ids`, or `is_active` is required;
+    `operation` identifies which.
+    """
+    user_ids: list[UUID] = Field(..., min_length=1, max_length=500)
+    operation: str = Field(..., description="One of: move_org, replace_roles, set_active")
+    organization_id: UUID | None = Field(
+        default=None,
+        description="Target org for move_org. None means move to platform/provider org.",
+    )
+    role_ids: list[UUID] | None = Field(
+        default=None,
+        description="Full role set for replace_roles. Empty list clears all roles.",
+    )
+    is_active: bool | None = Field(default=None, description="Target active state for set_active.")
+
+    @model_validator(mode="after")
+    def validate_operation(self):
+        if self.operation == "move_org":
+            # organization_id may be None (= platform)
+            pass
+        elif self.operation == "replace_roles":
+            if self.role_ids is None:
+                raise ValueError("role_ids is required for replace_roles")
+        elif self.operation == "set_active":
+            if self.is_active is None:
+                raise ValueError("is_active is required for set_active")
+        else:
+            raise ValueError(
+                f"Unknown operation '{self.operation}'. Must be move_org, replace_roles, or set_active."
+            )
+        return self
+
+
+class BulkUserFailure(BaseModel):
+    """A single user the bulk op couldn't apply to."""
+    user_id: UUID
+    reason: str
+
+
+class BulkUserResponse(BaseModel):
+    """Result of a bulk user operation."""
+    succeeded: list[UUID]
+    failed: list[BulkUserFailure]
 
 
 # ==================== ROLE MODELS ====================
@@ -189,6 +243,13 @@ class RolePublic(RoleBase):
     created_by: str
     created_at: datetime
     updated_at: datetime
+    consumer_counts: "RoleConsumerCounts | None" = Field(
+        default=None,
+        description=(
+            "Inline counts of every consumer type. Populated on list-roles for the "
+            "Roles UI; may be None on single-role responses where it's not needed."
+        ),
+    )
 
     @field_serializer("created_at", "updated_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -223,6 +284,41 @@ class AssignFormsToRoleRequest(BaseModel):
                                description="List of form IDs to assign")
 
 
+class UnassignUsersFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning users from a role."""
+    user_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignFormsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning forms from a role."""
+    form_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignAgentsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning agents from a role."""
+    agent_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class AssignAppsToRoleRequest(BaseModel):
+    """Request body for bulk assigning apps to a role."""
+    app_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignAppsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning apps from a role."""
+    app_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class AssignWorkflowsToRoleRequest(BaseModel):
+    """Request body for bulk assigning workflows to a role."""
+    workflow_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignWorkflowsFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning workflows from a role."""
+    workflow_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
 class RoleUsersResponse(BaseModel):
     """Response model for getting users assigned to a role"""
     user_ids: list[str] = Field(..., description="List of user IDs assigned to the role")
@@ -231,6 +327,54 @@ class RoleUsersResponse(BaseModel):
 class RoleFormsResponse(BaseModel):
     """Response model for getting forms assigned to a role"""
     form_ids: list[str] = Field(..., description="List of form IDs assigned to the role")
+
+
+class RoleAppsResponse(BaseModel):
+    """Response model for getting apps assigned to a role."""
+    app_ids: list[str] = Field(..., description="App IDs assigned to the role")
+
+
+class RoleWorkflowsResponse(BaseModel):
+    """Response model for getting workflows assigned to a role."""
+    workflow_ids: list[str] = Field(..., description="Workflow IDs assigned to the role")
+
+
+class RoleKnowledgeEntry(BaseModel):
+    """A single knowledge-namespace assignment under a role."""
+    id: UUID
+    namespace: str
+    organization_id: UUID | None = None
+
+
+class RoleKnowledgeResponse(BaseModel):
+    """Response model for getting knowledge namespaces assigned to a role."""
+    entries: list[RoleKnowledgeEntry] = Field(default_factory=list)
+
+
+class KnowledgeAssignmentInput(BaseModel):
+    """One namespace+org pair to assign to a role."""
+    namespace: str = Field(..., min_length=1, max_length=255)
+    organization_id: UUID | None = None
+
+
+class AssignKnowledgeToRoleRequest(BaseModel):
+    """Request body for bulk assigning knowledge namespaces to a role."""
+    entries: list[KnowledgeAssignmentInput] = Field(..., min_length=1, max_length=500)
+
+
+class UnassignKnowledgeFromRoleRequest(BaseModel):
+    """Request body for bulk unassigning knowledge namespaces from a role."""
+    assignment_ids: list[UUID] = Field(..., min_length=1, max_length=500)
+
+
+class RoleConsumerCounts(BaseModel):
+    """Inline counts of every consumer type for a role."""
+    users: int = 0
+    forms: int = 0
+    agents: int = 0
+    apps: int = 0
+    workflows: int = 0
+    knowledge: int = 0
 
 
 # ==================== PERMISSION MODELS ====================

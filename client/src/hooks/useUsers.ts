@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { $api } from "@/lib/api-client";
 
 /**
- * Fetch all users filtered by current scope (from X-Organization-Id header)
+ * Fetch all users filtered by current scope.
  */
 export function useUsers() {
 	return $api.useQuery("get", "/api/users", {});
@@ -109,6 +109,22 @@ export function useUpdateUser() {
 export function useDeleteUser() {
 	const queryClient = useQueryClient();
 	return $api.useMutation("delete", "/api/users/{user_id}", {
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/users"] });
+		},
+	});
+}
+
+/**
+ * Bulk user operation — move_org / replace_roles / set_active.
+ *
+ * Returns BulkUserResponse with succeeded[] and failed[{user_id, reason}].
+ * Always invalidates the users list on success so the table reflects new
+ * org/role/active state.
+ */
+export function useBulkUserOperation() {
+	const queryClient = useQueryClient();
+	return $api.useMutation("patch", "/api/users/bulk", {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/users"] });
 		},

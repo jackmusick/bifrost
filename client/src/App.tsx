@@ -29,6 +29,9 @@ const Config = lazyWithReload(() =>
 const Roles = lazyWithReload(() =>
 	import("@/pages/Roles").then((m) => ({ default: m.Roles })),
 );
+const RoleDetail = lazyWithReload(() =>
+	import("@/pages/RoleDetail").then((m) => ({ default: m.RoleDetail })),
+);
 const Users = lazyWithReload(() =>
 	import("@/pages/Users").then((m) => ({ default: m.Users })),
 );
@@ -123,6 +126,9 @@ const Setup = lazyWithReload(() =>
 );
 const MFASetup = lazyWithReload(() =>
 	import("@/pages/MFASetup").then((m) => ({ default: m.MFASetup })),
+);
+const Register = lazyWithReload(() =>
+	import("@/pages/Register").then((m) => ({ default: m.Register })),
 );
 const AuthCallback = lazyWithReload(() =>
 	import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallback })),
@@ -249,6 +255,7 @@ function AppRoutes() {
 					{/* Public routes - no auth required */}
 					<Route path="login" element={<Login />} />
 					<Route path="setup" element={<Setup />} />
+					<Route path="accept-invite" element={<Register />} />
 					<Route path="mfa-setup" element={<MFASetup />} />
 					<Route
 						path="auth/callback/:provider"
@@ -379,6 +386,22 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<Roles />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="roles/:roleId"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<RoleDetail />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="roles/:roleId/:tab"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<RoleDetail />
 								</ProtectedRoute>
 							}
 						/>
