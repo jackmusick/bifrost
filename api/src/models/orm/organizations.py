@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from src.models.orm.agents import Agent
     from src.models.orm.applications import Application
     from src.models.orm.config import Config, SystemConfig
+    from src.models.orm.custom_claims import CustomClaim
     from src.models.orm.executions import Execution
     from src.models.orm.forms import Form
     from src.models.orm.knowledge import KnowledgeStore
@@ -67,5 +68,8 @@ class Organization(Base):
     tables: Mapped[list["Table"]] = relationship(back_populates="organization")
     applications: Mapped[list["Application"]] = relationship(back_populates="organization")
     workflows: Mapped[list["Workflow"]] = relationship(back_populates="organization")
+    custom_claims: Mapped[list["CustomClaim"]] = relationship(
+        "CustomClaim", back_populates="organization", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (Index("ix_organizations_domain", "domain"),)
