@@ -17,7 +17,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
 	Select,
 	SelectContent,
@@ -71,7 +70,6 @@ function asTablePolicies(parsed: unknown): TablePolicies {
 }
 
 export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
-	const [showRef, setShowRef] = useState(false);
 	const [templateKey, setTemplateKey] = useState<string>("");
 	const [activeParseError, setActiveParseError] = useState<string | null>(
 		null,
@@ -211,14 +209,7 @@ export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
 							))}
 						</SelectContent>
 					</Select>
-					<Button
-						type="button"
-						variant="ghost"
-						size="sm"
-						onClick={() => setShowRef(true)}
-					>
-						Reference
-					</Button>
+					<PolicyReferencePanel />
 				</div>
 			</div>
 
@@ -266,10 +257,6 @@ export function PolicyEditor({ value, onChange }: PolicyEditorProps) {
 					</div>
 				)}
 
-			<PolicyReferencePanel
-				open={showRef}
-				onClose={() => setShowRef(false)}
-			/>
 		</div>
 	);
 }
