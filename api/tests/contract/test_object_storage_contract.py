@@ -11,7 +11,7 @@ import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from importlib.util import find_spec
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from typing import Protocol
@@ -677,7 +677,9 @@ def _storage_backends() -> list[StorageBackend]:
 
 
 @pytest_asyncio.fixture(params=_storage_backends(), ids=lambda backend: backend.name)
-async def object_storage(request: pytest.FixtureRequest) -> ObjectStorageContract:
+async def object_storage(
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[ObjectStorageContract]:
     storage = request.param.create()
     try:
         yield storage
