@@ -5,12 +5,17 @@ Uses pydantic-settings for environment variable loading with validation.
 All configuration is centralized here for easy management.
 """
 
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def default_temp_location() -> str:
+    return str(Path(tempfile.gettempdir()) / "bifrost")
 
 
 class Settings(BaseSettings):
@@ -224,7 +229,8 @@ class Settings(BaseSettings):
     # File Storage
     # ==========================================================================
     temp_location: str = Field(
-        default="/tmp/bifrost", description="Path to temporary storage directory"
+        default_factory=default_temp_location,
+        description="Path to temporary storage directory",
     )
 
     # ==========================================================================
