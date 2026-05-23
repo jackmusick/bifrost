@@ -627,7 +627,7 @@ def _azure_blob_backend_from_env() -> StorageBackend | None:
     )
     if not all((account_url, container, account_name)):
         return None
-    if not use_user_delegation and not all((credential, account_key)):
+    if not use_user_delegation and not any((credential, account_key)):
         return None
 
     if find_spec("azure.storage.blob") is None:
@@ -648,7 +648,7 @@ def _azure_blob_backend_from_env() -> StorageBackend | None:
 
             azure_credential: Any = DefaultAzureCredential()
         else:
-            azure_credential = credential or ""
+            azure_credential = credential or account_key or ""
 
         return AzureBlobObjectStorage(
             account_url=account_url or "",

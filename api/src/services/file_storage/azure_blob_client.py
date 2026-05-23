@@ -122,6 +122,7 @@ class AzureBlobStorageClient:
         del Bucket
         from azure.storage.blob import ContentSettings
 
+        await self._ensure_client()
         await self._container_client.upload_blob(
             name=Key,
             data=Body,
@@ -133,6 +134,7 @@ class AzureBlobStorageClient:
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
 
+        await self._ensure_client()
         try:
             stream = await self._container_client.download_blob(Key)
             return {"Body": _AsyncBody(await stream.readall())}
@@ -143,6 +145,7 @@ class AzureBlobStorageClient:
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
 
+        await self._ensure_client()
         try:
             await self._container_client.delete_blob(Key)
         except ResourceNotFoundError:
@@ -152,6 +155,7 @@ class AzureBlobStorageClient:
         del Bucket
         from azure.core.exceptions import ResourceNotFoundError
 
+        await self._ensure_client()
         try:
             properties = await self._container_client.get_blob_client(
                 Key
@@ -167,6 +171,7 @@ class AzureBlobStorageClient:
 
     async def copy_object(self, *, Bucket: str, CopySource: dict, Key: str) -> None:
         del Bucket
+        await self._ensure_client()
         source_key = CopySource["Key"]
         source_url = await self.generate_presigned_download_url(source_key)
         dest_blob = self._container_client.get_blob_client(Key)
@@ -256,5 +261,8 @@ class AzureBlobStorageClient:
         return f"{self._container_client.get_blob_client(path).url}?{sas}"
 
     async def read_uploaded_file(self, path: str) -> bytes:
-        response = await self.get_object(Bucket="", Key=path)
+        try:
+            response = await self.get_object(Bucket="", Key=path)
+        except self.exceptions.NoSuchKey as exc:
+            raise FileNotFoundError(f"Uploaded file not found: {path}") from exc
         return await response["Body"].read()

@@ -24,6 +24,21 @@ class ErrorResponse(BaseModel):
 # ==================== BRANDING MODELS ====================
 
 
+def validate_hex_color(value: str | None) -> str | None:
+    """Validate hex color format."""
+    if value is None:
+        return value
+    if not value.startswith("#") or len(value) not in [4, 7]:
+        raise ValueError(
+            "Primary color must be a valid hex color (e.g., #FFF or #FF5733)"
+        )
+    try:
+        int(value[1:], 16)
+    except ValueError:
+        raise ValueError("Primary color must be a valid hex color") from None
+    return value
+
+
 class BrandingSettings(BaseModel):
     """Global platform branding configuration"""
 
@@ -40,18 +55,7 @@ class BrandingSettings(BaseModel):
     @field_validator("primary_color")
     @classmethod
     def validate_hex_color(cls, v):
-        """Validate hex color format"""
-        if v is None:
-            return v
-        if not v.startswith("#") or len(v) not in [4, 7]:
-            raise ValueError(
-                "Primary color must be a valid hex color (e.g., #FFF or #FF5733)"
-            )
-        try:
-            int(v[1:], 16)
-        except ValueError:
-            raise ValueError("Primary color must be a valid hex color")
-        return v
+        return validate_hex_color(v)
 
 
 class BrandingUpdateRequest(BaseModel):
@@ -60,6 +64,11 @@ class BrandingUpdateRequest(BaseModel):
     primary_color: str | None = Field(
         default=None, description="Primary color (hex code, e.g., #0066CC)"
     )
+
+    @field_validator("primary_color")
+    @classmethod
+    def validate_hex_color(cls, v):
+        return validate_hex_color(v)
 
 
 # ==================== FILE UPLOAD MODELS ====================
@@ -102,7 +111,7 @@ class FileUploadResponse(BaseModel):
 
     upload_url: str = Field(..., description="URL for direct upload")
     upload_headers: dict[str, str] = Field(
-        default_factory=dict,
+        ...,
         description="Headers the client must send with the direct upload request",
     )
     blob_uri: str = Field(..., description="Final file URI")
