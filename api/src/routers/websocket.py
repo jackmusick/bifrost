@@ -32,6 +32,9 @@ from src.services.agent_run_access import load_agent_run_for_user
 
 logger = logging.getLogger(__name__)
 
+_AGENT_RUNS_CHANNEL = "agent-runs"
+_AGENT_RUNS_CHANNEL_PREFIX = "agent-runs:"
+
 
 class WSError(Exception):
     """Subscribe-protocol error surfaced as an `error` ack to the client."""
@@ -485,18 +488,21 @@ async def can_access_app(user: UserPrincipal, app_id: str) -> bool:
 
 def _agent_runs_channel_for_user(user: UserPrincipal) -> str | None:
     if user.is_superuser:
-        return "agent-runs:all"
+        return f"{_AGENT_RUNS_CHANNEL_PREFIX}all"
     if user.organization_id:
-        return f"agent-runs:org:{user.organization_id}"
+        return f"{_AGENT_RUNS_CHANNEL_PREFIX}org:{user.organization_id}"
     return None
 
 
 def _resolve_agent_runs_channel(user: UserPrincipal, channel: str) -> str | None:
-    if channel == "agent-runs":
+    if channel == _AGENT_RUNS_CHANNEL:
         return _agent_runs_channel_for_user(user)
-    if channel == "agent-runs:all" or channel == "agent-runs:global":
+    if (
+        channel == f"{_AGENT_RUNS_CHANNEL_PREFIX}all"
+        or channel == f"{_AGENT_RUNS_CHANNEL_PREFIX}global"
+    ):
         return channel if user.is_superuser else None
-    if channel.startswith("agent-runs:org:"):
+    if channel.startswith(f"{_AGENT_RUNS_CHANNEL_PREFIX}org:"):
         org_id = channel.split(":", 2)[2]
         if user.is_superuser:
             return channel
@@ -646,7 +652,9 @@ async def websocket_connect(
             run_id = channel.split(":", 1)[1]
             if await can_access_agent_run(user, run_id):
                 allowed_channels.append(channel)
-        elif channel == "agent-runs" or channel.startswith("agent-runs:"):
+        elif channel == _AGENT_RUNS_CHANNEL or channel.startswith(
+            _AGENT_RUNS_CHANNEL_PREFIX
+        ):
             scoped_channel = _resolve_agent_runs_channel(user, channel)
             if scoped_channel:
                 allowed_channels.append(scoped_channel)
@@ -812,7 +820,9 @@ async def websocket_connect(
                                 "channel": channel,
                                 "message": "Access denied"
                             })
-                    elif channel == "agent-runs" or channel.startswith("agent-runs:"):
+                    elif channel == _AGENT_RUNS_CHANNEL or channel.startswith(
+                        _AGENT_RUNS_CHANNEL_PREFIX
+                    ):
                         scoped_channel = _resolve_agent_runs_channel(user, channel)
                         if scoped_channel:
                             if scoped_channel not in manager.connections:
@@ -889,7 +899,9 @@ async def websocket_connect(
             elif data.get("type") == "unsubscribe":
                 channel = data.get("channel")
                 if channel:
-                    if channel == "agent-runs" or channel.startswith("agent-runs:"):
+                    if channel == _AGENT_RUNS_CHANNEL or channel.startswith(
+                        _AGENT_RUNS_CHANNEL_PREFIX
+                    ):
                         channel = _resolve_agent_runs_channel(user, channel) or channel
                     # Table channels may be subscribed by name but registered
                     # under the canonical UUID channel. Resolve before pop.

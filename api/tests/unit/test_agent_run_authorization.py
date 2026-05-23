@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
@@ -289,8 +290,9 @@ async def test_websocket_agent_runs_alias_subscribes_to_user_org_channel():
         patch("src.routers.websocket.manager.connect", new=AsyncMock()) as connect,
         patch("src.routers.websocket.manager.disconnect"),
     ):
-        await websocket_connect(websocket, channels=["agent-runs"])
+        await websocket_connect(cast(Any, websocket), channels=["agent-runs"])
 
+    assert connect.await_args is not None
     subscribed_channels = connect.await_args.args[1]
     assert f"agent-runs:org:{org_id}" in subscribed_channels
     assert "agent-runs" not in subscribed_channels
