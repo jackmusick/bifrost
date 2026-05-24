@@ -4,9 +4,8 @@ The check must:
 
 * Skip silently for source/dev installs (``__version__`` of ``"unknown"`` or
   ``"0.0.0+source"``).
-* Resolve the API URL via ``credentials._resolve_url`` so a project
-  ``.env`` (loaded by python-dotenv before the call) is honored alongside
-  the keyring/JSON store. We use ``_resolve_url`` (not
+* Resolve the API URL via ``credentials._resolve_url`` so the opt-in project
+  ``.env`` allowlist is honored alongside the keyring/JSON store. We use ``_resolve_url`` (not
   ``get_credentials``) because the version check only needs the URL — a
   logged-out CLI with ``BIFROST_API_URL`` set in ``.env`` should still get
   checked, even though it has no tokens yet.
@@ -34,10 +33,10 @@ def _isolate_version_check_state():
 
     * The memoized ``_persistent_backend`` global in ``bifrost.credentials``,
       which downstream credentials tests rely on being unset.
-    * ``BIFROST_API_URL`` written to ``os.environ`` by ``python-dotenv`` in
-      the dotenv-resolution test — monkeypatch doesn't track it because
-      the allowlisted dotenv loader writes to os.environ directly. Subsequent SDK credentials
-      tests assume the env var is unset and resolve via the JSON store.
+    * ``BIFROST_API_URL`` written to ``os.environ`` by the allowlisted dotenv
+      loader — monkeypatch doesn't track it because the loader writes to
+      os.environ directly. Subsequent SDK credentials tests assume the env var
+      is unset and resolve via the JSON store.
     """
     import os
 
@@ -47,6 +46,7 @@ def _isolate_version_check_state():
     yield
     _reset_persistent_backend_for_tests()
     os.environ.pop("BIFROST_API_URL", None)
+    os.environ.pop("BIFROST_LOAD_CWD_ENV", None)
 
 
 def _patch_version(monkeypatch, value: str) -> None:
@@ -298,7 +298,7 @@ class TestUrlResolution:
             assert url == "https://from-credentials.example/api/version"
 
     def test_loads_dotenv_before_resolving(self, monkeypatch, tmp_path):
-        """A project ``.env`` containing BIFROST_API_URL is honored.
+        """An opted-in project ``.env`` containing BIFROST_API_URL is honored.
 
         ``_check_cli_version`` runs before the rest of the CLI imports
         ``bifrost.client`` (which is where the dotenv allowlist is normally
@@ -316,6 +316,7 @@ class TestUrlResolution:
         # Make sure the env var isn't already set in the test process so we
         # know the value got there via dotenv, not inheritance.
         monkeypatch.delenv("BIFROST_API_URL", raising=False)
+        monkeypatch.setenv("BIFROST_LOAD_CWD_ENV", "1")
 
         _patch_version(monkeypatch, "1.2.3")
         from bifrost import cli
@@ -341,13 +342,37 @@ class TestUrlResolution:
         assert "BIFROST_ACCESS_TOKEN" not in os.environ
         assert "HTTPS_PROXY" not in os.environ
 
+    def test_does_not_load_cwd_dotenv_without_opt_in(self, monkeypatch, tmp_path):
+        """A CWD-local ``.env`` cannot silently steer the CLI version check."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("BIFROST_API_URL=https://from-dotenv.example\n")
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("BIFROST_API_URL", raising=False)
+        monkeypatch.delenv("BIFROST_LOAD_CWD_ENV", raising=False)
+
+        _patch_version(monkeypatch, "1.2.3")
+        from bifrost import cli
+
+        with patch(
+            "bifrost.credentials.get_persistent_backend"
+        ) as get_backend, patch("httpx.get") as urlopen:
+            backend = get_backend.return_value
+            backend.list_urls.return_value = []
+            backend.get.return_value = None
+            cli._check_cli_version()
+
+        urlopen.assert_not_called()
+        assert "BIFROST_API_URL" not in os.environ
+
     def test_cwd_dotenv_overrides_stale_env_url(self, monkeypatch, tmp_path):
-        """The current project's ``.env`` wins over a stale inherited URL."""
+        """The opted-in project ``.env`` wins over a stale inherited URL."""
         env_file = tmp_path / ".env"
         env_file.write_text("BIFROST_API_URL=https://from-current-dotenv.example\n")
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("BIFROST_API_URL", "https://from-old-env.example")
+        monkeypatch.setenv("BIFROST_LOAD_CWD_ENV", "1")
 
         _patch_version(monkeypatch, "1.2.3")
         from bifrost import cli
