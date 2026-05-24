@@ -39,7 +39,11 @@ def _invalid_gateway_key_response() -> JSONResponse:
     )
 
 
-@router.post("/v1/responses")
+@router.post(
+    "/api/v1/responses",
+    operation_id="create_codex_gateway_response_api",
+)
+@router.post("/v1/responses", operation_id="create_codex_gateway_response")
 async def create_response(
     request: Request,
     payload: CodexGatewayResponsesRequest,

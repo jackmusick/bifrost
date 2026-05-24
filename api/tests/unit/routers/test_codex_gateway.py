@@ -48,6 +48,28 @@ def test_v1_responses_uses_openai_compatible_bearer_key():
     }
 
 
+def test_api_v1_responses_uses_same_gateway_facade():
+    app = FastAPI()
+    app.include_router(router)
+    runtime = FakeRuntime()
+    app.dependency_overrides[get_codex_gateway_runtime] = lambda: runtime
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/responses",
+        headers={"Authorization": f"Bearer {VALID_GATEWAY_KEY}"},
+        json={"model": "gpt-5.1-codex", "input": "api routed path"},
+    )
+
+    assert response.status_code == 200
+    [runtime_call] = runtime.calls
+    assert runtime_call["gateway_key"] == VALID_GATEWAY_KEY
+    assert runtime_call["payload"] == {
+        "model": "gpt-5.1-codex",
+        "input": "api routed path",
+    }
+
+
 def test_v1_responses_rejects_non_object_payload_before_runtime():
     app = FastAPI()
     app.include_router(router)
