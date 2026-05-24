@@ -223,6 +223,32 @@ class SignedUrlResponse(BaseModel):
     expires_in: int = Field(default=600, description="URL expiration in seconds")
 
 
+def _authorized_signed_url_scope(
+    request: SignedUrlRequest,
+    ctx: Context,
+) -> str | None:
+    """Resolve object-store scope from auth context instead of trusting input."""
+    if request.location == "workspace":
+        return None
+
+    if ctx.user.is_system_account:
+        return request.scope
+
+    if ctx.org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Signed URL scope requires an organization context",
+        )
+
+    authorized_scope = str(ctx.org_id)
+    if request.scope and request.scope != authorized_scope:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Signed URL scope does not match the authenticated organization",
+        )
+    return authorized_scope
+
+
 # =============================================================================
 # Basic CRUD Endpoints (SDK-focused)
 # =============================================================================
@@ -426,7 +452,8 @@ async def get_signed_url(
     from shared.file_paths import resolve_s3_key
 
     try:
-        s3_path = resolve_s3_key(request.location, request.scope, request.path)
+        scope = _authorized_signed_url_scope(request, ctx)
+        s3_path = resolve_s3_key(request.location, scope, request.path)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
