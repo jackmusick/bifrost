@@ -14,6 +14,8 @@ All files are accessed via their path in file_index / S3 _repo/ store.
 No entity_type or app_id parameters -- everything is path-based.
 """
 
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -44,6 +46,17 @@ def is_error_result(result: ToolResult) -> bool:
     if result.content and isinstance(result.content, str) and result.content.startswith("Error:"):
         return True
     return False
+
+
+class _RowsResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+    def scalars(self):
+        return self
 
 
 @pytest.fixture
@@ -376,6 +389,37 @@ class TestGetContent:
         assert "error" in data
         assert "not found" in data["error"].lower()
 
+    @pytest.mark.asyncio
+    async def test_get_content_denies_out_of_scope_workflow_path(self, platform_admin_context):
+        """Org-scoped admins must not read workflow files owned by another org."""
+        from src.services.mcp_server.tools.code_editor import get_content
+
+        caller_org = uuid4()
+        other_org = uuid4()
+        platform_admin_context.org_id = caller_org
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            return_value=_RowsResult([SimpleNamespace(organization_id=other_org)])
+        )
+
+        @asynccontextmanager
+        async def fake_get_tool_db(_context):
+            yield mock_session
+
+        with patch("src.services.mcp_server.tools.code_editor.get_tool_db", fake_get_tool_db), patch(
+            "src.services.mcp_server.tools.code_editor._read_from_s3",
+            new_callable=AsyncMock,
+            return_value="secret workflow code",
+        ) as mock_read:
+            result = await get_content(
+                context=platform_admin_context,
+                path="workflows/other_org.py",
+            )
+
+        assert is_error_result(result)
+        assert "not authorized" in get_result_data(result)["error"].lower()
+        mock_read.assert_not_awaited()
+
 
 class TestPatchContent:
     """Tests for the patch_content MCP tool."""
@@ -480,6 +524,41 @@ def func2():
         data = get_result_data(result)
         assert "error" in data
         assert "old_string" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_patch_content_denies_out_of_scope_workflow_path(self, platform_admin_context):
+        """Org-scoped admins must not write files containing another org's workflows."""
+        from src.services.mcp_server.tools.code_editor import patch_content
+
+        platform_admin_context.org_id = uuid4()
+        other_org = uuid4()
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            return_value=_RowsResult([SimpleNamespace(organization_id=other_org)])
+        )
+
+        @asynccontextmanager
+        async def fake_get_tool_db(_context):
+            yield mock_session
+
+        with patch("src.services.mcp_server.tools.code_editor.get_tool_db", fake_get_tool_db), patch(
+            "src.services.mcp_server.tools.code_editor._read_from_s3",
+            new_callable=AsyncMock,
+            return_value='return {"status": "old"}',
+        ), patch(
+            "src.services.mcp_server.tools.code_editor._replace_workspace_file",
+            new_callable=AsyncMock,
+        ) as mock_write:
+            result = await patch_content(
+                context=platform_admin_context,
+                path="workflows/other_org.py",
+                old_string='return {"status": "old"}',
+                new_string='return {"status": "new"}',
+            )
+
+        assert is_error_result(result)
+        assert "not authorized" in get_result_data(result)["error"].lower()
+        mock_write.assert_not_awaited()
 
 
 class TestReplaceContent:
@@ -751,6 +830,43 @@ class TestDeleteContent:
         data = get_result_data(result)
         assert "Platform administrator privileges are required" in data["error"]
 
+    @pytest.mark.asyncio
+    async def test_delete_content_denies_out_of_scope_workflow_path(self, platform_admin_context):
+        """Deleting a file must not deactivate workflows outside the caller's org scope."""
+        from src.services.mcp_server.tools.code_editor import delete_content
+
+        platform_admin_context.org_id = uuid4()
+        other_org = uuid4()
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            return_value=_RowsResult([SimpleNamespace(organization_id=other_org)])
+        )
+
+        @asynccontextmanager
+        async def fake_get_tool_db(_context):
+            yield mock_session
+
+        with patch("src.services.mcp_server.tools.code_editor.get_tool_db", fake_get_tool_db), patch(
+            "src.services.mcp_server.tools.code_editor.RepoStorage"
+        ) as mock_repo_cls, patch(
+            "src.services.mcp_server.tools.code_editor.FileStorageService"
+        ) as mock_fs_cls:
+            mock_repo = MagicMock()
+            mock_repo.exists = AsyncMock(return_value=True)
+            mock_repo_cls.return_value = mock_repo
+            mock_fs_instance = MagicMock()
+            mock_fs_instance.delete_file = AsyncMock()
+            mock_fs_cls.return_value = mock_fs_instance
+
+            result = await delete_content(
+                context=platform_admin_context,
+                path="workflows/other_org.py",
+            )
+
+        assert is_error_result(result)
+        assert "not authorized" in get_result_data(result)["error"].lower()
+        mock_fs_instance.delete_file.assert_not_awaited()
+
 
 class TestCodeEditorAuthorization:
     """All path-based code editor MCP tools are platform-admin only."""
@@ -888,6 +1004,38 @@ async def cleanup():
             data = get_result_data(result)
             # Should have exactly 2 matches (one per "return" line), NOT 4
             assert data["total_matches"] == 2
+
+    @pytest.mark.asyncio
+    async def test_search_content_omits_out_of_scope_workflow_paths(self, platform_admin_context):
+        """Search results must not leak workflow content from another org."""
+        from src.services.mcp_server.tools.code_editor import search_content
+
+        caller_org = uuid4()
+        other_org = uuid4()
+        platform_admin_context.org_id = caller_org
+        allowed_row = SimpleNamespace(path="workflows/allowed.py", content="needle allowed")
+        denied_row = SimpleNamespace(path="workflows/denied.py", content="needle denied")
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                _RowsResult([SimpleNamespace(path="workflows/denied.py", organization_id=other_org)]),
+                _RowsResult([allowed_row, denied_row]),
+            ]
+        )
+
+        @asynccontextmanager
+        async def fake_get_tool_db(_context):
+            yield mock_session
+
+        with patch("src.services.mcp_server.tools.code_editor.get_tool_db", fake_get_tool_db):
+            result = await search_content(
+                context=platform_admin_context,
+                pattern="needle",
+            )
+
+        assert not is_error_result(result)
+        matches = get_result_data(result)["matches"]
+        assert [match["path"] for match in matches] == ["workflows/allowed.py"]
 
 
 class TestFormatDeactivationResult:

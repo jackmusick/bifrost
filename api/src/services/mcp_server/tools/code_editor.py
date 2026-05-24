@@ -23,10 +23,12 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 from fastmcp.tools import ToolResult
 from sqlalchemy import select
 
+from src.models import Workflow
 from src.services.mcp_server.tools.db import get_tool_db
 from src.models.orm.file_index import FileIndex
 from src.services.file_storage import FileStorageService
@@ -116,6 +118,95 @@ def _require_platform_admin(context: Any) -> ToolResult | None:
     if not getattr(context, "is_platform_admin", False):
         return error_result("Platform administrator privileges are required for code editor tools.")
     return None
+
+
+def _coerce_uuid(value: Any) -> UUID | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, UUID):
+        return value
+    if isinstance(value, str):
+        return UUID(value)
+    return None
+
+
+def _resolve_org_scope(context: Any, organization_id: str | None) -> tuple[UUID | None, ToolResult | None]:
+    try:
+        context_org_id = _coerce_uuid(getattr(context, "org_id", None))
+        requested_org_id = _coerce_uuid(organization_id)
+    except ValueError:
+        return None, error_result("organization_id must be a valid UUID")
+
+    if context_org_id is not None and requested_org_id is not None and requested_org_id != context_org_id:
+        return None, error_result("Not authorized to access resources for the requested organization.")
+
+    return requested_org_id or context_org_id, None
+
+
+def _row_value(row: Any, name: str, index: int) -> Any:
+    if hasattr(row, name):
+        return getattr(row, name)
+    try:
+        return row[index]
+    except (TypeError, IndexError, KeyError):
+        return None
+
+
+async def _get_out_of_scope_workflow_paths(
+    db: Any,
+    paths: list[str],
+    scoped_org_id: UUID | None,
+) -> set[str]:
+    if scoped_org_id is None or not paths:
+        return set()
+
+    result = await db.execute(
+        select(Workflow.path, Workflow.organization_id).where(Workflow.path.in_(paths))
+    )
+    rows = result.all()
+    denied: set[str] = set()
+    for row in rows:
+        path = _row_value(row, "path", 0)
+        workflow_org_id = _coerce_uuid(_row_value(row, "organization_id", 1))
+        if workflow_org_id is not None and workflow_org_id != scoped_org_id:
+            denied.add(path)
+    return denied
+
+
+async def _ensure_workflow_path_in_scope(
+    context: Any,
+    path: str,
+    organization_id: str | None,
+) -> ToolResult | None:
+    scoped_org_id, denied = _resolve_org_scope(context, organization_id)
+    if denied:
+        return denied
+    if scoped_org_id is None:
+        return None
+
+    async with get_tool_db(context) as db:
+        denied_paths = await _get_out_of_scope_workflow_paths(db, [path], scoped_org_id)
+
+    if denied_paths:
+        return error_result("Not authorized to access workflow content for this organization.")
+    return None
+
+
+async def _filter_paths_for_org_scope(
+    context: Any,
+    paths: list[str],
+    organization_id: str | None,
+) -> tuple[list[str], ToolResult | None]:
+    scoped_org_id, denied = _resolve_org_scope(context, organization_id)
+    if denied:
+        return [], denied
+    if scoped_org_id is None or not paths:
+        return paths, None
+
+    async with get_tool_db(context) as db:
+        denied_paths = await _get_out_of_scope_workflow_paths(db, paths, scoped_org_id)
+
+    return [path for path in paths if path not in denied_paths], None
 
 
 def _normalize_line_endings(content: str) -> str:
@@ -287,10 +378,16 @@ async def list_content(
     logger.info(f"MCP list_content: path_prefix={path_prefix}")
     if denied := _require_platform_admin(context):
         return denied
+    _scoped_org_id, denied = _resolve_org_scope(context, organization_id)
+    if denied:
+        return denied
 
     try:
         repo = RepoStorage()
         paths = await repo.list(path_prefix or "")
+        paths, denied = await _filter_paths_for_org_scope(context, paths, organization_id)
+        if denied:
+            return denied
         files = [{"path": p} for p in sorted(paths)]
 
         if not files:
@@ -324,6 +421,9 @@ async def search_content(
     logger.info(f"MCP search_content: pattern={pattern}")
     if denied := _require_platform_admin(context):
         return denied
+    _scoped_org_id, denied = _resolve_org_scope(context, organization_id)
+    if denied:
+        return denied
 
     if not pattern:
         return error_result("pattern is required")
@@ -337,6 +437,18 @@ async def search_content(
 
     try:
         async with get_tool_db(context) as db:
+            denied_paths: set[str] = set()
+            scoped_org_id, _ = _resolve_org_scope(context, organization_id)
+            if scoped_org_id is not None:
+                workflow_path_result = await db.execute(
+                    select(Workflow.path, Workflow.organization_id)
+                )
+                workflow_path_rows = workflow_path_result.all()
+                for row in workflow_path_rows:
+                    workflow_org_id = _coerce_uuid(_row_value(row, "organization_id", 1))
+                    if workflow_org_id is not None and workflow_org_id != scoped_org_id:
+                        denied_paths.add(_row_value(row, "path", 0))
+
             query = select(FileIndex.path, FileIndex.content).where(
                 FileIndex.content.isnot(None),
             )
@@ -347,6 +459,8 @@ async def search_content(
             all_files = result.all()
 
             for row in all_files:
+                if row.path in denied_paths:
+                    continue
                 content = _normalize_line_endings(row.content)
                 file_lines = content.split("\n")
                 for i, line in enumerate(file_lines):
@@ -397,6 +511,8 @@ async def read_content_lines(
 
     if not path:
         return error_result("path is required")
+    if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
+        return denied
 
     content_result, metadata_result, error = await _get_content_by_path(path, context)
 
@@ -462,6 +578,8 @@ async def get_content(
 
     if not path:
         return error_result("path is required")
+    if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
+        return denied
 
     content_result, metadata_result, error = await _get_content_by_path(path, context)
 
@@ -550,6 +668,8 @@ async def patch_content(
         return error_result("path is required")
     if not old_string:
         return error_result("old_string is required")
+    if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
+        return denied
 
     content_result, metadata_result, error = await _get_content_by_path(path, context)
 
@@ -661,6 +781,8 @@ async def replace_content(
         return error_result("path is required")
     if not content:
         return error_result("content is required")
+    if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
+        return denied
 
     content = _normalize_line_endings(content)
 
@@ -714,6 +836,8 @@ async def delete_content(
 
     if not path:
         return error_result("path is required")
+    if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
+        return denied
 
     try:
         async with get_tool_db(context) as db:
