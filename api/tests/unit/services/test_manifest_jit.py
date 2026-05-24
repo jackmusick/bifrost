@@ -89,6 +89,7 @@ async def test_reimport_regenerates_manifest_and_reindexes_workflows():
          patch.object(service, '_import_all_entities', return_value=(5, [], set())), \
          patch.object(service, '_update_file_index'), \
          patch.object(service, '_sync_app_previews'), \
+         patch("src.services.github_sync.GitRepo"), \
          patch("src.services.github_sync._deleted_paths_in_head", return_value=set()):
 
         result = await service.reimport_from_repo()
