@@ -6,7 +6,14 @@ from typing import Any
 import yaml
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+def _repo_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / ".github").is_dir() and (parent / "debug.sh").exists():
+            return parent
+    raise RuntimeError("Could not locate repository root")
+
+
+REPO_ROOT = _repo_root()
 REQUIRED_CI_CHECK_NAMES = {"Lint & Type Check", "Unit Tests", "E2E Tests"}
 
 
