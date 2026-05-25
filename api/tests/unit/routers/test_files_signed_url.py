@@ -5,14 +5,35 @@ Tests path validation, location/scope handling, and presigned URL generation.
 Path resolution is delegated to `shared.file_paths.resolve_s3_key`.
 """
 
+from types import SimpleNamespace
+from uuid import UUID
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from src.routers.files import (
     SignedUrlRequest,
     SignedUrlResponse,
     get_signed_url,
 )
+
+
+ORG_ID = UUID("11111111-1111-1111-1111-111111111111")
+OTHER_ORG_ID = UUID("22222222-2222-2222-2222-222222222222")
+
+
+def _system_ctx():
+    return SimpleNamespace(
+        org_id=None,
+        user=SimpleNamespace(is_system_account=True),
+    )
+
+
+def _org_ctx(org_id=ORG_ID):
+    return SimpleNamespace(
+        org_id=org_id,
+        user=SimpleNamespace(is_system_account=False),
+    )
 
 
 class TestSignedUrlRequestModel:
@@ -67,7 +88,7 @@ class TestPathResolution:
         mock_fss_class.return_value = mock_fss
 
         req = SignedUrlRequest(path="report.pdf", scope="org-a")
-        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        result = await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert result.path == "uploads/org-a/report.pdf"
 
     @pytest.mark.asyncio
@@ -76,7 +97,7 @@ class TestPathResolution:
 
         req = SignedUrlRequest(path="report.pdf")  # default location=uploads, no scope
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+            await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
         assert "scope" in str(exc_info.value.detail).lower()
 
@@ -93,7 +114,7 @@ class TestPathResolution:
         mock_fss_class.return_value = mock_fss
 
         req = SignedUrlRequest(path="report.pdf", location="workspace")
-        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        result = await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert result.path == "_repo/report.pdf"
 
     @pytest.mark.asyncio
@@ -108,7 +129,7 @@ class TestPathResolution:
         req = SignedUrlRequest(
             path="x.bin", location="temp", scope="org-a", method="GET"
         )
-        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        result = await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert result.path == "_tmp/org-a/x.bin"
 
     @pytest.mark.asyncio
@@ -123,8 +144,32 @@ class TestPathResolution:
         req = SignedUrlRequest(
             path="q1.pdf", location="reports", scope="org-a", method="GET"
         )
-        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        result = await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert result.path == "reports/org-a/q1.pdf"
+
+    @pytest.mark.asyncio
+    @patch("src.routers.files.FileStorageService")
+    async def test_org_context_derives_scope_when_omitted(self, mock_fss_class):
+        mock_fss = MagicMock()
+        mock_fss.generate_presigned_download_url = AsyncMock(
+            return_value="https://s3/url"
+        )
+        mock_fss_class.return_value = mock_fss
+
+        req = SignedUrlRequest(path="q1.pdf", location="reports", method="GET")
+        result = await get_signed_url(req, _org_ctx(), MagicMock(), AsyncMock())
+        assert result.path == f"reports/{ORG_ID}/q1.pdf"
+
+    @pytest.mark.asyncio
+    async def test_org_context_rejects_caller_controlled_scope(self):
+        from fastapi import HTTPException
+
+        req = SignedUrlRequest(
+            path="q1.pdf", location="reports", scope=str(OTHER_ORG_ID), method="GET"
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await get_signed_url(req, _org_ctx(), MagicMock(), AsyncMock())
+        assert exc_info.value.status_code == 403
 
 
 class TestPathValidation:
@@ -136,7 +181,7 @@ class TestPathValidation:
 
         req = SignedUrlRequest(path="../etc/passwd", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+            await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
         assert "traversal" in str(exc_info.value.detail).lower()
 
@@ -146,7 +191,7 @@ class TestPathValidation:
 
         req = SignedUrlRequest(path="/absolute/path", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+            await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
@@ -155,7 +200,7 @@ class TestPathValidation:
 
         req = SignedUrlRequest(path="x.txt", location="_repo", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+            await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
         assert "reserved bucket prefix" in str(exc_info.value.detail)
 
@@ -165,7 +210,7 @@ class TestPathValidation:
 
         req = SignedUrlRequest(path="x.txt", location="Bad Name!", scope="org-a")
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+            await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
@@ -174,7 +219,7 @@ class TestPathValidation:
 
         req = SignedUrlRequest(path="x.txt", location="temp", scope=None)
         with pytest.raises(HTTPException) as exc_info:
-            await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+            await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert exc_info.value.status_code == 400
         assert "scope" in str(exc_info.value.detail).lower()
 
@@ -197,7 +242,7 @@ class TestPresignedUrlGeneration:
         req = SignedUrlRequest(
             path="file.pdf", method="PUT", content_type="application/pdf", scope="org-a"
         )
-        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        result = await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert result.url == "https://s3/put-url"
         assert result.headers == {"Content-Type": "application/pdf"}
         mock_fss.presigned_upload_headers.assert_called_once_with("application/pdf")
@@ -216,7 +261,7 @@ class TestPresignedUrlGeneration:
         mock_fss_class.return_value = mock_fss
 
         req = SignedUrlRequest(path="file.pdf", method="GET", scope="org-a")
-        result = await get_signed_url(req, MagicMock(), MagicMock(), AsyncMock())
+        result = await get_signed_url(req, _system_ctx(), MagicMock(), AsyncMock())
         assert result.url == "https://s3/get-url"
         assert result.headers == {}
         mock_fss.generate_presigned_download_url.assert_awaited_once_with(

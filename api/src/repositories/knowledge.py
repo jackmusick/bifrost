@@ -445,6 +445,15 @@ class KnowledgeRepository(OrgScopedRepository[KnowledgeStore]):
     ) -> KnowledgeDocument | None:
         """Get a document by its UUID."""
         stmt = select(KnowledgeStore).where(KnowledgeStore.id == doc_id)
+
+        if self.org_id is not None:
+            stmt = stmt.where(
+                (KnowledgeStore.organization_id == self.org_id)
+                | (KnowledgeStore.organization_id.is_(None))
+            )
+        else:
+            stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
+
         result = await self.session.execute(stmt)
         doc = result.scalar_one_or_none()
 
