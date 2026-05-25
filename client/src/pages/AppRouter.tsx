@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { useApplication } from "@/hooks/useApplications";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDocumentChrome } from "@/lib/useDocumentChrome";
 import { BundledAppShell } from "@/components/jsx-app/BundledAppShell";
 import { AppLayout } from "@/components/layout/AppLayout";
 
@@ -42,6 +43,19 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 		isLoading,
 		error,
 	} = useApplication(slugParam);
+
+	// Drive the browser tab title + favicon from the open app. Skipped in embed
+	// mode, where the host page owns its own chrome. Must run before the early
+	// returns below to satisfy the Rules of Hooks.
+	useDocumentChrome({
+		title: application?.name
+			? preview
+				? `${application.name} (Preview) | Bifrost`
+				: `${application.name} | Bifrost`
+			: undefined,
+		logo: application?.logo,
+		enabled: !isEmbed,
+	});
 
 	// Loading state
 	if (isLoading) {
