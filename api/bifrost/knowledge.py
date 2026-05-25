@@ -107,6 +107,7 @@ class knowledge:
         *,
         namespace: str = "default",
         scope: str | None = None,
+        timeout: float | None = 300.0,
     ) -> list[str]:
         """
         Store multiple documents efficiently.
@@ -123,6 +124,9 @@ class knowledge:
                 context org (with automatic global fallback via cascade).
                 Pass an org UUID to target a specific org (provider orgs only).
                 Pass None explicitly for global scope.
+            timeout: HTTP read-timeout in seconds. Default 300s accommodates
+                large batches whose embedding generation exceeds the SDK's
+                default 30s client timeout.
 
         Returns:
             List of document IDs
@@ -141,7 +145,8 @@ class knowledge:
                 "documents": documents,
                 "namespace": namespace,
                 "scope": effective_scope,
-            }
+            },
+            timeout=timeout,
         )
         raise_for_status_with_detail(response)
         return response.json()["ids"]
