@@ -14,6 +14,7 @@ Tests the event source, subscription, and webhook adapter tools:
 - list_webhook_adapters
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -41,6 +42,20 @@ def get_content_text(result: ToolResult) -> str:
     if isinstance(content, list):
         return content[0].text if content else ""
     return content or ""
+
+
+class _OneResult:
+    def __init__(self, value):
+        self._value = value
+
+    def unique(self):
+        return self
+
+    def scalar_one(self):
+        return self._value
+
+    def scalar_one_or_none(self):
+        return self._value
 
 
 # ==================== Fixtures ====================
@@ -135,6 +150,18 @@ class TestListEventSources:
                 assert result.structured_content["sources"] == []
                 assert result.structured_content["count"] == 0
 
+    @pytest.mark.asyncio
+    async def test_scoped_admin_cannot_list_another_org_sources(self, context):
+        """organization_id must not widen an org-scoped admin's event access."""
+        from src.services.mcp_server.tools.events import list_event_sources
+
+        context.org_id = uuid4()
+
+        result = await list_event_sources(context, organization_id=str(uuid4()))
+
+        assert is_error_result(result)
+        assert "not authorized" in result.structured_content["error"].lower()
+
 
 class TestCreateEventSource:
     """Tests for create_event_source tool."""
@@ -158,6 +185,23 @@ class TestCreateEventSource:
         )
         assert is_error_result(result)
         assert "cron_expression is required" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_scoped_admin_cannot_create_source_for_another_org(self, context):
+        """Event creation must not accept an out-of-scope organization_id."""
+        from src.services.mcp_server.tools.events import create_event_source
+
+        context.org_id = uuid4()
+
+        result = await create_event_source(
+            context,
+            name="cross-org",
+            source_type="webhook",
+            organization_id=str(uuid4()),
+        )
+
+        assert is_error_result(result)
+        assert "not authorized" in result.structured_content["error"].lower()
 
 
 class TestGetEventSource:
@@ -193,6 +237,42 @@ class TestGetEventSource:
                 result = await get_event_source(context, source_id)
                 assert is_error_result(result)
                 assert "not found" in result.structured_content["error"]
+
+    @pytest.mark.asyncio
+    async def test_scoped_admin_cannot_get_another_org_source(self, context):
+        """Direct event source lookup must enforce the caller's org scope."""
+        from src.models.enums import EventSourceType
+        from src.services.mcp_server.tools.events import get_event_source
+
+        context.org_id = uuid4()
+        mock_source = SimpleNamespace(
+            id=uuid4(),
+            name="Other org source",
+            source_type=EventSourceType.INTERNAL,
+            organization_id=uuid4(),
+            is_active=True,
+            error_message=None,
+            created_by="admin@example.com",
+            created_at=None,
+            webhook_source=None,
+            schedule_source=None,
+        )
+        mock_source_repo = MagicMock()
+        mock_source_repo.get_by_id_with_details = AsyncMock(return_value=mock_source)
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch(
+                "src.repositories.events.EventSourceRepository",
+                return_value=mock_source_repo,
+            ):
+                result = await get_event_source(context, str(mock_source.id))
+
+        assert is_error_result(result)
+        assert "not authorized" in result.structured_content["error"].lower()
 
 
 class TestUpdateEventSource:
@@ -294,6 +374,38 @@ class TestDeleteEventSource:
         assert not is_error_result(result)
         mock_session.delete.assert_awaited_once_with(mock_source)
         mock_session.flush.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_scoped_admin_cannot_delete_another_org_source(self, context):
+        """Deleting event sources must be scoped to the caller's org."""
+        from src.models.enums import EventSourceType
+        from src.services.mcp_server.tools.events import delete_event_source
+
+        context.org_id = uuid4()
+        mock_source = SimpleNamespace(
+            id=uuid4(),
+            name="Other org source",
+            source_type=EventSourceType.INTERNAL,
+            organization_id=uuid4(),
+            webhook_source=None,
+        )
+        mock_repo = MagicMock()
+        mock_repo.get_by_id_with_details = AsyncMock(return_value=mock_source)
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch(
+                "src.repositories.events.EventSourceRepository",
+                return_value=mock_repo,
+            ):
+                result = await delete_event_source(context, str(mock_source.id))
+
+        assert is_error_result(result)
+        assert "not authorized" in result.structured_content["error"].lower()
+        mock_session.delete.assert_not_awaited()
 
 
 # ==================== Subscription Tool Tests ====================
@@ -437,6 +549,34 @@ class TestDeleteEventSubscription:
         mock_session.execute.assert_awaited_once()
         mock_session.delete.assert_awaited_once_with(mock_subscription)
         mock_session.flush.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_scoped_admin_cannot_delete_subscription_for_another_org_source(self, context):
+        """Subscription deletion must verify the parent event source org."""
+        from src.services.mcp_server.tools.events import delete_event_subscription
+
+        context.org_id = uuid4()
+        mock_subscription = SimpleNamespace(
+            id=uuid4(),
+            event_source=SimpleNamespace(organization_id=uuid4()),
+        )
+        mock_result = _OneResult(mock_subscription)
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_session.execute = AsyncMock(return_value=mock_result)
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await delete_event_subscription(
+                context,
+                str(uuid4()),
+                str(mock_subscription.id),
+            )
+
+        assert is_error_result(result)
+        assert "not authorized" in result.structured_content["error"].lower()
+        mock_session.delete.assert_not_awaited()
 
 
 # ==================== Webhook Adapter Tests ====================

@@ -26,6 +26,71 @@ def _require_platform_admin(context: Any) -> ToolResult | None:
     return None
 
 
+def _coerce_uuid(value: Any) -> UUID | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, UUID):
+        return value
+    if isinstance(value, str):
+        return UUID(value)
+    return None
+
+
+def _resolve_org_scope(context: Any, organization_id: str | None = None) -> tuple[UUID | None, ToolResult | None]:
+    try:
+        context_org_id = _coerce_uuid(getattr(context, "org_id", None))
+        requested_org_id = _coerce_uuid(organization_id)
+    except ValueError:
+        return None, error_result("organization_id must be a valid UUID")
+
+    if context_org_id is not None and requested_org_id is not None and requested_org_id != context_org_id:
+        return None, error_result("Not authorized to access resources for the requested organization.")
+
+    return requested_org_id or context_org_id, None
+
+
+def _source_in_scope(source: Any, scoped_org_id: UUID | None) -> bool:
+    if scoped_org_id is None:
+        return True
+    try:
+        source_org_id = _coerce_uuid(getattr(source, "organization_id", None))
+    except ValueError:
+        return False
+    return source_org_id is None or source_org_id == scoped_org_id
+
+
+def _event_source_scope_error() -> ToolResult:
+    return error_result("Not authorized to access event resources for this organization.")
+
+
+async def _validate_workflow_reference_scope(
+    db: Any,
+    workflow_id: str | None,
+    scoped_org_id: UUID | None,
+    entity_type: str,
+) -> ToolResult | None:
+    if not workflow_id:
+        return None
+    if scoped_org_id is None:
+        return None
+
+    from src.services.cross_org_validation import (
+        CrossOrgValidationError,
+        validate_workflow_reference,
+    )
+
+    try:
+        await validate_workflow_reference(
+            db,
+            UUID(workflow_id),
+            scoped_org_id,
+            entity_type=entity_type,
+        )
+    except CrossOrgValidationError as exc:
+        return error_result(str(exc))
+    return None
+
+
 def _build_callback_url(source_id: UUID) -> str:
     """Build callback URL path from event source ID."""
     return f"/api/hooks/{source_id}"
@@ -44,6 +109,9 @@ async def list_event_sources(
     logger.info(f"MCP list_event_sources called with type={source_type}, org={organization_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context, organization_id)
+    if denied:
+        return denied
 
     try:
         # Parse source_type enum
@@ -56,7 +124,7 @@ async def list_event_sources(
                     f"Invalid source_type: {source_type}. Valid values: webhook, schedule, internal"
                 )
 
-        org_id = UUID(organization_id) if organization_id else None
+        org_id = scoped_org_id
 
         async with get_tool_db(context) as db:
             repo = EventSourceRepository(db)
@@ -132,6 +200,9 @@ async def create_event_source(
     logger.info(f"MCP create_event_source called: name={name}, type={source_type}, workflow_id={workflow_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context, organization_id)
+    if denied:
+        return denied
 
     try:
         source_type_enum = EventSourceType(source_type)
@@ -159,7 +230,15 @@ async def create_event_source(
         user_email = getattr(context, "user_email", "") or getattr(context, "email", "mcp")
 
         async with get_tool_db(context) as db:
-            org_uuid = UUID(organization_id) if organization_id else None
+            org_uuid = scoped_org_id
+
+            if denied := await _validate_workflow_reference_scope(
+                db,
+                workflow_id,
+                org_uuid,
+                "event source",
+            ):
+                return denied
 
             # Upsert logic: if workflow_id provided, check for existing matching source
             existing_source = None
@@ -349,6 +428,9 @@ async def get_event_source(
     logger.info(f"MCP get_event_source called with id={source_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context)
+    if denied:
+        return denied
 
     if not source_id:
         return error_result("source_id is required")
@@ -360,6 +442,8 @@ async def get_event_source(
 
             if not source:
                 return error_result(f"Event source not found: {source_id}")
+            if not _source_in_scope(source, scoped_org_id):
+                return _event_source_scope_error()
 
             sub_repo = EventSubscriptionRepository(db)
             subscription_count = await sub_repo.count_by_source(source.id, active_only=True)
@@ -417,6 +501,9 @@ async def update_event_source(
     logger.info(f"MCP update_event_source called with id={source_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context)
+    if denied:
+        return denied
 
     if not source_id:
         return error_result("source_id is required")
@@ -428,6 +515,8 @@ async def update_event_source(
 
             if not source:
                 return error_result(f"Event source not found: {source_id}")
+            if not _source_in_scope(source, scoped_org_id):
+                return _event_source_scope_error()
 
             # Update basic fields
             if name is not None:
@@ -496,6 +585,9 @@ async def delete_event_source(
     logger.info(f"MCP delete_event_source called with id={source_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context)
+    if denied:
+        return denied
 
     if not source_id:
         return error_result("source_id is required")
@@ -507,6 +599,8 @@ async def delete_event_source(
 
             if not source:
                 return error_result(f"Event source not found: {source_id}")
+            if not _source_in_scope(source, scoped_org_id):
+                return _event_source_scope_error()
 
             # Unsubscribe webhooks
             if source.source_type == EventSourceType.WEBHOOK and source.webhook_source:
@@ -547,6 +641,9 @@ async def list_event_subscriptions(
     logger.info(f"MCP list_event_subscriptions called with source_id={source_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context)
+    if denied:
+        return denied
 
     if not source_id:
         return error_result("source_id is required")
@@ -560,6 +657,8 @@ async def list_event_subscriptions(
 
             if not source:
                 return error_result(f"Event source not found: {source_id}")
+            if not _source_in_scope(source, scoped_org_id):
+                return _event_source_scope_error()
 
             sub_repo = EventSubscriptionRepository(db)
             subscriptions = await sub_repo.get_by_source(UUID(source_id), active_only=False)
@@ -614,6 +713,9 @@ async def create_event_subscription(
     logger.info(f"MCP create_event_subscription called: source={source_id}, workflow={workflow_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context)
+    if denied:
+        return denied
 
     if not source_id:
         return error_result("source_id is required")
@@ -631,6 +733,15 @@ async def create_event_subscription(
 
             if not source:
                 return error_result(f"Event source not found: {source_id}")
+            if not _source_in_scope(source, scoped_org_id):
+                return _event_source_scope_error()
+            if denied := await _validate_workflow_reference_scope(
+                db,
+                workflow_id,
+                _coerce_uuid(getattr(source, "organization_id", None)) or scoped_org_id,
+                "event subscription",
+            ):
+                return denied
 
             subscription = EventSubscription(
                 event_source_id=UUID(source_id),
@@ -686,6 +797,9 @@ async def update_event_subscription(
     logger.info(f"MCP update_event_subscription called: sub={subscription_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context)
+    if denied:
+        return denied
 
     if not source_id or not subscription_id:
         return error_result("source_id and subscription_id are required")
@@ -694,7 +808,10 @@ async def update_event_subscription(
         async with get_tool_db(context) as db:
             result = await db.execute(
                 select(EventSubscription)
-                .options(joinedload(EventSubscription.workflow))
+                .options(
+                    joinedload(EventSubscription.workflow),
+                    joinedload(EventSubscription.event_source),
+                )
                 .where(
                     EventSubscription.id == UUID(subscription_id),
                     EventSubscription.event_source_id == UUID(source_id),
@@ -704,6 +821,8 @@ async def update_event_subscription(
 
             if not subscription:
                 return error_result(f"Subscription not found: {subscription_id}")
+            if not _source_in_scope(subscription.event_source, scoped_org_id):
+                return _event_source_scope_error()
 
             if event_type is not None:
                 subscription.event_type = event_type
@@ -744,6 +863,9 @@ async def delete_event_subscription(
     logger.info(f"MCP delete_event_subscription called: sub={subscription_id}")
     if denied := _require_platform_admin(context):
         return denied
+    scoped_org_id, denied = _resolve_org_scope(context)
+    if denied:
+        return denied
 
     if not source_id or not subscription_id:
         return error_result("source_id and subscription_id are required")
@@ -751,7 +873,9 @@ async def delete_event_subscription(
     try:
         async with get_tool_db(context) as db:
             result = await db.execute(
-                select(EventSubscription).where(
+                select(EventSubscription)
+                .options(joinedload(EventSubscription.event_source))
+                .where(
                     EventSubscription.id == UUID(subscription_id),
                     EventSubscription.event_source_id == UUID(source_id),
                 )
@@ -760,6 +884,8 @@ async def delete_event_subscription(
 
             if not subscription:
                 return error_result(f"Subscription not found: {subscription_id}")
+            if not _source_in_scope(subscription.event_source, scoped_org_id):
+                return _event_source_scope_error()
 
             await db.delete(subscription)
             await db.flush()
