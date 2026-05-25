@@ -89,6 +89,55 @@ class TestConfigGetDecryptsSecrets:
         assert result.config_type == "string"
 
 
+class TestConfigGetScopeAuthorization:
+    """Verify unauthorized scopes cannot reach secret config resolution."""
+
+    @pytest.mark.asyncio
+    async def test_regular_user_global_scope_denied_before_secret_lookup(self):
+        """config/get must not resolve or decrypt global secrets for regular users."""
+        from fastapi import HTTPException
+        from src.routers.cli import cli_get_config
+        from src.models.contracts.cli import CLIConfigGetRequest
+
+        mock_user = MagicMock()
+        mock_user.user_id = "test-user-id"
+        mock_user.organization_id = "11111111-1111-1111-1111-111111111111"
+        mock_user.is_superuser = False
+
+        request = CLIConfigGetRequest(key="api_key", scope="global")
+
+        with patch("src.core.config_resolver.ConfigResolver") as resolver_class:
+            with pytest.raises(HTTPException) as exc:
+                await cli_get_config(request=request, current_user=mock_user, db=AsyncMock())
+
+        assert exc.value.status_code == 403
+        resolver_class.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_regular_user_other_org_scope_denied_before_secret_lookup(self):
+        """config/get must not resolve or decrypt another org's secrets."""
+        from fastapi import HTTPException
+        from src.routers.cli import cli_get_config
+        from src.models.contracts.cli import CLIConfigGetRequest
+
+        mock_user = MagicMock()
+        mock_user.user_id = "test-user-id"
+        mock_user.organization_id = "11111111-1111-1111-1111-111111111111"
+        mock_user.is_superuser = False
+
+        request = CLIConfigGetRequest(
+            key="api_key",
+            scope="22222222-2222-2222-2222-222222222222",
+        )
+
+        with patch("src.core.config_resolver.ConfigResolver") as resolver_class:
+            with pytest.raises(HTTPException) as exc:
+                await cli_get_config(request=request, current_user=mock_user, db=AsyncMock())
+
+        assert exc.value.status_code == 403
+        resolver_class.assert_not_called()
+
+
 class TestConfigListMasksSecrets:
     """Verify that cli_list_config always masks secret values with [SECRET]."""
 
