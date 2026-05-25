@@ -332,7 +332,7 @@ class SDKIntegrationsRefreshTokenResponse(BaseModel):
     refreshed: bool = Field(default=True, description="True when the token refresh succeeded")
     expires_at: str | None = Field(None, description="Token expiration (ISO format)")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
 # ==================== SDK AI MODELS ====================

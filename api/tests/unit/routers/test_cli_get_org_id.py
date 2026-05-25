@@ -128,6 +128,38 @@ async def test_regular_user_uses_own_org_for_none_scope():
 
 
 @pytest.mark.asyncio
+async def test_regular_user_can_request_own_org_explicitly():
+    """Non-superusers may target their own organization explicitly."""
+    db = AsyncMock()
+    org_id = uuid4()
+
+    result = await _get_cli_org_id(
+        _user(organization_id=org_id, is_superuser=False),
+        str(org_id),
+        db,
+    )
+
+    assert result == str(org_id)
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_regular_user_without_org_rejected():
+    """Non-superuser JWTs without org scope cannot read CLI config."""
+    db = AsyncMock()
+
+    with pytest.raises(HTTPException) as exc:
+        await _get_cli_org_id(
+            _user(organization_id=None, is_superuser=False),
+            None,
+            db,
+        )
+
+    assert exc.value.status_code == 403
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_regular_user_cannot_request_another_org():
     """Non-superusers cannot use the CLI scope parameter to read another org."""
     db = AsyncMock()
