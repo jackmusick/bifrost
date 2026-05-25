@@ -40,6 +40,7 @@ from src.routers.applications import ApplicationRepository
 from src.services.app_storage import AppStorageService
 from src.services.repo_storage import RepoStorage
 from src.services.file_storage.service import get_file_storage_service
+from shared.app_authorization import require_platform_admin
 
 logger = logging.getLogger(__name__)
 
@@ -237,15 +238,6 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
 class FileMode(str, Enum):
     draft = "draft"
     live = "live"
-
-
-def require_platform_admin(user: CurrentUser) -> None:
-    """Require platform-admin privileges for app code execution mutations."""
-    if not user.is_platform_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Platform admin privileges required",
-        )
 
 
 # =============================================================================
@@ -573,11 +565,9 @@ async def get_bundle_manifest(
     from src.core.cache import get_shared_redis
 
     # A manifest is "stale" when it's missing the schema_version field or has
-    # an older value. We treat stale manifests the same as missing manifests:
-    # run auto-migration against _repo/<app>/, then rebuild. This is how a
-    # deploy that bumps SCHEMA_VERSION transparently heals every app (preview
-    # AND live) — the first viewer after deploy pays the migrate+rebuild
-    # cost, subsequent views are cached.
+    # an older value. Preview manifests can auto-migrate and rebuild from draft
+    # source. Live manifests fail closed with 409 and require publishing the app
+    # to rebuild the live bundle.
     manifest_bytes: bytes | None = None
     try:
         manifest_bytes = await app_storage.read_file(

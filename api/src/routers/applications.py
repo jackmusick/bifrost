@@ -43,6 +43,10 @@ from src.models.contracts.applications import (
 from src.models.orm.app_roles import AppRole
 from src.models.orm.applications import Application
 from src.repositories.org_scoped import OrgScopedRepository
+from shared.app_authorization import (
+    require_platform_admin,
+    update_requires_platform_admin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,25 +72,6 @@ async def ensure_no_stale_app_source(session: AsyncSession, slug: str) -> None:
     )
     if existing.first() is not None:
         raise ValueError(stale_app_source_error(slug))
-
-
-def require_platform_admin(user: CurrentUser) -> None:
-    """Require platform-admin privileges for application control-plane changes."""
-    if not user.is_platform_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Platform admin privileges required",
-        )
-
-
-def update_requires_platform_admin(data: ApplicationUpdate) -> bool:
-    """Return true when a metadata patch changes routing or access control."""
-    return (
-        data.slug is not None
-        or data.scope is not None
-        or data.access_level is not None
-        or data.role_ids is not None
-    )
 
 
 class AppValidationIssue(BaseModel):

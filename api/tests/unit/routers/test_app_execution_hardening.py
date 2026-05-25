@@ -35,6 +35,29 @@ async def test_non_admin_cannot_update_app_slug() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "update",
+    [
+        ApplicationUpdate(scope="global"),
+        ApplicationUpdate(access_level="role_based"),
+        ApplicationUpdate(role_ids=[uuid4()]),
+    ],
+)
+async def test_non_admin_cannot_update_app_control_plane_fields(
+    update: ApplicationUpdate,
+) -> None:
+    with pytest.raises(HTTPException) as exc:
+        await applications.update_application(
+            uuid4(),
+            update,
+            ctx=SimpleNamespace(),
+            user=_user(is_platform_admin=False),
+        )
+
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_non_admin_cannot_update_browser_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fail_if_lookup_runs(*args, **kwargs):  # pragma: no cover - assertion helper
         raise AssertionError("dependency mutation should fail before app lookup")
@@ -62,6 +85,24 @@ async def test_non_admin_cannot_write_app_code(monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(HTTPException) as exc:
         await app_code_files.write_app_file(
             app_code_files.AppFileUpdate(source="export default function Page() { return null }"),
+            uuid4(),
+            "pages/index.tsx",
+            ctx=SimpleNamespace(),
+            user=_user(is_platform_admin=False),
+        )
+
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_delete_app_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_if_lookup_runs(*args, **kwargs):  # pragma: no cover - assertion helper
+        raise AssertionError("code deletion should fail before app lookup")
+
+    monkeypatch.setattr(app_code_files, "get_application_or_404", fail_if_lookup_runs)
+
+    with pytest.raises(HTTPException) as exc:
+        await app_code_files.delete_app_file(
             uuid4(),
             "pages/index.tsx",
             ctx=SimpleNamespace(),
