@@ -156,6 +156,20 @@ docker compose logs -f api
 docker compose logs -f client
 ```
 
+### Object Storage
+
+The default object storage provider is S3-compatible storage. Azure Blob is opt-in:
+
+```bash
+BIFROST_OBJECT_STORAGE_PROVIDER=azure_blob
+BIFROST_AZURE_BLOB_ACCOUNT_URL=https://<account>.blob.core.windows.net
+BIFROST_AZURE_BLOB_CONTAINER=<container>
+BIFROST_AZURE_BLOB_AUTH=default_credential
+```
+
+Use `BIFROST_AZURE_BLOB_AUTH=account_key` with `BIFROST_AZURE_BLOB_ACCOUNT_KEY`
+only when managed identity or local Azure credentials are not available.
+
 **VS Code debugging:**
 
 ```bash

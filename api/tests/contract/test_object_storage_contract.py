@@ -48,17 +48,22 @@ class ObjectStorageContract(Protocol):
         *,
         content_type: str | None = None,
         metadata: dict[str, str] | None = None,
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError
 
     async def get(
         self, key: str, *, byte_range: tuple[int, int] | None = None
-    ) -> bytes: ...
+    ) -> bytes:
+        raise NotImplementedError
 
-    async def stat(self, key: str) -> ObjectStat: ...
+    async def stat(self, key: str) -> ObjectStat:
+        raise NotImplementedError
 
-    async def copy(self, source_key: str, dest_key: str) -> None: ...
+    async def copy(self, source_key: str, dest_key: str) -> None:
+        raise NotImplementedError
 
-    async def delete(self, key: str) -> None: ...
+    async def delete(self, key: str) -> None:
+        raise NotImplementedError
 
     async def list(
         self,
@@ -66,9 +71,11 @@ class ObjectStorageContract(Protocol):
         *,
         delimiter: str | None = None,
         page_size: int | None = None,
-    ) -> tuple[list[str], list[str]]: ...
+    ) -> tuple[list[str], list[str]]:
+        raise NotImplementedError
 
-    async def signed_get_url(self, key: str, *, expires_in: int = 600) -> str: ...
+    async def signed_get_url(self, key: str, *, expires_in: int = 600) -> str:
+        raise NotImplementedError
 
     async def signed_put_url(
         self,
@@ -76,9 +83,11 @@ class ObjectStorageContract(Protocol):
         *,
         content_type: str,
         expires_in: int = 600,
-    ) -> str: ...
+    ) -> str:
+        raise NotImplementedError
 
-    def signed_put_headers(self, *, content_type: str) -> dict[str, str]: ...
+    def signed_put_headers(self, *, content_type: str) -> dict[str, str]:
+        raise NotImplementedError
 
 
 class InMemoryObjectStorage:
