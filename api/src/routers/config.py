@@ -8,6 +8,7 @@ Uses OrgScopedRepository for standardized org scoping.
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -137,6 +138,94 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         to avoid MultipleResultsFound when the same key exists in both scopes.
         """
         return await self.get(key=key)
+
+    async def merged_for_sdk(self) -> dict[str, Any]:
+        """Return the full merged config dict for this scope.
+
+        Replaces ``ConfigResolver.load_config_for_scope``. The merged shape
+        is ``{key: {"value": v, "type": t}, ...}`` where org-specific entries
+        override globals on key collision.
+
+        Cache is read-through with the versioned-key invalidation introduced
+        in Phase 5 (see ``api/src/core/cache/keys.py::config_hash_key_versioned``).
+
+        Excludes integration-scoped configs (``integration_id IS NOT NULL``) —
+        those are accessed via the integration system, not ``config.get()``.
+        """
+        import json
+        from typing import Any
+
+        from src.core.cache.keys import (
+            TTL_CONFIG,
+            config_hash_key_versioned,
+        )
+        from src.core.cache.redis_client import get_shared_redis
+        from src.core.log_safety import log_safe
+
+        org_id_str = str(self.org_id) if self.org_id is not None else None
+
+        # Read-through cache.
+        try:
+            r = await get_shared_redis()
+            hash_key = await config_hash_key_versioned(r, org_id_str)
+            cached = await r.hgetall(hash_key)  # type: ignore[misc]
+            if cached:
+                out: dict[str, Any] = {}
+                for k, v in cached.items():
+                    ks = k.decode() if isinstance(k, bytes) else k
+                    vs = v.decode() if isinstance(v, bytes) else v
+                    try:
+                        out[ks] = json.loads(vs)
+                    except json.JSONDecodeError:
+                        out[ks] = {"value": vs, "type": "string"}
+                return out
+        except Exception as e:  # cache is best-effort
+            logger.warning(f"Config cache read failed: {e}")
+
+        # Cache miss — load from DB via cascade.
+        # Globals first, then org-specific overrides (org wins on key collision).
+        config_dict: dict[str, Any] = {}
+
+        global_q = select(self.model).where(
+            self.model.organization_id.is_(None),
+            self.model.integration_id.is_(None),
+        )
+        global_rows = (await self.session.execute(global_q)).scalars()
+        for cfg in global_rows:
+            v = cfg.value.get("value") if isinstance(cfg.value, dict) else cfg.value
+            config_dict[cfg.key] = {
+                "value": v,
+                "type": cfg.config_type.value if cfg.config_type else "string",
+            }
+
+        if self.org_id is not None:
+            org_q = select(self.model).where(
+                self.model.organization_id == self.org_id,
+                self.model.integration_id.is_(None),
+            )
+            org_rows = (await self.session.execute(org_q)).scalars()
+            for cfg in org_rows:
+                v = cfg.value.get("value") if isinstance(cfg.value, dict) else cfg.value
+                config_dict[cfg.key] = {
+                    "value": v,
+                    "type": cfg.config_type.value if cfg.config_type else "string",
+                }
+
+        # Write-through cache (best-effort).
+        if config_dict:
+            try:
+                r = await get_shared_redis()
+                hash_key = await config_hash_key_versioned(r, org_id_str)
+                mapping = {k: json.dumps(v) for k, v in config_dict.items()}
+                await r.hset(hash_key, mapping=mapping)  # type: ignore[misc]
+                await r.expire(hash_key, TTL_CONFIG)
+            except Exception as e:
+                logger.warning(f"Config cache write failed: {e}")
+
+        logger.debug(
+            f"Loaded {len(config_dict)} config entries for org={log_safe(org_id_str)}"
+        )
+        return config_dict
 
     async def get_config_strict(self, key: str) -> ConfigModel | None:
         """Get config strictly in current org scope (no fallback)."""

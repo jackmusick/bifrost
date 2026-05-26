@@ -474,13 +474,14 @@ async def cli_get_config(
     db: AsyncSession = Depends(get_db),
 ) -> CLIConfigValue | None:
     """Get a config value via CLI API."""
-    from src.core.config_resolver import ConfigResolver
+    from src.routers.config import ConfigRepository
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
-    scope = org_id or "GLOBAL"
+    org_uuid = UUID(org_id) if org_id else None
 
-    resolver = ConfigResolver()
-    all_config = await resolver.load_config_for_scope(scope, db=db)
+    # Canonical SDK config load: cascade (global + org-specific) merged.
+    repo = ConfigRepository(db, org_id=org_uuid, is_superuser=True)
+    all_config = await repo.merged_for_sdk()
 
     if request.key not in all_config:
         return None
@@ -601,13 +602,13 @@ async def cli_list_config(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """List all config values via CLI API."""
-    from src.core.config_resolver import ConfigResolver
+    from src.routers.config import ConfigRepository
 
     org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
-    scope = org_id or "GLOBAL"
+    org_uuid = UUID(org_id) if org_id else None
 
-    resolver = ConfigResolver()
-    all_config = await resolver.load_config_for_scope(scope, db=db)
+    repo = ConfigRepository(db, org_id=org_uuid, is_superuser=True)
+    all_config = await repo.merged_for_sdk()
 
     if not all_config:
         return {}
