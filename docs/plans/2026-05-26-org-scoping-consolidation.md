@@ -280,6 +280,170 @@ Each follow-up gets its own GitHub issue. They are NOT in this overhaul's scope.
 
 ---
 
+## Post-merge audit (2026-05-26, Codex)
+
+After the verification commits landed, an independent agent (Codex) audited the
+branch end-to-end and surfaced six findings. Three of them are real security
+regressions that this overhaul did NOT close, and **must be addressed before
+the branch ships.** They are tracked here because they invalidate parts of the
+"goal met" claim above.
+
+### CRITICAL — `_get_cli_org_id` derives `caller_org_id` from `DeveloperContext.default_org_id`
+
+**The bypass.** `_get_cli_org_id` looks up the caller's "own org" by reading
+`DeveloperContext.default_org_id` from the DB. But that field is user-settable
+via `PUT /api/sdk/context` with no platform-admin check. A non-admin user can:
+
+1. `PUT /api/sdk/context` with `default_org_id=<other_org_uuid>`.
+2. Call any SDK endpoint with `scope` omitted.
+3. The resolver sees `caller_org_id = <other_org_uuid>`, matches the request,
+   and returns "your own org" — serving the other org's data.
+
+The resolver is correct. The data flowing into it is forged.
+
+References: `api/src/routers/cli.py:322`, `api/src/routers/cli.py:451`,
+`api/src/core/auth.py:43`.
+
+**Fix direction.** Source `caller_org_id` from `current_user.organization_id`
+— the auth-verified DB column — not from `DeveloperContext`. The
+`PUT /api/sdk/context` endpoint should either be removed entirely (see "Nuke
+DeveloperContext" below) or restricted to platform admins.
+
+**Test gap that let this through.** `test_cli_get_org_id.py` uses mocked
+`DeveloperContext` fixtures that always match the caller's true org. A test
+that explicitly sets `DeveloperContext.default_org_id` to a foreign org and
+asserts the resolver still rejects would have caught this. Add that test
+alongside the fix.
+
+### Nuke DeveloperContext + the dev-run page (decision by user, post-audit)
+
+The Codex finding above traced to `DeveloperContext` — a model the user has
+identified as fundamentally broken in design. Direction: **remove
+`DeveloperContext` entirely**, including:
+
+- The ORM model + table + migration.
+- The `PUT /api/sdk/context` and `GET /api/sdk/context` endpoints.
+- All callsites that read `default_org_id` from it (most notably
+  `_get_cli_org_id`).
+- The dev-run page in the client (the UI that exposes/edits this state).
+- The CLI commands that read/write DeveloperContext.
+
+The replacement model:
+
+- A user's effective org is `User.organization_id` only (never overridden
+  by a per-user mutable "default").
+- Scope-targeting in SDK calls happens only via the explicit `scope` parameter
+  on the request, gated by `is_platform_admin` per the resolver's four rules.
+- Platform admins targeting other orgs from a CLI session set `scope`
+  explicitly per command, not via a persistent default-org override.
+
+This is a substantial deletion across server, client, CLI binary, and tests.
+It's the right move because as long as `DeveloperContext` exists, every SDK
+endpoint that defaults to it has a forgery path — patching one site at a time
+is whack-a-mole.
+
+### HIGH — SDK-side resolver uses provider-org membership, not `is_platform_admin`
+
+The plan says the resolver gates on `is_platform_admin`. The SDK-side caller
+gate (engine, `api/bifrost/_context.py:128` and `api/src/services/execution/engine.py:280`)
+reportedly still checks provider-org membership instead. Under the trust
+model, the SDK-side resolver IS the security boundary for engine-routed
+calls — using the wrong flag here is the real-world gate failing.
+
+**Verify and fix.** Audit those two files. If true, switch to
+`is_platform_admin`. Add tests at the SDK-resolver level that mirror the
+API-side `test_cli_get_org_id.py` contract.
+
+### HIGH — `/api/sdk/integrations/*_mapping` endpoints bypass scope authorization
+
+Four endpoints accept arbitrary scope/org_uuid without going through
+`_get_cli_org_id`:
+
+- `list_mappings` — returns all org mappings.
+- `get_mapping` — accepts arbitrary scope or scans by entity_id.
+- `upsert_mapping` — accepts raw org UUIDs.
+- `delete_mapping` — same.
+
+These are `CurrentUser`-authenticated (not engine-sentinel), so a non-admin
+can write/delete any org's mapping today.
+
+References: `api/src/routers/cli.py:925`, `:991`, `:1054`, `:1139`.
+
+**Why this slipped.** `test_sdk_endpoints_use_resolver` was checked in as a
+placeholder that only verifies the resolver imports and the exempt-list shape
+— NOT that endpoints actually call the resolver. The Phase 3 commit message
+said the strict check would land in Phase 4 once the first caller existed.
+It never got promoted. As a result, the mechanical enforcement that should
+have flagged these four endpoints did not run.
+
+**Fix direction.**
+
+1. Migrate the four endpoints through `_get_cli_org_id` (with the
+   `current_user.organization_id` fix above) so they get the
+   caller-vs-platform-admin gate.
+2. **Promote `test_sdk_endpoints_use_resolver` from placeholder to strict.**
+   For every `/api/sdk/*` endpoint that declares a `scope` parameter, assert
+   the handler body calls `resolve_effective_scope` (directly or via
+   `_get_cli_org_id`). Allow-list entries with one-line justification per
+   exempt endpoint.
+
+### HIGH — Config cache invalidation incomplete on key/org changes
+
+When a `Config` row's `organization_id` or `key` changes via REST
+(`PUT /api/config/{id}`), the route only upserts the new (scope, key) cache
+entry — the old (scope, key) entry stays cached until TTL, including
+potentially stale secrets.
+
+References: `api/src/routers/config.py:339`, `:345`, `:500`.
+
+**Fix direction.** On update, if either `organization_id` or `key` changed,
+explicitly delete the previous (old_scope, old_key) cache entry before
+upserting the new one. Also bump `CONFIG_GLOBAL_VERSION_KEY` if the change
+involves a transition to/from global scope.
+
+### MEDIUM — `test_sdk_endpoints_use_resolver` is still a placeholder
+
+Already covered above as the carrier of the "/api/sdk/integrations/*_mapping
+bypass" issue.
+
+### LOW — Plan body for Phase 5 contradicts the open-question resolution
+
+Phase 5 body says "ConfigResolver kept as a thin layer; phase 8 follow-up will
+fully merge into ConfigRepository." Open question #2 says
+"~~Does ConfigResolver go away entirely?~~ Resolved: yes, deleted." And the
+diff deletes it. Update the Phase 5 body to say "deleted" so the plan reads
+consistently.
+
+### NIT — `git diff --check` whitespace failures
+
+Trailing whitespace in `api/src/repositories/applications.py` and the two
+audit docs. Clean up before merge.
+
+---
+
+## Outstanding work to ship this branch (post-Codex)
+
+Before this branch can be considered done:
+
+1. **Nuke DeveloperContext** (model, endpoints, dev-run UI, CLI commands,
+   all callsites). Critical-severity finding above is downstream of this.
+2. **Promote `test_sdk_endpoints_use_resolver`** to strict, with allow-list.
+3. **Migrate the four mapping endpoints** through the (post-DeveloperContext)
+   scope resolver.
+4. **Verify + fix SDK-side resolver** (provider-org-membership vs admin flag).
+5. **Fix config cache invalidation** on key/org-id changes.
+6. **Plan body cleanup** for Phase 5 + whitespace.
+
+The OAuth cross-tenant token leak, the URL rename, the canonical pattern
+mechanics, and the documentation tripwires are all genuinely done. The
+authorization-input-sourcing layer (caller_org_id) and the mechanical
+enforcement that should catch endpoint bypass (`test_sdk_endpoints_use_resolver`)
+are NOT done. Without those, the "make org scoping stop drifting" goal is
+not met — the drift mechanism has just moved from inline cascades to
+mutable-default forgery.
+
+---
+
 ## Test discipline (during migration)
 
 When tests fail during this migration, **stop and consider why the test expected what it did before adjusting it.** Default assumption: the test was right and the code change is wrong. Tests are claims about behavior; adjusting them silently to match new output erodes the contract they were protecting.
