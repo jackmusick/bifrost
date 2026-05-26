@@ -80,7 +80,17 @@ Commit: `1b050288` (Phase 3). Allow-list shrinkage verified in commits Phase 4 t
 
 ### 7. All tests pass
 
-In progress at write time — running `./test.sh all` (unit + e2e). Latest unit-only run: **3977 passed**. The verification phase will update this section with the e2e result.
+✅ **Met.** Full `./test.sh all` run (unit + e2e): **5288 passed, 52 skipped, 0 failed** in 12:37. The skips are pre-existing (xfail/conditional). No regressions introduced by any phase.
+
+Earlier per-phase verification:
+- Phase 1: 20 new tests (resolver four-rule contract).
+- Phase 2: 3956 → preserved.
+- Phase 3: +7 enforcement tests.
+- Phase 4: +6 OAuth cross-tenant tests, +1 stale-allowlist tracker. Net 3963 → 3970.
+- Phase 5: +4 cache regression tests. Net 3970 → 3974.
+- Phase 6: tests preserved. 3974.
+- Phase 7: -7 (old contract removed) +10 (new security contract) = +3. Net 3977.
+- Phase 8 verification: full e2e+unit = 5288.
 
 ### 8. Manual UI/SDK verification across three caller types
 
@@ -124,14 +134,14 @@ The combination of:
 
 …closes the drift mechanism. New code that bypasses the pattern fails CI. The allow-list IS the work tracker for the remaining UI-facing router migrations, which Phase 8 will draw down via separate issues.
 
-## What remains (Phase 8 follow-ups)
+## What remains (Phase 8 follow-ups — filed as GitHub issues)
 
-- 79 documented inline-cascade allow-list entries across 13 routers — each tagged with phase that will remove it.
-- URL rename `/api/cli/*` → `/api/sdk/*` (cosmetic).
-- File rename `routers/cli.py` → `routers/sdk.py` (cosmetic).
-- `ConfigResolver` deletion / full merge into `ConfigRepository`.
-- `OAuthConnectionRepository` migration to `OrgScopedRepository`.
-- Manifest sync `_resolve_*` audit (13 export_import.py allow-list entries).
-- Redis-spoofing hardening for `ExecutionContext` payload (separate threat model).
+- **#309** — UI-facing router inline-cascade migrations (workflows, claims, knowledge_sources, tables, agents, tools, websocket, mcp_connections, oauth_connections, integrations, config).
+- **#310** — URL rename `/api/cli/*` → `/api/sdk/*` and file rename `routers/cli.py` → `routers/sdk.py`. CLI version bump coordinated.
+- **#311** — `ConfigResolver` deletion / full merge into `ConfigRepository`.
+- **#312** — `OAuthConnectionRepository` migration to `OrgScopedRepository`; delete `OAuthStorageService` dead code.
+- **#313** — Manifest sync `_resolve_*` audit (13 `export_import.py` allow-list entries).
+- **#314** — Streaming AI-usage finalizer plumbs the platform-admin flag.
+- **#315** — Sign/seal `ExecutionContext` payload to prevent Redis spoofing (hardening, separate threat model).
 
-These are filed as GitHub issues in Phase 8 task #9.
+The lint allow-list is the work tracker for #309 and #313 — each removed entry is observable progress.
