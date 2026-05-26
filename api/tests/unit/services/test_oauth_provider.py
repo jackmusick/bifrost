@@ -10,7 +10,26 @@ import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from src.services.oauth_provider import OAuthProviderClient
+from src.services.oauth_provider import OAuthProviderClient, compute_token_exchange_scopes
+
+
+def test_compute_token_exchange_scopes_joins_generic_provider_scopes():
+    provider = MagicMock()
+    provider.provider_name = "Microsoft CSP"
+    provider.scopes = ["openid", "offline_access", "https://example.com/read"]
+
+    assert compute_token_exchange_scopes(provider) == (
+        "openid offline_access https://example.com/read"
+    )
+
+
+@pytest.mark.parametrize("provider_name", ["NinjaOne", "ninjaone", "NINJAONE"])
+def test_compute_token_exchange_scopes_omits_ninjaone_scopes(provider_name):
+    provider = MagicMock()
+    provider.provider_name = provider_name
+    provider.scopes = ["monitoring", "management", "control", "offline_access"]
+
+    assert compute_token_exchange_scopes(provider) is None
 
 
 @pytest.fixture

@@ -23,6 +23,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+PROVIDER_NINJAONE = "NinjaOne"
+
+
+def compute_token_exchange_scopes(provider: "OAuthProvider") -> str | None:
+    """Return scopes to send during authorization-code token exchange."""
+    provider_name = provider.provider_name or ""
+    if provider_name.casefold() == PROVIDER_NINJAONE.casefold():
+        return None
+
+    return " ".join(provider.scopes) if provider.scopes else None
+
 
 def resolve_url_template(
     url: str, entity_id: str | None = None, defaults: dict[str, str] | None = None
