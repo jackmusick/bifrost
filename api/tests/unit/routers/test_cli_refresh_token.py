@@ -154,6 +154,89 @@ class TestRefreshTokenClientCredentials:
         mock_db.add.assert_not_called()
         assert mock_existing_token.expires_at == expires_at
 
+    @pytest.mark.asyncio
+    async def test_scoped_refresh_falls_back_to_global_provider_and_token(self):
+        """Scoped refresh should work when the provider/token are global rows."""
+        from src.routers.cli import sdk_integrations_refresh_token
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+
+        org_id = uuid4()
+        request = SDKIntegrationsRefreshTokenRequest(
+            connection_name="NinjaOne",
+            scope=str(org_id),
+        )
+
+        mock_user = MagicMock()
+        mock_user.user_id = uuid4()
+        mock_user.email = "test@example.com"
+        mock_db = AsyncMock()
+
+        provider_id = uuid4()
+        mock_provider = MagicMock()
+        mock_provider.id = provider_id
+        mock_provider.provider_name = "NinjaOne"
+        mock_provider.client_id = "ninja-client-id"
+        mock_provider.encrypted_client_secret = b"encrypted-secret"
+        mock_provider.token_url = "https://app.ninjarmm.com/ws/oauth/token"
+        mock_provider.token_url_defaults = {}
+        mock_provider.oauth_flow_type = "client_credentials"
+        mock_provider.scopes = ["monitoring"]
+        mock_provider.integration_id = None
+        mock_provider.organization_id = None
+        mock_provider.audience = None
+
+        mock_existing_token = MagicMock()
+        mock_existing_token.organization_id = None
+
+        scoped_provider_result = MagicMock()
+        scoped_provider_result.scalars.return_value.first.return_value = None
+        global_provider_result = MagicMock()
+        global_provider_result.scalars.return_value.first.return_value = mock_provider
+        scoped_token_result = MagicMock()
+        scoped_token_result.scalars.return_value.first.return_value = None
+        global_token_result = MagicMock()
+        global_token_result.scalars.return_value.first.return_value = mock_existing_token
+
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                scoped_provider_result,
+                global_provider_result,
+                scoped_token_result,
+                global_token_result,
+            ]
+        )
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        mock_token_response = {
+            "access_token": "new-token",
+            "expires_at": expires_at,
+        }
+
+        with (
+            patch(
+                "src.routers.cli._get_cli_org_id",
+                new_callable=AsyncMock,
+                return_value=str(org_id),
+            ),
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-secret"),
+            patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-token"),
+        ):
+            mock_instance = MagicMock()
+            mock_instance.get_client_credentials_token = AsyncMock(
+                return_value=(True, mock_token_response)
+            )
+            mock_client_class.return_value = mock_instance
+
+            result = await sdk_integrations_refresh_token(request, mock_user, mock_db)
+
+        assert result.access_token == "new-token"
+        assert mock_db.execute.call_count == 4
+        mock_db.add.assert_not_called()
+        assert mock_existing_token.expires_at == expires_at
+
 
 class TestRefreshTokenAuthorizationCode:
     """Test refresh_token endpoint for authorization_code flows."""

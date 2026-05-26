@@ -709,7 +709,9 @@ class IntegrationsRepository(BaseRepository[Integration]):
 
         return config
 
-    async def get_provider_org_token(self, provider_id: UUID) -> Any:
+    async def get_provider_org_token(
+        self, provider_id: UUID, organization_id: UUID | None = None
+    ) -> Any:
         """
         Get org-level OAuth token for a provider (user_id=NULL).
 
@@ -718,15 +720,29 @@ class IntegrationsRepository(BaseRepository[Integration]):
 
         Args:
             provider_id: OAuthProvider UUID
+            organization_id: Optional organization UUID to prefer before global
 
         Returns:
             OAuthToken or None if not found
         """
         from src.models.orm.oauth import OAuthToken
 
+        if organization_id:
+            result = await self.session.execute(
+                select(OAuthToken).where(
+                    OAuthToken.provider_id == provider_id,
+                    OAuthToken.organization_id == organization_id,
+                    OAuthToken.user_id.is_(None),
+                )
+            )
+            token = result.scalars().first()
+            if token:
+                return token
+
         result = await self.session.execute(
             select(OAuthToken).where(
                 OAuthToken.provider_id == provider_id,
+                OAuthToken.organization_id.is_(None),
                 OAuthToken.user_id.is_(None),
             )
         )

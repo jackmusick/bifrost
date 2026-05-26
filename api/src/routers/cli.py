@@ -70,6 +70,7 @@ from src.models.contracts.cli import (
     SDKTableListRequest,
     SDKTableInfo,
 )
+from src.models.orm.oauth import OAuthProvider, OAuthToken
 from src.core.pubsub import publish_cli_session_update, publish_execution_log, publish_execution_update, publish_history_update
 from src.repositories.cli_sessions import CLISessionRepository
 
@@ -118,6 +119,56 @@ def should_auto_refresh_token(
         return True
 
     return False
+
+
+async def _get_oauth_provider_for_scope(
+    db: AsyncSession, connection_name: str, org_uuid: UUID | None
+) -> Any:
+    """Load an org-specific OAuth provider, falling back to the global provider."""
+    if org_uuid:
+        result = await db.execute(
+            select(OAuthProvider).where(
+                OAuthProvider.provider_name == connection_name,
+                OAuthProvider.organization_id == org_uuid,
+            )
+        )
+        provider = result.scalars().first()
+        if provider:
+            return provider
+
+    result = await db.execute(
+        select(OAuthProvider).where(
+            OAuthProvider.provider_name == connection_name,
+            OAuthProvider.organization_id.is_(None),
+        )
+    )
+    return result.scalars().first()
+
+
+async def _get_oauth_token_for_scope(
+    db: AsyncSession, provider_id: UUID, org_uuid: UUID | None
+) -> Any:
+    """Load an org-level OAuth token, falling back to the global provider token."""
+    if org_uuid:
+        result = await db.execute(
+            select(OAuthToken).where(
+                OAuthToken.provider_id == provider_id,
+                OAuthToken.organization_id == org_uuid,
+                OAuthToken.user_id.is_(None),
+            )
+        )
+        token = result.scalars().first()
+        if token:
+            return token
+
+    result = await db.execute(
+        select(OAuthToken).where(
+            OAuthToken.provider_id == provider_id,
+            OAuthToken.organization_id.is_(None),
+            OAuthToken.user_id.is_(None),
+        )
+    )
+    return result.scalars().first()
 
 
 # =============================================================================
@@ -661,7 +712,10 @@ async def sdk_integrations_get(
             if integration and integration.oauth_provider:
                 token = mapping.oauth_token
                 if not token:
-                    token = await repo.get_provider_org_token(integration.oauth_provider.id)
+                    token = await repo.get_provider_org_token(
+                        integration.oauth_provider.id,
+                        org_uuid,
+                    )
                 response_data["oauth"] = await _build_oauth_data(
                     integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret,
                     oauth_scope=request.oauth_scope,
@@ -691,7 +745,10 @@ async def sdk_integrations_get(
 
         # Build OAuth data if provider exists
         if integration.oauth_provider:
-            token = await repo.get_provider_org_token(integration.oauth_provider.id)
+            token = await repo.get_provider_org_token(
+                integration.oauth_provider.id,
+                org_uuid,
+            )
             response_data["oauth"] = await _build_oauth_data(
                 integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret,
                 oauth_scope=request.oauth_scope,
@@ -1083,7 +1140,6 @@ async def sdk_integrations_refresh_token(
     :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
     only owns the provider lookup, context build, and persistence.
     """
-    from src.models.orm.oauth import OAuthProvider, OAuthToken
     from src.services.oauth_provider import (
         build_token_refresh_context,
         refresh_oauth_token_http,
@@ -1093,13 +1149,13 @@ async def sdk_integrations_refresh_token(
     org_uuid = UUID(org_id) if org_id else None
 
     try:
-        # Look up provider by connection_name (== provider_name)
-        result = await db.execute(
-            select(OAuthProvider).where(
-                OAuthProvider.provider_name == request.connection_name
-            )
+        # Look up provider by connection_name (== provider_name), preferring
+        # org-specific rows while allowing global providers for scoped mappings.
+        provider = await _get_oauth_provider_for_scope(
+            db,
+            request.connection_name,
+            org_uuid,
         )
-        provider = result.scalars().first()
 
         if not provider:
             raise HTTPException(
@@ -1111,13 +1167,7 @@ async def sdk_integrations_refresh_token(
         # build_token_refresh_context can carry the encrypted refresh token.
         stored_token = None
         if provider.oauth_flow_type == "authorization_code":
-            token_result = await db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.provider_id == provider.id,
-                    OAuthToken.user_id.is_(None),
-                )
-            )
-            stored_token = token_result.scalars().first()
+            stored_token = await _get_oauth_token_for_scope(db, provider.id, org_uuid)
             if not stored_token or not stored_token.encrypted_refresh_token:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1166,13 +1216,7 @@ async def sdk_integrations_refresh_token(
         token_obj = stored_token
         if token_obj is None:
             # client_credentials path — fetch (or later create) the user_id=NULL row
-            token_result = await db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.provider_id == provider.id,
-                    OAuthToken.user_id.is_(None),
-                )
-            )
-            token_obj = token_result.scalars().first()
+            token_obj = await _get_oauth_token_for_scope(db, provider.id, org_uuid)
 
         if token_obj:
             token_obj.encrypted_access_token = outcome["encrypted_access_token"]
@@ -2588,4 +2632,3 @@ async def cli_list_tables(
         )
         for t in tables
     ]
-
