@@ -56,169 +56,98 @@ _INLINE_ORG_RE = re.compile(
     r"\b\w+\.organization_id\s*(?:==|\.is_\s*\(|\.in_\s*\()"
 )
 
-# Lines that are exempt from the no-inline rule. Each entry is
-# (file_relative_to_api_root, line_number, reason).
+# Lines that are exempt from the no-inline rule. Keyed by content, not
+# line number — line numbers are too fragile under any refactor that
+# adds/removes lines above. Each entry is
+# ``(file_relative_to_api_root, line_content_stripped, reason)``.
 #
 # The goal of phases 4-7 is to SHRINK this list. Adding a new entry should
-# be rare and obvious in code review.
-ALLOW_LIST_INLINE_ORG: set[tuple[str, int, str]] = {
-    # --- Repository classes that happen to live in routers/ ---
-    # Phase 6 relocates these to repositories/. While they're here, the
-    # cascade primitives inside their overridden methods are legal because
-    # they reimplement OrgScopedRepository semantics (they ARE the cascade,
-    # just in the wrong file).
-    ("routers/applications.py", 167, "ApplicationRepository cascade override; phase 6 relocates"),
-    ("routers/applications.py", 171, "ApplicationRepository cascade override; phase 6 relocates"),
-    ("routers/config.py", 83, "ConfigRepository cascade override; phase 5 absorbs into base"),
-    ("routers/config.py", 85, "ConfigRepository cascade override; phase 5 absorbs into base"),
-    ("routers/config.py", 92, "ConfigRepository cascade override; phase 5 absorbs into base"),
-    ("routers/config.py", 93, "ConfigRepository cascade override; phase 5 absorbs into base"),
-    ("routers/config.py", 97, "ConfigRepository cascade override; phase 5 absorbs into base"),
-    ("routers/config.py", 145, "ConfigRepository cascade override; phase 5 absorbs into base"),
-    ("routers/tables.py", 241, "TableRepository cascade override; phase 6 relocates"),
-    ("routers/tables.py", 244, "TableRepository cascade override; phase 6 relocates"),
-    ("routers/tables.py", 266, "TableRepository cascade override; phase 6 relocates"),
-
-    # --- Inline cascades the migration phases will remove ---
-    # SDK Tables endpoints — phase 6 migrates to TableRepository.get/list.
-    ("routers/cli.py", 2537, "cli_create_table uniqueness check; phase 6 migrates"),
-    ("routers/cli.py", 2599, "cli_list_tables inline cascade; phase 6 migrates"),
-    ("routers/cli.py", 2600, "cli_list_tables inline cascade; phase 6 migrates"),
-    ("routers/cli.py", 2604, "cli_list_tables inline cascade; phase 6 migrates"),
-
-    # SDK Config endpoints — phase 5 migrates to ConfigRepository.
-    ("routers/cli.py", 517, "cli config_set inline; phase 5 migrates"),
-    ("routers/cli.py", 615, "cli config_delete inline; phase 5 migrates"),
-
-    # Workflows endpoint cascade — uses WorkflowRepository elsewhere but
-    # has its own inline filtering for the listing endpoint. Phase 6 sweep.
-    ("routers/workflows.py", 395, "workflows list inline cascade; phase 6 migrates"),
-    ("routers/workflows.py", 398, "workflows list inline cascade; phase 6 migrates"),
-    ("routers/workflows.py", 403, "workflows list inline cascade; phase 6 migrates"),
-    ("routers/workflows.py", 404, "workflows list inline cascade; phase 6 migrates"),
-    ("routers/workflows.py", 531, "workflow detail forms filter; phase 6 migrates"),
-    ("routers/workflows.py", 584, "workflow detail agents filter; phase 6 migrates"),
-    ("routers/workflows.py", 605, "workflow detail apps filter; phase 6 migrates"),
-
-    # Agents endpoint — MCP connection lookup by org. Phase 6 sweep.
-    ("routers/agents.py", 458, "agents MCPConnection lookup; phase 6 migrates via MCPConnectionRepository"),
-
-    # Tools endpoint — Workflow list with cascade. Phase 6 sweep.
-    ("routers/tools.py", 111, "tools workflow list; phase 6 migrates"),
-    ("routers/tools.py", 113, "tools workflow list; phase 6 migrates"),
-
-    # Websocket — Table org filter for subscription. Phase 6 sweep.
-    ("routers/websocket.py", 95, "websocket table subscription filter; phase 6 migrates"),
-    ("routers/websocket.py", 96, "websocket table subscription filter; phase 6 migrates"),
-
-    # Tables endpoint — custom claim cross-reference. Phase 6 sweep.
-    ("routers/tables.py", 694, "tables custom claim cross-ref; phase 6 migrates via CustomClaimRepository"),
-
-    # Claims router — CustomClaim and Table lookups; phase 6 migrates.
-    ("routers/claims.py", 68, "claim table lookup; phase 6 migrates"),
-    ("routers/claims.py", 95, "claim refs lookup; phase 6 migrates"),
-    ("routers/claims.py", 116, "claim list query; phase 6 migrates via CustomClaimRepository"),
-    ("routers/claims.py", 135, "claim table access cross-ref; phase 6 migrates"),
-    ("routers/claims.py", 177, "claim list with filter; phase 6 migrates"),
-    ("routers/claims.py", 196, "claim get-by-name; phase 6 migrates"),
-    ("routers/claims.py", 271, "claim update-by-name; phase 6 migrates"),
-    ("routers/claims.py", 319, "claim delete-by-name; phase 6 migrates"),
-
-    # Knowledge Sources router — KnowledgeStore lookups; phase 6 migrates.
-    ("routers/knowledge_sources.py", 137, "knowledge namespace role lookup; phase 6 migrates"),
-    ("routers/knowledge_sources.py", 219, "knowledge stores list global; phase 6 migrates"),
-    ("routers/knowledge_sources.py", 221, "knowledge stores list scoped; phase 6 migrates"),
-    ("routers/knowledge_sources.py", 225, "knowledge stores cascade; phase 6 migrates"),
-    ("routers/knowledge_sources.py", 226, "knowledge stores cascade; phase 6 migrates"),
-    ("routers/knowledge_sources.py", 301, "knowledge store target lookup; phase 6 migrates"),
-    ("routers/knowledge_sources.py", 363, "knowledge stores list global (2); phase 6 migrates"),
-    ("routers/knowledge_sources.py", 365, "knowledge stores list scoped (2); phase 6 migrates"),
-    ("routers/knowledge_sources.py", 369, "knowledge stores cascade (2); phase 6 migrates"),
-    ("routers/knowledge_sources.py", 370, "knowledge stores cascade (2); phase 6 migrates"),
-    ("routers/knowledge_sources.py", 520, "knowledge store target lookup (2); phase 6 migrates"),
-
-    # MCP Connections router — phase 6 migrates via MCPConnectionRepository.
-    ("routers/mcp_connections.py", 459, "MCP connection org filter; phase 6 migrates"),
-
-    # OAuth Connections router — phase 4 migrates via OAuthProvider/TokenRepository.
-    ("routers/oauth_connections.py", 145, "OAuthProvider cascade; phase 4 migrates"),
-    ("routers/oauth_connections.py", 146, "OAuthProvider cascade; phase 4 migrates"),
-    ("routers/oauth_connections.py", 150, "OAuthProvider global filter; phase 4 migrates"),
-    ("routers/oauth_connections.py", 288, "OAuthToken scoped filter; phase 4 migrates"),
-    ("routers/oauth_connections.py", 290, "OAuthToken global filter; phase 4 migrates"),
-
-    # Integrations router — ConfigModel lookups for integration config storage;
-    # phase 5 migrates via ConfigRepository.
-    ("routers/integrations.py", 301, "integration mapping cascade; phase 6 migrates"),
-    ("routers/integrations.py", 437, "integration config global lookup; phase 5 migrates"),
-    ("routers/integrations.py", 443, "integration config org lookup; phase 5 migrates"),
-    ("routers/integrations.py", 565, "integration config global lookup (2); phase 5 migrates"),
-    ("routers/integrations.py", 589, "integration config org lookup (2); phase 5 migrates"),
-
-    # Export/Import router — manifest sync touches every execution-resolution
-    # entity. Migrating these is in scope for phase 8 follow-up
-    # (manifest sync _resolve_* audit). Allow-listed until then.
-    ("routers/export_import.py", 334, "manifest sync config cascade; phase 8 follow-up"),
-    ("routers/export_import.py", 336, "manifest sync config cascade; phase 8 follow-up"),
-    ("routers/export_import.py", 359, "manifest sync config global filter; phase 8 follow-up"),
-    ("routers/export_import.py", 551, "manifest sync knowledge org lookup; phase 8 follow-up"),
-    ("routers/export_import.py", 553, "manifest sync knowledge global filter; phase 8 follow-up"),
-    ("routers/export_import.py", 622, "manifest sync table org lookup; phase 8 follow-up"),
-    ("routers/export_import.py", 624, "manifest sync table global filter; phase 8 follow-up"),
-    ("routers/export_import.py", 757, "manifest sync config org lookup; phase 8 follow-up"),
-    ("routers/export_import.py", 759, "manifest sync config global filter; phase 8 follow-up"),
-    ("routers/export_import.py", 918, "manifest sync mapping org lookup; phase 8 follow-up"),
-    ("routers/export_import.py", 920, "manifest sync mapping global filter; phase 8 follow-up"),
-    ("routers/export_import.py", 1117, "manifest sync config org check; phase 8 follow-up"),
-    ("routers/export_import.py", 1119, "manifest sync config global check; phase 8 follow-up"),
-
-    # --- Identity-entity scope filters (legitimate; permanent allow-list) ---
-    # Reports filter aggregated telemetry by org. These tables are identity
-    # entities (no cascade), so the filter is a normal WHERE on a column
-    # value, not a cascade query.
-    ("routers/usage_reports.py", 84, "AIUsage identity-entity scope filter"),
-    ("routers/usage_reports.py", 115, "Execution identity-entity scope filter"),
-    ("routers/usage_reports.py", 182, "AIUsage identity-entity scope filter"),
-    ("routers/usage_reports.py", 223, "AIUsage identity-entity scope filter"),
-    ("routers/usage_reports.py", 263, "AIUsage identity-entity scope filter"),
-    ("routers/usage_reports.py", 296, "AIUsage join to Organization"),
-    ("routers/usage_reports.py", 353, "KnowledgeStorageDaily join to Organization"),
-    ("routers/usage_reports.py", 362, "KnowledgeStorageDaily identity-entity scope filter"),
-    ("routers/usage_reports.py", 393, "KnowledgeStorageDaily identity-entity scope filter"),
-    ("routers/roi_reports.py", 121, "ExecutionMetricsDaily identity-entity scope filter"),
-    ("routers/roi_reports.py", 123, "ExecutionMetricsDaily identity-entity scope filter"),
-    ("routers/roi_reports.py", 231, "WorkflowROIDaily identity-entity scope filter"),
-    ("routers/roi_reports.py", 233, "WorkflowROIDaily identity-entity scope filter"),
-    ("routers/roi_reports.py", 310, "ExecutionMetricsDaily join to Organization"),
-    ("routers/roi_reports.py", 436, "ExecutionMetricsDaily identity-entity scope filter"),
-    ("routers/roi_reports.py", 438, "ExecutionMetricsDaily identity-entity scope filter"),
-    ("routers/executions.py", 79, "Execution identity-entity scope filter"),
-    ("routers/metrics.py", 234, "ExecutionMetricsDaily identity-entity scope filter"),
-    ("routers/metrics.py", 237, "ExecutionMetricsDaily identity-entity scope filter"),
-    ("routers/metrics.py", 314, "ExecutionMetricsDaily join to Organization"),
-    ("routers/metrics.py", 389, "ExecutionMetricsDaily identity-entity scope filter"),
-    ("routers/users.py", 91, "User identity-entity scope filter"),
-    ("routers/users.py", 94, "User identity-entity scope filter"),
-    ("routers/users.py", 97, "User identity-entity scope filter"),
-    ("routers/roles.py", 1072, "KnowledgeNamespaceRole identity-entity scope filter"),
-
-    # --- SystemConfig admin endpoints (permanent for now) ---
-    # SystemConfig is execution-resolution but has admin-only access patterns
-    # that pre-date the repository. Phase 6+ may migrate; allow-listed today.
-    ("routers/llm_config.py", 330, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/llm_config.py", 405, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/llm_config.py", 433, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/llm_config.py", 617, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/llm_config.py", 666, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/llm_config.py", 753, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/llm_config.py", 767, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/oauth_connections.py", 1155, "SystemConfig admin lookup; pre-repo pattern"),
-    ("routers/oauth_connections.py", 1218, "SystemConfig admin lookup; pre-repo pattern"),
-
-    # --- Documentation strings (cli.py module docstring) ---
-    # The module docstring describes inline cascades as something to avoid.
-    # Matching text in a string literal trips the regex. Allow-listed.
-    ("routers/cli.py", 17, "module docstring describing what NOT to do"),
+# be rare and obvious in code review. Removing an entry signals migration
+# progress.
+ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
+    ('routers/agents.py', 'MCPConnection.organization_id == agent_data.organization_id,', 'agents MCPConnection lookup; phase 6 migrates via MCPConnectionRepository'),
+    ('routers/applications.py', 'query = query.where(self.model.organization_id.is_(None))', 'ApplicationRepository cascade override; phase 6 relocates'),
+    ('routers/applications.py', 'query = query.where(self.model.organization_id == self.org_id)', 'ApplicationRepository cascade override; phase 6 relocates'),
+    ('routers/claims.py', 'Table.organization_id == org_id, Table.name == table_name', 'claims inline lookups; phase 6 migrates via CustomClaimRepository'),
+    ('routers/claims.py', 'ClaimORM.organization_id == org_id, ClaimORM.name.in_(refs)', 'claims inline lookups; phase 6 migrates via CustomClaimRepository'),
+    ('routers/claims.py', 'select(ClaimORM).where(ClaimORM.organization_id == org_id)', 'claims inline lookups; phase 6 migrates via CustomClaimRepository'),
+    ('routers/claims.py', 'Table.organization_id == org_id, Table.access.is_not(None)', 'claims inline lookups; phase 6 migrates via CustomClaimRepository'),
+    ('routers/claims.py', 'stmt = stmt.where(ClaimORM.organization_id == filter_org)', 'claims inline lookups; phase 6 migrates via CustomClaimRepository'),
+    ('routers/claims.py', 'ClaimORM.organization_id == org_id, ClaimORM.name == name', 'claims inline lookups; phase 6 migrates via CustomClaimRepository'),
+    ('routers/cli.py', 'ConfigModel.organization_id == org_uuid,', 'cli config inline; phase 5 migrates'),
+    ('routers/cli.py', 'Table.organization_id == org_uuid,', 'cli_create_table / cli_list_tables inline; phase 6 migrates'),
+    ('routers/cli.py', 'Table.organization_id.is_(None),', 'cli_create_table / cli_list_tables inline; phase 6 migrates'),
+    ('routers/cli.py', 'stmt = stmt.where(Table.organization_id.is_(None))', 'cli_list_tables inline; phase 6 migrates'),
+    ('routers/config.py', 'query = query.where(self.model.organization_id.is_(None))', 'ConfigRepository cascade override; phase 5 absorbs into base'),
+    ('routers/config.py', 'query = query.where(self.model.organization_id == self.org_id)', 'ConfigRepository cascade override; phase 5 absorbs into base'),
+    ('routers/config.py', 'self.model.organization_id == self.org_id,', 'ConfigRepository cascade override; phase 5 absorbs into base'),
+    ('routers/config.py', 'self.model.organization_id.is_(None),', 'ConfigRepository cascade override; phase 5 absorbs into base'),
+    ('routers/executions.py', 'query = query.where(ExecutionModel.organization_id == org_id)', 'Execution identity-entity filter (permanent)'),
+    ('routers/export_import.py', 'Config.organization_id == mapping.organization_id', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'else Config.organization_id.is_(None),', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'Config.organization_id.is_(None),', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'existing_query = existing_query.where(KnowledgeStore.organization_id == org_id)', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'existing_query = existing_query.where(KnowledgeStore.organization_id.is_(None))', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'existing_query = existing_query.where(Table.organization_id == org_id)', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'existing_query = existing_query.where(Table.organization_id.is_(None))', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'existing_query = existing_query.where(Config.organization_id == org_id)', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'existing_query = existing_query.where(Config.organization_id.is_(None))', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'mapping_query = mapping_query.where(IntegrationMapping.organization_id == org_id)', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/export_import.py', 'mapping_query = mapping_query.where(IntegrationMapping.organization_id.is_(None))', 'manifest sync inline; phase 8 follow-up'),
+    ('routers/integrations.py', 'IntegrationMapping.organization_id == org_id,', 'integration mapping inline; phase 6 migrates'),
+    ('routers/integrations.py', 'ConfigModel.organization_id.is_(None),', 'integration config inline; phase 5 migrates'),
+    ('routers/integrations.py', 'ConfigModel.organization_id == organization_id,', 'integration config inline; phase 5 migrates'),
+    ('routers/integrations.py', 'ConfigModel.organization_id == org_id,', 'integration config inline; phase 5 migrates'),
+    ('routers/knowledge_sources.py', 'KnowledgeNamespaceRole.organization_id == org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
+    ('routers/knowledge_sources.py', 'stmt = stmt.where(KnowledgeStore.organization_id.is_(None))', 'knowledge sources inline cascade; phase 6 migrates'),
+    ('routers/knowledge_sources.py', 'stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)', 'knowledge sources inline cascade; phase 6 migrates'),
+    ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id == filter_org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
+    ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id.is_(None),', 'knowledge sources inline cascade; phase 6 migrates'),
+    ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id == target_org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
+    ('routers/llm_config.py', 'SystemConfig.organization_id.is_(None),', 'SystemConfig admin lookup; pre-repo pattern (permanent)'),
+    ('routers/mcp_connections.py', 'query = query.where(MCPConnection.organization_id == scope_org)', 'MCP connection org filter; phase 6 migrates'),
+    ('routers/metrics.py', 'query = query.where(ExecutionMetricsDaily.organization_id == org_uuid)', 'ExecutionMetricsDaily identity-entity filter (permanent)'),
+    ('routers/metrics.py', 'query = query.where(ExecutionMetricsDaily.organization_id.is_(None))', 'ExecutionMetricsDaily identity-entity filter (permanent)'),
+    ('routers/metrics.py', '.join(Organization, ExecutionMetricsDaily.organization_id == Organization.id)', 'ExecutionMetricsDaily identity-entity filter (permanent)'),
+    ('routers/metrics.py', '.where(ExecutionMetricsDaily.organization_id.is_(None))', 'ExecutionMetricsDaily identity-entity filter (permanent)'),
+    ('routers/oauth_connections.py', 'OAuthProvider.organization_id == org_id,', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
+    ('routers/oauth_connections.py', 'OAuthProvider.organization_id.is_(None),', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
+    ('routers/oauth_connections.py', 'query = query.where(OAuthProvider.organization_id.is_(None))', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
+    ('routers/oauth_connections.py', 'query = query.where(OAuthToken.organization_id == org_id)', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
+    ('routers/oauth_connections.py', 'query = query.where(OAuthToken.organization_id.is_(None))', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
+    ('routers/oauth_connections.py', 'SystemConfig.organization_id.is_(None),  # Global system config', 'SystemConfig admin lookup; pre-repo pattern (permanent)'),
+    ('routers/oauth_connections.py', 'SystemConfig.organization_id.is_(None),', 'SystemConfig admin lookup; pre-repo pattern (permanent)'),
+    ('routers/roi_reports.py', 'query = query.where(ExecutionMetricsDaily.organization_id.is_(None))', 'identity-entity scope filter (permanent)'),
+    ('routers/roi_reports.py', 'query = query.where(ExecutionMetricsDaily.organization_id == org_uuid)', 'identity-entity scope filter (permanent)'),
+    ('routers/roi_reports.py', 'query = query.where(WorkflowROIDaily.organization_id.is_(None))', 'identity-entity scope filter (permanent)'),
+    ('routers/roi_reports.py', 'query = query.where(WorkflowROIDaily.organization_id == org_uuid)', 'identity-entity scope filter (permanent)'),
+    ('routers/roi_reports.py', '.join(Organization, ExecutionMetricsDaily.organization_id == Organization.id)', 'identity-entity scope filter (permanent)'),
+    ('routers/roles.py', 'KnowledgeNamespaceRoleORM.organization_id == entry.organization_id,', 'KnowledgeNamespaceRole identity-entity filter (permanent)'),
+    ('routers/tables.py', 'query = query.where(self.model.organization_id.is_(None))', 'TableRepository cascade override; phase 6 relocates'),
+    ('routers/tables.py', 'query = query.where(self.model.organization_id == self.org_id)', 'TableRepository cascade override; phase 6 relocates'),
+    ('routers/tables.py', 'self.model.organization_id == self.org_id,', 'TableRepository cascade override; phase 6 relocates'),
+    ('routers/tables.py', 'CustomClaimORM.organization_id == organization_id', 'tables custom claim cross-ref; phase 6 migrates'),
+    ('routers/tools.py', 'query = query.where(Workflow.organization_id == filter_org_id)', 'tools workflow list; phase 6 migrates'),
+    ('routers/tools.py', 'query = query.where(Workflow.organization_id.is_(None))', 'tools workflow list; phase 6 migrates'),
+    ('routers/usage_reports.py', 'base_conditions.append(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
+    ('routers/usage_reports.py', 'exec_conditions.append(Execution.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
+    ('routers/usage_reports.py', 'workflow_query = workflow_query.where(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
+    ('routers/usage_reports.py', 'conv_query = conv_query.where(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
+    ('routers/usage_reports.py', 'agent_query = agent_query.where(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
+    ('routers/usage_reports.py', '.join(Organization, AIUsage.organization_id == Organization.id)', 'identity-entity scope filter (permanent)'),
+    ('routers/usage_reports.py', 'Organization, KnowledgeStorageDaily.organization_id == Organization.id', 'identity-entity scope filter (permanent)'),
+    ('routers/usage_reports.py', 'KnowledgeStorageDaily.organization_id == filter_org_id', 'identity-entity scope filter (permanent)'),
+    ('routers/users.py', 'query = query.where(UserORM.organization_id.is_(None))', 'User identity-entity filter (permanent)'),
+    ('routers/users.py', 'query = query.where(UserORM.organization_id == filter_org)', 'User identity-entity filter (permanent)'),
+    ('routers/websocket.py', '(TableOrm.organization_id == user.organization_id)', 'websocket table subscription filter; phase 6 migrates'),
+    ('routers/websocket.py', '| (TableOrm.organization_id.is_(None))', 'websocket table subscription filter; phase 6 migrates'),
+    ('routers/workflows.py', 'query = query.where(WorkflowORM.organization_id.is_(None))', 'workflows inline cascade; phase 6 migrates'),
+    ('routers/workflows.py', 'query = query.where(WorkflowORM.organization_id == filter_org)', 'workflows inline cascade; phase 6 migrates'),
+    ('routers/workflows.py', 'WorkflowORM.organization_id == filter_org,', 'workflows inline cascade; phase 6 migrates'),
+    ('routers/workflows.py', 'WorkflowORM.organization_id.is_(None),', 'workflows inline cascade; phase 6 migrates'),
+    ('routers/workflows.py', 'forms_query = forms_query.where(Form.organization_id == org_filter)', 'workflows inline cascade; phase 6 migrates'),
+    ('routers/workflows.py', 'agents_query = agents_query.where(Agent.organization_id == org_filter)', 'workflows inline cascade; phase 6 migrates'),
+    ('routers/workflows.py', 'apps_base_query = apps_base_query.where(Application.organization_id == org_filter)', 'workflows inline cascade; phase 6 migrates'),
 }
 
 
@@ -239,17 +168,18 @@ class TestNoInlineOrgScopingInRouters:
     """
 
     def test_routers_have_no_unallowlisted_inline_org_filters(self) -> None:
-        violations: list[tuple[str, int, str]] = []
+        # Build a (file, content) -> reason map from the allow-list. Content
+        # match means line-number reshuffling doesn't break the test; only
+        # actual NEW code introduces a violation.
+        allowed: set[tuple[str, str]] = {
+            (entry[0], entry[1]) for entry in ALLOW_LIST_INLINE_ORG
+        }
 
+        violations: list[tuple[str, int, str]] = []
         for py_file in sorted(ROUTERS_DIR.rglob("*.py")):
             rel = py_file.relative_to(API_ROOT).as_posix()
             for line_number, content in _scan_file_for_inline_org(py_file):
-                # Check allow-list (file, line) ignoring the reason column.
-                allowlisted = any(
-                    rel == entry[0] and line_number == entry[1]
-                    for entry in ALLOW_LIST_INLINE_ORG
-                )
-                if not allowlisted:
+                if (rel, content) not in allowed:
                     violations.append((rel, line_number, content))
 
         if violations:
@@ -260,7 +190,39 @@ class TestNoInlineOrgScopingInRouters:
                 "Found inline organization_id filters in routers that are not on "
                 "the allow-list. Either migrate the code to OrgScopedRepository "
                 "(see api/src/repositories/README.md) or, if legitimate, add an "
-                f"allow-list entry with a one-line justification:\n{details}"
+                "allow-list entry (file, stripped-content, reason) with a "
+                f"one-line justification:\n{details}"
+            )
+
+    def test_allowlist_entries_still_exist(self) -> None:
+        """If an allow-list entry no longer matches any code in the named
+        file, it's stale and should be removed.
+
+        This is what makes shrinking the list a positive signal: migrating
+        an entry's line out of the codebase forces the allow-list entry
+        to be deleted too (otherwise this test fails).
+        """
+        # Build (file, content) set from current scan.
+        current_violations: set[tuple[str, str]] = set()
+        for py_file in sorted(ROUTERS_DIR.rglob("*.py")):
+            rel = py_file.relative_to(API_ROOT).as_posix()
+            for _line, content in _scan_file_for_inline_org(py_file):
+                current_violations.add((rel, content))
+
+        stale: list[tuple[str, str, str]] = []
+        for file_rel, content, reason in ALLOW_LIST_INLINE_ORG:
+            if (file_rel, content) not in current_violations:
+                stale.append((file_rel, content, reason))
+
+        if stale:
+            details = "\n".join(
+                f"  ({file!r}, {content!r}, {reason!r})"
+                for file, content, reason in stale
+            )
+            pytest.fail(
+                "Allow-list entries that no longer match any code in the named "
+                "file. Remove them from ALLOW_LIST_INLINE_ORG — they're stale.\n"
+                f"{details}"
             )
 
 

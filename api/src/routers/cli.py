@@ -658,6 +658,7 @@ async def sdk_integrations_get(
        integration.default_entity_id, integration-level config, and OAuth data
     """
     from src.repositories.integrations import IntegrationsRepository
+    from src.repositories.oauth import OAuthTokenRepository
     from src.services.oauth_provider import resolve_url_template
     from src.core.security import decrypt_secret
 
@@ -692,7 +693,14 @@ async def sdk_integrations_get(
             if integration and integration.oauth_provider:
                 token = mapping.oauth_token
                 if not token:
-                    token = await repo.get_provider_org_token(integration.oauth_provider.id)
+                    # Cascade: prefer org-scoped token, fall back to global.
+                    # See api/src/repositories/README.md for the pattern.
+                    oauth_token_repo = OAuthTokenRepository(
+                        db, org_id=org_uuid, is_superuser=True
+                    )
+                    token = await oauth_token_repo.get_org_level_for_provider(
+                        integration.oauth_provider.id
+                    )
                 response_data["oauth"] = await _build_oauth_data(
                     integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret,
                     oauth_scope=request.oauth_scope,
@@ -722,7 +730,14 @@ async def sdk_integrations_get(
 
         # Build OAuth data if provider exists
         if integration.oauth_provider:
-            token = await repo.get_provider_org_token(integration.oauth_provider.id)
+            # Cascade: prefer org-scoped token, fall back to global.
+            # See api/src/repositories/README.md for the pattern.
+            oauth_token_repo = OAuthTokenRepository(
+                db, org_id=org_uuid, is_superuser=True
+            )
+            token = await oauth_token_repo.get_org_level_for_provider(
+                integration.oauth_provider.id
+            )
             response_data["oauth"] = await _build_oauth_data(
                 integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret,
                 oauth_scope=request.oauth_scope,
@@ -1114,7 +1129,11 @@ async def sdk_integrations_refresh_token(
     :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
     only owns the provider lookup, context build, and persistence.
     """
-    from src.models.orm.oauth import OAuthProvider, OAuthToken
+    from src.models.orm.oauth import OAuthToken
+    from src.repositories.oauth import (
+        OAuthProviderRepository,
+        OAuthTokenRepository,
+    )
     from src.services.oauth_provider import (
         build_token_refresh_context,
         refresh_oauth_token_http,
@@ -1124,13 +1143,12 @@ async def sdk_integrations_refresh_token(
     org_uuid = UUID(org_id) if org_id else None
 
     try:
-        # Look up provider by connection_name (== provider_name)
-        result = await db.execute(
-            select(OAuthProvider).where(
-                OAuthProvider.provider_name == request.connection_name
-            )
+        # Cascade: prefer org-scoped provider, fall back to global.
+        # See api/src/repositories/README.md for the pattern.
+        provider_repo = OAuthProviderRepository(
+            db, org_id=org_uuid, is_superuser=True
         )
-        provider = result.scalars().first()
+        provider = await provider_repo.get(provider_name=request.connection_name)
 
         if not provider:
             raise HTTPException(
@@ -1140,15 +1158,12 @@ async def sdk_integrations_refresh_token(
 
         # For authorization_code flow we need the stored token up front so
         # build_token_refresh_context can carry the encrypted refresh token.
+        token_repo = OAuthTokenRepository(
+            db, org_id=org_uuid, is_superuser=True
+        )
         stored_token = None
         if provider.oauth_flow_type == "authorization_code":
-            token_result = await db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.provider_id == provider.id,
-                    OAuthToken.user_id.is_(None),
-                )
-            )
-            stored_token = token_result.scalars().first()
+            stored_token = await token_repo.get_org_level_for_provider(provider.id)
             if not stored_token or not stored_token.encrypted_refresh_token:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1196,14 +1211,9 @@ async def sdk_integrations_refresh_token(
         # remains per-caller.
         token_obj = stored_token
         if token_obj is None:
-            # client_credentials path — fetch (or later create) the user_id=NULL row
-            token_result = await db.execute(
-                select(OAuthToken).where(
-                    OAuthToken.provider_id == provider.id,
-                    OAuthToken.user_id.is_(None),
-                )
-            )
-            token_obj = token_result.scalars().first()
+            # client_credentials path — fetch (or later create) the user_id=NULL row.
+            # Cascade: prefer org-scoped token, fall back to global.
+            token_obj = await token_repo.get_org_level_for_provider(provider.id)
 
         if token_obj:
             token_obj.encrypted_access_token = outcome["encrypted_access_token"]

@@ -11,6 +11,23 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
 
 
+def _make_result(value):
+    """Build a SQLAlchemy result mock that supports both access shapes.
+
+    Phase 4 of the org-scoping overhaul migrated this handler from
+    ``result.scalars().first()`` (raw queries) to
+    ``result.scalar_one_or_none()`` (via ``OrgScopedRepository.get``).
+    The tests mock at the db.execute() level, so each result mock must
+    answer both shapes — otherwise a mock set up for the old shape
+    silently returns a MagicMock for the new shape, and the test fails
+    in confusing ways far from the mock site.
+    """
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = value
+    result.scalar_one_or_none.return_value = value
+    return result
+
+
 class TestRefreshTokenClientCredentials:
     """Test refresh_token endpoint for client_credentials flows."""
 
@@ -48,10 +65,8 @@ class TestRefreshTokenClientCredentials:
         # Mock DB execute:
         #   1. provider lookup
         #   2. persist-time token lookup (client_credentials branch)
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = None
+        provider_result = _make_result(mock_provider)
+        token_result = _make_result(None)
 
         mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
         mock_db.add = MagicMock()
@@ -120,10 +135,8 @@ class TestRefreshTokenClientCredentials:
         # Existing token
         mock_existing_token = MagicMock()
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = mock_existing_token
+        provider_result = _make_result(mock_provider)
+        token_result = _make_result(mock_existing_token)
 
         mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
         mock_db.add = MagicMock()
@@ -190,11 +203,9 @@ class TestRefreshTokenAuthorizationCode:
         mock_stored_token.id = uuid4()
         mock_stored_token.encrypted_refresh_token = b"encrypted-refresh-token"
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
+        provider_result = _make_result(mock_provider)
 
-        token_for_refresh = MagicMock()
-        token_for_refresh.scalars.return_value.first.return_value = mock_stored_token
+        token_for_refresh = _make_result(mock_stored_token)
 
         # In the new adapter-shaped handler, the stored token loaded up front
         # is the same row we persist into — no second lookup is issued.
@@ -269,10 +280,8 @@ class TestRefreshTokenAuthorizationCode:
         mock_stored_token.id = uuid4()
         mock_stored_token.encrypted_refresh_token = b"encrypted-refresh-token"
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = mock_stored_token
+        provider_result = _make_result(mock_provider)
+        token_result = _make_result(mock_stored_token)
 
         mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
         mock_db.commit = AsyncMock()
@@ -336,11 +345,9 @@ class TestRefreshTokenAuthorizationCode:
         mock_stored_token = MagicMock()
         mock_stored_token.encrypted_refresh_token = None
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
+        provider_result = _make_result(mock_provider)
 
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = mock_stored_token
+        token_result = _make_result(mock_stored_token)
 
         mock_db.execute = AsyncMock(side_effect=[
             provider_result,
@@ -375,8 +382,7 @@ class TestRefreshTokenErrorHandling:
         mock_db = AsyncMock()
 
         # Provider not found
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = None
+        provider_result = _make_result(None)
         mock_db.execute = AsyncMock(return_value=provider_result)
 
         with (
@@ -414,8 +420,7 @@ class TestRefreshTokenErrorHandling:
         mock_provider.organization_id = None
         mock_provider.audience = None
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
+        provider_result = _make_result(mock_provider)
         mock_db.execute = AsyncMock(return_value=provider_result)
 
         with (

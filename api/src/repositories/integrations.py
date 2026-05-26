@@ -709,25 +709,10 @@ class IntegrationsRepository(BaseRepository[Integration]):
 
         return config
 
-    async def get_provider_org_token(self, provider_id: UUID) -> Any:
-        """
-        Get org-level OAuth token for a provider (user_id=NULL).
-
-        Used when getting integration defaults - returns the org-level
-        token that's not tied to a specific user.
-
-        Args:
-            provider_id: OAuthProvider UUID
-
-        Returns:
-            OAuthToken or None if not found
-        """
-        from src.models.orm.oauth import OAuthToken
-
-        result = await self.session.execute(
-            select(OAuthToken).where(
-                OAuthToken.provider_id == provider_id,
-                OAuthToken.user_id.is_(None),
-            )
-        )
-        return result.scalars().first()
+# Deleted (2026-05): get_provider_org_token had no organization_id filter
+# and could return any org's user_id=NULL token. The cross-tenant token
+# leak is fixed by routing all OAuth token reads through
+# OAuthTokenRepository.get_org_level_for_provider in
+# api/src/repositories/oauth.py, which applies the standard cascade
+# (org-specific preferred, falls back to global) and never silently
+# returns another org's token.
