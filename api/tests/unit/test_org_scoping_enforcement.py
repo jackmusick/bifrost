@@ -109,11 +109,10 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/metrics.py', 'query = query.where(ExecutionMetricsDaily.organization_id.is_(None))', 'ExecutionMetricsDaily identity-entity filter (permanent)'),
     ('routers/metrics.py', '.join(Organization, ExecutionMetricsDaily.organization_id == Organization.id)', 'ExecutionMetricsDaily identity-entity filter (permanent)'),
     ('routers/metrics.py', '.where(ExecutionMetricsDaily.organization_id.is_(None))', 'ExecutionMetricsDaily identity-entity filter (permanent)'),
-    ('routers/oauth_connections.py', 'OAuthProvider.organization_id == org_id,', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
-    ('routers/oauth_connections.py', 'OAuthProvider.organization_id.is_(None),', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
-    ('routers/oauth_connections.py', 'query = query.where(OAuthProvider.organization_id.is_(None))', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
-    ('routers/oauth_connections.py', 'query = query.where(OAuthToken.organization_id == org_id)', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
-    ('routers/oauth_connections.py', 'query = query.where(OAuthToken.organization_id.is_(None))', 'OAuthProvider/Token inline; phase 6 (UI surface) migrates'),
+    # OAuthConnectionRepository deleted in the resumed phase 4/scope-cleanup pass.
+    # All 5 OAuthProvider/Token inline-cascade entries in oauth_connections.py
+    # disappeared with the class. The new OAuthProviderRepository in
+    # api/src/repositories/oauth.py is the canonical class.
     ('routers/oauth_connections.py', 'SystemConfig.organization_id.is_(None),  # Global system config', 'SystemConfig admin lookup; pre-repo pattern (permanent)'),
     ('routers/oauth_connections.py', 'SystemConfig.organization_id.is_(None),', 'SystemConfig admin lookup; pre-repo pattern (permanent)'),
     ('routers/roi_reports.py', 'query = query.where(ExecutionMetricsDaily.organization_id.is_(None))', 'identity-entity scope filter (permanent)'),
