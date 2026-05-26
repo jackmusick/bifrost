@@ -398,12 +398,12 @@ class TestOrgScopedModelsHaveRepository:
 
 
 SDK_ROUTER_FILES = {
-    # When phase 7 renames /api/cli/* to /api/sdk/*, update this list.
+    # When phase 7 renames /api/sdk/* to /api/sdk/*, update this list.
     ROUTERS_DIR / "cli.py",
 }
 
 
-# Endpoints under /api/cli/* that do NOT touch execution-resolution entities
+# Endpoints under /api/sdk/* that do NOT touch execution-resolution entities
 # and therefore don't need to call resolve_effective_scope. The path keys
 # below are used to identify them via the @router decorator.
 EXEMPT_SDK_ENDPOINTS: dict[str, str] = {

@@ -43,7 +43,7 @@ class TestKnowledgeStoreBasicOperations:
         """Test storing and retrieving a document by key."""
         # Store a document
         store_response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": "Python is a programming language known for its simplicity.",
@@ -58,7 +58,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Get the document by key (GET endpoint with query params)
         get_response = e2e_client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             headers=platform_admin.headers,
             params={"namespace": "e2e-test", "key": "python-intro"},
         )
@@ -100,7 +100,7 @@ class TestKnowledgeStoreBasicOperations:
 
         for doc in docs:
             response = e2e_client.post(
-                "/api/cli/knowledge/store",
+                "/api/sdk/knowledge/store",
                 headers=platform_admin.headers,
                 json=doc,
             )
@@ -108,7 +108,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Search for AI-related documents (namespace is a list)
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=platform_admin.headers,
             json={
                 "query": "What is artificial intelligence?",
@@ -143,7 +143,7 @@ class TestKnowledgeStoreBasicOperations:
         )
 
         store_response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": long_content,
@@ -155,7 +155,7 @@ class TestKnowledgeStoreBasicOperations:
         assert store_response.status_code == 200, f"Store failed: {store_response.text}"
 
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=platform_admin.headers,
             json={
                 "query": "how do I unlock an AD account",
@@ -172,7 +172,7 @@ class TestKnowledgeStoreBasicOperations:
         assert "unlock" in top_content or "ad" in top_content
 
         filtered_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=platform_admin.headers,
             json={
                 "query": "anything",
@@ -201,7 +201,7 @@ class TestKnowledgeStoreBasicOperations:
         """A multi-chunk document appears at most once in default search."""
         long_content = ("Body content sentence. " * 500).strip()
         store_response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": long_content,
@@ -213,7 +213,7 @@ class TestKnowledgeStoreBasicOperations:
         assert store_response.status_code == 200, f"Store failed: {store_response.text}"
 
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=platform_admin.headers,
             json={
                 "query": "body",
@@ -236,7 +236,7 @@ class TestKnowledgeStoreBasicOperations:
         """Test deleting a document by key."""
         # Store a document
         e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": "This document will be deleted.",
@@ -247,7 +247,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Verify it exists
         get_response = e2e_client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             headers=platform_admin.headers,
             params={"namespace": "e2e-test", "key": "to-delete"},
         )
@@ -255,7 +255,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Delete it
         delete_response = e2e_client.post(
-            "/api/cli/knowledge/delete",
+            "/api/sdk/knowledge/delete",
             headers=platform_admin.headers,
             json={"namespace": "e2e-test", "key": "to-delete"},
         )
@@ -264,7 +264,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Verify it's gone
         get_response = e2e_client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             headers=platform_admin.headers,
             params={"namespace": "e2e-test", "key": "to-delete"},
         )
@@ -282,7 +282,7 @@ class TestKnowledgeStoreBasicOperations:
         # Store multiple documents
         for i in range(3):
             response = e2e_client.post(
-                "/api/cli/knowledge/store",
+                "/api/sdk/knowledge/store",
                 headers=platform_admin.headers,
                 json={
                     "content": f"Document {i} in namespace",
@@ -294,7 +294,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # List namespaces to verify
         list_response = e2e_client.get(
-            "/api/cli/knowledge/namespaces",
+            "/api/sdk/knowledge/namespaces",
             headers=platform_admin.headers,
         )
         assert list_response.status_code == 200, f"List failed: {list_response.text}"
@@ -305,7 +305,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Delete the namespace
         delete_response = e2e_client.delete(
-            "/api/cli/knowledge/namespace/e2e-test",
+            "/api/sdk/knowledge/namespace/e2e-test",
             headers=platform_admin.headers,
         )
         assert delete_response.status_code == 200
@@ -313,7 +313,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Verify namespace is empty
         list_response = e2e_client.get(
-            "/api/cli/knowledge/namespaces",
+            "/api/sdk/knowledge/namespaces",
             headers=platform_admin.headers,
         )
         namespaces = list_response.json()
@@ -331,7 +331,7 @@ class TestKnowledgeStoreBasicOperations:
         """Test that storing with same key updates existing document."""
         # Store initial document
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": "Initial content",
@@ -344,7 +344,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Upsert with same key
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": "Updated content",
@@ -357,7 +357,7 @@ class TestKnowledgeStoreBasicOperations:
 
         # Verify content was updated
         get_response = e2e_client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             headers=platform_admin.headers,
             params={"namespace": "e2e-test", "key": "upsert-test"},
         )
@@ -383,7 +383,7 @@ class TestKnowledgeStoreIsolation:
         """Test that org1 users cannot access org2's knowledge documents."""
         # Org1 stores a document (via org1_user who is scoped to org1)
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=org1_user.headers,
             json={
                 "content": "Org1 secret knowledge about their systems.",
@@ -396,7 +396,7 @@ class TestKnowledgeStoreIsolation:
 
         # Org2 stores a document
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=org2_user.headers,
             json={
                 "content": "Org2 proprietary knowledge about their processes.",
@@ -409,7 +409,7 @@ class TestKnowledgeStoreIsolation:
 
         # Org1 searches - should only find org1's document
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=org1_user.headers,
             json={
                 "query": "secret knowledge systems processes",
@@ -425,7 +425,7 @@ class TestKnowledgeStoreIsolation:
 
         # Org2 searches - should only find org2's document
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=org2_user.headers,
             json={
                 "query": "secret knowledge systems processes",
@@ -450,7 +450,7 @@ class TestKnowledgeStoreIsolation:
         """Test that org1 cannot retrieve org2's document by key."""
         # Org2 stores a document
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=org2_user.headers,
             json={
                 "content": "Org2 only document",
@@ -462,7 +462,7 @@ class TestKnowledgeStoreIsolation:
 
         # Org1 tries to get it - should fail
         get_response = e2e_client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             headers=org1_user.headers,
             params={"namespace": "e2e-isolation", "key": "org2-only"},
         )
@@ -479,7 +479,7 @@ class TestKnowledgeStoreIsolation:
         """Test that org1 cannot delete org2's document."""
         # Org2 stores a document
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=org2_user.headers,
             json={
                 "content": "Org2 protected document",
@@ -491,7 +491,7 @@ class TestKnowledgeStoreIsolation:
 
         # Org1 tries to delete it - should return deleted=False
         delete_response = e2e_client.post(
-            "/api/cli/knowledge/delete",
+            "/api/sdk/knowledge/delete",
             headers=org1_user.headers,
             json={"namespace": "e2e-isolation", "key": "org2-protected"},
         )
@@ -500,7 +500,7 @@ class TestKnowledgeStoreIsolation:
 
         # Verify org2's document still exists
         get_response = e2e_client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             headers=org2_user.headers,
             params={"namespace": "e2e-isolation", "key": "org2-protected"},
         )
@@ -519,7 +519,7 @@ class TestKnowledgeStoreGlobalScope:
     ):
         """Test that platform admin can store globally scoped documents."""
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": "Global company policy on data handling.",
@@ -531,7 +531,7 @@ class TestKnowledgeStoreGlobalScope:
         assert response.status_code == 200, f"Store failed: {response.text}"
         # Store returns {"id": ...}, verify via get
         get_response = e2e_client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             headers=platform_admin.headers,
             params={"namespace": "e2e-global", "key": "data-policy", "scope": "global"},
         )
@@ -551,7 +551,7 @@ class TestKnowledgeStoreGlobalScope:
         """Test that global documents are visible via search fallback."""
         # Store a global document
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": "Global FAQ about password reset procedures.",
@@ -564,7 +564,7 @@ class TestKnowledgeStoreGlobalScope:
 
         # Org1 can find it via search (fallback=True by default)
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=org1_user.headers,
             json={
                 "query": "How do I reset my password?",
@@ -579,7 +579,7 @@ class TestKnowledgeStoreGlobalScope:
 
         # Org2 can also find it
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=org2_user.headers,
             json={
                 "query": "How do I reset my password?",
@@ -628,7 +628,7 @@ class TestKnowledgeStoreMetadataFiltering:
 
         for doc in docs:
             response = e2e_client.post(
-                "/api/cli/knowledge/store",
+                "/api/sdk/knowledge/store",
                 headers=platform_admin.headers,
                 json=doc,
             )
@@ -636,7 +636,7 @@ class TestKnowledgeStoreMetadataFiltering:
 
         # Search for open tickets only
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=platform_admin.headers,
             json={
                 "query": "network issues",
@@ -653,7 +653,7 @@ class TestKnowledgeStoreMetadataFiltering:
 
         # Search for specific user's tickets
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=platform_admin.headers,
             json={
                 "query": "network",
@@ -683,7 +683,7 @@ class TestKnowledgeStoreNamespaces:
         # Store documents in different namespaces
         for i in range(3):
             response = e2e_client.post(
-                "/api/cli/knowledge/store",
+                "/api/sdk/knowledge/store",
                 headers=platform_admin.headers,
                 json={
                     "content": f"Document {i} in e2e-org1",
@@ -695,7 +695,7 @@ class TestKnowledgeStoreNamespaces:
 
         for i in range(2):
             response = e2e_client.post(
-                "/api/cli/knowledge/store",
+                "/api/sdk/knowledge/store",
                 headers=platform_admin.headers,
                 json={
                     "content": f"Document {i} in e2e-org2",
@@ -707,7 +707,7 @@ class TestKnowledgeStoreNamespaces:
 
         # List namespaces
         list_response = e2e_client.get(
-            "/api/cli/knowledge/namespaces",
+            "/api/sdk/knowledge/namespaces",
             headers=platform_admin.headers,
         )
         assert list_response.status_code == 200, f"List failed: {list_response.text}"
@@ -736,7 +736,7 @@ class TestKnowledgeStoreBatchOperations:
     ):
         """Test storing multiple documents in a single request."""
         response = e2e_client.post(
-            "/api/cli/knowledge/store-many",
+            "/api/sdk/knowledge/store-many",
             headers=platform_admin.headers,
             json={
                 "namespace": "e2e-test",
@@ -766,7 +766,7 @@ class TestKnowledgeStoreBatchOperations:
         # Verify all were stored
         for key in ["batch-1", "batch-2", "batch-3"]:
             get_response = e2e_client.get(
-                "/api/cli/knowledge/get",
+                "/api/sdk/knowledge/get",
                 headers=platform_admin.headers,
                 params={"namespace": "e2e-test", "key": key},
             )
@@ -810,7 +810,7 @@ class TestKnowledgeStoreSemanticSearch:
 
         for doc in docs:
             response = e2e_client.post(
-                "/api/cli/knowledge/store",
+                "/api/sdk/knowledge/store",
                 headers=platform_admin.headers,
                 json=doc,
             )
@@ -818,7 +818,7 @@ class TestKnowledgeStoreSemanticSearch:
 
         # Search for AI-related content
         search_response = e2e_client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             headers=platform_admin.headers,
             json={
                 "query": "How does AI work?",

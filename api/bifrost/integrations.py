@@ -90,7 +90,7 @@ class integrations:
         if oauth_scope:
             request_data["oauth_scope"] = oauth_scope
         response = await client.post(
-            "/api/cli/integrations/get",
+            "/api/sdk/integrations/get",
             json=request_data
         )
 
@@ -147,7 +147,7 @@ class integrations:
         """
         client = get_client()
         response = await client.post(
-            "/api/cli/integrations/list_mappings",
+            "/api/sdk/integrations/list_mappings",
             json={"name": name}
         )
 
@@ -202,7 +202,7 @@ class integrations:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/integrations/get_mapping",
+            "/api/sdk/integrations/get_mapping",
             json={"name": name, "scope": effective_scope, "entity_id": entity_id}
         )
 
@@ -254,7 +254,7 @@ class integrations:
         """
         client = get_client()
         response = await client.post(
-            "/api/cli/integrations/upsert_mapping",
+            "/api/sdk/integrations/upsert_mapping",
             json={
                 "name": name,
                 "scope": scope,
@@ -288,7 +288,7 @@ class integrations:
         """
         client = get_client()
         response = await client.post(
-            "/api/cli/integrations/delete_mapping",
+            "/api/sdk/integrations/delete_mapping",
             json={"name": name, "scope": scope}
         )
 

@@ -106,7 +106,15 @@ from src.repositories.cli_sessions import CLISessionRepository
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/cli", tags=["CLI"])
+router = APIRouter(prefix="/api/sdk", tags=["SDK"])
+
+# /api/cli/download is the permanent home for the CLI install
+# endpoint. It lives at /api/cli/ (not /api/sdk/) because users type
+# the URL — `pip install <SERVER_URL>/api/cli/download` — so the path
+# is intentionally "the CLI." Not a legacy shim; not a compat carve-out.
+# The rest of /api/cli/* moved to /api/sdk/* in the 2026-05 overhaul
+# because those endpoints are the SDK execution surface, not the CLI.
+install_router = APIRouter(prefix="/api/cli", tags=["CLI Install"])
 
 
 # =============================================================================
@@ -2470,7 +2478,7 @@ def _to_pep440(version: str) -> str:
     return f"0.0.0+{local}"
 
 
-@router.get(
+@install_router.get(
     "/download",
     summary="Download CLI package",
     description="Download the Bifrost CLI as a pip-installable tarball",

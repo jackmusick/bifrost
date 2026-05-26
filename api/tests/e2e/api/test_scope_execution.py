@@ -197,7 +197,7 @@ def org1_config_data(
 ):
     """Create test config in org1's scope."""
     response = e2e_client.post(
-        "/api/cli/config/set",
+        "/api/sdk/config/set",
         headers=platform_admin.headers,
         json={
             "key": scope_test_config_key,
@@ -211,7 +211,7 @@ def org1_config_data(
 
     # Cleanup
     e2e_client.post(
-        "/api/cli/config/delete",
+        "/api/sdk/config/delete",
         headers=platform_admin.headers,
         json={"key": scope_test_config_key, "scope": org1["id"]},
     )
@@ -226,7 +226,7 @@ def org2_config_data(
 ):
     """Create test config in org2's scope."""
     response = e2e_client.post(
-        "/api/cli/config/set",
+        "/api/sdk/config/set",
         headers=platform_admin.headers,
         json={
             "key": scope_test_config_key,
@@ -240,7 +240,7 @@ def org2_config_data(
 
     # Cleanup
     e2e_client.post(
-        "/api/cli/config/delete",
+        "/api/sdk/config/delete",
         headers=platform_admin.headers,
         json={"key": scope_test_config_key, "scope": org2["id"]},
     )
@@ -254,7 +254,7 @@ def global_config_data(
 ):
     """Create test config in global scope."""
     response = e2e_client.post(
-        "/api/cli/config/set",
+        "/api/sdk/config/set",
         headers=platform_admin.headers,
         json={
             "key": scope_test_config_key,
@@ -270,7 +270,7 @@ def global_config_data(
 
     # Cleanup
     e2e_client.post(
-        "/api/cli/config/delete",
+        "/api/sdk/config/delete",
         headers=platform_admin.headers,
         json={"key": scope_test_config_key, "scope": "global"},
     )
@@ -341,7 +341,7 @@ def org1_knowledge_data(
 ):
     """Create test knowledge document in org1's scope."""
     response = e2e_client.post(
-        "/api/cli/knowledge/store",
+        "/api/sdk/knowledge/store",
         headers=platform_admin.headers,
         json={
             "content": "Org 1 test knowledge document with scope marker org1",
@@ -359,7 +359,7 @@ def org1_knowledge_data(
 
     # Cleanup
     e2e_client.post(
-        "/api/cli/knowledge/delete",
+        "/api/sdk/knowledge/delete",
         headers=platform_admin.headers,
         json={
             "key": "org1-doc",
@@ -379,7 +379,7 @@ def org2_knowledge_data(
 ):
     """Create test knowledge document in org2's scope."""
     response = e2e_client.post(
-        "/api/cli/knowledge/store",
+        "/api/sdk/knowledge/store",
         headers=platform_admin.headers,
         json={
             "content": "Org 2 test knowledge document with scope marker org2",
@@ -397,7 +397,7 @@ def org2_knowledge_data(
 
     # Cleanup
     e2e_client.post(
-        "/api/cli/knowledge/delete",
+        "/api/sdk/knowledge/delete",
         headers=platform_admin.headers,
         json={
             "key": "org2-doc",
@@ -416,7 +416,7 @@ def global_knowledge_data(
 ):
     """Create test knowledge document in global scope."""
     response = e2e_client.post(
-        "/api/cli/knowledge/store",
+        "/api/sdk/knowledge/store",
         headers=platform_admin.headers,
         json={
             "content": "Global test knowledge document with scope marker global",
@@ -434,7 +434,7 @@ def global_knowledge_data(
 
     # Cleanup
     e2e_client.post(
-        "/api/cli/knowledge/delete",
+        "/api/sdk/knowledge/delete",
         headers=platform_admin.headers,
         json={
             "key": "global-doc",
@@ -820,7 +820,7 @@ class TestComprehensiveSdkScoping:
 
         # Set developer context to org2
         response = e2e_client.put(
-            "/api/cli/context",
+            "/api/sdk/context",
             headers=platform_admin.headers,
             json={"default_org_id": org2["id"]},
         )
@@ -882,7 +882,7 @@ class TestComprehensiveSdkScoping:
         finally:
             # Clear developer context
             e2e_client.put(
-                "/api/cli/context",
+                "/api/sdk/context",
                 headers=platform_admin.headers,
                 json={"default_org_id": None},
             )
@@ -949,7 +949,7 @@ class TestExplicitScopeOverride:
     ):
         """Create test config in the provider org's scope."""
         response = e2e_client.post(
-            "/api/cli/config/set",
+            "/api/sdk/config/set",
             headers=platform_admin.headers,
             json={
                 "key": scope_test_config_key,
@@ -972,7 +972,7 @@ class TestExplicitScopeOverride:
     ):
         """Create test knowledge in the provider org's scope."""
         response = e2e_client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             headers=platform_admin.headers,
             json={
                 "content": "Provider org test knowledge document with scope marker provider",

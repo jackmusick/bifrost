@@ -971,7 +971,7 @@ def _run_direct(
         if organization_id:
             try:
                 response = client._sync_http.get(
-                    "/api/cli/context",
+                    "/api/sdk/context",
                     params={"org_id": organization_id},
                 )
                 if response.status_code == 403:
@@ -1236,7 +1236,7 @@ async def _run_session_flow(
     print(f"Registering session with {len(workflow_infos)} workflow(s)...")
     try:
         response = await client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": file_path,
@@ -1275,14 +1275,14 @@ async def _run_session_flow(
         # Send heartbeat periodically
         if time.time() - last_heartbeat > heartbeat_interval:
             try:
-                await client.post(f"/api/cli/sessions/{session_id}/heartbeat")
+                await client.post(f"/api/sdk/sessions/{session_id}/heartbeat")
                 last_heartbeat = time.time()
             except Exception:
                 pass  # Ignore heartbeat failures
 
         # Poll for pending execution
         try:
-            response = await client.get(f"/api/cli/sessions/{session_id}/pending")
+            response = await client.get(f"/api/sdk/sessions/{session_id}/pending")
 
             if response.status_code == 204:
                 # No pending execution yet
@@ -1346,7 +1346,7 @@ async def _post_result(
     """Post execution result back to API."""
     try:
         await client.post(
-            f"/api/cli/sessions/{session_id}/executions/{execution_id}/result",
+            f"/api/sdk/sessions/{session_id}/executions/{execution_id}/result",
             json={
                 "status": status,
                 "result": result,

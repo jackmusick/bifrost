@@ -146,7 +146,7 @@ def _knowledge_scoping_setup(e2e_client, platform_admin, _embedding_config):
             (ns_beta, f"Beta document content. {marker_beta}", "beta-doc"),
         ]:
             resp = e2e_client.post(
-                "/api/cli/knowledge/store",
+                "/api/sdk/knowledge/store",
                 headers=platform_admin.headers,
                 json={
                     "content": content,
@@ -209,7 +209,7 @@ def _knowledge_scoping_setup(e2e_client, platform_admin, _embedding_config):
         for ns, key in [(ns_alpha, "alpha-doc"), (ns_beta, "beta-doc")]:
             try:
                 e2e_client.post(
-                    "/api/cli/knowledge/delete",
+                    "/api/sdk/knowledge/delete",
                     headers=platform_admin.headers,
                     json={"key": key, "namespace": ns, "scope": None},
                 )

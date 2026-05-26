@@ -247,7 +247,7 @@ def org1_user(
 
     # Set developer context with default org (required for CLI knowledge isolation)
     response = e2e_client.put(
-        "/api/cli/context",
+        "/api/sdk/context",
         headers=user.headers,
         json={"default_org_id": org1["id"]},
     )
@@ -295,7 +295,7 @@ def org2_user(
 
     # Set developer context with default org (required for CLI knowledge isolation)
     response = e2e_client.put(
-        "/api/cli/context",
+        "/api/sdk/context",
         headers=user.headers,
         json={"default_org_id": org2["id"]},
     )
@@ -340,7 +340,7 @@ def non_admin_user(
     user.organization_id = UUID(org1["id"])
 
     response = e2e_client.put(
-        "/api/cli/context",
+        "/api/sdk/context",
         headers=user.headers,
         json={"default_org_id": org1["id"]},
     )
@@ -385,7 +385,7 @@ def alice_user(
     user.organization_id = UUID(org1["id"])
 
     response = e2e_client.put(
-        "/api/cli/context",
+        "/api/sdk/context",
         headers=user.headers,
         json={"default_org_id": org1["id"]},
     )
@@ -430,7 +430,7 @@ def bob_user(
     user.organization_id = UUID(org1["id"])
 
     response = e2e_client.put(
-        "/api/cli/context",
+        "/api/sdk/context",
         headers=user.headers,
         json={"default_org_id": org1["id"]},
     )

@@ -316,7 +316,7 @@ class ai:
         # Call API
         client = get_client()
         response = await client.post(
-            "/api/cli/ai/complete",
+            "/api/sdk/ai/complete",
             json={
                 "messages": msg_list,
                 "max_tokens": max_tokens,
@@ -407,7 +407,7 @@ class ai:
         client = get_client()
         async with client.stream(
             "POST",
-            "/api/cli/ai/stream",
+            "/api/sdk/ai/stream",
             json={
                 "messages": msg_list,
                 "max_tokens": max_tokens,
@@ -454,7 +454,7 @@ class ai:
             >>> print(f"Using {info['provider']}/{info['model']}")
         """
         client = get_client()
-        response = await client.get("/api/cli/ai/info")
+        response = await client.get("/api/sdk/ai/info")
         if not response.is_success:
             # Extract error detail from response if available
             try:

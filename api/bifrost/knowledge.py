@@ -89,7 +89,7 @@ class knowledge:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/knowledge/store",
+            "/api/sdk/knowledge/store",
             json={
                 "content": content,
                 "namespace": namespace,
@@ -136,7 +136,7 @@ class knowledge:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/knowledge/store-many",
+            "/api/sdk/knowledge/store-many",
             json={
                 "documents": documents,
                 "namespace": namespace,
@@ -190,7 +190,7 @@ class knowledge:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/knowledge/search",
+            "/api/sdk/knowledge/search",
             json={
                 "query": query,
                 "namespace": namespace if isinstance(namespace, list) else [namespace],
@@ -234,7 +234,7 @@ class knowledge:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/knowledge/delete",
+            "/api/sdk/knowledge/delete",
             json={
                 "key": key,
                 "namespace": namespace,
@@ -273,7 +273,7 @@ class knowledge:
         if effective_scope:
             params["scope"] = effective_scope
         response = await client.delete(
-            f"/api/cli/knowledge/namespace/{namespace}",
+            f"/api/sdk/knowledge/namespace/{namespace}",
             params=params if params else None,
         )
         raise_for_status_with_detail(response)
@@ -307,7 +307,7 @@ class knowledge:
         if effective_scope:
             params["scope"] = effective_scope
         response = await client.get(
-            "/api/cli/knowledge/namespaces",
+            "/api/sdk/knowledge/namespaces",
             params=params,
         )
         raise_for_status_with_detail(response)
@@ -351,7 +351,7 @@ class knowledge:
         if effective_scope:
             params["scope"] = effective_scope
         response = await client.get(
-            "/api/cli/knowledge/get",
+            "/api/sdk/knowledge/get",
             params=params,
         )
         if response.status_code == 404:

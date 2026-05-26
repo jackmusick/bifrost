@@ -1,4 +1,4 @@
-"""Tests for POST /api/cli/integrations/refresh_token endpoint.
+"""Tests for POST /api/sdk/integrations/refresh_token endpoint.
 
 These tests exercise the adapter-shaped handler; the underlying refresh
 orchestration is covered by
@@ -481,7 +481,7 @@ class TestRefreshTokenSDKModel:
         assert creds.access_token == "fresh-token"
         assert creds.expires_at == "2026-03-02T00:00:00+00:00"
         mock_client.post.assert_called_once_with(
-            "/api/cli/integrations/refresh_token",
+            "/api/sdk/integrations/refresh_token",
             json={"connection_name": "Pax8"},
         )
 
