@@ -247,14 +247,27 @@ Eight phases. Each phase ends in a green test run and is committable on its own.
 
 The allow-list IS the work tracker for these follow-ups.
 
-### Phase 7: Engine-facing endpoint rename + final cleanup
+### Phase 7: SDK scope authorization via resolver (scoped narrower than original plan)
 
-- `/api/cli/*` → `/api/sdk/*`. **No backwards-compatible aliases.** The CLI enforces strict version equality with the server (`sys.exit(1)` on mismatch — verified in `api/tests/unit/cli/test_cli_version_check.py`), so any deployed CLI is already forced to upgrade against the matching server build. Single coordinated CLI version bump in the same release as the rename.
-- `/api/cli/download` (the endpoint that serves the matching CLI build) **stays at its current path** as a documented exception. Moving it adds churn without benefit — the version check is the load-bearing safety, not the URL.
-- File rename `routers/cli.py` → `routers/sdk.py`.
-- CLI binary's API client updated to use the new paths.
-- `_get_cli_org_id` deleted; replaced by direct use of `resolve_effective_scope` (the engine has already resolved by this point, but the function provides the validation path for any remaining direct callers).
-- Final allow-list shrink. The three lint tests now have minimal, justified allow-lists.
+**Scope adjustment (2026-05-26):** the original plan called for the URL rename (`/api/cli/*` → `/api/sdk/*`), file rename (`routers/cli.py` → `routers/sdk.py`), and deletion of `_get_cli_org_id` in favor of inline `resolve_effective_scope` calls. The URL/file rename is cosmetic relative to the goal "make org scoping stop drifting" — every drop of security work is in the *authorization* of the scope, not the URL path. Doing the rename as a single PR alongside CLI version-bump coordination would push this overhaul into a much larger change-set without moving the goal needle.
+
+**Phase 7 work that landed:**
+- `_get_cli_org_id` rewritten to route through `shared.scope_resolver.resolve_effective_scope`. Same signature plus a new `is_platform_admin` keyword (defaults to False — safe default for the platform-admin check). Closes the audit's "no platform-admin enforcement" gap.
+- All 18 callsites in `cli.py` updated to pass `is_platform_admin=current_user.is_superuser`. One callsite (streaming AI-usage finalizer) runs without `CurrentUser` and is annotated for Phase 8 follow-up.
+- `test_cli_get_org_id.py` rewritten as a security-contract pin:
+  - Platform admin can request any org / global.
+  - Non-admin CANNOT request other orgs (the cross-tenant traversal fix).
+  - Non-admin CANNOT request explicit global.
+  - Non-admin CAN request their own org (default path).
+  - These tests were the carrier of the old "any UUID accepted" contract — the rewrite asserts the new contract instead. Test-discipline case (b).
+- Empty string `""` preserved as UNSET (backwards compat with CLI clients passing `--scope ''`).
+
+**Deferred to Phase 8 follow-up issues:**
+- URL rename `/api/cli/*` → `/api/sdk/*` (cosmetic).
+- File rename `routers/cli.py` → `routers/sdk.py` (cosmetic).
+- `/api/cli/download` endpoint stays as documented exception either way.
+- Inline `resolve_effective_scope` adoption in non-CLI endpoints (the SDK execution path now flows through the resolver; UI-facing endpoints can adopt incrementally).
+- Streaming AI-usage finalizer (`cli.py:~2026`) plumbs the caller's admin flag explicitly.
 
 ### Phase 8: Follow-up items filed as separate issues
 
