@@ -6,6 +6,20 @@ MSP automation platform built with FastAPI and React.
 
 All changes — features, fixes, refactors, doc edits — must be made in a git worktree, never directly on `main` (or any shared branch) in the primary checkout. If a task is about to modify files and the current working directory is the primary `bifrost` checkout, stop and create or enter a worktree first. Use `EnterWorktree` (or `git worktree add .claude/worktrees/<name>`). The only edits permitted on `main` are ones the user explicitly requests be made there.
 
+## Org scoping (CRITICAL)
+
+If you are touching code that reads or writes anything with an `organization_id` column, **read `api/src/repositories/README.md` before you write code.** That file is the single source of truth.
+
+The short version:
+
+- Every execution-resolution entity (Config, Table, OAuth tokens, etc.) goes through `OrgScopedRepository`. There is exactly one cascade primitive and it lives in the base class. Do not write inline `WHERE organization_id == x OR organization_id IS NULL` queries in routers — the lint test catches this.
+- The scope resolver is `api/shared/scope_resolver.py::resolve_effective_scope`. Four rules: UNSET → caller's default org; explicit `None` → platform admin only (global); caller's own org → always allowed; any other UUID → platform admin only. UNSET and explicit `None` are NOT the same.
+- Two repository methods: `get(name=...)` returns one row with cascade-and-override; `list()` returns the cascade union (and applies role filter when the repo was constructed with a regular user). User-ness lives on the repository instance, not the method.
+- Identity entities (Organization, User, UserRole, OAuthAccount, AuditLog) do NOT go through this pattern. They belong to an org but are never resolved by name with cascade.
+- MCP authenticates as the user directly and does not follow the engine-sentinel pattern.
+
+When in doubt, read the README. When you find yourself reinventing the cascade or the resolver, stop and use the canonical version.
+
 ## Spinning up the dev environment and connecting
 
 Use this whenever you need a running Bifrost instance to exercise — clicking around, screenshots, browser testing, or driving the API directly via the CLI. Always do this from the worktree, not the primary checkout.

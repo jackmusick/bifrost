@@ -1,7 +1,38 @@
 """
-CLI Router
+SDK Execution Router (historically named "CLI Router").
 
-Endpoints for the Bifrost CLI:
+This is the **SDK execution surface**. The Bifrost CLI is one consumer;
+the workflow runtime SDK and agent execution paths are equally first-class
+callers. The "CLI" in the path and the file name is historical and will
+be renamed in phase 7 of the org-scoping consolidation (see
+`docs/plans/2026-05-26-org-scoping-consolidation.md`).
+
+## Org scoping contract for this file
+
+Every endpoint here that reads or writes an execution-resolution entity
+(anything with `organization_id`: Config, Table, OAuth, Knowledge, etc.)
+MUST:
+
+- Use an `OrgScopedRepository` subclass for data access. Do NOT write
+  inline cascade queries (`WHERE organization_id == x OR
+  organization_id IS NULL`). The lint test
+  `test_no_inline_org_scoping_in_routers` catches this.
+- Pass `is_superuser=True` to the repository — the engine sentinel is
+  the authenticated principal here, and the SDK has already resolved
+  scope before the call reaches us.
+- Receive the scope as a request body field; trust it as-is. The engine
+  did the platform-admin-or-own-org check via
+  `api/shared/scope_resolver.py::resolve_effective_scope` before
+  calling us.
+
+Endpoints that do NOT touch execution-resolution entities (auth,
+context, health, download, CLI session management) are exempt. Document
+the exemption in the endpoint docstring.
+
+See `api/src/repositories/README.md` for the full canonical doc.
+
+## Endpoints
+
 - Developer context (default organization, parameters)
 - CLI package download
 - Config operations (get, set, list, delete)

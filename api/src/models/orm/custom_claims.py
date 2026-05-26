@@ -22,6 +22,9 @@ if TYPE_CHECKING:
     from src.models.orm.organizations import Organization
 
 
+# Execution-resolution entity — referenced by name from table policies,
+# resolved during policy evaluation. Access via CustomClaimRepository
+# (OrgScopedRepository). See api/src/repositories/README.md.
 class CustomClaim(Base):
     __tablename__ = "custom_claims"
 

@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from src.models.orm.organizations import Organization
 
 
+# Execution-resolution entity — access via TableRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class Table(Base):
     """Table metadata for document collections.
 

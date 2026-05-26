@@ -65,6 +65,8 @@ class AIModelPricing(Base):
     )
 
 
+# Identity entity — AI cost/usage telemetry, not name-cascade resolved.
+# See api/src/repositories/README.md.
 class AIUsage(Base):
     """AI usage tracking per execution or conversation."""
 

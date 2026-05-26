@@ -43,16 +43,45 @@ def _org_is_null(model: Any) -> Any:
 
 class OrgScopedRepository(Generic[ModelT]):
     """
-    Repository with standardized organization scoping and role-based access control.
+    The single canonical repository for all org-scoped data access in Bifrost.
 
-    This repository combines:
-    1. Organization cascade scoping (org-specific + global entities)
-    2. Role-based access control (for entities with role tables)
+    THE ENTIRE PATTERN IS DOCUMENTED IN `api/src/repositories/README.md`.
+    READ IT BEFORE WRITING A SUBCLASS OR CALLING SITE.
 
-    Subclasses should set:
-    - model: The SQLAlchemy model class
-    - role_table: (Optional) The role junction table (e.g., FormRole, AppRole)
-    - role_entity_id_column: (Optional) The column name for entity ID in role table
+    Two methods, two access patterns:
+
+      `repo.get(name=...)` — resolve one entity. Cascade with override:
+        org-specific wins on name collision; falls back to global.
+        SDK execution path.
+
+      `repo.list()` — enumerate everything visible in this scope.
+        Cascade union (org + global, both visible). Role filter applies
+        automatically when the repo was constructed with a regular user.
+        UI execution path.
+
+    User-ness is encoded in the repository instance (`user_id`,
+    `is_superuser`), NOT in method names. Construct the repo with the
+    right identity and the right filters fire. Do not create a
+    `list_for_user` overload — `list()` already does the right thing
+    when you pass the user.
+
+    Subclasses set:
+      - `model`: the SQLAlchemy model class
+      - `role_table`: (optional) the role junction table for RBAC
+      - `role_entity_id_column`: (optional) column name for entity ID
+        in the role table
+
+    Cascade is centralized: this base class is the only place the
+    cascade primitive (`or_(organization_id == X, organization_id.is_(None))`)
+    appears in the codebase. Do NOT reimplement cascade in a subclass.
+    Do NOT write inline cascade queries in routers. The lint test
+    `test_no_inline_org_scoping_in_routers` catches the second case.
+
+    Caching is per-repository, not centralized. Entities that need
+    caching (Config today; maybe Knowledge later) wrap the standard
+    methods with a transparent cache layer that calls into the base
+    class on miss. Cache invalidation hooks live on the repository,
+    not in `core/cache/invalidation.py`.
 
     Example usage:
         class FormRepository(OrgScopedRepository[Form]):
@@ -64,9 +93,12 @@ class OrgScopedRepository(Generic[ModelT]):
             model = Table
             # No role_table - cascade scoping only
 
-    Access control logic:
-        - Superusers: Trust the scope, no role check
-        - Regular users: Cascade scoping + role check (if entity has roles)
+    Access control:
+        - Superusers (`is_superuser=True`): trust the scope, no role check.
+          This is the SDK execution path — the engine has already done
+          authorization via `api/shared/scope_resolver.py`.
+        - Regular users: cascade scoping + role check (if entity has roles).
+          This is the direct-user REST path.
     """
 
     model: type[ModelT]

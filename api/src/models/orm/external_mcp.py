@@ -38,6 +38,8 @@ if TYPE_CHECKING:
     from src.models.orm.users import User
 
 
+# Execution-resolution entity — access via MCPServerRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class MCPServer(Base):
     """External MCP server template.
 
@@ -105,6 +107,8 @@ class MCPServer(Base):
     )
 
 
+# Execution-resolution entity — access via MCPConnectionRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class MCPConnection(Base):
     """Per-org instance of an MCP server template.
 

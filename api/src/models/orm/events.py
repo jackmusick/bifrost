@@ -32,6 +32,9 @@ if TYPE_CHECKING:
     from src.models.orm.workflows import Workflow
 
 
+# Execution-resolution entity — resolved when an event arrives to find the
+# right workflow trigger. Access via EventSourceRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class EventSource(Base):
     """
     Event source registry.
@@ -287,6 +290,8 @@ class EventSubscription(Base):
     )
 
 
+# Identity entity — event record post-receipt (telemetry), not name-cascade resolved.
+# See api/src/repositories/README.md.
 class Event(Base):
     """
     Immutable event log.

@@ -94,13 +94,13 @@ Both methods share the same cascade primitive (`or_(organization_id == X, organi
 
 ### Entity classification
 
-Eighteen ORM models carry `organization_id`. They split cleanly:
+Twenty-four ORM models carry `organization_id`. They split cleanly. (The original plan estimated 18; landing the classification comments in phase 2 surfaced six additional models the cascade audit missed — primarily telemetry/aggregation tables and the events/policy entities. The increase is in both buckets and does not change the architectural conclusions.)
 
-**Execution-resolution (13):** Config, Table, Knowledge, IntegrationMapping, OAuthProvider, OAuthToken, DataProvider, Workflow, Form, Application, Agent, MCPServer, MCPConnection. All accessed via `OrgScopedRepository` subclasses. All subject to cascade.
+**Execution-resolution (15):** Table, Form, Config, SystemConfig, KnowledgeStore, Agent, MCPServer, MCPConnection, Application, IntegrationMapping, EventSource, Workflow, OAuthProvider, OAuthToken, CustomClaim. All accessed via `OrgScopedRepository` subclasses. All subject to cascade.
 
-**Identity (5):** Organization, User, UserRole, OAuthAccount, AuditLog. Belong to an org but are not resolved during execution. No cascade. No `OrgScopedRepository`.
+**Identity (9):** Execution, ExecutionMetricsDaily, WorkflowROIDaily, KnowledgeStorageDaily, User, AIUsage, KnowledgeNamespaceRole, Event, AuditLog. Belong to an org but are not resolved by name with cascade during execution. No cascade. No `OrgScopedRepository`. (Organization, UserRole, OAuthAccount are also identity entities but do not carry an `organization_id` column themselves — Organization IS the org, UserRole/OAuthAccount join to users.)
 
-The classification is encoded in code (see "Mechanical enforcement" below), not just in docs.
+The classification is encoded in code (one-line comment above each model class) and verified by `test_org_scoped_models_have_repository`.
 
 ### Engine-facing endpoints
 

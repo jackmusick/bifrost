@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from src.models.orm.organizations import Organization
 
 
+# Execution-resolution entity — access via ApplicationRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class Application(Base):
     """Application entity for App Builder.
 

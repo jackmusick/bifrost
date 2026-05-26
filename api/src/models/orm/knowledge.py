@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from src.models.orm.users import User
 
 
+# Execution-resolution entity — access via KnowledgeRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class KnowledgeStore(Base):
     """
     Vector knowledge store for semantic search.

@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from src.models.orm.organizations import Organization
 
 
+# Identity entity — looked up by ID for auth/audit, not by name with cascade.
+# See api/src/repositories/README.md.
 class User(Base):
     """User database table."""
 

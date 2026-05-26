@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     from src.models.orm.organizations import Organization
 
 
+# Execution-resolution entity — access via ConfigRepository (OrgScopedRepository).
+# Cache lives on the repository as a transparent layer.
+# See api/src/repositories/README.md.
 class Config(Base):
     """Configuration key-value store.
 
@@ -73,6 +76,9 @@ class Config(Base):
     )
 
 
+# Execution-resolution entity — system settings with per-org overrides
+# (category+key). Access via SystemConfigRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class SystemConfig(Base):
     """
     System-level configuration storage.
