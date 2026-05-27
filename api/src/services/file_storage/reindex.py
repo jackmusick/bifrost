@@ -66,7 +66,10 @@ class WorkspaceReindexService:
         Returns:
             Number of files indexed
         """
-        if not self.settings.s3_configured:
+        if self.settings.object_storage_provider == "azure_blob":
+            if not self.settings.azure_blob_configured:
+                raise RuntimeError("Azure Blob storage not configured")
+        elif not self.settings.s3_configured:
             raise RuntimeError("S3 storage not configured")
 
         count = 0

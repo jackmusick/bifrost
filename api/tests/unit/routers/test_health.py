@@ -15,6 +15,7 @@ class DummyDB:
 def _settings(s3_configured: bool = True):
     return SimpleNamespace(
         environment="test",
+        object_storage_provider="s3",
         redis_url="redis://redis-secret@example:6379/0",
         rabbitmq_url="amqp://rabbit-secret@example:5672/",
         s3_configured=s3_configured,
@@ -23,6 +24,23 @@ def _settings(s3_configured: bool = True):
         s3_access_key="access-secret" if s3_configured else None,
         s3_secret_key="secret-secret" if s3_configured else None,
         s3_region="us-east-1",
+        azure_blob_configured=False,
+    )
+
+
+def _azure_blob_settings(configured: bool = True):
+    return SimpleNamespace(
+        environment="test",
+        object_storage_provider="azure_blob",
+        redis_url="redis://redis-secret@example:6379/0",
+        rabbitmq_url="amqp://rabbit-secret@example:5672/",
+        s3_configured=False,
+        s3_bucket=None,
+        s3_endpoint_url=None,
+        s3_access_key=None,
+        s3_secret_key=None,
+        s3_region="us-east-1",
+        azure_blob_configured=configured,
     )
 
 
@@ -96,6 +114,7 @@ async def test_ready_returns_503_when_required_dependency_fails(monkeypatch, com
         "type": components[component]["type"],
         "error": "RuntimeError",
     }
+
     async def build_components(db, settings):
         return components
 
@@ -111,8 +130,14 @@ async def test_ready_returns_503_when_required_dependency_fails(monkeypatch, com
 @pytest.mark.asyncio
 async def test_s3_not_configured_does_not_fail_readiness(monkeypatch):
     monkeypatch.setattr(health, "get_settings", lambda: _settings(s3_configured=False))
-    monkeypatch.setattr(health, "check_database", lambda db: _healthy_component("database", "postgresql"))
-    monkeypatch.setattr(health, "check_redis", lambda settings: _healthy_component("redis", "redis"))
+    monkeypatch.setattr(
+        health,
+        "check_database",
+        lambda db: _healthy_component("database", "postgresql"),
+    )
+    monkeypatch.setattr(
+        health, "check_redis", lambda settings: _healthy_component("redis", "redis")
+    )
     monkeypatch.setattr(
         health,
         "check_rabbitmq",
@@ -125,6 +150,80 @@ async def test_s3_not_configured_does_not_fail_readiness(monkeypatch):
     assert response.status_code == 200
     assert result.status == "healthy"
     assert result.components["s3"] == {"status": "not_configured", "type": "s3"}
+
+
+@pytest.mark.asyncio
+async def test_ready_checks_azure_blob_when_blob_provider_configured(monkeypatch):
+    settings = _azure_blob_settings()
+    monkeypatch.setattr(health, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        health,
+        "check_database",
+        lambda db: _healthy_component("database", "postgresql"),
+    )
+    monkeypatch.setattr(
+        health, "check_redis", lambda settings: _healthy_component("redis", "redis")
+    )
+    monkeypatch.setattr(
+        health,
+        "check_rabbitmq",
+        lambda settings: _healthy_component("rabbitmq", "rabbitmq"),
+    )
+
+    class FakeStorage:
+        def __init__(self, actual_settings):
+            assert actual_settings is settings
+
+        async def close(self):
+            return None
+
+        def get_client(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc_info):
+            return None
+
+        async def head_bucket(self, *, Bucket):
+            assert Bucket == ""
+
+    monkeypatch.setattr(health, "AzureBlobStorageClient", FakeStorage)
+
+    response = Response()
+    result = await health.ready_health_check(response, DummyDB())
+
+    assert response.status_code == 200
+    assert result.status == "healthy"
+    assert result.components["s3"] == {"status": "healthy", "type": "azure_blob"}
+
+
+@pytest.mark.asyncio
+async def test_azure_blob_not_configured_does_not_fail_readiness(monkeypatch):
+    monkeypatch.setattr(
+        health, "get_settings", lambda: _azure_blob_settings(configured=False)
+    )
+    monkeypatch.setattr(
+        health,
+        "check_database",
+        lambda db: _healthy_component("database", "postgresql"),
+    )
+    monkeypatch.setattr(
+        health, "check_redis", lambda settings: _healthy_component("redis", "redis")
+    )
+    monkeypatch.setattr(
+        health,
+        "check_rabbitmq",
+        lambda settings: _healthy_component("rabbitmq", "rabbitmq"),
+    )
+
+    response = Response()
+    result = await health.ready_health_check(response, DummyDB())
+
+    assert response.status_code == 200
+    assert result.status == "healthy"
+    assert result.components["s3"] == {"status": "not_configured", "type": "azure_blob"}
 
 
 @pytest.mark.asyncio
@@ -160,10 +259,15 @@ async def test_error_output_does_not_include_secret_values(monkeypatch):
 @pytest.mark.asyncio
 async def test_detailed_uses_same_component_status_logic(monkeypatch):
     monkeypatch.setattr(health, "get_settings", lambda: _settings())
+
     async def build_components(db, settings):
         return {
             "database": {"status": "healthy", "type": "postgresql"},
-            "redis": {"status": "unhealthy", "type": "redis", "error": "ConnectionError"},
+            "redis": {
+                "status": "unhealthy",
+                "type": "redis",
+                "error": "ConnectionError",
+            },
             "rabbitmq": {"status": "healthy", "type": "rabbitmq"},
             "s3": {"status": "healthy", "type": "s3"},
         }

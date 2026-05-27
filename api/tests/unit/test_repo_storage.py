@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from src.config import Settings
 from src.services.repo_storage import RepoStorage
 
 
@@ -85,12 +86,48 @@ def test_compute_hash():
 
 def _mock_settings():
     s = MagicMock()
+    s.object_storage_provider = "s3"
     s.s3_bucket = "test-bucket"
     s.s3_endpoint_url = "http://localhost:8333"
     s.s3_access_key = "test"
     s.s3_secret_key = "test"
     s.s3_region = "us-east-1"
     return s
+
+
+def _settings(**overrides):
+    values = {
+        "secret_key": "x" * 32,
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
+def test_repo_storage_uses_s3_backend_by_default():
+    settings = _settings()
+    repo = RepoStorage(settings=settings)
+
+    assert repo._storage.__class__.__module__ == "src.services.file_storage.s3_client"
+    assert repo._storage.__class__.__name__ == "S3StorageClient"
+    assert repo._bucket == (settings.s3_bucket or "")
+
+
+def test_repo_storage_uses_azure_blob_backend_when_configured():
+    repo = RepoStorage(
+        settings=_settings(
+            object_storage_provider="azure_blob",
+            azure_blob_account_url="https://example.blob.core.windows.net",
+            azure_blob_container="bifrost-objects",
+            azure_blob_auth="default_credential",
+        )
+    )
+
+    assert (
+        repo._storage.__class__.__module__
+        == "src.services.file_storage.azure_blob_client"
+    )
+    assert repo._storage.__class__.__name__ == "AzureBlobStorageClient"
+    assert repo._bucket == "bifrost-objects"
 
 
 class TestListDirectory:

@@ -11,7 +11,6 @@ from typing import cast
 
 import aio_pika
 import redis.asyncio as redis
-from aiobotocore.session import get_session
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -19,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
 from src.core.database import get_db
+from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
+from src.services.file_storage.s3_client import S3StorageClient
 from shared.version import get_version
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -29,6 +30,7 @@ ComponentStatus = dict[str, str]
 
 class HealthCheck(BaseModel):
     """Health check response model."""
+
     status: str
     timestamp: datetime
     version: str = Field(default_factory=get_version)
@@ -37,6 +39,7 @@ class HealthCheck(BaseModel):
 
 class DetailedHealthCheck(BaseModel):
     """Detailed health check with component status."""
+
     status: str
     timestamp: datetime
     version: str = Field(default_factory=get_version)
@@ -72,7 +75,9 @@ async def _checked_component(
 
 
 async def check_database(db: AsyncSession) -> tuple[str, ComponentStatus]:
-    return await _checked_component("database", "postgresql", db.execute(text("SELECT 1")))
+    return await _checked_component(
+        "database", "postgresql", db.execute(text("SELECT 1"))
+    )
 
 
 async def check_redis(settings: Settings) -> tuple[str, ComponentStatus]:
@@ -99,18 +104,27 @@ async def check_rabbitmq(settings: Settings) -> tuple[str, ComponentStatus]:
 
 
 async def check_s3(settings: Settings) -> tuple[str, ComponentStatus]:
+    provider = settings.object_storage_provider
+    if provider == "azure_blob":
+        if not settings.azure_blob_configured:
+            return "s3", _component("not_configured", "azure_blob")
+
+        async def head_container() -> None:
+            storage = AzureBlobStorageClient(settings)
+            try:
+                async with storage.get_client() as client:
+                    await cast(Awaitable[object], client.head_bucket(Bucket=""))
+            finally:
+                await storage.close()
+
+        return await _checked_component("s3", "azure_blob", head_container())
+
     if not settings.s3_configured:
         return "s3", _component("not_configured", "s3")
 
     async def head_bucket() -> None:
-        session = get_session()
-        async with session.create_client(
-            "s3",
-            endpoint_url=settings.s3_endpoint_url,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key,
-            region_name=settings.s3_region,
-        ) as client:
+        storage = S3StorageClient(settings)
+        async with storage.get_client() as client:
             await cast(Awaitable[object], client.head_bucket(Bucket=settings.s3_bucket))
 
     return await _checked_component("s3", "s3", head_bucket())
