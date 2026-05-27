@@ -36,6 +36,7 @@ from src.jobs.rabbitmq import (
     MalformedMessage,
     RetryableConsumerError,
 )
+from src.services.execution.process_pool import ProcessPoolAdmissionRejected
 
 logger = logging.getLogger(__name__)
 
@@ -644,31 +645,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 },
             )
 
-            # Create PostgreSQL record with RUNNING status
-            await create_execution(
-                execution_id=execution_id,
-                workflow_name=workflow_name,
-                parameters=parameters,
-                org_id=org_id,
-                user_id=user_id,
-                user_name=user_name,
-                form_id=form_id,
-                api_key_id=api_key_id,
-                status=ExecutionStatus.RUNNING,
-                execution_model="process",
-                workflow_id=workflow_id,
-            )
-            await publish_execution_update(execution_id, "Running")
-            await publish_history_update(
-                execution_id=execution_id,
-                status="Running",
-                executed_by=user_id,
-                executed_by_name=user_name,
-                workflow_name=workflow_name,
-                org_id=org_id,
-                started_at=start_time,
-            )
-
             # Load organization
             org = None
             org_data = None
@@ -714,12 +690,41 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 "content_hash": content_hash,  # Pinned hash at dispatch time
             }
 
-            # Route to process pool
-            # Results are handled asynchronously via _handle_result callback
-            await self._pool.route_execution(
+            # Reserve process capacity before claiming the execution as Running.
+            # Results are handled asynchronously via _handle_result callback once
+            # the reserved execution is committed to the child process.
+            reservation = await self._pool.reserve_execution_slot(
                 execution_id=execution_id,
                 context=context_data,
             )
+            try:
+                await create_execution(
+                    execution_id=execution_id,
+                    workflow_name=workflow_name,
+                    parameters=parameters,
+                    org_id=org_id,
+                    user_id=user_id,
+                    user_name=user_name,
+                    form_id=form_id,
+                    api_key_id=api_key_id,
+                    status=ExecutionStatus.RUNNING,
+                    execution_model="process",
+                    workflow_id=workflow_id,
+                )
+                await publish_execution_update(execution_id, "Running")
+                await publish_history_update(
+                    execution_id=execution_id,
+                    status="Running",
+                    executed_by=user_id,
+                    executed_by_name=user_name,
+                    workflow_name=workflow_name,
+                    org_id=org_id,
+                    started_at=start_time,
+                )
+                await self._pool.commit_reserved_execution(reservation)
+            except Exception:
+                await self._pool.release_reserved_execution(reservation)
+                raise
             # Don't wait for result - pool will call back
 
         except asyncio.CancelledError:
@@ -727,34 +732,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await self._redis_client.delete_pending_execution(execution_id)
             raise
 
-        except MemoryError as e:
-            # Admission rejected due to memory pressure — requeue for retry
+        except (MemoryError, ProcessPoolAdmissionRejected) as e:
+            # Admission rejected before execution ownership - requeue for retry.
             logger.warning(
                 f"Admission rejected for {execution_id[:8]}: {e}. "
                 "Will requeue for retry."
             )
-            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-            try:
-                from src.models.enums import ExecutionStatus
-                from src.repositories.executions import update_execution
-
-                await update_execution(
-                    execution_id=execution_id,
-                    status=ExecutionStatus.PENDING,
-                    error_message=f"Process pool admission rejected; retrying: {e}",
-                    error_type="ProcessPoolAdmissionRejected",
-                    duration_ms=duration_ms,
-                )
-                await publish_execution_update(
-                    execution_id,
-                    "Pending",
-                    {"error": str(e), "errorType": "ProcessPoolAdmissionRejected", "retrying": True},
-                )
-            except Exception:
-                logger.exception(
-                    f"Failed to compensate RUNNING execution state for retry: {execution_id}"
-                )
-            # Don't mark as terminal or delete pending state — retry needs the
+            await publish_execution_update(
+                execution_id,
+                "Pending",
+                {"error": str(e), "errorType": "ProcessPoolAdmissionRejected", "retrying": True},
+            )
+            # Don't mark as terminal or delete pending state - retry needs the
             # Redis context and may still start successfully.
             raise RetryableConsumerError(
                 f"process pool admission rejected for {execution_id}: {e}"

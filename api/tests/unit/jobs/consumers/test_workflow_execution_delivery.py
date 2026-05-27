@@ -12,7 +12,7 @@ from src.jobs.rabbitmq import (
     MalformedMessage,
     RetryableConsumerError,
 )
-from src.models.enums import ExecutionStatus
+from src.services.execution.process_pool import ProcessPoolAdmissionRejected
 
 
 def make_consumer() -> WorkflowExecutionConsumer:
@@ -91,7 +91,11 @@ async def test_process_message_retries_pool_admission_memory_pressure_without_de
     consumer = make_consumer()
     execution_id = str(uuid4())
     consumer._pool = AsyncMock()
-    consumer._pool.route_execution = AsyncMock(side_effect=MemoryError("limit reached"))
+    consumer._pool.reserve_execution_slot = AsyncMock(
+        side_effect=ProcessPoolAdmissionRejected("limit reached")
+    )
+    consumer._pool.commit_reserved_execution = AsyncMock()
+    consumer._pool.release_reserved_execution = AsyncMock()
     consumer._redis_client.get_pending_execution.return_value = pending_context()
     consumer._redis_client.delete_pending_execution = AsyncMock()
 
@@ -100,12 +104,12 @@ async def test_process_message_retries_pool_admission_memory_pressure_without_de
             "src.services.execution.queue_tracker.remove_from_queue",
             new_callable=AsyncMock,
         ),
-        patch("src.repositories.executions.create_execution", new_callable=AsyncMock),
+        patch("src.repositories.executions.create_execution", new_callable=AsyncMock) as create_execution,
         patch("src.repositories.executions.update_execution", new_callable=AsyncMock) as update_execution,
         patch(
             "src.jobs.consumers.workflow_execution.publish_execution_update",
             new_callable=AsyncMock,
-        ),
+        ) as publish_execution_update,
         patch(
             "src.jobs.consumers.workflow_execution.publish_history_update",
             new_callable=AsyncMock,
@@ -121,18 +125,24 @@ async def test_process_message_retries_pool_admission_memory_pressure_without_de
             )
 
     consumer._redis_client.delete_pending_execution.assert_not_called()
-    update_execution.assert_awaited_once()
-    assert update_execution.await_args is not None
-    assert update_execution.await_args.kwargs["execution_id"] == execution_id
-    assert update_execution.await_args.kwargs["status"] == ExecutionStatus.PENDING
+    create_execution.assert_not_awaited()
+    update_execution.assert_not_awaited()
+    consumer._pool.commit_reserved_execution.assert_not_awaited()
+    consumer._pool.release_reserved_execution.assert_not_awaited()
+    publish_execution_update.assert_awaited_once()
+    assert publish_execution_update.await_args is not None
+    assert publish_execution_update.await_args.args[:2] == (execution_id, "Pending")
 
 
 @pytest.mark.asyncio
 async def test_process_message_acknowledges_recorded_setup_failure_as_domain_handled() -> None:
     consumer = make_consumer()
     execution_id = str(uuid4())
+    reservation = object()
     consumer._pool = AsyncMock()
-    consumer._pool.route_execution = AsyncMock(side_effect=ValueError("bad setup"))
+    consumer._pool.reserve_execution_slot = AsyncMock(return_value=reservation)
+    consumer._pool.commit_reserved_execution = AsyncMock(side_effect=ValueError("bad setup"))
+    consumer._pool.release_reserved_execution = AsyncMock()
     consumer._redis_client.get_pending_execution.return_value = pending_context()
     consumer._redis_client.delete_pending_execution = AsyncMock()
     consumer._redis_client.push_result = AsyncMock()
@@ -164,6 +174,7 @@ async def test_process_message_acknowledges_recorded_setup_failure_as_domain_han
             )
 
     update_execution.assert_awaited_once()
+    consumer._pool.release_reserved_execution.assert_awaited_once_with(reservation)
     consumer._redis_client.delete_pending_execution.assert_awaited_once_with(execution_id)
     consumer._redis_client.push_result.assert_awaited_once_with(
         execution_id=execution_id,
