@@ -58,6 +58,9 @@ def _get_s3_client() -> Any:
     """
     global _s3_client, _s3_available
 
+    if _object_storage_provider() != "s3":
+        return None
+
     if _s3_available is False:
         return None
 
@@ -95,7 +98,12 @@ def _get_s3_client() -> Any:
 
 
 def _object_storage_provider() -> str:
-    return os.environ.get("BIFROST_OBJECT_STORAGE_PROVIDER", "s3").lower()
+    provider = os.environ.get("BIFROST_OBJECT_STORAGE_PROVIDER")
+    if provider:
+        return provider.lower()
+    if os.environ.get("BIFROST_AZURE_BLOB_ACCOUNT_URL") and os.environ.get("BIFROST_AZURE_BLOB_CONTAINER"):
+        return "azure_blob"
+    return "s3"
 
 
 def _get_blob_container_client() -> Any:

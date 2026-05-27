@@ -8,6 +8,7 @@ Runs every 5 minutes to find and timeout stuck executions.
 """
 
 import logging
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -15,6 +16,7 @@ from sqlalchemy import select, and_
 
 from src.core.database import get_session_factory
 from src.core.pubsub import publish_execution_update, publish_history_update
+from src.core.redis_client import get_redis_client
 from src.models import Execution as ExecutionModel, ExecutionLog
 from src.models.orm.workflows import Workflow
 
@@ -24,6 +26,83 @@ logger = logging.getLogger(__name__)
 PENDING_TIMEOUT_MINUTES = 10  # If PENDING for 10+ minutes, it's stuck in queue
 RUNNING_TIMEOUT_MINUTES = 30  # If RUNNING for 30+ minutes, worker likely crashed
 CANCELLING_TIMEOUT_MINUTES = 3  # If CANCELLING for 3+ minutes, worker failed to cancel
+RESTART_ORPHAN_GRACE_SECONDS = 120
+
+
+async def _load_worker_heartbeat_state(now: datetime) -> dict[str, Any]:
+    """Read Redis worker heartbeats for restart-orphan detection."""
+    state: dict[str, Any] = {
+        "active_execution_ids": set(),
+        "oldest_worker_started_at": None,
+        "heartbeat_count": 0,
+    }
+    redis_client = get_redis_client()
+    if not redis_client:
+        return state
+
+    cursor = 0
+    while True:
+        cursor, keys = await redis_client.scan(cursor, match="bifrost:pool:*:heartbeat", count=100)
+        for key in keys:
+            raw = await redis_client.get(key)
+            if not raw:
+                continue
+            try:
+                heartbeat = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            state["heartbeat_count"] += 1
+            started_at = _parse_heartbeat_time(heartbeat.get("started_at"))
+            if started_at is not None:
+                oldest = state["oldest_worker_started_at"]
+                state["oldest_worker_started_at"] = started_at if oldest is None else min(oldest, started_at)
+            for process in heartbeat.get("processes") or []:
+                execution = process.get("execution") if isinstance(process, dict) else None
+                execution_id = execution.get("execution_id") if isinstance(execution, dict) else None
+                if execution_id:
+                    state["active_execution_ids"].add(str(execution_id))
+        if cursor == 0:
+            break
+
+    return state
+
+
+def _parse_heartbeat_time(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _is_restart_orphan(
+    execution: ExecutionModel,
+    *,
+    now: datetime,
+    heartbeat_state: dict[str, Any],
+) -> bool:
+    if not execution.started_at:
+        return False
+    if heartbeat_state.get("heartbeat_count", 0) <= 0:
+        return False
+    if str(execution.id) in heartbeat_state.get("active_execution_ids", set()):
+        return False
+
+    oldest_worker_started_at = heartbeat_state.get("oldest_worker_started_at")
+    if oldest_worker_started_at is None:
+        return False
+
+    started_at = execution.started_at
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+
+    if started_at >= oldest_worker_started_at:
+        return False
+    return (now - oldest_worker_started_at).total_seconds() >= RESTART_ORPHAN_GRACE_SECONDS
 
 
 async def cleanup_stuck_executions() -> dict[str, Any]:
@@ -51,6 +130,8 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
     now = datetime.now(timezone.utc)
 
     try:
+        heartbeat_state = await _load_worker_heartbeat_state(now)
+
         # Collect data for WebSocket broadcasts (published after session closes)
         pubsub_updates: list[dict] = []
 
@@ -81,6 +162,9 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
             )
             running_stuck = []
             for execution, wf_timeout in running_result.all():
+                if _is_restart_orphan(execution, now=now, heartbeat_state=heartbeat_state):
+                    running_stuck.append(execution)
+                    continue
                 # timeout_seconds == 0 means no timeout — skip entirely
                 if wf_timeout is not None and wf_timeout == 0:
                     continue
@@ -118,10 +202,16 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
 
                     elif execution.status == ExecutionStatus.RUNNING.value:
                         elapsed_min = int((now - execution.started_at).total_seconds() / 60) if execution.started_at else RUNNING_TIMEOUT_MINUTES
-                        timeout_reason = (
-                            f"Stuck in RUNNING status for {elapsed_min}+ minutes. "
-                            "Likely worker crash or workflow hang."
-                        )
+                        if _is_restart_orphan(execution, now=now, heartbeat_state=heartbeat_state):
+                            timeout_reason = (
+                                f"Stuck in RUNNING status for {elapsed_min}+ minutes. "
+                                "Execution predates all current worker heartbeats and is not claimed by any live worker."
+                            )
+                        else:
+                            timeout_reason = (
+                                f"Stuck in RUNNING status for {elapsed_min}+ minutes. "
+                                "Likely worker crash or workflow hang."
+                            )
                         final_status = ExecutionStatus.TIMEOUT
                         results["running_timeouts"] += 1
 
