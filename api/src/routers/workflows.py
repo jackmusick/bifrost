@@ -850,7 +850,14 @@ async def execute_workflow(
             scheduled_at=scheduled_at,
         )
 
-    # Build shared context for execution
+    # Build shared context for execution.
+    #
+    # Only org_id is load-bearing here: at the enqueue boundary the context is
+    # reduced to scalars (org_id, user_id, is_platform_admin, ...) and stored in
+    # Redis — this Organization object is NOT serialized to the worker. The
+    # worker rehydrates the org (including is_provider) from org_id via
+    # OrganizationRepository.get_with_cache in the workflow_execution consumer.
+    # So leaving name/is_provider unset here is intentional, not a gap.
     org = None
     if execution_org_id:
         org = Organization(id=str(execution_org_id), name="", is_active=True)

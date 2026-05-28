@@ -534,7 +534,13 @@ async def execute_tool(
     """
     from src.sdk.context import ExecutionContext, Organization
 
-    # Build organization if provided
+    # Build organization if provided.
+    #
+    # Only org_id is load-bearing: _enqueue_workflow_async passes org_id (not
+    # this object) to the queue, and the worker rehydrates the org — including
+    # is_provider — from org_id via OrganizationRepository.get_with_cache in the
+    # workflow_execution consumer. This object is never serialized, so omitting
+    # is_provider here is intentional, not a scope-bypass gap.
     org = None
     if org_id:
         org = Organization(
