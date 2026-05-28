@@ -10,12 +10,31 @@ import json
 import logging
 import time
 
-from src.core.cache.redis_client import get_redis
+import redis.asyncio as aioredis
+
+from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 # Redis key for the queue sorted set
 QUEUE_KEY = "bifrost:queue:pending"
+
+
+async def _get_redis() -> aioredis.Redis:
+    """Create a Redis client scoped to the caller's event loop."""
+    settings = get_settings()
+    return aioredis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_timeout=5.0,
+        socket_connect_timeout=5.0,
+    )
+
+
+async def _close_redis(r: aioredis.Redis) -> None:
+    close = getattr(r, "aclose", None)
+    if close is not None:
+        await close()
 
 
 async def add_to_queue(execution_id: str) -> int:
@@ -28,7 +47,8 @@ async def add_to_queue(execution_id: str) -> int:
     Returns:
         Position in queue (1-based)
     """
-    async with get_redis() as r:
+    r = await _get_redis()
+    try:
         timestamp = time.time()
 
         # Add to sorted set with timestamp as score
@@ -37,6 +57,8 @@ async def add_to_queue(execution_id: str) -> int:
         # Get position (0-based rank + 1 for 1-based position)
         rank = await r.zrank(QUEUE_KEY, execution_id)
         position = (rank + 1) if rank is not None else 1
+    finally:
+        await _close_redis(r)
 
     logger.debug(f"Added execution {execution_id} to queue at position {position}")
 
@@ -55,9 +77,12 @@ async def remove_from_queue(execution_id: str) -> None:
     Args:
         execution_id: Execution ID to remove
     """
-    async with get_redis() as r:
+    r = await _get_redis()
+    try:
         # Remove from sorted set
         removed = await r.zrem(QUEUE_KEY, execution_id)
+    finally:
+        await _close_redis(r)
 
     if removed:
         logger.debug(f"Removed execution {execution_id} from queue")
@@ -75,8 +100,11 @@ async def get_queue_position(execution_id: str) -> int | None:
     Returns:
         Position (1-based) or None if not in queue
     """
-    async with get_redis() as r:
+    r = await _get_redis()
+    try:
         rank = await r.zrank(QUEUE_KEY, execution_id)
+    finally:
+        await _close_redis(r)
 
     if rank is not None:
         return rank + 1  # Convert 0-based to 1-based
@@ -90,8 +118,11 @@ async def get_queue_depth() -> int:
     Returns:
         Queue depth (number of pending executions)
     """
-    async with get_redis() as r:
+    r = await _get_redis()
+    try:
         return await r.zcard(QUEUE_KEY)
+    finally:
+        await _close_redis(r)
 
 
 async def get_all_queue_positions() -> list[tuple[str, int]]:
@@ -101,9 +132,12 @@ async def get_all_queue_positions() -> list[tuple[str, int]]:
     Returns:
         List of (execution_id, position) tuples, ordered by position
     """
-    async with get_redis() as r:
+    r = await _get_redis()
+    try:
         # Get all members in order (lowest score = earliest = position 1)
         members = await r.zrange(QUEUE_KEY, 0, -1)
+    finally:
+        await _close_redis(r)
 
     # Return as list of (execution_id, 1-based position) tuples
     return [(member, idx + 1) for idx, member in enumerate(members)]
@@ -148,11 +182,14 @@ async def cleanup_stale_entries(max_age_seconds: int = 600) -> int:
     Returns:
         Number of entries removed
     """
-    async with get_redis() as r:
+    r = await _get_redis()
+    try:
         cutoff = time.time() - max_age_seconds
 
         # Remove entries with score (timestamp) less than cutoff
         removed = await r.zremrangebyscore(QUEUE_KEY, "-inf", cutoff)
+    finally:
+        await _close_redis(r)
 
     if removed:
         logger.info(f"Cleaned up {removed} stale queue entries")
@@ -169,7 +206,8 @@ async def get_all_pending_executions() -> list[dict]:
         List of dicts with execution_id, workflow_id, workflow_name,
         organization_name, and queued_at for each pending execution.
     """
-    async with get_redis() as r:
+    r = await _get_redis()
+    try:
         # Get execution IDs from sorted set
         exec_ids = await r.zrange(QUEUE_KEY, 0, -1)
 
@@ -207,5 +245,7 @@ async def get_all_pending_executions() -> list[dict]:
                     "organization_name": None,
                     "queued_at": None,
                 })
+    finally:
+        await _close_redis(r)
 
     return items
