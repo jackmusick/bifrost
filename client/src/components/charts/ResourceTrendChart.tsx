@@ -19,10 +19,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ResourceMetricsEntry } from "@/hooks/useAdminMetrics";
 import { toFiniteNumber } from "@/lib/chart-values";
+import { MetricsCardError } from "./MetricsCardError";
 
 interface ResourceTrendChartProps {
 	data: ResourceMetricsEntry[];
 	isLoading?: boolean;
+	isError?: boolean;
+	error?: unknown;
 }
 
 const formatResourceTrendTooltip: Formatter = (value, name) => {
@@ -35,6 +38,8 @@ const formatResourceTrendTooltip: Formatter = (value, name) => {
 export function ResourceTrendChart({
 	data,
 	isLoading,
+	isError,
+	error,
 }: ResourceTrendChartProps) {
 	if (isLoading) {
 		return (
@@ -47,6 +52,25 @@ export function ResourceTrendChart({
 				</CardHeader>
 				<CardContent>
 					<Skeleton className="h-[300px] w-full" />
+				</CardContent>
+			</Card>
+		);
+	}
+
+	if (isError) {
+		return (
+			<Card>
+				<CardHeader>
+					<CardTitle>Resource Utilization</CardTitle>
+					<CardDescription>
+						Memory and CPU trends over time
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<MetricsCardError
+						label="resource metrics"
+						error={error}
+					/>
 				</CardContent>
 			</Card>
 		);

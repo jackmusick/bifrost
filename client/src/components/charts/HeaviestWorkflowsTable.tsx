@@ -18,10 +18,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronRight } from "lucide-react";
 import type { WorkflowMetricsSummary } from "@/hooks/useAdminMetrics";
+import { MetricsCardError } from "./MetricsCardError";
 
 interface HeaviestWorkflowsTableProps {
 	data: WorkflowMetricsSummary[];
 	isLoading?: boolean;
+	isError?: boolean;
+	error?: unknown;
 	sortBy: "executions" | "memory" | "duration" | "cpu";
 	onSortChange: (sort: "executions" | "memory" | "duration" | "cpu") => void;
 }
@@ -46,6 +49,8 @@ function formatDuration(ms: number): string {
 export function HeaviestWorkflowsTable({
 	data,
 	isLoading,
+	isError,
+	error,
 	sortBy,
 	onSortChange,
 }: HeaviestWorkflowsTableProps) {
@@ -62,6 +67,22 @@ export function HeaviestWorkflowsTable({
 				</CardHeader>
 				<CardContent>
 					<Skeleton className="h-[300px] w-full" />
+				</CardContent>
+			</Card>
+		);
+	}
+
+	if (isError) {
+		return (
+			<Card>
+				<CardHeader>
+					<CardTitle>Heaviest Workflows</CardTitle>
+					<CardDescription>
+						Workflows consuming most resources
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<MetricsCardError label="workflow metrics" error={error} />
 				</CardContent>
 			</Card>
 		);

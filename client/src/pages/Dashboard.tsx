@@ -68,15 +68,27 @@ export function Dashboard() {
 		"executions" | "memory" | "duration" | "cpu"
 	>("memory");
 
-	const { data: resourceData, isLoading: resourceLoading, refetch: refetchResource } =
-		useResourceMetrics(7, isPlatformAdmin);
-	const { data: orgData, isLoading: orgLoading, refetch: refetchOrg } = useOrganizationMetrics(
-		30,
-		10,
-		isPlatformAdmin,
-	);
-	const { data: workflowData, isLoading: workflowLoading, refetch: refetchWorkflow } =
-		useWorkflowMetrics(30, workflowSort, 20, isPlatformAdmin);
+	const {
+		data: resourceData,
+		isLoading: resourceLoading,
+		isError: resourceError,
+		error: resourceErrorDetail,
+		refetch: refetchResource,
+	} = useResourceMetrics(7, isPlatformAdmin);
+	const {
+		data: orgData,
+		isLoading: orgLoading,
+		isError: orgError,
+		error: orgErrorDetail,
+		refetch: refetchOrg,
+	} = useOrganizationMetrics(30, 10, isPlatformAdmin);
+	const {
+		data: workflowData,
+		isLoading: workflowLoading,
+		isError: workflowError,
+		error: workflowErrorDetail,
+		refetch: refetchWorkflow,
+	} = useWorkflowMetrics(30, workflowSort, 20, isPlatformAdmin);
 
 	const handleRefresh = () => {
 		refetchDashboard();
@@ -426,19 +438,25 @@ export function Dashboard() {
 
 					{/* Resource Trend Chart - Full Width */}
 					<ResourceTrendChart
-						data={resourceData?.days || []}
+						data={resourceData?.days ?? []}
 						isLoading={resourceLoading}
+						isError={resourceError}
+						error={resourceErrorDetail}
 					/>
 
 					{/* Two-column layout for org chart and workflow table */}
 					<div className="grid gap-4 lg:grid-cols-2">
 						<ExecutionsByOrgChart
-							data={orgData?.organizations || []}
+							data={orgData?.organizations ?? []}
 							isLoading={orgLoading}
+							isError={orgError}
+							error={orgErrorDetail}
 						/>
 						<HeaviestWorkflowsTable
-							data={workflowData?.workflows || []}
+							data={workflowData?.workflows ?? []}
 							isLoading={workflowLoading}
+							isError={workflowError}
+							error={workflowErrorDetail}
 							sortBy={workflowSort}
 							onSortChange={setWorkflowSort}
 						/>
