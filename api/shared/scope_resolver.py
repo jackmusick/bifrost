@@ -29,14 +29,14 @@ from uuid import UUID
 class ScopeNotAllowed(Exception):
     """Raised when a caller requests a scope they are not authorized to use.
 
-    The four rules:
+    The four rules ("bypass" = platform admin OR provider-org member):
 
       | requested_scope         | allowed if...         | result
       | ----------------------- | --------------------- | ----------------
       | UNSET (default)         | always                | caller_org_id
-      | None (explicit global)  | is_platform_admin     | None
+      | None (explicit global)  | bypass                | None
       | caller_org_id           | always                | caller_org_id
-      | any other UUID          | is_platform_admin     | that UUID
+      | any other UUID          | bypass                | that UUID
 
     Any other case raises this exception. It must never be silently coerced
     into a permitted scope — that's the bug class this function exists to
@@ -76,6 +76,7 @@ def resolve_effective_scope(
     *,
     caller_org_id: UUID | None,
     is_platform_admin: bool,
+    is_provider_org: bool = False,
     requested_scope: RequestedScope = UNSET,
 ) -> UUID | None:
     """Resolve the effective org scope for an operation.
@@ -83,14 +84,17 @@ def resolve_effective_scope(
     Args:
         caller_org_id: The originating caller's organization. None if the
             caller has no org (platform admins may legitimately have no org).
-        is_platform_admin: Whether the caller is a platform admin. Platform
-            admins can request any org's scope or global; everyone else is
-            limited to their own org.
+        is_platform_admin: Whether the caller is a platform admin (superuser).
+        is_provider_org: Whether the caller belongs to a provider organization.
+            Provider-org members can target any org's scope or global, same
+            as platform admins. These two flags are independent: a platform
+            admin in a non-provider org and a regular user in a provider org
+            both pass the bypass gate.
         requested_scope: What the caller asked for.
             - UNSET (default): no explicit request, use caller's default org.
-            - None: explicit request for global scope. Platform admins only.
+            - None: explicit request for global scope. Bypass required.
             - UUID: a specific org. Allowed if it matches caller_org_id, or
-              if the caller is a platform admin.
+              if the caller has bypass.
 
     Returns:
         The org UUID to operate against, or None for global.
@@ -100,22 +104,25 @@ def resolve_effective_scope(
             scope. The message identifies the rule that failed without
             disclosing other orgs' existence.
     """
+    bypass = is_platform_admin or is_provider_org
+
     if isinstance(requested_scope, _Unset):
         return caller_org_id
 
     if requested_scope is None:
-        if not is_platform_admin:
+        if not bypass:
             raise ScopeNotAllowed(
-                "Explicit global scope requested; platform admin required"
+                "Explicit global scope requested; platform admin or "
+                "provider-org membership required"
             )
         return None
 
     if requested_scope == caller_org_id:
         return requested_scope
 
-    if not is_platform_admin:
+    if not bypass:
         raise ScopeNotAllowed(
             "Requested scope is not the caller's organization; "
-            "platform admin required"
+            "platform admin or provider-org membership required"
         )
     return requested_scope

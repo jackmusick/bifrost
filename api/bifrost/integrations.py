@@ -115,26 +115,30 @@ class integrations:
             return None
 
     @staticmethod
-    async def list_mappings(name: str) -> list[IntegrationMappingResponse] | None:
+    async def list_mappings(
+        name: str,
+        scope: str | None = None,
+    ) -> list[IntegrationMappingResponse] | None:
         """
-        List all mappings for an integration.
+        List mappings for an integration in the resolved scope.
 
-        Returns metadata about all organizations mapped to this integration.
+        Under the workflow execution model the API authenticates the engine
+        sentinel (``is_superuser=True``), so the API-side C2 gate never
+        fires on its own — the SDK-side ``resolve_scope`` is the security
+        boundary for workflow callers. This method resolves ``scope``
+        locally before posting; non-bypass workflow callers asking for a
+        scope other than their own raise ``PermissionError`` here, not
+        downstream.
 
         Args:
             name: Integration name
+            scope: Organization scope to list. Defaults to the execution
+                context's default scope. Pass ``"global"`` (only valid for
+                bypass callers — platform admin or provider-org member) to
+                list across all orgs.
 
         Returns:
-            list[IntegrationMappingResponse] | None: List of mappings, each with attributes:
-                - id: str - Mapping ID
-                - integration_id: str - Associated integration ID
-                - organization_id: str - Organization ID
-                - entity_id: str - External entity ID
-                - entity_name: str | None - Display name
-                - oauth_token_id: str | None - Per-org OAuth token override ID
-                - config: dict[str, Any] - Organization-specific config
-                - created_at: datetime - Creation timestamp
-                - updated_at: datetime - Last update timestamp
+            list[IntegrationMappingResponse] | None: List of mappings.
             Returns None if integration not found.
 
         Example:
@@ -146,9 +150,10 @@ class integrations:
             ...         tenant_id = mapping.entity_id
         """
         client = get_client()
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/sdk/integrations/list_mappings",
-            json={"name": name}
+            json={"name": name, "scope": effective_scope},
         )
 
         if response.status_code == 200:
@@ -253,11 +258,16 @@ class integrations:
             ... )
         """
         client = get_client()
+        # Resolve SDK-side: the workflow engine authenticates the API as
+        # the sentinel superuser, so the API-side C2 gate ALWAYS passes.
+        # The SDK-side ``resolve_scope`` is what enforces "this workflow's
+        # actual caller is allowed to mutate that org's mapping."
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/sdk/integrations/upsert_mapping",
             json={
                 "name": name,
-                "scope": scope,
+                "scope": effective_scope,
                 "entity_id": entity_id,
                 "entity_name": entity_name,
                 "config": config,
@@ -287,9 +297,12 @@ class integrations:
             >>> deleted = await integrations.delete_mapping("HaloPSA", scope="org-123")
         """
         client = get_client()
+        # See upsert_mapping above for why the SDK-side resolve is the
+        # real security boundary under engine-sentinel auth.
+        effective_scope = resolve_scope(scope)
         response = await client.post(
             "/api/sdk/integrations/delete_mapping",
-            json={"name": name, "scope": scope}
+            json={"name": name, "scope": effective_scope},
         )
 
         if response.status_code == 200:

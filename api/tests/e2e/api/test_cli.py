@@ -2,7 +2,10 @@
 CLI E2E Tests.
 
 Tests the Bifrost CLI API endpoints including:
-- Developer context (get, update)
+- Developer context (GET only — PUT was deleted in the 2026-05 org-scoping
+  overhaul. The caller's effective org is the auth-verified
+  ``user.organization_id``; cross-org targeting happens via the explicit
+  ``scope`` parameter on each SDK call.)
 - File operations via CLI (read, write, list, delete)
 - Config operations via CLI (get, set, list, delete)
 - SDK download
@@ -21,14 +24,13 @@ logger = logging.getLogger(__name__)
 
 
 class TestCLIContext:
-    """Test SDK developer context endpoints."""
+    """Test GET /api/sdk/context — the CLI bootstrap endpoint."""
 
     def test_get_context_with_session_auth(
         self,
         e2e_client,
         platform_admin,
     ):
-        """Test getting developer context with session auth."""
         response = e2e_client.get(
             "/api/sdk/context",
             headers=platform_admin.headers,
@@ -45,63 +47,14 @@ class TestCLIContext:
         self,
         e2e_client,
     ):
-        """Test that context endpoint requires valid authentication."""
-        # Clear cookies to test without session auth
         e2e_client.cookies.clear()
-
-        # No auth at all
         response = e2e_client.get("/api/sdk/context")
         assert response.status_code in [401, 422]
 
-    def test_update_context_default_params(
-        self,
-        e2e_client,
-        platform_admin,
-    ):
-        """Test updating developer context default parameters."""
-        response = e2e_client.put(
-            "/api/sdk/context",
-            json={
-                "default_parameters": {
-                    "env": "test",
-                    "debug": True,
-                },
-            },
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-
-        data = response.json()
-        assert data["default_parameters"]["env"] == "test"
-        assert data["default_parameters"]["debug"] is True
-
-    def test_update_context_track_executions(
-        self,
-        e2e_client,
-        platform_admin,
-    ):
-        """Test updating track_executions setting."""
-        # Disable tracking
-        response = e2e_client.put(
-            "/api/sdk/context",
-            json={"track_executions": False},
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        assert response.json()["track_executions"] is False
-
-        # Re-enable tracking
-        response = e2e_client.put(
-            "/api/sdk/context",
-            json={"track_executions": True},
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        assert response.json()["track_executions"] is True
-
 
 class TestCLIContextOrgOverride:
-    """Test /api/sdk/context?org_id= for CLI org override (superuser only)."""
+    """Test /api/sdk/context?org_id= — the platform-admin / provider-org
+    cross-org targeting affordance. C2 gate."""
 
     def test_superuser_can_get_org_context(
         self,
@@ -109,7 +62,6 @@ class TestCLIContextOrgOverride:
         platform_admin,
         org1,
     ):
-        """Superuser can fetch context for a specific org via ?org_id=."""
         response = e2e_client.get(
             "/api/sdk/context",
             params={"org_id": org1["id"]},
@@ -118,12 +70,10 @@ class TestCLIContextOrgOverride:
         assert response.status_code == 200
 
         data = response.json()
-        # User info should match the superuser
         assert data["user"]["id"] == str(platform_admin.user_id)
         assert data["user"]["email"] == platform_admin.email
         assert data["user"]["is_superuser"] is True
 
-        # Organization should match the requested org
         assert data["organization"] is not None
         assert data["organization"]["id"] == org1["id"]
         assert data["organization"]["name"] == org1["name"]
@@ -144,40 +94,47 @@ class TestCLIContextOrgOverride:
         assert response.status_code == 200
         data = response.json()
 
-        # User fields that _run_direct reads
         user = data["user"]
-        assert "id" in user
-        assert "email" in user
-        assert "name" in user
-        assert "is_superuser" in user
+        for field in ("id", "email", "name", "is_superuser"):
+            assert field in user, f"missing user.{field}"
 
-        # Organization fields that _run_direct reads
         org = data["organization"]
-        assert "id" in org
-        assert "name" in org
-        assert "is_active" in org
-        assert "is_provider" in org
+        for field in ("id", "name", "is_active", "is_provider"):
+            assert field in org, f"missing organization.{field}"
 
-    def test_non_superuser_gets_403(
+    def test_non_superuser_cannot_target_other_org(
+        self,
+        e2e_client,
+        org1_user,
+        org2,
+    ):
+        """A regular org user cannot fetch another org's context."""
+        response = e2e_client.get(
+            "/api/sdk/context",
+            params={"org_id": org2["id"]},
+            headers=org1_user.headers,
+        )
+        assert response.status_code == 403
+
+    def test_non_superuser_can_target_own_org(
         self,
         e2e_client,
         org1_user,
         org1,
     ):
-        """Non-superuser cannot use ?org_id= override."""
+        """A regular user CAN pass ?org_id matching their own org."""
         response = e2e_client.get(
             "/api/sdk/context",
             params={"org_id": org1["id"]},
             headers=org1_user.headers,
         )
-        assert response.status_code == 403
+        assert response.status_code == 200
 
     def test_nonexistent_org_gets_404(
         self,
         e2e_client,
         platform_admin,
     ):
-        """Request for a nonexistent org returns 404."""
         import uuid
         fake_org_id = str(uuid.uuid4())
         response = e2e_client.get(
@@ -194,8 +151,6 @@ class TestCLIContextOrgOverride:
         org1,
         org2,
     ):
-        """Superuser can fetch context for different orgs in sequence."""
-        # Get org1 context
         resp1 = e2e_client.get(
             "/api/sdk/context",
             params={"org_id": org1["id"]},
@@ -204,7 +159,6 @@ class TestCLIContextOrgOverride:
         assert resp1.status_code == 200
         assert resp1.json()["organization"]["id"] == org1["id"]
 
-        # Get org2 context
         resp2 = e2e_client.get(
             "/api/sdk/context",
             params={"org_id": org2["id"]},
@@ -212,16 +166,19 @@ class TestCLIContextOrgOverride:
         )
         assert resp2.status_code == 200
         assert resp2.json()["organization"]["id"] == org2["id"]
-
-        # Confirm they're different orgs
         assert resp1.json()["organization"]["id"] != resp2.json()["organization"]["id"]
 
-    def test_without_org_id_uses_default(
+    def test_without_org_id_uses_users_own_org(
         self,
         e2e_client,
         org1_user,
     ):
-        """Without ?org_id, returns user's default org from developer context."""
+        """Without ?org_id, returns the user's auth-verified org.
+
+        Pre-overhaul this fetched ``DeveloperContext.default_org_id``,
+        which was a per-user mutable field anyone could set to forge
+        another org's identity. Now sourced from ``User.organization_id``.
+        """
         response = e2e_client.get(
             "/api/sdk/context",
             headers=org1_user.headers,
@@ -229,7 +186,6 @@ class TestCLIContextOrgOverride:
         assert response.status_code == 200
         data = response.json()
 
-        # org1_user's developer context has default_org_id set to org1
         assert data["organization"] is not None
         assert data["organization"]["id"] == str(org1_user.organization_id)
 

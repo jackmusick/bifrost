@@ -58,7 +58,6 @@ from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.forms import Form, FormField
 from src.models.orm.applications import Application
 from src.models.orm.agents import Agent, AgentTool
-from src.models.orm.developer import DeveloperContext
 from src.models.orm.users import Role
 from src.services.workflow_validation import _extract_relative_path
 
@@ -808,8 +807,9 @@ async def execute_workflow(
     # Priority order:
     # 0. Explicit org_id override (admin only, checked above)
     # 1. Org-scoped workflow: use workflow's organization_id (enforces workflow isolation)
-    # 2. Global workflow: use caller's org context (ctx.org_id or developer context)
-    # 3. Inline code: use caller's org context
+    # 2. Global workflow / inline code: use caller's org context (ctx.org_id).
+    #    Platform admins and provider-org members targeting a non-default
+    #    org must pass request.org_id explicitly per call.
     if request.org_id:
         execution_org_id = UUID(request.org_id)
         logger.info(f"Using explicit org_id override: {execution_org_id}")
@@ -818,17 +818,7 @@ async def execute_workflow(
         execution_org_id = workflow.organization_id
         logger.info(f"Using workflow's organization: {execution_org_id}")
     else:
-        # Global workflow or inline code - use caller's org context
         execution_org_id = ctx.org_id
-        if ctx.user.is_superuser:
-            # Platform admin - developer context overrides default org
-            dev_ctx_result = await db.execute(
-                select(DeveloperContext).where(DeveloperContext.user_id == ctx.user.user_id)
-            )
-            dev_ctx = dev_ctx_result.scalar_one_or_none()
-            if dev_ctx and dev_ctx.default_org_id:
-                execution_org_id = dev_ctx.default_org_id
-                logger.info(f"Using developer context org: {execution_org_id}")
 
     # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
     # The deferred_execution_promoter job will publish this row when it matures.

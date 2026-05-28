@@ -805,10 +805,12 @@ class TestComprehensiveSdkScoping:
         org2_knowledge_data,
     ):
         """
-        Global workflow with org2 context should see org2 data in ALL modules.
-
-        Platform admin sets developer context to org2, then executes global workflow.
-        All SDK modules should use org2's scope.
+        Global workflow executed with explicit ``org_id`` should see org2
+        data in ALL modules. Pre-overhaul the equivalent assertion used
+        ``DeveloperContext.default_org_id`` to switch the implicit org;
+        that affordance has been deleted as a forgery surface. Platform
+        admins now target another org by passing ``org_id`` on the
+        execution request.
         """
         # Ensure fixtures are loaded
         assert org1_table_data is not None
@@ -818,74 +820,58 @@ class TestComprehensiveSdkScoping:
         assert org1_knowledge_data is not None
         assert org2_knowledge_data is not None
 
-        # Set developer context to org2
-        response = e2e_client.put(
-            "/api/sdk/context",
-            headers=platform_admin.headers,
-            json={"default_org_id": org2["id"]},
+        data = execute_workflow_sync(
+            e2e_client,
+            platform_admin.headers,
+            global_comprehensive_workflow["id"],
+            org_id=org2["id"],
         )
-        assert response.status_code == 200, f"Set context failed: {response.text}"
+        assert data["status"] == "Success", f"Execution failed: {data}"
 
-        try:
-            data = execute_workflow_sync(
-                e2e_client,
-                platform_admin.headers,
-                global_comprehensive_workflow["id"],
-            )
-            assert data["status"] == "Success", f"Execution failed: {data}"
+        result = data.get("result", {})
 
-            result = data.get("result", {})
+        # Verify context
+        assert result["context"]["org_id"] == org2["id"], (
+            f"Context org_id should be org2. Got: {result['context']['org_id']}"
+        )
 
-            # Verify context
-            assert result["context"]["org_id"] == org2["id"], (
-                f"Context org_id should be org2. Got: {result['context']['org_id']}"
-            )
+        # Verify tables module
+        tables_result = result.get("tables", {})
+        assert "error" not in tables_result.get("query", {}), (
+            f"tables.query() failed: {tables_result.get('query', {}).get('error')}"
+        )
+        table_markers = tables_result.get("query", {}).get("scope_markers", [])
+        assert "org2" in table_markers, (
+            f"tables.query() should see org2 data. Got: {table_markers}"
+        )
+        assert "org1" not in table_markers, (
+            f"tables.query() should NOT see org1 data. Got: {table_markers}"
+        )
 
-            # Verify tables module
-            tables_result = result.get("tables", {})
-            assert "error" not in tables_result.get("query", {}), (
-                f"tables.query() failed: {tables_result.get('query', {}).get('error')}"
-            )
-            table_markers = tables_result.get("query", {}).get("scope_markers", [])
-            assert "org2" in table_markers, (
-                f"tables.query() should see org2 data. Got: {table_markers}"
-            )
-            assert "org1" not in table_markers, (
-                f"tables.query() should NOT see org1 data. Got: {table_markers}"
-            )
+        # Verify config module
+        config_result = result.get("config", {})
+        assert "error" not in config_result.get("get", {}), (
+            f"config.get() failed: {config_result.get('get', {}).get('error')}"
+        )
+        config_marker = config_result.get("get", {}).get("scope_marker")
+        assert config_marker == "org2", (
+            f"config.get() should return org2 config. Got: {config_marker}"
+        )
 
-            # Verify config module
-            config_result = result.get("config", {})
-            assert "error" not in config_result.get("get", {}), (
-                f"config.get() failed: {config_result.get('get', {}).get('error')}"
-            )
-            config_marker = config_result.get("get", {}).get("scope_marker")
-            assert config_marker == "org2", (
-                f"config.get() should return org2 config. Got: {config_marker}"
-            )
-
-            # Verify knowledge module
-            knowledge_result = result.get("knowledge", {})
-            assert "error" not in knowledge_result.get("search", {}), (
-                f"knowledge.search() failed: {knowledge_result.get('search', {}).get('error')}"
-            )
-            knowledge_markers = knowledge_result.get("search", {}).get(
-                "scope_markers", []
-            )
-            assert "org2" in knowledge_markers, (
-                f"knowledge.search() should see org2 data. Got: {knowledge_markers}"
-            )
-            assert "org1" not in knowledge_markers, (
-                f"knowledge.search() should NOT see org1 data. Got: {knowledge_markers}"
-            )
-
-        finally:
-            # Clear developer context
-            e2e_client.put(
-                "/api/sdk/context",
-                headers=platform_admin.headers,
-                json={"default_org_id": None},
-            )
+        # Verify knowledge module
+        knowledge_result = result.get("knowledge", {})
+        assert "error" not in knowledge_result.get("search", {}), (
+            f"knowledge.search() failed: {knowledge_result.get('search', {}).get('error')}"
+        )
+        knowledge_markers = knowledge_result.get("search", {}).get(
+            "scope_markers", []
+        )
+        assert "org2" in knowledge_markers, (
+            f"knowledge.search() should see org2 data. Got: {knowledge_markers}"
+        )
+        assert "org1" not in knowledge_markers, (
+            f"knowledge.search() should NOT see org1 data. Got: {knowledge_markers}"
+        )
 
 
 @pytest.mark.e2e

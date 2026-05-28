@@ -25,7 +25,7 @@ export type CLISessionContinueResponse =
  * Get list of all CLI sessions for current user
  */
 export async function getCLISessions(): Promise<CLISessionListResponse> {
-	const response = await authFetch("/api/cli/sessions");
+	const response = await authFetch("/api/sdk/sessions");
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
 		throw new Error(
@@ -43,7 +43,7 @@ export async function getCLISessions(): Promise<CLISessionListResponse> {
 export async function getCLISession(
 	sessionId: string,
 ): Promise<CLISessionResponse | null> {
-	const response = await authFetch(`/api/cli/sessions/${sessionId}`);
+	const response = await authFetch(`/api/sdk/sessions/${sessionId}`);
 	if (response.status === 204 || response.status === 404) {
 		return null;
 	}
@@ -60,7 +60,7 @@ export async function getCLISession(
  * Delete a CLI session
  */
 export async function deleteCLISession(sessionId: string): Promise<void> {
-	const response = await authFetch(`/api/cli/sessions/${sessionId}`, {
+	const response = await authFetch(`/api/sdk/sessions/${sessionId}`, {
 		method: "DELETE",
 	});
 	if (!response.ok && response.status !== 204) {
@@ -80,7 +80,7 @@ export async function continueCLISession(
 	request: CLISessionContinueRequest,
 ): Promise<CLISessionContinueResponse> {
 	const response = await authFetch(
-		`/api/cli/sessions/${sessionId}/continue`,
+		`/api/sdk/sessions/${sessionId}/continue`,
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },

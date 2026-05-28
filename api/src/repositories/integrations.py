@@ -374,28 +374,37 @@ class IntegrationsRepository(BaseRepository[Integration]):
         return result.unique().scalar_one_or_none()
 
     async def list_mappings(
-        self, integration_id: UUID
+        self,
+        integration_id: UUID,
+        *,
+        organization_id: UUID | None = None,
     ) -> list[IntegrationMapping]:
         """
-        List all mappings for an integration.
+        List mappings for an integration.
 
         Args:
             integration_id: Integration UUID
+            organization_id: Optional org filter. When provided, returns only
+                that org's mapping (used by non-bypass callers in the SDK
+                surface so they can't enumerate other orgs' mappings). When
+                ``None``, returns all mappings — reserved for callers that
+                have already gated on platform-admin / provider-org bypass.
 
         Returns:
-            List of mappings for the integration
+            List of mappings for the integration (possibly empty).
         """
-        result = await self.session.execute(
-            select(IntegrationMapping)
-            .where(IntegrationMapping.integration_id == integration_id)
-            .options(
-                joinedload(IntegrationMapping.integration)
-                .options(joinedload(Integration.oauth_provider)),
-                joinedload(IntegrationMapping.organization),
-                joinedload(IntegrationMapping.oauth_token),
-            )
-            .order_by(IntegrationMapping.created_at)
+        stmt = select(IntegrationMapping).where(
+            IntegrationMapping.integration_id == integration_id
         )
+        if organization_id is not None:
+            stmt = stmt.where(IntegrationMapping.organization_id == organization_id)
+        stmt = stmt.options(
+            joinedload(IntegrationMapping.integration)
+            .options(joinedload(Integration.oauth_provider)),
+            joinedload(IntegrationMapping.organization),
+            joinedload(IntegrationMapping.oauth_token),
+        ).order_by(IntegrationMapping.created_at)
+        result = await self.session.execute(stmt)
         return list(result.unique().scalars().all())
 
     async def _save_config(

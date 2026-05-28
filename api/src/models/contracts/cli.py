@@ -261,6 +261,14 @@ class SDKIntegrationsGetResponse(BaseModel):
 class SDKIntegrationsListMappingsRequest(BaseModel):
     """Request to list integration mappings via SDK."""
     name: str = Field(..., description="Integration name")
+    scope: str | None = Field(
+        default=None,
+        description=(
+            "Optional org scope. Omit / pass null to list only the caller's "
+            "own org mapping. Platform admins and provider-org members may "
+            "pass 'global' (no filter, all orgs) or a specific org UUID."
+        ),
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

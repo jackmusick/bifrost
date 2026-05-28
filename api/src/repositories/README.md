@@ -46,26 +46,92 @@ and is out of scope for the engine-sentinel model.
 
 ---
 
-## The four scope-resolution rules
+## The scope-resolution rule
 
 Implemented in `api/shared/scope_resolver.py::resolve_effective_scope`.
+Everywhere a caller can target a scope — SDK calls, CLI requests, REST
+endpoints, ambient `ExecutionContext.set_scope()` — this exact rule
+runs. There is no "almost the same" check elsewhere.
 
-| `requested_scope`         | Allowed if...       | Result          |
-| ------------------------- | ------------------- | --------------- |
-| UNSET (unspecified)       | always              | `caller_org_id` |
-| explicit `None` (global)  | `is_platform_admin` | `None`          |
-| `caller_org_id`           | always              | `caller_org_id` |
-| any other UUID            | `is_platform_admin` | that UUID       |
+### The three input forms
 
-**UNSET and explicit `None` are NOT the same.** UNSET means "the caller
-didn't specify a scope; use their default." Explicit `None` means "the
-caller is asking for global." Collapsing these is a bug class — only
-platform admins can request global, but everyone can omit the field.
+A caller's intent has three distinct shapes:
 
-The resolver raises `ScopeNotAllowed` for any unauthorized request. It
-NEVER silently coerces an unauthorized scope into something benign.
-"Just return caller_org_id as a safe default" would hide cross-tenant
-breaches.
+| Caller input               | Means                              | Resolver's `requested_scope`          |
+| -------------------------- | ---------------------------------- | ------------------------------------- |
+| Field omitted (`scope=None` in a Python default, missing in JSON, empty string for CLI compat) | "Use my default org"             | `UNSET` sentinel                      |
+| `scope=None` explicit / `scope="global"` | "Operate on global"              | Python `None`                         |
+| `scope="<uuid>"`           | "Operate on that org"              | `UUID(...)`                           |
+
+**UNSET and explicit `None` are NOT the same and must not collapse.**
+"Didn't specify" defaults to the caller's own org and is always allowed.
+"Explicitly asked for global" requires bypass. Collapsing them lets
+anyone reach global by simply omitting the field — a recurring bug
+class. The resolver uses a distinct `_Unset` sentinel for this exact
+reason; one branch returns `caller_org_id`, the other gate-checks.
+
+### The output: `effective_scope`
+
+The resolver returns an `effective_scope` (UUID or None for global) only
+after verifying the caller is allowed to ask for it. **You cannot get
+an `effective_scope` you weren't authorized for.** Resolution and
+authorization are the same step; there is no "resolve first, check
+later" — they are inseparable.
+
+For any unauthorized input the resolver raises `ScopeNotAllowed`. It
+NEVER silently coerces ("just return caller_org_id as a safe default"
+would mask cross-tenant attempts). Callers either get an
+`effective_scope` they're entitled to, or an exception. No third path.
+
+### The four rules
+
+| `requested_scope`         | Allowed if...                              | Result (`effective_scope`) |
+| ------------------------- | ------------------------------------------ | -------------------------- |
+| UNSET                     | always                                     | `caller_org_id`            |
+| explicit `None` (global)  | `is_platform_admin OR is_provider_org`     | `None`                     |
+| `caller_org_id`           | always                                     | `caller_org_id`            |
+| any other UUID            | `is_platform_admin OR is_provider_org`     | that UUID                  |
+
+### Bypass = `is_platform_admin` OR `is_provider_org`
+
+Two independent flags either of which grants scope-bypass:
+
+- `is_platform_admin` — `User.is_superuser=True`. The user can live in
+  any org or no org at all.
+- `is_provider_org` — `User.organization.is_provider=True`, regardless
+  of `is_superuser`. The typical caller archetype is a regular employee
+  in the platform-provider org (e.g. a non-admin Covi employee).
+
+They aren't redundant. `is_platform_admin` in a non-provider org is a
+real case (a system account assigned to a regular org). A non-admin in
+the provider org is also a real case (most platform employees).
+Collapsing the flags would either over-grant (every provider-org
+member becomes a superuser) or under-grant (regular platform employees
+can't operate cross-tenant). Two independent flags, either alone
+sufficient — that's the C2 rule.
+
+### Where the rule actually runs
+
+The same resolver runs at four call sites; each sources the caller's
+flags from an auth-verified principal:
+
+| Call site                                       | Caller principal source                                   |
+| ----------------------------------------------- | --------------------------------------------------------- |
+| `_get_cli_org_id` (API-side, `/api/sdk/*`)      | `current_user` from JWT (auth-verified)                   |
+| `resolve_scope()` (SDK-side, in workflow proc)  | `ExecutionContext` populated by engine from request       |
+| `ExecutionContext.set_scope()` (ambient)        | Same `ExecutionContext` instance                          |
+| REST routers using the resolver directly        | `current_user` from JWT                                   |
+
+Under workflow execution the API authenticates the engine sentinel
+(`is_superuser=True`), so the API-side check effectively always
+passes — the SDK-side `resolve_scope` is the load-bearing gate for
+engine-routed calls. For direct user calls (CLI, REST) the API-side
+check is the gate.
+
+Every SDK mutator that accepts `scope` must call `resolve_scope(scope)`
+locally before posting. The mechanical lint test
+(`tests/unit/test_org_scoping_enforcement.py::TestSDKEndpointsUseResolver`)
+fails CI for any new handler that ducks this.
 
 ---
 
@@ -157,15 +223,28 @@ to read the current version. The invalidation hooks live on
 ## Endpoint surfaces
 
 The HTTP API has two surfaces for org-scoped data, with different trust
-boundaries:
+boundaries. **Both are reachable by directly-authenticated users**; the
+`/api/sdk/*` carve-out is a primary call path for the engine but is NOT
+exclusive to it.
 
-**`/api/sdk/*` — SDK execution surface.** Called by the engine
-(authenticated as the sentinel superuser) on behalf of executing
-workflows. The engine has already resolved scope locally via
-`resolve_effective_scope`; the endpoints trust the resolved scope and
-pass `is_superuser=True` to the repository. Org users do NOT hit these
-directly. See `api/src/routers/cli.py` (file rename to `sdk.py`
-deferred).
+**`/api/sdk/*` — SDK / CLI surface.** Two callers:
+
+1. **The engine**, executing a workflow. The engine authenticates as the
+   sentinel superuser and runs the SDK-side `resolve_scope` first; the
+   API receives the already-resolved scope and the resolver's bypass
+   triggers because the principal is `is_superuser=True`. The SDK-side
+   resolver is the security boundary for this caller.
+2. **The user's local CLI** (`bifrost ...`), authenticated as that user
+   directly. The API-side `_get_cli_org_id` gate fires against the real
+   principal — same `is_platform_admin OR is_provider_org` rule the
+   resolver enforces everywhere. The C2 e2e tests
+   (`test_org_scoping_scenarios.py`) cover this path explicitly.
+
+The handlers do not differentiate the two callers — every scope-taking
+handler routes through `_get_cli_org_id` (the mechanical lint test
+asserts this). What differs is which gate ultimately catches an
+unauthorized request: SDK-side for engine traffic, API-side for direct
+CLI traffic.
 
 **`/api/*` — Direct REST surface.** Called by the UI as the
 authenticated user. The endpoints apply `resolve_effective_scope`

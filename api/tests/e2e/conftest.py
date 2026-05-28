@@ -139,6 +139,7 @@ def execute_workflow_sync(
     max_wait: float = 30.0,
     request_sync: bool = False,
     request_timeout: float | None = None,
+    org_id: str | None = None,
 ) -> dict:
     """Execute a workflow and poll until completion.
 
@@ -161,14 +162,17 @@ def execute_workflow_sync(
     Raises:
         AssertionError: If execution fails or times out
     """
+    payload: dict = {
+        "workflow_id": workflow_id,
+        "input_data": input_data or {},
+        "sync": request_sync,
+    }
+    if org_id is not None:
+        payload["org_id"] = org_id
     response = e2e_client.post(
         "/api/workflows/execute",
         headers=headers,
-        json={
-            "workflow_id": workflow_id,
-            "input_data": input_data or {},
-            "sync": request_sync,
-        },
+        json=payload,
         timeout=request_timeout,
     )
     assert response.status_code == 200, f"Execute failed: {response.text}"

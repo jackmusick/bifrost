@@ -403,54 +403,171 @@ SDK_ROUTER_FILES = {
 }
 
 
-# Endpoints under /api/sdk/* that do NOT touch execution-resolution entities
-# and therefore don't need to call resolve_effective_scope. The path keys
-# below are used to identify them via the @router decorator.
-EXEMPT_SDK_ENDPOINTS: dict[str, str] = {
-    # Auth and session
-    "/auth/login": "auth — caller identity IS the input",
-    "/auth/refresh": "auth — token refresh, no scope",
-    "/auth/whoami": "auth — current user lookup",
-    "/context": "developer context — does its own platform-admin gate",
-    # Health, version, capabilities
-    "/version": "health/version, no org data",
-    "/download": "CLI binary download, no org data",
-    # CLI session lifecycle
-    "/sessions/register": "CLI session bootstrap, no org data",
-    "/sessions/state": "CLI session state lookup",
-    "/sessions/continue": "CLI session continuation",
-    "/sessions/pending": "CLI session work pickup",
-    "/sessions/log": "CLI session log write",
-    "/sessions/result": "CLI session result write",
+# Handlers under /api/sdk/* that are exempt from the
+# "must call _get_cli_org_id or resolve_effective_scope" rule. Keyed on
+# handler function name (qualname is fine too but FastAPI handlers are
+# module-level so the simple name is unambiguous). The key TRAVELS with
+# the function across URL renames; the path-based version would have
+# missed the same drift the resolver test was meant to catch.
+EXEMPT_SDK_HANDLERS: dict[str, str] = {
+    # As of 2026-05-26 every scope-taking SDK handler in cli.py routes
+    # through _get_cli_org_id. This list is left in place so that future
+    # exempt handlers can be added with an explicit justification — adding
+    # an entry without a one-line reason is itself a CI failure
+    # (test_exempt_list_well_formed).
 }
 
 
+# Names that count as "calling the resolver" — direct call to
+# resolve_effective_scope, or call to the thin _get_cli_org_id wrapper.
+RESOLVER_CALL_NAMES = {"resolve_effective_scope", "_get_cli_org_id"}
+
+
+def _handler_names_taking_scope(tree: ast.AST) -> dict[str, ast.AsyncFunctionDef | ast.FunctionDef]:
+    """Find every router-decorated async handler that takes a ``scope`` arg
+    (either directly in the function signature or via a Pydantic ``request``
+    body that declares ``scope`` — the latter is the common pattern in
+    cli.py)."""
+    handlers: dict[str, ast.AsyncFunctionDef | ast.FunctionDef] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
+            continue
+        # Only handlers decorated with @router.<verb>(...)
+        is_route = any(
+            isinstance(d, ast.Call)
+            and isinstance(d.func, ast.Attribute)
+            and isinstance(d.func.value, ast.Name)
+            and d.func.value.id == "router"
+            for d in node.decorator_list
+        )
+        if not is_route:
+            continue
+        handlers[node.name] = node
+    return handlers
+
+
+def _handler_uses_request_scope(node: ast.AsyncFunctionDef | ast.FunctionDef) -> bool:
+    """Return True if the handler body references ``request.scope`` —
+    that's how scope flows in for nearly every cli.py endpoint."""
+    for sub in ast.walk(node):
+        if (
+            isinstance(sub, ast.Attribute)
+            and sub.attr == "scope"
+            and isinstance(sub.value, ast.Name)
+            and sub.value.id == "request"
+        ):
+            return True
+    return False
+
+
+def _handler_signature_takes_scope(node: ast.AsyncFunctionDef | ast.FunctionDef) -> bool:
+    """Return True if ``scope`` appears as a direct function parameter."""
+    args = node.args
+    for a in (*args.args, *args.kwonlyargs, *(args.posonlyargs or [])):
+        if a.arg == "scope":
+            return True
+    return False
+
+
+# Pydantic contract files we statically inspect for scope-bearing models.
+# When a handler's body parameter is annotated with one of these models,
+# and that model declares a `scope` field, the handler is scope-taking
+# even if the body never references `request.scope` directly. This is
+# the third tripwire the post-Codex hardening needed — without it a
+# future endpoint could accept ``SomeRequest(scope: str | None)`` and
+# never read it, slipping past the body-walk check.
+CONTRACT_FILES = (API_ROOT / "models" / "contracts" / "cli.py",)
+
+
+def _models_with_scope_field() -> set[str]:
+    """Return the set of Pydantic model class names declaring a ``scope``
+    field in the SDK contract files. Static AST inspection only — no
+    runtime import (avoids pulling FastAPI / DB deps into a unit test).
+    """
+    models: set[str] = set()
+    for path in CONTRACT_FILES:
+        if not path.exists():
+            continue
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for stmt in node.body:
+                # ``scope: str | None = Field(...)`` is an AnnAssign with
+                # target.id == "scope". That's all we need.
+                if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                    if stmt.target.id == "scope":
+                        models.add(node.name)
+                        break
+    return models
+
+
+def _handler_body_annotation_has_scope(
+    node: ast.AsyncFunctionDef | ast.FunctionDef,
+    scope_models: set[str],
+) -> bool:
+    """Return True if the handler's signature includes a parameter whose
+    annotation references a model that declares a ``scope`` field.
+
+    Detects both bare names (``request: SDKFooRequest``) and attribute
+    forms (``request: contracts.SDKFooRequest``). False positives are
+    OK — the contract is "scope-taking handlers must call the resolver";
+    a handler with a scope-bearing body that doesn't use scope still
+    benefits from declaring the gate or going on the exempt list.
+    """
+    args = node.args
+    all_args = (*args.args, *args.kwonlyargs, *(args.posonlyargs or []))
+    for a in all_args:
+        ann = a.annotation
+        if ann is None:
+            continue
+        # Bare name annotation, e.g. ``request: SDKIntegrationsGetRequest``
+        if isinstance(ann, ast.Name) and ann.id in scope_models:
+            return True
+        # Attribute annotation, e.g. ``request: contracts.SDKFoo``
+        if isinstance(ann, ast.Attribute) and ann.attr in scope_models:
+            return True
+        # Subscript / generic / union — walk inner names too.
+        for sub in ast.walk(ann):
+            if isinstance(sub, ast.Name) and sub.id in scope_models:
+                return True
+            if isinstance(sub, ast.Attribute) and sub.attr in scope_models:
+                return True
+    return False
+
+
+def _handler_calls_resolver(node: ast.AsyncFunctionDef | ast.FunctionDef) -> bool:
+    """Walk the handler body looking for a call to one of the resolver
+    functions. Both bare-name and attribute access count (e.g. ``shared.
+    scope_resolver.resolve_effective_scope(...)`` would still resolve via
+    the attribute's ``.attr``)."""
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Call):
+            func = sub.func
+            if isinstance(func, ast.Name) and func.id in RESOLVER_CALL_NAMES:
+                return True
+            if isinstance(func, ast.Attribute) and func.attr in RESOLVER_CALL_NAMES:
+                return True
+    return False
+
+
 class TestSDKEndpointsUseResolver:
-    """SDK endpoints that take a `scope` parameter must call
-    resolve_effective_scope (or be on the exempt list).
+    """Every SDK handler that takes a ``scope`` (either as a direct
+    parameter or via the ``request.scope`` pattern that is standard in
+    cli.py) must call ``_get_cli_org_id`` or ``resolve_effective_scope``.
 
-    This test is the **placeholder skeleton** — the migration phases (4-7)
-    convert endpoints onto resolve_effective_scope and shrink the exempt
-    list. Today, the function does not exist as a caller yet, so this
-    test only verifies the infrastructure: the file exists, the test can
-    parse it, and the exempt list is well-formed.
+    The original placeholder (pre-2026-05-26 audit) only verified the
+    exempt list was well-formed and the resolver module imported. That
+    laxity is exactly what let four ``/api/sdk/integrations/*_mapping``
+    handlers ship without any scope gate at all. This version walks each
+    handler's AST and fails the build if a non-exempt handler doesn't
+    invoke a resolver.
 
-    A future iteration of this test (post-phase-1 migration) will assert
-    that every non-exempt endpoint with a `scope` field actually invokes
-    `resolve_effective_scope`. That's intentionally NOT done now because:
-
-    1. No endpoints call the resolver yet — phase 4 introduces the first
-       caller.
-    2. Adding the strict check before any callers exist would require
-       allow-listing every existing scope-taking endpoint, defeating the
-       purpose.
-
-    What this test enforces today:
-      - The resolver module exists and can be imported.
-      - The exempt list is well-formed.
-
-    What it will enforce after phase 4:
-      - Each non-exempt SDK endpoint accepting scope calls resolve_effective_scope.
+    Allow-list semantics:
+      - Keyed on handler function name (travels through URL renames).
+      - One-line justification per entry.
+      - Adding an entry should require code review; that is the
+        accountability mechanism.
     """
 
     def test_resolver_module_importable(self) -> None:
@@ -459,10 +576,100 @@ class TestSDKEndpointsUseResolver:
         assert callable(resolve_effective_scope)
 
     def test_exempt_list_well_formed(self) -> None:
-        for path, reason in EXEMPT_SDK_ENDPOINTS.items():
-            assert path.startswith("/"), f"Exempt endpoint path must be absolute: {path}"
-            assert reason, f"Exempt endpoint {path} needs a one-line justification"
+        for name, reason in EXEMPT_SDK_HANDLERS.items():
+            assert name.isidentifier(), (
+                f"Exempt entry must be a Python identifier (handler function name): {name!r}"
+            )
+            assert reason, f"Exempt handler {name} needs a one-line justification"
 
     def test_sdk_router_files_exist(self) -> None:
         for path in SDK_ROUTER_FILES:
             assert path.exists(), f"SDK router file missing: {path}"
+
+    def test_every_scope_taking_handler_calls_resolver(self) -> None:
+        """The load-bearing assertion. For each SDK router file, find every
+        @router-decorated handler that accepts a scope (direct parameter,
+        ``request.scope`` body access, OR a Pydantic body annotation whose
+        model declares a ``scope`` field). If it does, the handler body
+        must call ``_get_cli_org_id`` or ``resolve_effective_scope``
+        unless it's on the exempt list.
+
+        The Pydantic-annotation tripwire (added post-Codex 2026-05-26) is
+        the strongest of the three — a future endpoint can ship a
+        ``SomeRequest(scope: str | None)`` body model and forget to read
+        ``request.scope`` in the handler; without this check the handler
+        would skip the gate AND skip the lint test.
+        """
+        scope_models = _models_with_scope_field()
+        violations: list[str] = []
+        for path in SDK_ROUTER_FILES:
+            tree = ast.parse(path.read_text())
+            handlers = _handler_names_taking_scope(tree)
+            for name, node in handlers.items():
+                if name in EXEMPT_SDK_HANDLERS:
+                    continue
+                takes_scope = (
+                    _handler_signature_takes_scope(node)
+                    or _handler_uses_request_scope(node)
+                    or _handler_body_annotation_has_scope(node, scope_models)
+                )
+                if not takes_scope:
+                    continue
+                if not _handler_calls_resolver(node):
+                    violations.append(
+                        f"{path.name}::{name} accepts `scope` but does not call "
+                        f"_get_cli_org_id or resolve_effective_scope; "
+                        f"add it to EXEMPT_SDK_HANDLERS with a one-line reason "
+                        f"if exemption is justified."
+                    )
+
+        assert not violations, "Unguarded SDK handlers:\n  " + "\n  ".join(violations)
+
+    def test_scope_model_inventory_is_nonempty(self) -> None:
+        """The Pydantic-model walker must find at least one model with
+        a ``scope`` field. If it returns empty, either the contract file
+        moved or the walker is broken — both cases would silently weaken
+        the lint test, so we fail fast.
+        """
+        models = _models_with_scope_field()
+        assert models, (
+            "Expected at least one scope-bearing Pydantic model under "
+            "api/src/models/contracts/cli.py; got an empty set. The "
+            "model-annotation tripwire is silently disabled."
+        )
+
+    def test_synthetic_handler_with_scope_model_no_resolver_is_caught(
+        self, tmp_path
+    ) -> None:
+        """Construct a fake router file whose handler accepts a Pydantic
+        body annotated with a known scope-bearing model and does NOT call
+        the resolver. Run the same AST checks against it and confirm the
+        violation is detected. Guards against silent regressions in the
+        annotation walker.
+        """
+        scope_models = _models_with_scope_field()
+        assert scope_models, "precondition: contract scope models discoverable"
+        # Pick any scope-bearing model name to use in the synthetic handler.
+        model_name = next(iter(scope_models))
+
+        synthetic = f"""
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.post("/probe")
+async def synthetic_handler(request: {model_name}):
+    # Intentionally does NOT call resolver; should be flagged.
+    return {{}}
+"""
+        tree = ast.parse(synthetic)
+        handlers = _handler_names_taking_scope(tree)
+        assert "synthetic_handler" in handlers
+        node = handlers["synthetic_handler"]
+        # Sanity: signature & body-walk checks miss it; annotation check
+        # is what surfaces it.
+        assert not _handler_signature_takes_scope(node)
+        assert not _handler_uses_request_scope(node)
+        assert _handler_body_annotation_has_scope(node, scope_models)
+        assert not _handler_calls_resolver(node)

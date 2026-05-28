@@ -224,7 +224,7 @@ Eight phases. Each phase ends in a green test run and is committable on its own.
 - **Introduce versioned global key**. `CONFIG_GLOBAL_VERSION_KEY` is INCR'd on every global config write. Org-scoped cache keys embed the version via `config_hash_key_versioned`, so a global write naturally invalidates every org cache without enumeration. No `scan_iter`.
 - **Wire reader and writer through the versioned key**. `ConfigResolver._get_config_from_cache` and `_set_config_cache` use `config_hash_key_versioned`. `upsert_config` and `invalidate_config` use it for org-scoped writes and INCR the version for global writes.
 - **Regression tests** in `tests/unit/cache/test_invalidation.py` pin the partial-hash bug closed and assert the version-bump contract.
-- **`ConfigResolver` itself is kept** as a thin wrapper around the merge logic. Fully merging it into `ConfigRepository` is a Phase 8 follow-up.
+- **`ConfigResolver` is deleted.** Cascade is centralized in `OrgScopedRepository`; cache lives on `ConfigRepository` as a transparent layer. Callers use `repo.get()` / `repo.list()` like every other entity. (Originally proposed as a Phase 8 follow-up; landed in the phase 5 follow-up commit.)
 - Allow-list shrinks for the cache-bug-driven allow-list entries (none today — the allow-list entries for cli.py config endpoints remain until phase 6's broader cli.py sweep).
 
 ### Phase 6: Tables / Apps relocation + SDK execution-path migration (scoped narrower than original plan)
@@ -423,24 +423,365 @@ audit docs. Clean up before merge.
 
 ## Outstanding work to ship this branch (post-Codex)
 
-Before this branch can be considered done:
+Decisions locked in 2026-05-26 with the user; all of the below lands in
+this same PR (the branch is the consolidation, not a hand-off):
 
-1. **Nuke DeveloperContext** (model, endpoints, dev-run UI, CLI commands,
-   all callsites). Critical-severity finding above is downstream of this.
-2. **Promote `test_sdk_endpoints_use_resolver`** to strict, with allow-list.
-3. **Migrate the four mapping endpoints** through the (post-DeveloperContext)
-   scope resolver.
-4. **Verify + fix SDK-side resolver** (provider-org-membership vs admin flag).
-5. **Fix config cache invalidation** on key/org-id changes.
-6. **Plan body cleanup** for Phase 5 + whitespace.
+1. **Nuke DeveloperContext entirely.** ORM model, migration to drop
+   `developer_contexts`, `GET`+`PUT /api/sdk/context` endpoints, CLI
+   `developer` commands, client `Developer.tsx` org-selector and
+   interactive-run UI, `sdk.ts.getContext`/`updateContext`, and the
+   `_get_cli_org_id` default-org sourcing. Replacement: `caller_org_id`
+   comes from `current_user.organization_id` (auth-verified DB column),
+   never from request body or DB-default override. Platform admins
+   targeting other orgs pass `scope` explicitly per call.
+
+2. **C2 gate, applied at both boundaries.** `is_superuser`
+   (platform admin) and `is_provider` (provider-org member) remain
+   independent flags. Both bypass scope. The gate is
+   `caller.is_platform_admin OR caller.organization.is_provider` —
+   applied identically API-side (in `_get_cli_org_id` /
+   `resolve_effective_scope`) and SDK-side (in `_context.py:resolve_scope`).
+   `ExecutionContext.is_platform_admin` is already plumbed through the
+   engine; the SDK-side resolver just needs to read it.
+
+3. **Mapping endpoints through the resolver.** `sdk_integrations_list_mappings`,
+   `get_mapping`, `upsert_mapping`, `delete_mapping` all route through
+   `_get_cli_org_id` with the C2 gate. `IntegrationsRepository.list_mappings`
+   gains an org filter so non-admin/non-provider callers cannot enumerate
+   other orgs' mappings.
+
+4. **`test_sdk_endpoints_use_resolver` promoted to strict.** AST-walks
+   every `/api/sdk/*` handler. Asserts the body calls `_get_cli_org_id`
+   or `resolve_effective_scope`. Allow-list keyed on handler function
+   qualname (not URL path — survives renames). One-line justification
+   per exempt entry.
+
+5. **Config cache invalidation on rename/move.** `PUT /api/config/{id}`:
+   snapshot old `(org_id, key)` before update, `DELETE` the old cache
+   key after a successful write, upsert the new entry. If the change
+   crosses the global↔org boundary, `INCR CONFIG_GLOBAL_VERSION_KEY`
+   so org caches that merged the global value re-fetch.
+
+6. **Plan body + whitespace cleanup.** Phase 5 body updated to say
+   "ConfigResolver deleted" (matching Open Question #2 and the diff).
+   Trailing whitespace in `api/src/repositories/applications.py` and
+   the two audit docs cleaned.
 
 The OAuth cross-tenant token leak, the URL rename, the canonical pattern
-mechanics, and the documentation tripwires are all genuinely done. The
-authorization-input-sourcing layer (caller_org_id) and the mechanical
-enforcement that should catch endpoint bypass (`test_sdk_endpoints_use_resolver`)
-are NOT done. Without those, the "make org scoping stop drifting" goal is
-not met — the drift mechanism has just moved from inline cascades to
-mutable-default forgery.
+mechanics, and the documentation tripwires are genuinely done. The
+authorization-input-sourcing layer (caller_org_id), the SDK-side gate
+correctness, the mapping-endpoint bypass, and the strict mechanical
+enforcement are what items 1-5 close. Item 6 is hygiene.
+
+---
+
+## Phase 9 — post-Codex remediation (landed 2026-05-26)
+
+All six items above landed in a single working session on top of the
+existing 15-commit branch. Concrete file-level evidence for reviewer
+verification:
+
+### 1. DeveloperContext nuked
+
+- ORM model deleted: `api/src/models/orm/developer.py` removed; the
+  `developer_context` relationship dropped from `api/src/models/orm/users.py`;
+  re-exports removed from `api/src/models/__init__.py` and
+  `api/src/models/orm/__init__.py`.
+- Drop-table migration: `api/alembic/versions/20260526_drop_developer_contexts.py`,
+  rev `20260526_drop_developer_contexts` on top of
+  `20260522_merge_claims_knowledge`. Has a downgrade for completeness.
+- API: `PUT /api/sdk/context` deleted; `GET /api/sdk/context` rewritten
+  to source the user and org from the auth-verified `current_user`
+  only. The `?org_id=` override path applies the same C2 rule as the
+  scope resolver (provider-org membership lookup is lazy).
+  (`api/src/routers/cli.py`.)
+- Workflow execution path: the secondary forgery surface in
+  `api/src/routers/workflows.py` (platform-admin DeveloperContext
+  override for global workflow execution) is gone. `request.org_id`
+  remains the explicit way for admins to target another org.
+- Client: `client/src/pages/user-settings/Developer.tsx` reduced to
+  the SDK setup card (install/login/run snippets). The org-selector,
+  track-executions Switch, and Save button are deleted.
+  `client/src/services/sdk.ts` reduced to the download URL.
+- CLI: no `bifrost developer` commands existed; the SDK's
+  `_fetch_context` helpers continue to work against the GET endpoint.
+
+### 2. C2 gate uniformly applied
+
+- Resolver extended: `resolve_effective_scope` in
+  `api/shared/scope_resolver.py` gains an `is_provider_org: bool`
+  parameter. The four-rule table reads "bypass = is_platform_admin OR
+  is_provider_org." Existing tests remain valid (kwarg-only with
+  default False).
+- API-side: `_get_cli_org_id` (in `api/src/routers/cli.py`) reads
+  `caller_org_id` from `current_user.organization_id` (auth-verified
+  DB column, no more DeveloperContext default), and looks up
+  `Organization.is_provider` lazily — only when the request is not
+  UNSET and not the caller's own org.
+- SDK-side: `api/bifrost/_context.py:resolve_scope` reads
+  `ctx.is_platform_admin` (already plumbed by the engine) and
+  `ctx.organization.is_provider`. Both bypass paths exist on both
+  boundaries now.
+
+### 3. Mapping endpoints gated
+
+All four of `sdk_integrations_list_mappings`, `get_mapping`,
+`upsert_mapping`, `delete_mapping` route through `_get_cli_org_id`
+with the C2 gate. `IntegrationsRepository.list_mappings` gains an
+optional `organization_id` filter so non-bypass callers can no
+longer enumerate other orgs. The `SDKIntegrationsListMappingsRequest`
+contract gained an optional `scope` field for explicit cross-org
+listing by bypass callers.
+
+### 4. `test_sdk_endpoints_use_resolver` promoted
+
+`TestSDKEndpointsUseResolver` in
+`api/tests/unit/test_org_scoping_enforcement.py` no longer just
+verifies the resolver imports — it AST-walks every `@router`-decorated
+handler in `cli.py` that takes `scope` (signature or
+`request.scope` body field) and asserts the body calls
+`_get_cli_org_id` or `resolve_effective_scope`. Allow-list keyed on
+handler function name (not URL path — survives renames). Currently
+zero exempt entries; every scope-taking handler goes through the
+gate.
+
+### 5. Config cache invalidation on rename/move
+
+`ConfigRepository.update_config_by_id` now returns
+`(response, old_org_id, old_key)`. The PUT handler in
+`api/src/routers/config.py` invalidates the old cache entry when
+either field changed, and `INCR`s `CONFIG_GLOBAL_VERSION_KEY` on
+global↔org transitions so org-merged caches re-fetch. Regression
+tests: `api/tests/unit/routers/test_config_update_cache.py`.
+
+### 6. Production-shaped scenario coverage (added during user review)
+
+The user's review surfaced a real coverage gap: the C2 bypass for
+non-admin provider-org members existed at the unit level but had
+never been exercised end-to-end against a real seeded user. Filled:
+
+- New fixture `provider_org_user` in `api/tests/e2e/fixtures/setup.py`:
+  a regular (`is_superuser=False`) user inside the seeded provider
+  org at UUID `00000000-0000-0000-0000-000000000002` (created by
+  migration `20260107_022300_add_provider_org`).
+- New test file
+  `api/tests/e2e/api/test_org_scoping_scenarios.py` (12 tests)
+  mapping 1:1 to the four scenarios the user named:
+
+  | Scenario | Tests |
+  |---|---|
+  | (1) Orgs reach own data | UNSET resolves to own org; explicit own-org succeeds |
+  | (2a) Platform admin reaches all | cross-org read; explicit global |
+  | (2b) Provider-org member reaches all (new path) | cross-org read; explicit global — both by non-admin user |
+  | (3) Org-then-global cascade | org row overrides global on UNSET; falls back to global when org row absent |
+  | (4) Cross-org blocked | explicit other-org → 403; explicit global → 403; UNSET cannot leak (DeveloperContext-forgery regression pin); mapping endpoint isolation |
+
+All 12 pass; full e2e is 1322 passed (was 1310 before the additions),
+52 skipped (pre-existing), 0 failed.
+
+### Verification summary (final state)
+
+| Suite | Pass |
+|---|---|
+| Unit (api) | 3987 |
+| **E2E (api)** | **1322** (12 new scenario tests) |
+| Client unit (vitest) | 1045 across 145 files |
+| Pyright | 0 errors in changed files (41 pre-existing in unrelated tests) |
+| Ruff / TSC / lint | clean |
+
+---
+
+## Phase 10 — Codex round-2 remediation (landed 2026-05-26)
+
+After the user took the branch to Codex for an independent review, five
+findings came back. All addressed in this branch:
+
+### P2.1 — Preserve 403 in mapping endpoint exception handlers
+
+`sdk_integrations_get`, `list_mappings`, `get_mapping`, and
+`delete_mapping` each had a blanket `except Exception` that downgraded
+the resolver's 403 into a 200/null response or `{"deleted": False}`.
+Each now has `except HTTPException: raise` ahead of the generic
+handler, so 403 surfaces cleanly. Six `cli_knowledge_*` handlers had
+the same swallow pattern (Codex didn't call them out, but the risk is
+identical); patched the same way for consistency. `cli.py` audited:
+every scope-taking SDK handler that has a generic exception catch now
+re-raises `HTTPException` first.
+
+### P2.2 — Strengthen mapping isolation e2e
+
+The previous `test_mapping_endpoint_isolation` used a nonexistent
+integration name, so the handler returned before `_get_cli_org_id`
+fired and the test accepted `200+null`. Rewritten to:
+
+1. Seed a real integration and a real org2-scoped mapping.
+2. Hit list_mappings / get_mapping / delete_mapping / upsert_mapping
+   from `org1_user` with `scope=org2["id"]` — each must be 403.
+3. After the forbidden delete attempt, verify the org2 mapping still
+   exists (the delete didn't quietly fall through to a no-op).
+
+This now actually exercises the gate. A swallowed-403 regression would
+fail.
+
+### P2.3 — Lint test is Pydantic-model-aware
+
+`test_every_scope_taking_handler_calls_resolver` previously detected
+scope-taking handlers via (a) direct `scope` parameter or (b) body
+references to `request.scope`. A future handler could ship a body
+model declaring `scope: str | None` and never reference it; the test
+would skip it entirely. Added a third detector: static AST inspection
+of `api/src/models/contracts/cli.py` finds every Pydantic model
+declaring a `scope` field. Any handler whose body parameter is
+annotated with one of those models is treated as scope-taking. Two
+new tests pin the detector:
+
+- `test_scope_model_inventory_is_nonempty` — fails if the contract
+  scan finds zero scope-bearing models (i.e., the walker silently
+  broke).
+- `test_synthetic_handler_with_scope_model_no_resolver_is_caught` —
+  builds a fake handler that takes a real scope-bearing model and
+  never calls the resolver; confirms the detector flags it.
+
+### P3.1 — `ExecutionContext.set_scope` uses the C2 rule
+
+The ambient `ctx.set_scope("...")` call (separate from explicit
+`resolve_scope()` in SDK reads) still gated on
+`is_provider` alone — so a platform admin in a non-provider org could
+not override scope ambient. Now applies
+`is_platform_admin OR is_provider_org`, matching the rule everywhere
+else. Five tests added at `tests/unit/test_resolve_scope_sdk.py`
+covering each path: admin in non-provider org, provider-org member,
+non-admin/non-provider blocked, same-org noop, None resets.
+
+### P3.2 — Repositories README reflects C2 rule
+
+`api/src/repositories/README.md` updated. The four-rule table now
+shows `is_platform_admin OR is_provider_org` for the bypass rows.
+Added a "Why two independent bypass flags?" subsection explaining
+why the flags can't collapse into one (platform admin in a
+non-provider org; non-admin in the provider org).
+
+### Codex round-2 verification
+
+| Suite | Pass | Delta |
+|---|---|---|
+| Unit (targeted org-scoping) | 59 | +7 (5 set_scope, 2 lint-detector) |
+| E2E (scenario file) | 12 | unchanged; mapping-isolation test now hits real gate |
+| Pyright / ruff / tsc / lint | clean | — |
+
+---
+
+## Phase 11 — Codex round-3 remediation (landed 2026-05-26)
+
+Codex's third pass surfaced a remaining HIGH-severity gap that the
+phase-10 work missed: the SDK-side resolver was correct, but **three
+SDK methods bypassed it entirely**, posting caller-supplied `scope`
+raw. Under workflow execution the API authenticates as the engine
+sentinel (`is_superuser=True`), so the API-side gate ALWAYS passes —
+which makes the SDK-side `resolve_scope` the only real gate for
+engine-routed calls. With that gate skipped, a non-admin workflow
+could mutate any org's mapping by passing a victim UUID.
+
+### HIGH — SDK mapping mutators must resolve_scope locally
+
+Fixed in `api/bifrost/integrations.py`:
+
+- `list_mappings(name, scope=None)` — gained a `scope` parameter,
+  calls `resolve_scope(scope)` locally, posts the resolved value.
+- `upsert_mapping(name, scope, ...)` — calls `resolve_scope(scope)`
+  before posting; raises `PermissionError` SDK-side if the caller is
+  not platform-admin / provider-org and asks for a foreign scope.
+- `delete_mapping(name, scope)` — same.
+
+`get_mapping` was already correct; the other three matched its pattern
+now.
+
+The mechanical-enforcement test continues to assert API-side
+gating, but the test fixture for engine-sentinel calls can't exercise
+SDK-side gating — the real regression pin is the e2e below.
+
+### Regression e2e: engine-sentinel cross-org mutation blocked
+
+New test `test_workflow_via_engine_cannot_mutate_other_org_mapping`
+in `tests/e2e/api/test_org_scoping_scenarios.py`:
+
+1. Seeds an integration with a real org2 mapping.
+2. Registers a workflow in org1 (non-provider).
+3. Executes it as `org1_user` (non-admin, non-provider) — so the
+   engine spins up an ExecutionContext with `is_platform_admin=False`
+   and `organization.is_provider=False`.
+4. Inside the workflow: `integrations.upsert_mapping(..., scope=org2_id)`.
+5. Asserts the workflow caught a `PermissionError` (raised SDK-side,
+   never reaches the API) AND that the org2 mapping is unchanged.
+
+This is the load-bearing test for the round-3 fix. Pre-fix it would
+have raised no error and the org2 mapping would have been clobbered.
+
+### MEDIUM — Stale `client/src/lib/v1.d.ts`
+
+Regenerated against the worktree's API container. Removes the deleted
+`PUT /api/cli/context` operation and `DeveloperContextUpdate` schema;
+adds the new `scope` field to `SDKIntegrationsListMappingsRequest`.
+
+### LOW/MEDIUM — Repositories README endpoint-surfaces section
+
+`api/src/repositories/README.md` previously said `/api/sdk/*` was
+engine-only and that org users don't hit it directly. Current code
+explicitly supports direct CLI calls gated by `_get_cli_org_id`;
+README now describes both call paths and which gate (SDK-side vs
+API-side) catches an unauthorized request for each.
+
+### Round-3 verification
+
+| Suite | Pass | Delta |
+|---|---|---|
+| E2E scenarios | 13 | +1 (engine-sentinel regression) |
+
+Full `./test.sh all` to follow.
+
+---
+
+## Phase 12 — Knowledge audit + client URL fixes (landed 2026-05-26)
+
+User asked for knowledge scoping status. Audited end-to-end:
+
+| Layer | Result |
+|---|---|
+| SDK (`api/bifrost/knowledge.py`) | All 7 methods (`store`, `store_many`, `search`, `delete`, `delete_namespace`, `list_namespaces`, `get`) call `resolve_scope(scope)` before posting. |
+| API handlers (cli.py, 7 `cli_knowledge_*` routes) | All call `_get_cli_org_id` with C2 gate. All preserve `HTTPException` ahead of generic exception catch (round-2 fix). |
+| Repository (`KnowledgeRepository`) | Extends `OrgScopedRepository`. Cascade is the same shared primitive every other org-scoped entity uses. |
+| Existing e2e | `test_org_workflow_sees_org1_data_in_all_modules` etc. exercise full cross-org knowledge isolation through the workflow engine, gated behind `EMBEDDINGS_AI_TEST_KEY`. |
+
+Added a focused gate-check e2e that does NOT require embeddings:
+`test_knowledge_endpoint_isolation`. It hits `list_namespaces`,
+`delete_namespace`, and `search` with cross-org `scope` from a regular
+org user and asserts 403; UNSET on the same user returns 200. This
+covers the C2 boundary specifically, independent of the embedding
+infrastructure.
+
+### Client-side URL fixes (latent bugs surfaced by the audit)
+
+Two client files still referenced pre-rename paths under `/api/cli/*`:
+
+- `client/src/hooks/useKnowledge.ts` — `GET /api/cli/knowledge/namespaces`
+  → `/api/sdk/knowledge/namespaces`. Stale comments on the `scope`
+  param ("backend uses DeveloperContext") also corrected to describe
+  the auth-verified caller org / C2 resolver default.
+- `client/src/services/cli.ts` — four references to
+  `/api/cli/sessions*` → `/api/sdk/sessions*`. These would have
+  returned 404 (the router prefix changed in phase-7 follow-up).
+
+`/api/cli/download` is the deliberate exception and stays — it's the
+URL embedded in install commands.
+
+### Round-4 verification
+
+| Suite | Pass | Delta |
+|---|---|---|
+| E2E scenarios | 14 | +1 (knowledge isolation) |
+| Client tsc + lint | clean | — |
+
+Full `./test.sh all` re-run pending.
 
 ---
 

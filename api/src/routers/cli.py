@@ -57,10 +57,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import CurrentUser
+from src.core.auth import CurrentUser, UserPrincipal
 from src.core.database import get_db
 from src.core.log_safety import log_safe
-from src.models import DeveloperContext, Organization
+from src.models import Organization
 from src.models.contracts.cli import (
     CLIAICompleteRequest,
     CLIAICompleteResponse,
@@ -165,20 +165,18 @@ def should_auto_refresh_token(
 
 
 class DeveloperContextResponse(BaseModel):
-    """Developer context for CLI initialization."""
+    """Developer context for CLI initialization.
+
+    Sourced entirely from the auth-verified ``current_user`` and their
+    ``organization_id``. There is no mutable per-user default-org override.
+    Platform admins / provider-org members targeting another org pass
+    ``?org_id=<uuid>`` on this endpoint or ``scope`` on each SDK call.
+    """
 
     user: dict = Field(description="User information")
     organization: dict | None = Field(description="Default organization")
     default_parameters: dict = Field(default={}, description="Default workflow parameters")
     track_executions: bool = Field(default=True, description="Whether to track executions in history")
-
-
-class DeveloperContextUpdate(BaseModel):
-    """Update developer context settings."""
-
-    default_org_id: UUID | None = Field(default=None, description="Default organization ID")
-    default_parameters: dict | None = Field(default=None, description="Default workflow parameters")
-    track_executions: bool | None = Field(default=None, description="Track executions in history")
 
 
 # =============================================================================
@@ -248,23 +246,44 @@ async def get_dev_context(
 ) -> DeveloperContextResponse:
     """Get development context for CLI initialization.
 
-    When org_id is provided, returns context for that specific organization
-    (superusers only). Otherwise uses the user's default organization.
+    Returns the authenticated user and their ``organization_id``-resolved
+    org. The optional ``org_id`` query parameter lets platform admins and
+    provider-org members target another org for the session — gated by
+    the same C2 rule the scope resolver applies elsewhere.
     """
-    # If org_id override requested, require superuser
-    if org_id is not None:
-        if not current_user.is_superuser:
+    # Resolve which org to return.
+    if org_id is not None and org_id != current_user.organization_id:
+        # Explicit override of another org — C2 gate: platform admin or
+        # provider-org member only. Provider-org membership is looked up
+        # against the caller's own org's ``is_provider`` flag.
+        is_provider_org = False
+        if not current_user.is_superuser and current_user.organization_id is not None:
+            row = await db.execute(
+                select(Organization.is_provider).where(
+                    Organization.id == current_user.organization_id
+                )
+            )
+            is_provider_org = bool(row.scalar_one_or_none())
+        if not (current_user.is_superuser or is_provider_org):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only superusers can specify an organization override",
+                detail="Only platform admins or provider-org members can target another organization",
             )
-        stmt = select(Organization).where(Organization.id == org_id)
+        target_org_id = org_id
+    elif org_id is not None:
+        target_org_id = org_id
+    else:
+        target_org_id = current_user.organization_id
+
+    org_data = None
+    if target_org_id is not None:
+        stmt = select(Organization).where(Organization.id == target_org_id)
         result = await db.execute(stmt)
         org = result.scalar_one_or_none()
-        if not org or not org.is_active:
+        if org is None or not org.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Organization {org_id} not found or inactive",
+                detail=f"Organization {target_org_id} not found or inactive",
             )
         org_data = {
             "id": str(org.id),
@@ -272,34 +291,6 @@ async def get_dev_context(
             "is_active": org.is_active,
             "is_provider": org.is_provider,
         }
-        return DeveloperContextResponse(
-            user={
-                "id": str(current_user.user_id),
-                "email": current_user.email,
-                "name": current_user.name,
-                "is_superuser": current_user.is_superuser,
-            },
-            organization=org_data,
-            default_parameters={},
-            track_executions=True,
-        )
-
-    stmt = select(DeveloperContext).where(DeveloperContext.user_id == current_user.user_id)
-    result = await db.execute(stmt)
-    dev_ctx = result.scalar_one_or_none()
-
-    org_data = None
-    if dev_ctx and dev_ctx.default_org_id:
-        stmt = select(Organization).where(Organization.id == dev_ctx.default_org_id)
-        result = await db.execute(stmt)
-        org = result.scalar_one_or_none()
-        if org:
-            org_data = {
-                "id": str(org.id),
-                "name": org.name,
-                "is_active": org.is_active,
-                "is_provider": org.is_provider,
-            }
 
     return DeveloperContextResponse(
         user={
@@ -309,68 +300,8 @@ async def get_dev_context(
             "is_superuser": current_user.is_superuser,
         },
         organization=org_data,
-        default_parameters=dev_ctx.default_parameters if dev_ctx else {},
-        track_executions=dev_ctx.track_executions if dev_ctx else True,
-    )
-
-
-@router.put(
-    "/context",
-    response_model=DeveloperContextResponse,
-    summary="Update developer context",
-)
-async def update_dev_context(
-    request: DeveloperContextUpdate,
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> DeveloperContextResponse:
-    """Update developer context settings."""
-    stmt = select(DeveloperContext).where(DeveloperContext.user_id == current_user.user_id)
-    result = await db.execute(stmt)
-    dev_ctx = result.scalar_one_or_none()
-
-    if not dev_ctx:
-        dev_ctx = DeveloperContext(
-            user_id=current_user.user_id,
-            default_org_id=request.default_org_id,
-            default_parameters=request.default_parameters or {},
-            track_executions=request.track_executions if request.track_executions is not None else True,
-        )
-        db.add(dev_ctx)
-    else:
-        if request.default_org_id is not None:
-            dev_ctx.default_org_id = request.default_org_id
-        if request.default_parameters is not None:
-            dev_ctx.default_parameters = request.default_parameters
-        if request.track_executions is not None:
-            dev_ctx.track_executions = request.track_executions
-
-    await db.commit()
-    await db.refresh(dev_ctx)
-
-    org_data = None
-    if dev_ctx.default_org_id:
-        stmt = select(Organization).where(Organization.id == dev_ctx.default_org_id)
-        result = await db.execute(stmt)
-        org = result.scalar_one_or_none()
-        if org:
-            org_data = {
-                "id": str(org.id),
-                "name": org.name,
-                "is_active": org.is_active,
-                "is_provider": org.is_provider,
-            }
-
-    return DeveloperContextResponse(
-        user={
-            "id": str(current_user.user_id),
-            "email": current_user.email,
-            "name": current_user.name,
-            "is_superuser": current_user.is_superuser,
-        },
-        organization=org_data,
-        default_parameters=dev_ctx.default_parameters,
-        track_executions=dev_ctx.track_executions,
+        default_parameters={},
+        track_executions=True,
     )
 
 
@@ -380,40 +311,27 @@ async def update_dev_context(
 
 
 async def _get_cli_org_id(
-    user_id: UUID,
+    current_user: "UserPrincipal",
     scope: str | None,
     db: AsyncSession,
-    *,
-    is_platform_admin: bool = False,
 ) -> str | None:
     """Resolve the effective organization scope for an SDK call.
 
-    NOTE: Prior to the 2026-05 org-scoping overhaul this function trusted
-    any UUID passed as ``scope`` without checking whether the caller had
-    permission to target that org. That gap let a non-platform-admin
-    pass ``--scope <other_org_uuid>`` and have downstream queries run
-    against the other org's scope (the engine sentinel principal masked
-    the leak because everything ran as superuser at the API).
-
-    This version routes through ``api/shared/scope_resolver.py`` to apply
-    the canonical four-rule table. Callers must pass
-    ``is_platform_admin`` from the authenticated user; if they pass the
-    default (False) AND the request asks for an org that isn't the
-    caller's default, the resolver raises ``ScopeNotAllowed``.
+    The C2 gate: platform admins (``is_superuser``) AND provider-org members
+    can bypass scope restrictions. The caller's "own org" is sourced from
+    the auth-verified ``current_user.organization_id`` — never from a
+    mutable per-user default. Provider-org membership is checked by a
+    single ``SELECT is_provider`` against the caller's org, only when the
+    requested scope is not UNSET / not the caller's own org.
 
     Args:
-        user_id: Current user's ID (used to look up DeveloperContext
-            default org).
-        scope: Requested scope - can be:
-            - ``None``: Use developer context default org (UNSET in
-              resolver terms).
-            - ``"global"``: Explicit global scope (platform admin only).
+        current_user: The auth-verified user principal.
+        scope: Requested scope:
+            - ``None`` or ``""``: UNSET — use caller's own org.
+            - ``"global"``: Explicit global scope (bypass required).
             - org UUID string: Target specific organization (own org
-              always; other orgs platform admin only).
+              always; other orgs bypass required).
         db: Database session.
-        is_platform_admin: Whether the caller is a platform admin.
-            Passed through from ``CurrentUser.is_superuser`` at the
-            endpoint level.
 
     Returns:
         Organization UUID string, or None for global scope.
@@ -448,18 +366,25 @@ async def _get_cli_org_id(
                 detail=f"scope must be 'global', a UUID, or null; got {scope!r}",
             ) from None
 
-    # Look up the caller's default org from DeveloperContext.
-    stmt = select(DeveloperContext).where(DeveloperContext.user_id == user_id)
-    result = await db.execute(stmt)
-    dev_ctx = result.scalar_one_or_none()
-    caller_org_id: UUID | None = (
-        dev_ctx.default_org_id if dev_ctx and dev_ctx.default_org_id else None
-    )
+    caller_org_id: UUID | None = current_user.organization_id
+    is_platform_admin = current_user.is_superuser
+
+    # Provider-org membership is only needed if the caller is requesting
+    # something other than UNSET / their own org. UNSET resolves to
+    # caller_org_id without any bypass check.
+    is_provider_org = False
+    needs_bypass_check = requested is not UNSET and requested != caller_org_id
+    if needs_bypass_check and not is_platform_admin and caller_org_id is not None:
+        org_row = await db.execute(
+            select(Organization.is_provider).where(Organization.id == caller_org_id)
+        )
+        is_provider_org = bool(org_row.scalar_one_or_none())
 
     try:
         resolved = resolve_effective_scope(
             caller_org_id=caller_org_id,
             is_platform_admin=is_platform_admin,
+            is_provider_org=is_provider_org,
             requested_scope=requested,  # type: ignore[arg-type]
         )
     except ScopeNotAllowed as e:
@@ -484,7 +409,7 @@ async def cli_get_config(
     """Get a config value via CLI API."""
     from src.routers.config import ConfigRepository
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     # Canonical SDK config load: cascade (global + org-specific) merged.
@@ -540,7 +465,7 @@ async def cli_set_config(
     from src.models import Config as ConfigModel
     from src.models.enums import ConfigType as ConfigTypeEnum
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
     now = datetime.now(timezone.utc)
 
@@ -612,7 +537,7 @@ async def cli_list_config(
     """List all config values via CLI API."""
     from src.routers.config import ConfigRepository
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     repo = ConfigRepository(db, org_id=org_uuid, is_superuser=True)
@@ -658,7 +583,7 @@ async def cli_delete_config(
     """Delete a config value via CLI API."""
     from src.models import Config as ConfigModel
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     stmt = select(ConfigModel).where(
@@ -713,7 +638,7 @@ async def sdk_integrations_get(
     from src.services.oauth_provider import resolve_url_template
     from src.core.security import decrypt_secret
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     try:
@@ -797,6 +722,9 @@ async def sdk_integrations_get(
         logger.info(f"SDK retrieved integration '{log_safe(request.name)}' (defaults) for user {current_user.email}")
         return SDKIntegrationsGetResponse(**response_data)
 
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"SDK integrations.get failed: {log_safe(e)}")
         return None
@@ -938,7 +866,21 @@ async def sdk_integrations_list_mappings(
             logger.warning(f"SDK integrations.list_mappings: integration '{log_safe(request.name)}' not found")
             return None
 
-        mappings = await repo.list_mappings(integration.id)
+        # Apply the C2 gate: explicit ``scope`` (UUID or "global") requires
+        # platform-admin or provider-org bypass. UNSET (None / "") falls
+        # back to the caller's own org. ``scope="global"`` returns None
+        # from the resolver — list all mappings (bypass already enforced).
+        resolved_org_id = await _get_cli_org_id(current_user, request.scope, db)
+        if resolved_org_id is None and request.scope in (None, ""):
+            # Caller has no org — system account on UNSET. Return empty.
+            mappings = []
+        elif resolved_org_id is None:
+            # Bypass verified by the resolver — request was "global".
+            mappings = await repo.list_mappings(integration.id)
+        else:
+            mappings = await repo.list_mappings(
+                integration.id, organization_id=UUID(resolved_org_id)
+            )
 
         logger.info(f"SDK listed {len(mappings)} mappings for integration '{log_safe(request.name)}' for user {current_user.email}")
 
@@ -960,6 +902,12 @@ async def sdk_integrations_list_mappings(
 
         return SDKIntegrationsListMappingsResponse(items=items)
 
+    except HTTPException:
+        # Authorization failures (e.g. 403 from _get_cli_org_id) must
+        # surface to the client. The blanket ``except Exception`` below
+        # would otherwise downgrade a 403 to a 200/null response and
+        # make unauthorized requests indistinguishable from misses.
+        raise
     except Exception as e:
         logger.error(f"SDK integrations.list_mappings failed: {log_safe(e)}")
         return None
@@ -986,18 +934,27 @@ async def sdk_integrations_get_mapping(
             logger.warning(f"SDK integrations.get_mapping: integration '{log_safe(request.name)}' not found")
             return None
 
+        # Apply the C2 gate. Non-bypass callers can only target their own
+        # org; cross-org or "global" requires platform-admin / provider-org.
+        resolved_org_id = await _get_cli_org_id(current_user, request.scope, db)
         mapping = None
 
-        # Look up by scope (org_id) if provided
-        if request.scope:
-            org_uuid = UUID(request.scope)
-            mapping = await repo.get_mapping_by_org(integration.id, org_uuid)
+        # Direct lookup by org_id.
+        if resolved_org_id is not None:
+            mapping = await repo.get_mapping_by_org(
+                integration.id, UUID(resolved_org_id)
+            )
 
-        # If no mapping found and entity_id provided, search by entity_id
+        # entity_id fallback search, scoped by the resolved org. For a
+        # global-scoped caller (bypass), search across all mappings;
+        # otherwise restrict to the caller's resolved org so non-bypass
+        # callers can't probe other orgs' entity_ids.
         if not mapping and request.entity_id:
-            # Search through all mappings for the entity_id
-            all_mappings = await repo.list_mappings(integration.id)
-            for m in all_mappings:
+            candidates = await repo.list_mappings(
+                integration.id,
+                organization_id=UUID(resolved_org_id) if resolved_org_id else None,
+            )
+            for m in candidates:
                 if m.entity_id == request.entity_id:
                     mapping = m
                     break
@@ -1022,6 +979,9 @@ async def sdk_integrations_get_mapping(
             updated_at=mapping.updated_at.isoformat(),
         )
 
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"SDK integrations.get_mapping failed: {log_safe(e)}")
         return None
@@ -1051,7 +1011,14 @@ async def sdk_integrations_upsert_mapping(
                 detail=f"Integration '{request.name}' not found",
             )
 
-        org_uuid = UUID(request.scope)
+        # Apply the C2 gate before touching another org's mapping row.
+        resolved_org_id = await _get_cli_org_id(current_user, request.scope, db)
+        if resolved_org_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="upsert_mapping requires an org scope; global is not a valid mapping target",
+            )
+        org_uuid = UUID(resolved_org_id)
 
         # Check if mapping already exists
         existing_mapping = await repo.get_mapping_by_org(integration.id, org_uuid)
@@ -1136,7 +1103,11 @@ async def sdk_integrations_delete_mapping(
             logger.warning(f"SDK integrations.delete_mapping: integration '{log_safe(request.name)}' not found")
             return {"deleted": False}
 
-        org_uuid = UUID(request.scope)
+        # Apply the C2 gate before touching another org's mapping row.
+        resolved_org_id = await _get_cli_org_id(current_user, request.scope, db)
+        if resolved_org_id is None:
+            return {"deleted": False}
+        org_uuid = UUID(resolved_org_id)
 
         # Find the mapping
         mapping = await repo.get_mapping_by_org(integration.id, org_uuid)
@@ -1153,6 +1124,9 @@ async def sdk_integrations_delete_mapping(
 
         return {"deleted": deleted}
 
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"SDK integrations.delete_mapping failed: {log_safe(e)}")
         return {"deleted": False}
@@ -1190,7 +1164,7 @@ async def sdk_integrations_refresh_token(
         refresh_oauth_token_http,
     )
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     try:
@@ -1944,7 +1918,7 @@ async def cli_ai_complete(
             from src.core.cache import get_shared_redis
 
             redis_client = await get_shared_redis()
-            org_id = await _get_cli_org_id(current_user.user_id, request.org_id, db, is_platform_admin=current_user.is_superuser)
+            org_id = await _get_cli_org_id(current_user, request.org_id, db)
             await record_ai_usage(
                 session=db,
                 redis_client=redis_client,
@@ -2000,9 +1974,11 @@ async def cli_ai_stream(
     """Generate a streaming AI completion using SSE."""
     from src.services.llm import get_llm_client, LLMMessage
 
-    # Capture context for usage recording
+    # Capture context for usage recording. Resolve scope upfront against
+    # the authenticated user so the streaming closure doesn't have to
+    # re-derive bypass after CurrentUser falls out of scope.
     user_id = current_user.user_id
-    org_id_str = request.org_id
+    resolved_org_id = await _get_cli_org_id(current_user, request.org_id, db)
     execution_id_str = request.execution_id
 
     async def generate():
@@ -2032,15 +2008,6 @@ async def cli_ai_stream(
                         from src.core.cache import get_shared_redis
 
                         redis_client = await get_shared_redis()
-                        # Streaming finalizer runs without CurrentUser in
-                        # scope. The org_id_str passed here originated
-                        # from request setup and was already validated
-                        # against the caller's platform-admin flag earlier
-                        # in the same handler — recovering it cleanly
-                        # here is a phase 8 follow-up.
-                        org_id = await _get_cli_org_id(
-                            user_id, org_id_str, db, is_platform_admin=False
-                        )
                         await record_ai_usage(
                             session=db,
                             redis_client=redis_client,
@@ -2049,7 +2016,7 @@ async def cli_ai_stream(
                             input_tokens=chunk.input_tokens or 0,
                             output_tokens=chunk.output_tokens or 0,
                             execution_id=UUID(execution_id_str) if execution_id_str else None,
-                            organization_id=UUID(org_id) if org_id else None,
+                            organization_id=UUID(resolved_org_id) if resolved_org_id else None,
                             user_id=user_id,
                         )
                     except Exception as e:
@@ -2129,7 +2096,7 @@ async def cli_knowledge_store(
     from src.services.embeddings import get_embedding_client
 
     try:
-        org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+        org_id = await _get_cli_org_id(current_user, request.scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
         embedding_client = await get_embedding_client(db)
@@ -2156,6 +2123,9 @@ async def cli_knowledge_store(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"CLI knowledge store failed: {log_safe(e)}")
         raise HTTPException(
@@ -2178,7 +2148,7 @@ async def cli_knowledge_store_many(
     from src.services.embeddings import get_embedding_client
 
     try:
-        org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+        org_id = await _get_cli_org_id(current_user, request.scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
         embedding_client = await get_embedding_client(db)
@@ -2208,6 +2178,9 @@ async def cli_knowledge_store_many(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"CLI knowledge store-many failed: {log_safe(e)}")
         raise HTTPException(
@@ -2231,7 +2204,7 @@ async def cli_knowledge_search(
     from src.services.embeddings import get_embedding_client
 
     try:
-        org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+        org_id = await _get_cli_org_id(current_user, request.scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
         # Generate query embedding
@@ -2269,6 +2242,9 @@ async def cli_knowledge_search(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"CLI knowledge search failed: {log_safe(e)}")
         raise HTTPException(
@@ -2290,7 +2266,7 @@ async def cli_knowledge_delete(
     from src.repositories.knowledge import KnowledgeRepository
 
     try:
-        org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+        org_id = await _get_cli_org_id(current_user, request.scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
         repo = KnowledgeRepository(db, org_id=org_uuid, is_superuser=True)
@@ -2304,6 +2280,9 @@ async def cli_knowledge_delete(
         logger.info(f"CLI knowledge delete: namespace={log_safe(request.namespace)}, key={log_safe(request.key)}, deleted={deleted}")
 
         return {"deleted": deleted}
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"CLI knowledge delete failed: {log_safe(e)}")
         raise HTTPException(
@@ -2326,7 +2305,7 @@ async def cli_knowledge_delete_namespace(
     from src.repositories.knowledge import KnowledgeRepository
 
     try:
-        org_id = await _get_cli_org_id(current_user.user_id, scope, db, is_platform_admin=current_user.is_superuser)
+        org_id = await _get_cli_org_id(current_user, scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
         repo = KnowledgeRepository(db, org_id=org_uuid, is_superuser=True)
@@ -2339,6 +2318,9 @@ async def cli_knowledge_delete_namespace(
         logger.info(f"CLI knowledge delete namespace: namespace={log_safe(namespace)}, deleted_count={deleted_count}")
 
         return {"deleted_count": deleted_count}
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"CLI knowledge delete namespace failed: {log_safe(e)}")
         raise HTTPException(
@@ -2362,7 +2344,7 @@ async def cli_knowledge_list_namespaces(
     from src.repositories.knowledge import KnowledgeRepository
 
     try:
-        org_id = await _get_cli_org_id(current_user.user_id, scope, db, is_platform_admin=current_user.is_superuser)
+        org_id = await _get_cli_org_id(current_user, scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
         repo = KnowledgeRepository(db, org_id=org_uuid, is_superuser=True)
@@ -2377,6 +2359,9 @@ async def cli_knowledge_list_namespaces(
             )
             for ns in results
         ]
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _get_cli_org_id) must surface.
+        raise
     except Exception as e:
         logger.error(f"CLI knowledge list namespaces failed: {log_safe(e)}")
         raise HTTPException(
@@ -2401,7 +2386,7 @@ async def cli_knowledge_get(
     from src.repositories.knowledge import KnowledgeRepository
 
     try:
-        org_id = await _get_cli_org_id(current_user.user_id, scope, db, is_platform_admin=current_user.is_superuser)
+        org_id = await _get_cli_org_id(current_user, scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
         repo = KnowledgeRepository(db, org_id=org_uuid, is_superuser=True)
@@ -2597,7 +2582,7 @@ async def cli_create_table(
     """Create a new table via SDK."""
     from src.models.orm.tables import Table
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     # Exact-scope uniqueness check (not a cascade): "is there already a
@@ -2664,7 +2649,7 @@ async def cli_list_tables(
     # Local import keeps the router file's top-level imports lean.
     from src.routers.tables import TableRepository
 
-    org_id = await _get_cli_org_id(current_user.user_id, request.scope, db, is_platform_admin=current_user.is_superuser)
+    org_id = await _get_cli_org_id(current_user, request.scope, db)
     org_uuid = UUID(org_id) if org_id else None
 
     repo = TableRepository(db, org_id=org_uuid, is_superuser=True)
