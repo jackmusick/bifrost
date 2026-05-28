@@ -728,9 +728,18 @@ async def get_integration(
     # Build OAuth config summary if OAuth provider exists
     oauth_config = None
     if integration.oauth_provider:
+        from src.services.oauth_provider import (
+            get_integration_level_token,
+            resolve_integration_oauth_status,
+        )
+
         provider = integration.oauth_provider
-        # Get token data if available (for expires_at and has_refresh_token)
-        token = provider.tokens[0] if provider.tokens else None
+        token = await get_integration_level_token(ctx.db, provider.id)
+        status_val, status_message = resolve_integration_oauth_status(provider, token)
+        if token and token.last_refresh_at:
+            last_refresh_at = token.last_refresh_at
+        else:
+            last_refresh_at = provider.last_token_refresh
         oauth_config = OAuthConfigSummary(
             provider_name=provider.provider_name,
             oauth_flow_type=provider.oauth_flow_type,
@@ -738,10 +747,10 @@ async def get_integration(
             authorization_url=provider.authorization_url,
             token_url=provider.token_url or "",
             scopes=provider.scopes or [],
-            status=provider.status or "not_connected",
-            status_message=provider.status_message,
+            status=status_val,
+            status_message=status_message,
             expires_at=token.expires_at if token else None,
-            last_refresh_at=provider.last_token_refresh,
+            last_refresh_at=last_refresh_at,
             has_refresh_token=token.encrypted_refresh_token is not None if token else False,
             entity_id_source=provider.entity_id_source,
         )

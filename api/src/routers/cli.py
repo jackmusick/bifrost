@@ -726,6 +726,8 @@ async def sdk_integrations_get(
                 response_data["oauth"] = await _build_oauth_data(
                     integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret,
                     oauth_scope=request.oauth_scope,
+                    db=db,
+                    org_uuid=org_uuid,
                 )
 
             logger.info(f"SDK retrieved integration '{log_safe(request.name)}' (org mapping) for user {current_user.email}")
@@ -762,6 +764,8 @@ async def sdk_integrations_get(
             response_data["oauth"] = await _build_oauth_data(
                 integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret,
                 oauth_scope=request.oauth_scope,
+                db=db,
+                org_uuid=org_uuid,
             )
 
         logger.info(f"SDK retrieved integration '{log_safe(request.name)}' (defaults) for user {current_user.email}")
@@ -779,6 +783,8 @@ async def _build_oauth_data(
     resolve_url_template: Any,
     decrypt_secret: Any,
     oauth_scope: str | None = None,
+    db: Any | None = None,
+    org_uuid: UUID | None = None,
 ) -> SDKIntegrationsOAuthData:
     """Build OAuth data dict from provider and token for CLI response.
 
@@ -789,6 +795,9 @@ async def _build_oauth_data(
         resolve_url_template: Function to resolve {entity_id} in URLs
         decrypt_secret: Function to decrypt encrypted values
         oauth_scope: Override scope for token request (triggers fresh token fetch)
+        db: Optional DB session — when set, successful auto-refresh persists the
+            recovered token and clears stale integration-level provider failure
+        org_uuid: Organization scope for token persistence during auto-refresh
     """
     # Decrypt client secret (needed for both stored tokens and auto-refresh)
     client_secret = None
@@ -843,6 +852,25 @@ async def _build_oauth_data(
                         else str(expires_at_dt)
                     )
                 logger.info("Auto-refresh token successful")
+                if db is not None and access_token:
+                    from src.core.security import encrypt_secret
+                    from src.services.oauth_provider import persist_integration_oauth_recovery
+
+                    scope_list = scopes.split() if scopes else (provider.scopes or [])
+                    await persist_integration_oauth_recovery(
+                        db,
+                        provider=provider,
+                        org_uuid=org_uuid,
+                        stored_token=token,
+                        encrypted_access_token=encrypt_secret(access_token).encode(),
+                        expires_at=(
+                            expires_at_dt
+                            if expires_at_dt and hasattr(expires_at_dt, "isoformat")
+                            else None
+                        ),
+                        scopes=scope_list,
+                    )
+                    await db.commit()
             else:
                 error_msg = result.get("error_description", result.get("error", "Unknown error"))
                 logger.error(f"Auto-refresh token failed: {log_safe(error_msg)}")
@@ -1231,6 +1259,9 @@ async def sdk_integrations_refresh_token(
                 token_obj.encrypted_refresh_token = outcome["encrypted_refresh_token"]
             if expires_at_dt and hasattr(expires_at_dt, "isoformat"):
                 token_obj.expires_at = expires_at_dt
+            token_obj.status = "completed"
+            token_obj.status_message = None
+            token_obj.last_refresh_at = datetime.now(timezone.utc)
         else:
             new_token = OAuthToken(
                 organization_id=org_uuid,
@@ -1239,6 +1270,9 @@ async def sdk_integrations_refresh_token(
                 encrypted_refresh_token=outcome.get("encrypted_refresh_token"),
                 expires_at=expires_at_dt if expires_at_dt and hasattr(expires_at_dt, "isoformat") else None,
                 scopes=provider.scopes or [],
+                status="completed",
+                status_message=None,
+                last_refresh_at=datetime.now(timezone.utc),
             )
             db.add(new_token)
 

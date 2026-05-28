@@ -3,6 +3,7 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
+from uuid import uuid4
 
 # Note: should_auto_refresh_token is imported inside each test to ensure
 # proper import from the cli module after all fixtures are loaded
@@ -430,3 +431,66 @@ class TestBuildOAuthDataAutoRefresh:
             )
 
             assert result.access_token == "exchange-customer-token"
+
+    @pytest.mark.asyncio
+    async def test_build_oauth_data_auto_refresh_persists_recovery_when_db_provided(self):
+        """Successful auto-refresh should clear stale provider failure when db is passed."""
+        from src.routers.cli import _build_oauth_data
+
+        provider = MagicMock()
+        provider.id = uuid4()
+        provider.provider_name = "Microsoft CSP"
+        provider.client_id = "test-client-id"
+        provider.token_url = "https://login.microsoftonline.com/{entity_id}/oauth2/v2.0/token"
+        provider.token_url_defaults = {}
+        provider.oauth_flow_type = "client_credentials"
+        provider.authorization_url = None
+        provider.scopes = ["https://graph.microsoft.com/.default"]
+        provider.encrypted_client_secret = "encrypted-secret"
+        provider.audience = None
+        provider.status = "failed"
+        provider.status_message = "Token refresh failed: bad entity_id"
+
+        token = MagicMock()
+        token.status = "failed"
+
+        db = MagicMock()
+        db.commit = AsyncMock()
+
+        def resolve_url_template(url, entity_id, defaults):
+            return url.replace("{entity_id}", entity_id)
+
+        def decrypt_secret(value):
+            return "decrypted-client-secret"
+
+        mock_token_response = {
+            "access_token": "fresh-access-token",
+            "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+        }
+
+        with (
+            patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
+            patch(
+                "src.services.oauth_provider.persist_integration_oauth_recovery",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+        ):
+            mock_instance = MagicMock()
+            mock_instance.get_client_credentials_token = AsyncMock(
+                return_value=(True, mock_token_response)
+            )
+            mock_client_class.return_value = mock_instance
+
+            result = await _build_oauth_data(
+                provider,
+                token,
+                "customer-tenant-123",
+                resolve_url_template,
+                decrypt_secret,
+                db=db,
+                org_uuid=None,
+            )
+
+            assert result.access_token == "fresh-access-token"
+            mock_persist.assert_awaited_once()
+            db.commit.assert_awaited_once()

@@ -690,6 +690,105 @@ async def refresh_oauth_token_http(td: dict[str, Any]) -> dict[str, Any]:
         return outcome
 
 
+def resolve_integration_oauth_status(
+    provider: "OAuthProvider",
+    token: "OAuthToken | None",
+) -> tuple[str, str | None]:
+    """Reconcile integration-level OAuth status for admin UI display.
+
+    ``OAuthProvider.status`` records the last integration-level refresh
+    outcome and can remain ``failed`` after a later token recovery. When a
+    healthy integration-level token row exists, prefer its status (matching
+    ``_mapping_to_response`` which reads ``OAuthToken.status`` for per-row
+    connections).
+    """
+    in_progress = provider.status in ("waiting_callback", "testing")
+    if in_progress and not token:
+        return provider.status, provider.status_message
+
+    if token and token.encrypted_access_token:
+        token_status = token.status or "not_connected"
+        if token_status == "completed":
+            return "completed", None
+        if token_status == "failed":
+            return "failed", token.status_message
+        # Populated token without explicit status (legacy rows)
+        return "completed", None
+
+    return provider.status or "not_connected", provider.status_message
+
+
+async def persist_integration_oauth_recovery(
+    db: "AsyncSession",
+    *,
+    provider: "OAuthProvider",
+    org_uuid: UUID | None,
+    stored_token: "OAuthToken | None",
+    encrypted_access_token: bytes,
+    expires_at: datetime | None,
+    encrypted_refresh_token: bytes | None = None,
+    scopes: list[str] | None = None,
+) -> "OAuthToken":
+    """Persist a recovered integration OAuth token and clear stale provider failure."""
+    from src.services.oauth_scope_resolution import get_oauth_token_for_scope
+
+    now = datetime.now(timezone.utc)
+    token_obj = stored_token
+    if token_obj is None:
+        token_obj = await get_oauth_token_for_scope(db, provider.id, org_uuid)
+
+    if token_obj:
+        token_obj.encrypted_access_token = encrypted_access_token
+        if encrypted_refresh_token is not None:
+            token_obj.encrypted_refresh_token = encrypted_refresh_token
+        if expires_at is not None:
+            token_obj.expires_at = expires_at
+        if scopes is not None:
+            token_obj.scopes = scopes
+    else:
+        from src.models.orm.oauth import OAuthToken
+
+        token_obj = OAuthToken(
+            organization_id=org_uuid,
+            provider_id=provider.id,
+            encrypted_access_token=encrypted_access_token,
+            encrypted_refresh_token=encrypted_refresh_token,
+            expires_at=expires_at,
+            scopes=scopes or provider.scopes or [],
+        )
+        db.add(token_obj)
+
+    token_obj.status = "completed"
+    token_obj.status_message = None
+    token_obj.last_refresh_at = now
+
+    provider.status = "completed"
+    provider.status_message = None
+    provider.last_token_refresh = now
+
+    await db.flush()
+    return token_obj
+
+
+async def get_integration_level_token(
+    db: "AsyncSession",
+    provider_id: UUID,
+) -> "OAuthToken | None":
+    """Return the most recent integration-level (org_id IS NULL) OAuth token."""
+    from src.models.orm.oauth import OAuthToken
+
+    result = await db.execute(
+        select(OAuthToken)
+        .where(
+            OAuthToken.provider_id == provider_id,
+            OAuthToken.organization_id.is_(None),
+            OAuthToken.user_id.is_(None),
+        )
+        .order_by(OAuthToken.created_at.desc(), OAuthToken.id.desc())
+    )
+    return result.scalars().first()
+
+
 async def get_token_for_org(
     db: "AsyncSession",
     integration_id: UUID,
