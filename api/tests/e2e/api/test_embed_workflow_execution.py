@@ -76,7 +76,7 @@ class TestEmbedWorkflowExecution:
             headers={"Authorization": f"Bearer {embed_session['embed_token']}"},
             json={
                 "workflow_id": "nonexistent-workflow-for-auth-test",
-                "parameters": {},
+                "input_data": {},
             },
         )
         # Should get 404 (workflow not found) rather than 401/403 (unauthorized)

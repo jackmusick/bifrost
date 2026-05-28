@@ -86,6 +86,35 @@ async def e2e_exec_async_workflow(delay_seconds: int = 1):
 
 
 @pytest.mark.e2e
+class TestExecuteRequestValidation:
+    """Reject invalid /api/workflows/execute payloads before execution."""
+
+    def test_rejects_parameters_field(self, e2e_client, platform_admin):
+        response = e2e_client.post(
+            "/api/workflows/execute",
+            headers=platform_admin.headers,
+            json={
+                "workflow_id": str(uuid.uuid4()),
+                "parameters": {"start_date": "2026-01-01"},
+            },
+        )
+        assert response.status_code == 422, response.text
+        assert "input_data" in response.text.lower()
+        assert "parameters" in response.text.lower()
+
+    def test_accepts_input_data(self, e2e_client, platform_admin, sync_workflow):
+        response = e2e_client.post(
+            "/api/workflows/execute",
+            headers=platform_admin.headers,
+            json={
+                "workflow_id": sync_workflow["id"],
+                "input_data": {"message": "validation test", "count": 1},
+            },
+        )
+        assert response.status_code in (200, 202), response.text
+
+
+@pytest.mark.e2e
 class TestSyncExecution:
     """Test synchronous workflow execution."""
 

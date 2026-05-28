@@ -109,6 +109,8 @@ class WorkflowExecution(BaseModel):
 
 class WorkflowExecutionRequest(BaseModel):
     """Request model for executing a workflow"""
+    model_config = ConfigDict(extra="forbid")
+
     workflow_id: str | None = Field(default=None, description="Workflow UUID or name. Names resolve using org-scoped lookup (org-specific > global). Required if code not provided.")
     input_data: dict[str, Any] = Field(default_factory=dict, description="Workflow input parameters")
     form_id: str | None = Field(default=None, description="Optional form ID that triggered this execution")
@@ -134,6 +136,15 @@ class WorkflowExecutionRequest(BaseModel):
             "Mutually exclusive with scheduled_at."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_parameters_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "parameters" in data:
+            raise ValueError(
+                "Use 'input_data' instead of 'parameters' for workflow execution inputs"
+            )
+        return data
 
     @model_validator(mode="after")
     def validate_request(self) -> "WorkflowExecutionRequest":

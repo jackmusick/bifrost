@@ -81,3 +81,24 @@ def test_rejects_code_with_scheduled_at():
 def test_rejects_code_with_delay_seconds():
     with pytest.raises(ValidationError, match="code"):
         WorkflowExecutionRequest(code="cHJpbnQoMSk=", delay_seconds=60)
+
+
+def test_rejects_parameters_alias():
+    with pytest.raises(ValidationError, match="input_data.*parameters"):
+        WorkflowExecutionRequest(
+            workflow_id="wf",
+            parameters={"start_date": "2026-01-01"},
+        )
+
+
+def test_accepts_input_data():
+    req = WorkflowExecutionRequest(
+        workflow_id="wf",
+        input_data={"start_date": "2026-01-01"},
+    )
+    assert req.input_data == {"start_date": "2026-01-01"}
+
+
+def test_rejects_unknown_top_level_fields():
+    with pytest.raises(ValidationError, match="extra"):
+        WorkflowExecutionRequest(workflow_id="wf", unknown_field="x")
