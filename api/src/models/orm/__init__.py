@@ -23,7 +23,6 @@ from src.models.orm.base import Base
 from src.models.orm.branding import GlobalBranding
 from src.models.orm.cli import CLISession
 from src.models.orm.config import Config, SystemConfig
-from src.models.orm.developer import DeveloperContext
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, WebhookSource
 from src.models.orm.executions import Execution, ExecutionLog
 from src.models.orm.external_mcp import (
@@ -126,8 +125,6 @@ __all__ = [
     "FileIndex",
     # Worker Metrics
     "WorkerMetric",
-    # Developer
-    "DeveloperContext",
     # Events
     "EventSource",
     "WebhookSource",

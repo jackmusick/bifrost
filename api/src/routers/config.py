@@ -8,6 +8,7 @@ Uses OrgScopedRepository for standardized org scoping.
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -138,6 +139,94 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         """
         return await self.get(key=key)
 
+    async def merged_for_sdk(self) -> dict[str, Any]:
+        """Return the full merged config dict for this scope.
+
+        Replaces ``ConfigResolver.load_config_for_scope``. The merged shape
+        is ``{key: {"value": v, "type": t}, ...}`` where org-specific entries
+        override globals on key collision.
+
+        Cache is read-through with the versioned-key invalidation introduced
+        in Phase 5 (see ``api/src/core/cache/keys.py::config_hash_key_versioned``).
+
+        Excludes integration-scoped configs (``integration_id IS NOT NULL``) —
+        those are accessed via the integration system, not ``config.get()``.
+        """
+        import json
+        from typing import Any
+
+        from src.core.cache.keys import (
+            TTL_CONFIG,
+            config_hash_key_versioned,
+        )
+        from src.core.cache.redis_client import get_shared_redis
+        from src.core.log_safety import log_safe
+
+        org_id_str = str(self.org_id) if self.org_id is not None else None
+
+        # Read-through cache.
+        try:
+            r = await get_shared_redis()
+            hash_key = await config_hash_key_versioned(r, org_id_str)
+            cached = await r.hgetall(hash_key)  # type: ignore[misc]
+            if cached:
+                out: dict[str, Any] = {}
+                for k, v in cached.items():
+                    ks = k.decode() if isinstance(k, bytes) else k
+                    vs = v.decode() if isinstance(v, bytes) else v
+                    try:
+                        out[ks] = json.loads(vs)
+                    except json.JSONDecodeError:
+                        out[ks] = {"value": vs, "type": "string"}
+                return out
+        except Exception as e:  # cache is best-effort
+            logger.warning(f"Config cache read failed: {e}")
+
+        # Cache miss — load from DB via cascade.
+        # Globals first, then org-specific overrides (org wins on key collision).
+        config_dict: dict[str, Any] = {}
+
+        global_q = select(self.model).where(
+            self.model.organization_id.is_(None),
+            self.model.integration_id.is_(None),
+        )
+        global_rows = (await self.session.execute(global_q)).scalars()
+        for cfg in global_rows:
+            v = cfg.value.get("value") if isinstance(cfg.value, dict) else cfg.value
+            config_dict[cfg.key] = {
+                "value": v,
+                "type": cfg.config_type.value if cfg.config_type else "string",
+            }
+
+        if self.org_id is not None:
+            org_q = select(self.model).where(
+                self.model.organization_id == self.org_id,
+                self.model.integration_id.is_(None),
+            )
+            org_rows = (await self.session.execute(org_q)).scalars()
+            for cfg in org_rows:
+                v = cfg.value.get("value") if isinstance(cfg.value, dict) else cfg.value
+                config_dict[cfg.key] = {
+                    "value": v,
+                    "type": cfg.config_type.value if cfg.config_type else "string",
+                }
+
+        # Write-through cache (best-effort).
+        if config_dict:
+            try:
+                r = await get_shared_redis()
+                hash_key = await config_hash_key_versioned(r, org_id_str)
+                mapping = {k: json.dumps(v) for k, v in config_dict.items()}
+                await r.hset(hash_key, mapping=mapping)  # type: ignore[misc]
+                await r.expire(hash_key, TTL_CONFIG)
+            except Exception as e:
+                logger.warning(f"Config cache write failed: {e}")
+
+        logger.debug(
+            f"Loaded {len(config_dict)} config entries for org={log_safe(org_id_str)}"
+        )
+        return config_dict
+
     async def get_config_strict(self, key: str) -> ConfigModel | None:
         """Get config strictly in current org scope (no fallback)."""
         query = select(self.model).where(
@@ -216,17 +305,27 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         config_id: UUID,
         request: UpdateConfigRequest,
         updated_by: str,
-    ) -> ConfigResponse | None:
+    ) -> tuple[ConfigResponse, UUID | None, str] | None:
         """Update a config by ID. Allows changing organization scope.
 
         For SECRET type configs, if value is None or empty string, the existing
         encrypted value is preserved.
+
+        Returns ``(response, old_org_id, old_key)`` so the caller can
+        invalidate the previous cache entry when ``organization_id`` or
+        ``key`` changed in the same update. Returns ``None`` if the row
+        does not exist.
         """
         query = select(self.model).where(self.model.id == config_id)
         result = await self.session.execute(query)
         config = result.scalar_one_or_none()
         if not config:
             return None
+
+        # Snapshot pre-update identity so the router can invalidate the
+        # old cache entry if either field changes (rename or org-move).
+        old_org_id = config.organization_id
+        old_key = config.key
 
         now = datetime.now(timezone.utc)
 
@@ -264,7 +363,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
 
         response_type = ConfigType(config.config_type.value) if config.config_type else ConfigType.STRING
         stored_value = config.value.get("value") if isinstance(config.value, dict) else config.value
-        return ConfigResponse(
+        response = ConfigResponse(
             id=config.id,
             key=config.key,
             value=stored_value,
@@ -275,6 +374,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
             updated_at=config.updated_at,
             updated_by=config.updated_by,
         )
+        return response, old_org_id, old_key
 
     async def delete_config(self, config_id: UUID) -> ConfigModel | None:
         """Delete config by ID. Returns the deleted config or None if not found."""
@@ -400,19 +500,43 @@ async def update_config(
     # Use is_superuser=True; org scoping not needed since we look up by ID
     repo = ConfigRepository(ctx.db, org_id=ctx.org_id, is_superuser=True)
 
-    result = await repo.update_config_by_id(config_id, request, updated_by=user.email)
-    if not result:
+    update = await repo.update_config_by_id(config_id, request, updated_by=user.email)
+    if update is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Configuration not found",
         )
 
-    # Upsert to cache after successful write
-    if CACHE_AVAILABLE and upsert_config:
-        org_id_str = str(result.org_id) if result.org_id else None
+    result, old_org_id, old_key = update
+
+    if CACHE_AVAILABLE and upsert_config and invalidate_config:
+        new_org_id_str = str(result.org_id) if result.org_id else None
+        old_org_id_str = str(old_org_id) if old_org_id else None
+
+        # If the row's identity changed (rename or org-move), the old
+        # cache entry would otherwise survive until TTL with stale —
+        # possibly secret — data. Drop the old (old_org, old_key)
+        # entry before writing the new one. ``invalidate_config`` also
+        # bumps CONFIG_GLOBAL_VERSION_KEY when ``old_org`` was global,
+        # so org-merged caches re-fetch.
+        if old_org_id_str != new_org_id_str or old_key != result.key:
+            await invalidate_config(old_org_id_str, old_key)
+
+        # If this update crosses the global↔org boundary, bump the
+        # global version so org caches that merged the old global
+        # value re-fetch even though the new write is org-scoped.
+        if (old_org_id is None) != (result.org_id is None):
+            from src.core.cache import get_shared_redis
+            from src.core.cache.keys import CONFIG_GLOBAL_VERSION_KEY
+            try:
+                r = await get_shared_redis()
+                await r.incr(CONFIG_GLOBAL_VERSION_KEY)
+            except Exception as e:
+                logger.warning(f"Failed to bump global config version on transition: {e}")
+
         config_type_str = result.type.value if result.type else "string"
         stored_value = result.value
-        await upsert_config(org_id_str, result.key, stored_value, config_type_str)
+        await upsert_config(new_org_id_str, result.key, stored_value, config_type_str)
 
     return result
 

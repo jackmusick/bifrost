@@ -59,7 +59,7 @@ class config:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/config/get",
+            "/api/sdk/config/get",
             json={"key": key, "scope": effective_scope}
         )
 
@@ -108,7 +108,7 @@ class config:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/config/set",
+            "/api/sdk/config/set",
             json={
                 "key": key,
                 "value": value,
@@ -152,7 +152,7 @@ class config:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/config/list",
+            "/api/sdk/config/list",
             json={"scope": effective_scope}
         )
         raise_for_status_with_detail(response)
@@ -186,7 +186,7 @@ class config:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/config/delete",
+            "/api/sdk/config/delete",
             json={"key": key, "scope": effective_scope}
         )
         raise_for_status_with_detail(response)

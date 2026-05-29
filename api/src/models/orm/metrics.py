@@ -15,6 +15,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.models.orm.base import Base
 
 
+# Identity entity — aggregated execution telemetry, not name-cascade resolved.
+# See api/src/repositories/README.md.
 class ExecutionMetricsDaily(Base):
     """
     Daily aggregated execution metrics.
@@ -146,6 +148,8 @@ class PlatformMetricsSnapshot(Base):
     )
 
 
+# Identity entity — aggregated ROI telemetry, not name-cascade resolved.
+# See api/src/repositories/README.md.
 class WorkflowROIDaily(Base):
     """
     Daily aggregated ROI metrics per workflow per organization.
@@ -192,6 +196,8 @@ class WorkflowROIDaily(Base):
     )
 
 
+# Identity entity — aggregated storage telemetry, not name-cascade resolved.
+# See api/src/repositories/README.md.
 class KnowledgeStorageDaily(Base):
     """
     Daily snapshot of knowledge storage usage per organization and namespace.

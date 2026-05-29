@@ -1,4 +1,4 @@
-"""Tests for POST /api/cli/integrations/refresh_token endpoint.
+"""Tests for POST /api/sdk/integrations/refresh_token endpoint.
 
 These tests exercise the adapter-shaped handler; the underlying refresh
 orchestration is covered by
@@ -9,6 +9,23 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
+
+
+def _make_result(value):
+    """Build a SQLAlchemy result mock that supports both access shapes.
+
+    Phase 4 of the org-scoping overhaul migrated this handler from
+    ``result.scalars().first()`` (raw queries) to
+    ``result.scalar_one_or_none()`` (via ``OrgScopedRepository.get``).
+    The tests mock at the db.execute() level, so each result mock must
+    answer both shapes — otherwise a mock set up for the old shape
+    silently returns a MagicMock for the new shape, and the test fails
+    in confusing ways far from the mock site.
+    """
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = value
+    result.scalar_one_or_none.return_value = value
+    return result
 
 
 class TestRefreshTokenClientCredentials:
@@ -48,10 +65,8 @@ class TestRefreshTokenClientCredentials:
         # Mock DB execute:
         #   1. provider lookup
         #   2. persist-time token lookup (client_credentials branch)
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = None
+        provider_result = _make_result(mock_provider)
+        token_result = _make_result(None)
 
         mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
         mock_db.add = MagicMock()
@@ -64,7 +79,7 @@ class TestRefreshTokenClientCredentials:
         }
 
         with (
-            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
             patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-secret"),
             patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-token"),
@@ -120,10 +135,8 @@ class TestRefreshTokenClientCredentials:
         # Existing token
         mock_existing_token = MagicMock()
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = mock_existing_token
+        provider_result = _make_result(mock_provider)
+        token_result = _make_result(mock_existing_token)
 
         mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
         mock_db.add = MagicMock()
@@ -136,7 +149,7 @@ class TestRefreshTokenClientCredentials:
         }
 
         with (
-            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
             patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-secret"),
             patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-token"),
@@ -190,11 +203,9 @@ class TestRefreshTokenAuthorizationCode:
         mock_stored_token.id = uuid4()
         mock_stored_token.encrypted_refresh_token = b"encrypted-refresh-token"
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
+        provider_result = _make_result(mock_provider)
 
-        token_for_refresh = MagicMock()
-        token_for_refresh.scalars.return_value.first.return_value = mock_stored_token
+        token_for_refresh = _make_result(mock_stored_token)
 
         # In the new adapter-shaped handler, the stored token loaded up front
         # is the same row we persist into — no second lookup is issued.
@@ -213,7 +224,7 @@ class TestRefreshTokenAuthorizationCode:
         }
 
         with (
-            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
             patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-value"),
             patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-value"),
@@ -269,10 +280,8 @@ class TestRefreshTokenAuthorizationCode:
         mock_stored_token.id = uuid4()
         mock_stored_token.encrypted_refresh_token = b"encrypted-refresh-token"
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = mock_stored_token
+        provider_result = _make_result(mock_provider)
+        token_result = _make_result(mock_stored_token)
 
         mock_db.execute = AsyncMock(side_effect=[provider_result, token_result])
         mock_db.commit = AsyncMock()
@@ -286,7 +295,7 @@ class TestRefreshTokenAuthorizationCode:
         }
 
         with (
-            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
             patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-value"),
             patch("src.services.oauth_provider.encrypt_secret", return_value="encrypted-new-value"),
@@ -336,11 +345,9 @@ class TestRefreshTokenAuthorizationCode:
         mock_stored_token = MagicMock()
         mock_stored_token.encrypted_refresh_token = None
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
+        provider_result = _make_result(mock_provider)
 
-        token_result = MagicMock()
-        token_result.scalars.return_value.first.return_value = mock_stored_token
+        token_result = _make_result(mock_stored_token)
 
         mock_db.execute = AsyncMock(side_effect=[
             provider_result,
@@ -348,7 +355,7 @@ class TestRefreshTokenAuthorizationCode:
         ])
 
         with (
-            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value=None),
             pytest.raises(HTTPException) as exc_info,
         ):
             await sdk_integrations_refresh_token(request, mock_user, mock_db)
@@ -375,12 +382,11 @@ class TestRefreshTokenErrorHandling:
         mock_db = AsyncMock()
 
         # Provider not found
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = None
+        provider_result = _make_result(None)
         mock_db.execute = AsyncMock(return_value=provider_result)
 
         with (
-            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value=None),
             pytest.raises(HTTPException) as exc_info,
         ):
             await sdk_integrations_refresh_token(request, mock_user, mock_db)
@@ -414,12 +420,11 @@ class TestRefreshTokenErrorHandling:
         mock_provider.organization_id = None
         mock_provider.audience = None
 
-        provider_result = MagicMock()
-        provider_result.scalars.return_value.first.return_value = mock_provider
+        provider_result = _make_result(mock_provider)
         mock_db.execute = AsyncMock(return_value=provider_result)
 
         with (
-            patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value=None),
             patch("src.services.oauth_provider.OAuthProviderClient") as mock_client_class,
             patch("src.services.oauth_provider.decrypt_secret", return_value="decrypted-secret"),
             pytest.raises(HTTPException) as exc_info,
@@ -476,7 +481,7 @@ class TestRefreshTokenSDKModel:
         assert creds.access_token == "fresh-token"
         assert creds.expires_at == "2026-03-02T00:00:00+00:00"
         mock_client.post.assert_called_once_with(
-            "/api/cli/integrations/refresh_token",
+            "/api/sdk/integrations/refresh_token",
             json={"connection_name": "Pax8"},
         )
 

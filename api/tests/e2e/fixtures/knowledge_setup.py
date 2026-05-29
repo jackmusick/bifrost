@@ -56,7 +56,7 @@ def knowledge_cleanup(
     for ns in namespaces_to_clean:
         try:
             e2e_client.delete(
-                f"/api/cli/knowledge/namespace/{ns}",
+                f"/api/sdk/knowledge/namespace/{ns}",
                 headers=platform_admin.headers,
             )
         except Exception:
@@ -68,7 +68,7 @@ def knowledge_cleanup(
     for ns in namespaces_to_clean:
         try:
             e2e_client.delete(
-                f"/api/cli/knowledge/namespace/{ns}",
+                f"/api/sdk/knowledge/namespace/{ns}",
                 headers=platform_admin.headers,
             )
             logger.info(f"Cleaned up knowledge namespace: {ns}")

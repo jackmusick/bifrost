@@ -113,7 +113,7 @@ class tables:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/tables/create",
+            "/api/sdk/tables/create",
             json={
                 "name": name,
                 "description": description,
@@ -154,7 +154,7 @@ class tables:
         client = get_client()
         effective_scope = resolve_scope(scope)
         response = await client.post(
-            "/api/cli/tables/list",
+            "/api/sdk/tables/list",
             json={
                 "scope": effective_scope,
                 "app": app,

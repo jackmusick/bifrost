@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from src.models.orm.workflows import Workflow
 
 
+# Execution-resolution entity — access via AgentRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class Agent(Base):
     """Agent database table."""
 

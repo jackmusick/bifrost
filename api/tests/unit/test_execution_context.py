@@ -96,7 +96,7 @@ class TestNoConfigField:
 class TestCLIPlatformParity:
     """Verify that CLI and platform execution paths build equivalent contexts.
 
-    The CLI (_run_direct) builds ExecutionContext from /api/cli/context response.
+    The CLI (_run_direct) builds ExecutionContext from /api/sdk/context response.
     The platform engine (execute()) builds ExecutionContext from ExecutionRequest.
     Both must produce contexts with the same identity, scope, and authorization.
     """
@@ -106,7 +106,7 @@ class TestCLIPlatformParity:
         ctx_response: dict,
         workflow_name: str = "test_workflow",
     ) -> ExecutionContext:
-        """Simulate what _run_direct does with a /api/cli/context response.
+        """Simulate what _run_direct does with a /api/sdk/context response.
 
         This mirrors api/bifrost/cli.py _run_direct lines 570-595.
         """
@@ -160,7 +160,7 @@ class TestCLIPlatformParity:
 
     def test_org_scoped_parity(self):
         """CLI and engine produce matching context for org-scoped execution."""
-        # Simulated /api/cli/context response with org_id override
+        # Simulated /api/sdk/context response with org_id override
         ctx_response = {
             "user": {
                 "id": "user-abc",

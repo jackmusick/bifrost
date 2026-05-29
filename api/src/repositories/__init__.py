@@ -11,6 +11,7 @@ from src.repositories.executions import (
 from src.repositories.integrations import IntegrationMappingRepository
 from src.repositories.knowledge import KnowledgeDocument, KnowledgeRepository, NamespaceInfo
 from src.core.exceptions import AccessDeniedError
+from src.repositories.oauth import OAuthProviderRepository, OAuthTokenRepository
 from src.repositories.org_scoped import OrgScopedRepository
 from src.repositories.organizations import OrganizationRepository
 from src.repositories.users import UserRepository
@@ -27,6 +28,8 @@ __all__ = [
     "KnowledgeDocument",
     "KnowledgeRepository",
     "NamespaceInfo",
+    "OAuthProviderRepository",
+    "OAuthTokenRepository",
     "OrgScopedRepository",
     "OrganizationRepository",
     "UserRepository",

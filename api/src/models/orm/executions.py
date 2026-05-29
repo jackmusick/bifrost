@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from src.models.orm.workflows import Workflow
 
 
+# Identity entity — execution telemetry, not resolved by name with cascade.
+# See api/src/repositories/README.md.
 class Execution(Base):
     """Execution database table."""
 

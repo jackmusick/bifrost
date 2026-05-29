@@ -3666,7 +3666,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cli/context": {
+    "/api/sdk/context": {
         parameters: {
             query?: never;
             header?: never;
@@ -3677,15 +3677,13 @@ export interface paths {
          * Get developer context
          * @description Get development context for CLI initialization.
          *
-         *     When org_id is provided, returns context for that specific organization
-         *     (superusers only). Otherwise uses the user's default organization.
+         *     Returns the authenticated user and their ``organization_id``-resolved
+         *     org. The optional ``org_id`` query parameter lets platform admins and
+         *     provider-org members target another org for the session — gated by
+         *     the same C2 rule the scope resolver applies elsewhere.
          */
-        get: operations["get_dev_context_api_cli_context_get"];
-        /**
-         * Update developer context
-         * @description Update developer context settings.
-         */
-        put: operations["update_dev_context_api_cli_context_put"];
+        get: operations["get_dev_context_api_sdk_context_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -3693,7 +3691,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cli/config/get": {
+    "/api/sdk/config/get": {
         parameters: {
             query?: never;
             header?: never;
@@ -3706,14 +3704,14 @@ export interface paths {
          * Get config value
          * @description Get a config value via CLI API.
          */
-        post: operations["cli_get_config_api_cli_config_get_post"];
+        post: operations["cli_get_config_api_sdk_config_get_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/config/set": {
+    "/api/sdk/config/set": {
         parameters: {
             query?: never;
             header?: never;
@@ -3726,14 +3724,14 @@ export interface paths {
          * Set config value
          * @description Set a config value via CLI API.
          */
-        post: operations["cli_set_config_api_cli_config_set_post"];
+        post: operations["cli_set_config_api_sdk_config_set_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/config/list": {
+    "/api/sdk/config/list": {
         parameters: {
             query?: never;
             header?: never;
@@ -3746,14 +3744,14 @@ export interface paths {
          * List config values
          * @description List all config values via CLI API.
          */
-        post: operations["cli_list_config_api_cli_config_list_post"];
+        post: operations["cli_list_config_api_sdk_config_list_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/config/delete": {
+    "/api/sdk/config/delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -3766,14 +3764,14 @@ export interface paths {
          * Delete config value
          * @description Delete a config value via CLI API.
          */
-        post: operations["cli_delete_config_api_cli_config_delete_post"];
+        post: operations["cli_delete_config_api_sdk_config_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/integrations/get": {
+    "/api/sdk/integrations/get": {
         parameters: {
             query?: never;
             header?: never;
@@ -3792,14 +3790,14 @@ export interface paths {
          *     3. Fallback to integration defaults: When no org mapping exists, returns
          *        integration.default_entity_id, integration-level config, and OAuth data
          */
-        post: operations["sdk_integrations_get_api_cli_integrations_get_post"];
+        post: operations["sdk_integrations_get_api_sdk_integrations_get_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/integrations/list_mappings": {
+    "/api/sdk/integrations/list_mappings": {
         parameters: {
             query?: never;
             header?: never;
@@ -3812,14 +3810,14 @@ export interface paths {
          * List all mappings for an integration
          * @description List all mappings for an integration via SDK.
          */
-        post: operations["sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post"];
+        post: operations["sdk_integrations_list_mappings_api_sdk_integrations_list_mappings_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/integrations/get_mapping": {
+    "/api/sdk/integrations/get_mapping": {
         parameters: {
             query?: never;
             header?: never;
@@ -3832,14 +3830,14 @@ export interface paths {
          * Get a specific mapping by org_id or entity_id
          * @description Get a specific integration mapping by org_id or entity_id via SDK.
          */
-        post: operations["sdk_integrations_get_mapping_api_cli_integrations_get_mapping_post"];
+        post: operations["sdk_integrations_get_mapping_api_sdk_integrations_get_mapping_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/integrations/upsert_mapping": {
+    "/api/sdk/integrations/upsert_mapping": {
         parameters: {
             query?: never;
             header?: never;
@@ -3852,14 +3850,14 @@ export interface paths {
          * Create or update a mapping for an organization
          * @description Create or update an integration mapping for an organization via SDK.
          */
-        post: operations["sdk_integrations_upsert_mapping_api_cli_integrations_upsert_mapping_post"];
+        post: operations["sdk_integrations_upsert_mapping_api_sdk_integrations_upsert_mapping_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/integrations/delete_mapping": {
+    "/api/sdk/integrations/delete_mapping": {
         parameters: {
             query?: never;
             header?: never;
@@ -3872,14 +3870,14 @@ export interface paths {
          * Delete a mapping for an organization
          * @description Delete an integration mapping for an organization via SDK.
          */
-        post: operations["sdk_integrations_delete_mapping_api_cli_integrations_delete_mapping_post"];
+        post: operations["sdk_integrations_delete_mapping_api_sdk_integrations_delete_mapping_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/integrations/refresh_token": {
+    "/api/sdk/integrations/refresh_token": {
         parameters: {
             query?: never;
             header?: never;
@@ -3902,14 +3900,14 @@ export interface paths {
          *     :func:`src.services.oauth_provider.refresh_oauth_token_http`; this handler
          *     only owns the provider lookup, context build, and persistence.
          */
-        post: operations["sdk_integrations_refresh_token_api_cli_integrations_refresh_token_post"];
+        post: operations["sdk_integrations_refresh_token_api_sdk_integrations_refresh_token_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/sessions": {
+    "/api/sdk/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -3920,7 +3918,7 @@ export interface paths {
          * List user's CLI sessions
          * @description List all CLI sessions for the current user.
          */
-        get: operations["list_cli_sessions_api_cli_sessions_get"];
+        get: operations["list_cli_sessions_api_sdk_sessions_get"];
         put?: never;
         /**
          * Register/create a CLI session
@@ -3929,14 +3927,14 @@ export interface paths {
          *     Called by `bifrost run <file>` to register workflows before
          *     opening the browser to the CLI session page.
          */
-        post: operations["register_cli_session_api_cli_sessions_post"];
+        post: operations["register_cli_session_api_sdk_sessions_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/sessions/{session_id}": {
+    "/api/sdk/sessions/{session_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3947,20 +3945,20 @@ export interface paths {
          * Get CLI session state
          * @description Get current CLI session state for web UI.
          */
-        get: operations["get_cli_session_api_cli_sessions__session_id__get"];
+        get: operations["get_cli_session_api_sdk_sessions__session_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete CLI session
          * @description Delete a CLI session.
          */
-        delete: operations["delete_cli_session_api_cli_sessions__session_id__delete"];
+        delete: operations["delete_cli_session_api_sdk_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/sessions/{session_id}/continue": {
+    "/api/sdk/sessions/{session_id}/continue": {
         parameters: {
             query?: never;
             header?: never;
@@ -3976,14 +3974,14 @@ export interface paths {
          *     Called by web UI when user clicks "Continue".
          *     Creates a real Execution record and sets pending=True so CLI can pick up.
          */
-        post: operations["continue_cli_session_api_cli_sessions__session_id__continue_post"];
+        post: operations["continue_cli_session_api_sdk_sessions__session_id__continue_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/sessions/{session_id}/pending": {
+    "/api/sdk/sessions/{session_id}/pending": {
         parameters: {
             query?: never;
             header?: never;
@@ -3997,7 +3995,7 @@ export interface paths {
          *     Returns 204 No Content if no execution pending.
          *     Returns execution_id, params and clears pending flag when execution is ready.
          */
-        get: operations["get_pending_execution_api_cli_sessions__session_id__pending_get"];
+        get: operations["get_pending_execution_api_sdk_sessions__session_id__pending_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4006,7 +4004,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cli/sessions/{session_id}/heartbeat": {
+    "/api/sdk/sessions/{session_id}/heartbeat": {
         parameters: {
             query?: never;
             header?: never;
@@ -4019,14 +4017,14 @@ export interface paths {
          * Update session heartbeat
          * @description Update session's last_seen timestamp (CLI heartbeat).
          */
-        post: operations["session_heartbeat_api_cli_sessions__session_id__heartbeat_post"];
+        post: operations["session_heartbeat_api_sdk_sessions__session_id__heartbeat_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/sessions/{session_id}/executions/{execution_id}/log": {
+    "/api/sdk/sessions/{session_id}/executions/{execution_id}/log": {
         parameters: {
             query?: never;
             header?: never;
@@ -4039,14 +4037,14 @@ export interface paths {
          * Stream log entry from CLI
          * @description Stream a log entry from CLI to the execution.
          */
-        post: operations["post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post"];
+        post: operations["post_cli_log_api_sdk_sessions__session_id__executions__execution_id__log_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/sessions/{session_id}/executions/{execution_id}/result": {
+    "/api/sdk/sessions/{session_id}/executions/{execution_id}/result": {
         parameters: {
             query?: never;
             header?: never;
@@ -4059,14 +4057,14 @@ export interface paths {
          * Post execution result from CLI
          * @description Post execution result from CLI.
          */
-        post: operations["post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post"];
+        post: operations["post_cli_result_api_sdk_sessions__session_id__executions__execution_id__result_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/ai/complete": {
+    "/api/sdk/ai/complete": {
         parameters: {
             query?: never;
             header?: never;
@@ -4079,14 +4077,14 @@ export interface paths {
          * Generate AI completion
          * @description Generate an AI completion using platform-configured LLM.
          */
-        post: operations["cli_ai_complete_api_cli_ai_complete_post"];
+        post: operations["cli_ai_complete_api_sdk_ai_complete_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/ai/stream": {
+    "/api/sdk/ai/stream": {
         parameters: {
             query?: never;
             header?: never;
@@ -4099,14 +4097,14 @@ export interface paths {
          * Stream AI completion
          * @description Generate a streaming AI completion using SSE.
          */
-        post: operations["cli_ai_stream_api_cli_ai_stream_post"];
+        post: operations["cli_ai_stream_api_sdk_ai_stream_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/ai/info": {
+    "/api/sdk/ai/info": {
         parameters: {
             query?: never;
             header?: never;
@@ -4117,7 +4115,7 @@ export interface paths {
          * Get AI model information
          * @description Get information about the configured LLM.
          */
-        get: operations["cli_ai_info_api_cli_ai_info_get"];
+        get: operations["cli_ai_info_api_sdk_ai_info_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4126,7 +4124,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cli/knowledge/store": {
+    "/api/sdk/knowledge/store": {
         parameters: {
             query?: never;
             header?: never;
@@ -4139,14 +4137,14 @@ export interface paths {
          * Store a document in knowledge store
          * @description Store a document with its embedding in the knowledge store.
          */
-        post: operations["cli_knowledge_store_api_cli_knowledge_store_post"];
+        post: operations["cli_knowledge_store_api_sdk_knowledge_store_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/knowledge/store-many": {
+    "/api/sdk/knowledge/store-many": {
         parameters: {
             query?: never;
             header?: never;
@@ -4159,14 +4157,14 @@ export interface paths {
          * Store multiple documents
          * @description Store multiple documents with batch embedding.
          */
-        post: operations["cli_knowledge_store_many_api_cli_knowledge_store_many_post"];
+        post: operations["cli_knowledge_store_many_api_sdk_knowledge_store_many_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/knowledge/search": {
+    "/api/sdk/knowledge/search": {
         parameters: {
             query?: never;
             header?: never;
@@ -4179,14 +4177,14 @@ export interface paths {
          * Search for similar documents
          * @description Search for similar documents using vector similarity.
          */
-        post: operations["cli_knowledge_search_api_cli_knowledge_search_post"];
+        post: operations["cli_knowledge_search_api_sdk_knowledge_search_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/knowledge/delete": {
+    "/api/sdk/knowledge/delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -4199,14 +4197,14 @@ export interface paths {
          * Delete a document by key
          * @description Delete a document by key from the knowledge store.
          */
-        post: operations["cli_knowledge_delete_api_cli_knowledge_delete_post"];
+        post: operations["cli_knowledge_delete_api_sdk_knowledge_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/knowledge/namespace/{namespace}": {
+    "/api/sdk/knowledge/namespace/{namespace}": {
         parameters: {
             query?: never;
             header?: never;
@@ -4220,13 +4218,13 @@ export interface paths {
          * Delete all documents in namespace
          * @description Delete all documents in a namespace.
          */
-        delete: operations["cli_knowledge_delete_namespace_api_cli_knowledge_namespace__namespace__delete"];
+        delete: operations["cli_knowledge_delete_namespace_api_sdk_knowledge_namespace__namespace__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cli/knowledge/namespaces": {
+    "/api/sdk/knowledge/namespaces": {
         parameters: {
             query?: never;
             header?: never;
@@ -4237,7 +4235,7 @@ export interface paths {
          * List namespaces with document counts
          * @description List all namespaces with document counts per scope.
          */
-        get: operations["cli_knowledge_list_namespaces_api_cli_knowledge_namespaces_get"];
+        get: operations["cli_knowledge_list_namespaces_api_sdk_knowledge_namespaces_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4246,7 +4244,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cli/knowledge/get": {
+    "/api/sdk/knowledge/get": {
         parameters: {
             query?: never;
             header?: never;
@@ -4257,9 +4255,53 @@ export interface paths {
          * Get a document by key
          * @description Get a document by key from the knowledge store.
          */
-        get: operations["cli_knowledge_get_api_cli_knowledge_get_get"];
+        get: operations["cli_knowledge_get_api_sdk_knowledge_get_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/tables/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a table
+         * @description Create a new table via SDK.
+         */
+        post: operations["cli_create_table_api_sdk_tables_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/tables/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List tables
+         * @description List tables via SDK.
+         *
+         *     Engine sentinel: the SDK has already resolved scope, so we pass
+         *     is_superuser=True to TableRepository and trust the org_uuid.
+         *     The base class handles the cascade (org + global) for us.
+         */
+        post: operations["cli_list_tables_api_sdk_tables_list_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4280,46 +4322,6 @@ export interface paths {
         get: operations["download_cli_api_cli_download_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create a table
-         * @description Create a new table via SDK.
-         */
-        post: operations["cli_create_table_api_cli_tables_create_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cli/tables/list": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * List tables
-         * @description List tables via SDK.
-         */
-        post: operations["cli_list_tables_api_cli_tables_list_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11668,6 +11670,11 @@ export interface components {
         /**
          * DeveloperContextResponse
          * @description Developer context for CLI initialization.
+         *
+         *     Sourced entirely from the auth-verified ``current_user`` and their
+         *     ``organization_id``. There is no mutable per-user default-org override.
+         *     Platform admins / provider-org members targeting another org pass
+         *     ``?org_id=<uuid>`` on this endpoint or ``scope`` on each SDK call.
          */
         DeveloperContextResponse: {
             /**
@@ -11698,29 +11705,6 @@ export interface components {
              * @default true
              */
             track_executions: boolean;
-        };
-        /**
-         * DeveloperContextUpdate
-         * @description Update developer context settings.
-         */
-        DeveloperContextUpdate: {
-            /**
-             * Default Org Id
-             * @description Default organization ID
-             */
-            default_org_id?: string | null;
-            /**
-             * Default Parameters
-             * @description Default workflow parameters
-             */
-            default_parameters?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Track Executions
-             * @description Track executions in history
-             */
-            track_executions?: boolean | null;
         };
         /**
          * DeviceAuthorizeRequest
@@ -18987,6 +18971,11 @@ export interface components {
              * @description Integration name
              */
             name: string;
+            /**
+             * Scope
+             * @description Optional org scope. Omit / pass null to list only the caller's own org mapping. Platform admins and provider-org members may pass 'global' (no filter, all orgs) or a specific org UUID.
+             */
+            scope?: string | null;
         };
         /**
          * SDKIntegrationsListMappingsResponse
@@ -27815,7 +27804,7 @@ export interface operations {
             };
         };
     };
-    get_dev_context_api_cli_context_get: {
+    get_dev_context_api_sdk_context_get: {
         parameters: {
             query?: {
                 org_id?: string | null;
@@ -27846,40 +27835,7 @@ export interface operations {
             };
         };
     };
-    update_dev_context_api_cli_context_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeveloperContextUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeveloperContextResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cli_get_config_api_cli_config_get_post: {
+    cli_get_config_api_sdk_config_get_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -27912,7 +27868,7 @@ export interface operations {
             };
         };
     };
-    cli_set_config_api_cli_config_set_post: {
+    cli_set_config_api_sdk_config_set_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -27943,7 +27899,7 @@ export interface operations {
             };
         };
     };
-    cli_list_config_api_cli_config_list_post: {
+    cli_list_config_api_sdk_config_list_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -27978,7 +27934,7 @@ export interface operations {
             };
         };
     };
-    cli_delete_config_api_cli_config_delete_post: {
+    cli_delete_config_api_sdk_config_delete_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28011,7 +27967,7 @@ export interface operations {
             };
         };
     };
-    sdk_integrations_get_api_cli_integrations_get_post: {
+    sdk_integrations_get_api_sdk_integrations_get_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28044,7 +28000,7 @@ export interface operations {
             };
         };
     };
-    sdk_integrations_list_mappings_api_cli_integrations_list_mappings_post: {
+    sdk_integrations_list_mappings_api_sdk_integrations_list_mappings_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28077,7 +28033,7 @@ export interface operations {
             };
         };
     };
-    sdk_integrations_get_mapping_api_cli_integrations_get_mapping_post: {
+    sdk_integrations_get_mapping_api_sdk_integrations_get_mapping_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28110,7 +28066,7 @@ export interface operations {
             };
         };
     };
-    sdk_integrations_upsert_mapping_api_cli_integrations_upsert_mapping_post: {
+    sdk_integrations_upsert_mapping_api_sdk_integrations_upsert_mapping_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28143,7 +28099,7 @@ export interface operations {
             };
         };
     };
-    sdk_integrations_delete_mapping_api_cli_integrations_delete_mapping_post: {
+    sdk_integrations_delete_mapping_api_sdk_integrations_delete_mapping_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28178,7 +28134,7 @@ export interface operations {
             };
         };
     };
-    sdk_integrations_refresh_token_api_cli_integrations_refresh_token_post: {
+    sdk_integrations_refresh_token_api_sdk_integrations_refresh_token_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28211,7 +28167,7 @@ export interface operations {
             };
         };
     };
-    list_cli_sessions_api_cli_sessions_get: {
+    list_cli_sessions_api_sdk_sessions_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -28231,7 +28187,7 @@ export interface operations {
             };
         };
     };
-    register_cli_session_api_cli_sessions_post: {
+    register_cli_session_api_sdk_sessions_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28264,7 +28220,7 @@ export interface operations {
             };
         };
     };
-    get_cli_session_api_cli_sessions__session_id__get: {
+    get_cli_session_api_sdk_sessions__session_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -28295,7 +28251,7 @@ export interface operations {
             };
         };
     };
-    delete_cli_session_api_cli_sessions__session_id__delete: {
+    delete_cli_session_api_sdk_sessions__session_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -28324,7 +28280,7 @@ export interface operations {
             };
         };
     };
-    continue_cli_session_api_cli_sessions__session_id__continue_post: {
+    continue_cli_session_api_sdk_sessions__session_id__continue_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28359,7 +28315,7 @@ export interface operations {
             };
         };
     };
-    get_pending_execution_api_cli_sessions__session_id__pending_get: {
+    get_pending_execution_api_sdk_sessions__session_id__pending_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -28397,7 +28353,7 @@ export interface operations {
             };
         };
     };
-    session_heartbeat_api_cli_sessions__session_id__heartbeat_post: {
+    session_heartbeat_api_sdk_sessions__session_id__heartbeat_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28426,7 +28382,7 @@ export interface operations {
             };
         };
     };
-    post_cli_log_api_cli_sessions__session_id__executions__execution_id__log_post: {
+    post_cli_log_api_sdk_sessions__session_id__executions__execution_id__log_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28460,7 +28416,7 @@ export interface operations {
             };
         };
     };
-    post_cli_result_api_cli_sessions__session_id__executions__execution_id__result_post: {
+    post_cli_result_api_sdk_sessions__session_id__executions__execution_id__result_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28498,7 +28454,7 @@ export interface operations {
             };
         };
     };
-    cli_ai_complete_api_cli_ai_complete_post: {
+    cli_ai_complete_api_sdk_ai_complete_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28531,7 +28487,7 @@ export interface operations {
             };
         };
     };
-    cli_ai_stream_api_cli_ai_stream_post: {
+    cli_ai_stream_api_sdk_ai_stream_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28564,7 +28520,7 @@ export interface operations {
             };
         };
     };
-    cli_ai_info_api_cli_ai_info_get: {
+    cli_ai_info_api_sdk_ai_info_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -28584,7 +28540,7 @@ export interface operations {
             };
         };
     };
-    cli_knowledge_store_api_cli_knowledge_store_post: {
+    cli_knowledge_store_api_sdk_knowledge_store_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28619,7 +28575,7 @@ export interface operations {
             };
         };
     };
-    cli_knowledge_store_many_api_cli_knowledge_store_many_post: {
+    cli_knowledge_store_many_api_sdk_knowledge_store_many_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28654,7 +28610,7 @@ export interface operations {
             };
         };
     };
-    cli_knowledge_search_api_cli_knowledge_search_post: {
+    cli_knowledge_search_api_sdk_knowledge_search_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28687,7 +28643,7 @@ export interface operations {
             };
         };
     };
-    cli_knowledge_delete_api_cli_knowledge_delete_post: {
+    cli_knowledge_delete_api_sdk_knowledge_delete_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28722,7 +28678,7 @@ export interface operations {
             };
         };
     };
-    cli_knowledge_delete_namespace_api_cli_knowledge_namespace__namespace__delete: {
+    cli_knowledge_delete_namespace_api_sdk_knowledge_namespace__namespace__delete: {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -28757,7 +28713,7 @@ export interface operations {
             };
         };
     };
-    cli_knowledge_list_namespaces_api_cli_knowledge_namespaces_get: {
+    cli_knowledge_list_namespaces_api_sdk_knowledge_namespaces_get: {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -28789,7 +28745,7 @@ export interface operations {
             };
         };
     };
-    cli_knowledge_get_api_cli_knowledge_get_get: {
+    cli_knowledge_get_api_sdk_knowledge_get_get: {
         parameters: {
             query: {
                 key: string;
@@ -28822,27 +28778,7 @@ export interface operations {
             };
         };
     };
-    download_cli_api_cli_download_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    cli_create_table_api_cli_tables_create_post: {
+    cli_create_table_api_sdk_tables_create_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28875,7 +28811,7 @@ export interface operations {
             };
         };
     };
-    cli_list_tables_api_cli_tables_list_post: {
+    cli_list_tables_api_sdk_tables_list_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28904,6 +28840,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_cli_api_cli_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

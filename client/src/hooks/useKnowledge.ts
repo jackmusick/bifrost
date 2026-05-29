@@ -16,11 +16,13 @@ export interface KnowledgeNamespaceInfo {
 }
 
 /**
- * Fetch knowledge namespaces from the CLI API
+ * Fetch knowledge namespaces from the SDK API
  *
  * @param scope - Optional organization scope filter:
- *   - undefined: don't send scope param (backend uses DeveloperContext)
- *   - "global": only global knowledge sources
+ *   - undefined: don't send scope param (server resolves to the
+ *     auth-verified caller's organization_id via the C2 scope resolver)
+ *   - "global": only global knowledge sources (bypass required —
+ *     platform admin or provider-org member)
  *   - UUID string: that org's knowledge sources + global (cascade)
  */
 async function fetchKnowledgeNamespaces(
@@ -30,7 +32,7 @@ async function fetchKnowledgeNamespaces(
 	if (scope) {
 		params.set("scope", scope);
 	}
-	const url = `/api/cli/knowledge/namespaces${params.toString() ? `?${params}` : ""}`;
+	const url = `/api/sdk/knowledge/namespaces${params.toString() ? `?${params}` : ""}`;
 
 	const response = await fetch(url, {
 		method: "GET",
@@ -58,8 +60,10 @@ async function fetchKnowledgeNamespaces(
  * Used in AgentDialog for selecting knowledge sources.
  *
  * @param scope - Organization scope filter:
- *   - undefined: don't send scope param (backend uses DeveloperContext)
- *   - null: global only - sends scope=global
+ *   - undefined: don't send scope param (server resolves to the
+ *     auth-verified caller's organization_id via the C2 scope resolver)
+ *   - null: global only - sends scope=global (bypass required —
+ *     platform admin or provider-org member)
  *   - UUID string: that org + global (cascade)
  */
 export function useKnowledgeNamespaces(scope?: string | null) {
