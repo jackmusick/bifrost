@@ -556,9 +556,10 @@ class TestOrgIsolation:
         assert response.status_code == 200
         org2_executions = response.json().get("executions", [])
 
-        # If org1 has executions, verify org2 doesn't see them
-        org1_exec_ids = {e["id"] for e in org1_executions}
-        org2_exec_ids = {e["id"] for e in org2_executions}
+        # If org1 has executions, verify org2 doesn't see them.
+        # /api/executions items key the id as "execution_id", not "id".
+        org1_exec_ids = {e["execution_id"] for e in org1_executions}
+        org2_exec_ids = {e["execution_id"] for e in org2_executions}
 
         # No overlap should exist
         overlap = org1_exec_ids & org2_exec_ids
@@ -578,7 +579,7 @@ class TestOrgIsolation:
         org2_executions = response.json().get("executions", [])
 
         if org2_executions:
-            exec_id = org2_executions[0]["id"]
+            exec_id = org2_executions[0]["execution_id"]
 
             # Org1 user tries to access org2's execution
             response = e2e_client.get(

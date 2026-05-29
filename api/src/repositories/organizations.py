@@ -15,6 +15,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Organization
+# SDK Organization dataclass returned by get_with_cache — distinct from the ORM
+# Organization above (which this repo is generic over). Imported at module level
+# so the return annotation resolves to the right type; src.sdk.context is a thin
+# re-export of bifrost._execution_context with no circular-import risk here.
+from src.sdk.context import Organization as SDKOrg
 from src.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -32,7 +37,7 @@ class OrganizationRepository(BaseRepository[Organization]):  # type: ignore[type
 
     async def get_with_cache(
         self, org_id: str
-    ) -> "Organization | None":
+    ) -> "SDKOrg | None":
         """Get an organization by ID, Redis-cached.
 
         Accepts either a bare UUID or ``"ORG:<uuid>"`` (the latter is a
@@ -42,8 +47,6 @@ class OrganizationRepository(BaseRepository[Organization]):  # type: ignore[type
         callers can pass it through the execution context without
         carrying a SQLAlchemy session.
         """
-        from src.sdk.context import Organization as SDKOrg
-
         # Parse legacy "ORG:<uuid>" format.
         org_uuid_str = org_id[4:] if org_id.startswith("ORG:") else org_id
         try:
