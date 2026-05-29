@@ -60,6 +60,9 @@ class agents:
                 "output_schema": output_schema,
                 "timeout": timeout,
             },
+            # Client read-timeout must outlast the server-side cap, otherwise
+            # httpx tears down the connection before the server can return.
+            timeout=timeout + 10,
         )
         raise_for_status_with_detail(response)
         data = response.json()
