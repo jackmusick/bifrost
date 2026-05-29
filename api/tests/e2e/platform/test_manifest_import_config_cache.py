@@ -50,6 +50,8 @@ async def cleanup(db_session: AsyncSession, repo_storage: RepoStorage):
     try:
         await repo_storage.delete(".bifrost/configs.yaml")
     except Exception:
+        # Teardown is best-effort — the manifest may not exist if the test
+        # bailed before writing it. Nothing to recover; ignore.
         pass
 
 

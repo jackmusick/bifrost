@@ -68,6 +68,8 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
             if provider is not None:
                 return provider
         except ValueError:
+            # connection_name wasn't a UUID — expected; fall through to the
+            # name-based cascade lookup below.
             pass
 
         # Fall back to provider_name with cascade.
