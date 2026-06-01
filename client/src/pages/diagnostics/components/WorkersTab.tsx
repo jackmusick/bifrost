@@ -59,20 +59,25 @@ export function WorkersTab() {
     // Compute summary stats
     const stats = useMemo(() => {
         let totalForks = 0;
+        let totalCapacity = 0;
         let totalBusy = 0;
         for (const pool of pools) {
             if ("processes" in pool && Array.isArray(pool.processes)) {
                 totalForks += pool.processes.length;
+                totalCapacity += pool.processes.length;
                 totalBusy += pool.processes.filter(
                     (p: ProcessInfo) => p.state === "busy"
                 ).length;
             } else {
                 const summary = pool as PoolSummary;
-                totalForks += summary.pool_size ?? 0;
+                const active = summary.active_process_count ?? summary.pool_size ?? 0;
+                const capacity = summary.configured_capacity ?? summary.max_workers ?? active;
+                totalForks += active;
+                totalCapacity += capacity;
                 totalBusy += summary.busy_count ?? 0;
             }
         }
-        return { containers: pools.length, forks: totalForks, busy: totalBusy };
+        return { containers: pools.length, forks: totalForks, capacity: totalCapacity, busy: totalBusy };
     }, [pools]);
 
     return (
@@ -113,7 +118,7 @@ export function WorkersTab() {
                 <div className="flex items-center gap-3">
                     <span className="text-sm text-muted-foreground">
                         {stats.containers} container{stats.containers !== 1 ? "s" : ""}{" "}
-                        &middot; {stats.forks} fork{stats.forks !== 1 ? "s" : ""}
+                        &middot; {stats.forks}/{stats.capacity} active forks
                     </span>
                     <Button
                         variant="outline"
