@@ -18,8 +18,11 @@ import hashlib
 import json
 import logging
 import os
+import threading
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
+from uuid import UUID
 
 import redis
 
@@ -31,6 +34,83 @@ logger = logging.getLogger(__name__)
 MODULE_CACHE_TTL = 86400
 
 REPO_PREFIX = "_repo/"
+SOLUTIONS_ROOT = "_solutions"
+
+
+# ── Per-execution Solution import root ───────────────────────────────────────
+# When a solution-managed workflow runs, module resolution must be rooted at
+# _solutions/{solution_id}/ — for the entry workflow's own code AND its
+# `from modules.x import y` imports — falling back to the bare _repo/ root ONLY
+# when the install's global_repo_access flag is on (success-criteria §3.5).
+#
+# The context is thread-local: each forked worker runs a single execution on one
+# thread, and the import system runs synchronously on that thread, so a
+# thread-local correctly scopes the root to exactly one execution with no
+# cross-execution bleed. No active context == unchanged _repo/ behavior.
+_solution_ctx = threading.local()
+
+
+@dataclass(frozen=True)
+class SolutionContext:
+    """Active per-execution solution import root."""
+
+    solution_id: str
+    global_repo_access: bool
+
+
+def set_solution_context(solution_id: UUID | str, global_repo_access: bool) -> None:
+    """Activate the solution import root for the current thread/execution."""
+    _solution_ctx.value = SolutionContext(
+        solution_id=str(solution_id), global_repo_access=bool(global_repo_access)
+    )
+
+
+def clear_solution_context() -> None:
+    """Deactivate the solution import root (restore plain _repo/ behavior)."""
+    _solution_ctx.value = None
+
+
+def get_solution_context() -> SolutionContext | None:
+    """Return the active solution context for this thread, or None."""
+    return getattr(_solution_ctx, "value", None)
+
+
+def _candidate_storage_paths(path: str) -> list[str]:
+    """Ordered storage paths to try for a relative module path.
+
+    - No active solution → just the bare path (resolved under _repo/ downstream).
+    - Solution active → the solution-rooted path FIRST. When global_repo_access
+      is on, the bare path follows as a fallback; when off, there is no fallback
+      (a _repo/ import must NOT silently resolve — criterion 4).
+
+    The returned paths are storage paths: a bare path is later read from the
+    _repo/ prefix; a path already under ``_solutions/`` is read verbatim.
+    """
+    ctx = get_solution_context()
+    if ctx is None:
+        return [path]
+    rooted = f"{SOLUTIONS_ROOT}/{ctx.solution_id}/{path.lstrip('/')}"
+    if ctx.global_repo_access:
+        return [rooted, path]
+    return [rooted]
+
+
+def candidate_index_prefixes(base_path: str) -> list[str]:
+    """Storage-path prefixes to scan the module index with, for namespace-package
+    (PEP 420) detection of ``base_path`` (e.g. "modules").
+
+    Mirrors :func:`_candidate_storage_paths`: solution-rooted prefix first, with
+    the bare prefix only when global_repo_access is on; bare prefix only when no
+    solution is active. The finder tests ``index_entry.startswith(prefix)``.
+    """
+    base = base_path.rstrip("/")
+    ctx = get_solution_context()
+    if ctx is None:
+        return [f"{base}/"]
+    rooted = f"{SOLUTIONS_ROOT}/{ctx.solution_id}/{base}/"
+    if ctx.global_repo_access:
+        return [rooted, f"{base}/"]
+    return [rooted]
 
 # Cached S3 client — reused across calls to avoid repeated setup
 _s3_client: Any = None
@@ -92,11 +172,23 @@ def _get_s3_client() -> Any:
         return None
 
 
-def _get_s3_module(path: str) -> bytes | None:
-    """
-    Fetch a module from S3 _repo/ prefix (synchronous).
+def _storage_path_to_s3_key(storage_path: str) -> str:
+    """Map a storage path to its S3 key.
 
-    Uses botocore sync client since this runs in worker subprocesses.
+    A bare relative path lives under the _repo/ prefix; a path already rooted at
+    ``_solutions/`` is used verbatim (it already carries its full prefix).
+    """
+    if storage_path.startswith(f"{SOLUTIONS_ROOT}/"):
+        return storage_path
+    return f"{REPO_PREFIX}{storage_path}"
+
+
+def _get_s3_module(storage_path: str) -> bytes | None:
+    """
+    Fetch a module from S3 by storage path (synchronous).
+
+    Bare paths resolve under _repo/; ``_solutions/{id}/...`` paths are used
+    verbatim. Uses botocore sync client since this runs in worker subprocesses.
     Returns raw bytes or None if not found.
     """
     bucket = os.environ.get("BIFROST_S3_BUCKET")
@@ -108,7 +200,7 @@ def _get_s3_module(path: str) -> bytes | None:
         return None
 
     try:
-        key = f"{REPO_PREFIX}{path}"
+        key = _storage_path_to_s3_key(storage_path)
         response = client.get_object(Bucket=bucket, Key=key)
         return response["Body"].read()
 
@@ -118,9 +210,9 @@ def _get_s3_module(path: str) -> bytes | None:
         if isinstance(resp, dict):
             code = resp.get("Error", {}).get("Code", "")
             if code == "NoSuchKey":
-                logger.debug(f"Module not found in S3: {path}")
+                logger.debug(f"Module not found in S3: {storage_path}")
                 return None
-        logger.warning(f"S3 fallback error for {path}: {e}")
+        logger.warning(f"S3 fallback error for {storage_path}: {e}")
         return None
 
 
@@ -128,28 +220,40 @@ def get_module_sync(path: str) -> CachedModule | None:
     """
     Fetch a single module from cache (synchronous).
 
-    Called by VirtualModuleFinder.find_spec() during import resolution.
+    Called by VirtualModuleFinder.find_spec() during import resolution AND by
+    the worker to load the entry workflow's own code.
 
-    Lookup order:
+    When a Solution context is active (set_solution_context), candidate storage
+    paths are tried in order — solution-rooted first, then bare _repo/ only when
+    global_repo_access is on. With no context, behavior is unchanged: the bare
+    path resolves under _repo/.
+
+    Per candidate, the lookup order is:
     1. Redis cache (fast path)
-    2. S3 _repo/ (fallback, re-caches to Redis)
-    3. None (module not found)
+    2. S3 (fallback, re-caches to Redis)
+    Then the next candidate; None if no candidate resolves.
+
+    The returned CachedModule keeps the logical (bare) ``path`` so __file__ and
+    spec origin stay stable regardless of where the bytes were stored.
     """
     try:
         client = _get_sync_redis()
-        key = f"{MODULE_KEY_PREFIX}{path}"
-        data = client.get(key)
-        if data:
-            return json.loads(data)
 
-        # Redis miss — try S3 fallback
-        s3_content = _get_s3_module(path)
-        if s3_content is not None:
+        for storage_path in _candidate_storage_paths(path):
+            key = f"{MODULE_KEY_PREFIX}{storage_path}"
+            data = client.get(key)
+            if data:
+                return json.loads(data)
+
+            # Redis miss — try S3 fallback for this candidate
+            s3_content = _get_s3_module(storage_path)
+            if s3_content is None:
+                continue
             try:
                 content_str = s3_content.decode("utf-8")
             except UnicodeDecodeError:
-                logger.warning(f"Could not decode S3 module as UTF-8: {path}")
-                return None
+                logger.warning(f"Could not decode S3 module as UTF-8: {storage_path}")
+                continue
 
             content_hash = hashlib.sha256(s3_content).hexdigest()
             module: CachedModule = {
@@ -158,11 +262,10 @@ def get_module_sync(path: str) -> CachedModule | None:
                 "hash": content_hash,
             }
 
-            # Cache back to Redis
+            # Cache back to Redis under the storage-path key + index.
             try:
                 client.setex(key, MODULE_CACHE_TTL, json.dumps(module))
-                # Also add to module index
-                client.sadd(MODULE_INDEX_KEY, path)
+                client.sadd(MODULE_INDEX_KEY, storage_path)
             except redis.RedisError as e:
                 logger.warning(f"Failed to cache S3 module to Redis: {e}")
 

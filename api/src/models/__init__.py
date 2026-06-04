@@ -20,6 +20,7 @@ Enums:
 from src.models.orm import (
     Base,
     Organization,
+    Solution,
     User,
     Role,
     UserRole,
@@ -82,6 +83,7 @@ __all__ = [
     "Base",
     # ORM models
     "Organization",
+    "Solution",
     "User",
     "Role",
     "UserRole",

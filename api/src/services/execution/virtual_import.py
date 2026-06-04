@@ -30,7 +30,11 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from src.core.module_cache_sync import get_module_index_sync, get_module_sync
+from src.core.module_cache_sync import (
+    candidate_index_prefixes,
+    get_module_index_sync,
+    get_module_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -344,11 +348,16 @@ class VirtualModuleFinder(MetaPathFinder):
         # This enables `from modules.foo import bar` without requiring modules/__init__.py
         # PEP 420: https://peps.python.org/pep-0420/
         base_path = "/".join(fullname.split("."))
-        prefix = f"{base_path}/"
 
-        # Get the module index and check if any modules exist under this prefix
+        # Scan the module index for submodules under the candidate prefixes.
+        # When a Solution is active these are _solutions/{id}/-rooted (with the
+        # bare prefix only if global_repo_access is on), so a solution's
+        # namespace packages are detected without colliding with _repo/.
         module_index = get_module_index_sync()
-        has_submodules = any(path.startswith(prefix) for path in module_index)
+        prefixes = candidate_index_prefixes(base_path)
+        has_submodules = any(
+            entry.startswith(p) for entry in module_index for p in prefixes
+        )
 
         if has_submodules:
             # Create a namespace package spec (empty module with __path__)

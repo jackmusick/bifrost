@@ -151,6 +151,7 @@ async def get_workflow_for_execution(
         - value: ROI value
         - execution_mode: sync or async
         - organization_id: Org scope (or None for global)
+        - solution_id: Solution install id if solution-managed (else None)
         - type: Executable type (workflow, tool, or data_provider)
         - cache_ttl_seconds: Data provider cache TTL
 
@@ -183,6 +184,7 @@ async def get_workflow_for_execution(
             "value": float(workflow_record.value) if workflow_record.value else 0.0,
             "execution_mode": workflow_record.execution_mode or "async",
             "organization_id": str(workflow_record.organization_id) if workflow_record.organization_id else None,
+            "solution_id": str(workflow_record.solution_id) if workflow_record.solution_id else None,
             "type": workflow_record.type or "workflow",
             "cache_ttl_seconds": workflow_record.cache_ttl_seconds or 0,
         }
