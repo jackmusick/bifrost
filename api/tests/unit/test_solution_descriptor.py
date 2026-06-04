@@ -1,0 +1,84 @@
+"""Tests for the bifrost.solution.yaml descriptor.
+
+The descriptor is the root marker that tells tooling it is operating against a
+Solution workspace (vs the ad-hoc _repo/ workspace) — success-criteria §3.8,
+criterion 14. It holds Solution-level identity + config and indexes the existing
+split .bifrost/*.yaml manifests (which it does NOT replace).
+"""
+from __future__ import annotations
+
+import pathlib
+
+import pytest
+
+from bifrost.solution_descriptor import (
+    DESCRIPTOR_FILENAME,
+    SolutionDescriptor,
+    is_solution_workspace,
+    load_descriptor,
+)
+
+
+def _write(tmp_path: pathlib.Path, text: str) -> pathlib.Path:
+    (tmp_path / DESCRIPTOR_FILENAME).write_text(text)
+    return tmp_path
+
+
+def test_load_minimal(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path, "slug: mna\nname: MNA\nscope: org\nglobal_repo_access: false\n")
+    d = load_descriptor(tmp_path)
+    assert isinstance(d, SolutionDescriptor)
+    assert d.slug == "mna"
+    assert d.name == "MNA"
+    assert d.scope == "org"
+    assert d.global_repo_access is False
+    assert is_solution_workspace(tmp_path) is True
+
+
+def test_defaults(tmp_path: pathlib.Path) -> None:
+    """global_repo_access and git_connected default off; scope defaults to org."""
+    _write(tmp_path, "slug: braytel\nname: Braytel\n")
+    d = load_descriptor(tmp_path)
+    assert d.scope == "org"
+    assert d.global_repo_access is False
+    assert d.git_connected is False
+    assert d.git_repo_url is None
+
+
+def test_global_scope_and_git(tmp_path: pathlib.Path) -> None:
+    _write(
+        tmp_path,
+        "slug: halo\nname: Halo\nscope: global\n"
+        "git_connected: true\ngit_repo_url: https://github.com/x/halo\n",
+    )
+    d = load_descriptor(tmp_path)
+    assert d.scope == "global"
+    assert d.git_connected is True
+    assert d.git_repo_url == "https://github.com/x/halo"
+
+
+def test_invalid_scope_rejected(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path, "slug: x\nname: X\nscope: tenant\n")
+    with pytest.raises(Exception):
+        load_descriptor(tmp_path)
+
+
+def test_missing_required_field_rejected(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path, "name: NoSlug\n")
+    with pytest.raises(Exception):
+        load_descriptor(tmp_path)
+
+
+def test_not_a_solution_workspace(tmp_path: pathlib.Path) -> None:
+    assert is_solution_workspace(tmp_path) is False
+    # A plain _repo/-style workspace (no descriptor) is not a solution.
+    (tmp_path / ".bifrost").mkdir()
+    (tmp_path / ".bifrost" / "workflows.yaml").write_text("workflows: {}\n")
+    assert is_solution_workspace(tmp_path) is False
+
+
+def test_accepts_file_path_or_dir(tmp_path: pathlib.Path) -> None:
+    p = _write(tmp_path, "slug: x\nname: X\n")
+    by_dir = load_descriptor(p)
+    by_file = load_descriptor(p / DESCRIPTOR_FILENAME)
+    assert by_dir.slug == by_file.slug == "x"
