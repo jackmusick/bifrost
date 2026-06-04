@@ -15,25 +15,31 @@ Grounded by: `2026-06-03-capability-source-model-VIABILITY-REVIEW.md`
 
 Bifrost keeps its single global ad-hoc workspace (`_repo/`) exactly as it is today — full git
 diff/commit/status drift workflow, fast in-platform editing, shared library, broad agent context.
-**On top of that** we add **Solutions**: org-scoped, git-owned, deployable units of Bifrost
-functionality. A Solution is a normal git repo with normal CI; when CI passes it is deployed to a
-platform instance — conceptually like `docker compose up` stands up an instance, but for a unit of
-Bifrost functionality. Solution-managed entities are **read-only on the platform**: git (or
-`bifrost deploy`) is the only writer, which eliminates drift by construction instead of by merge.
-Solutions are self-contained worlds (their own import root), install per-org, and can be installed
-multiple times. React apps inside a Solution are first-class and must feel like normal React.
+**On top of that** we add **Solutions**: scoped, deployable units of Bifrost functionality. **A
+Solution is an installable surface, not a git repo.** It is the deployable unit installed onto a
+platform instance. It *may be sourced from* a git repo (which then becomes the writer), or deployed
+manually, or developed locally — but the repo is one possible *source*, not the Solution's identity.
+Solution-managed entities are **read-only on the platform**: there is **exactly one writer per
+install**, which eliminates drift by construction instead of by merge. Solutions are self-contained
+worlds (their own import root), install per scope (one org, or global), and can be installed multiple
+times. **Solutions are invisible to users** — users only ever see the entities a Solution deploys,
+and from the user's perspective nothing changes. React apps inside a Solution are first-class and
+must feel like normal React.
 
 ---
 
 ## 2. The Two Tiers (the core mental model)
 
-| | `_repo/` (ad-hoc, global) | `_solutions/{solution_id}/` (Solutions) |
+| | `_repo/` (ad-hoc workspace) | Solutions (installable surface) |
 |---|---|---|
-| Source of truth | Git repo w/ drift workflow | Git repo, write-only to platform |
+| What it is | An editable workspace | A deployable unit installed onto an instance |
+| Source of truth | The workspace itself, git-synced w/ drift workflow | The install on the platform; its *source* may be a connected git repo |
 | Platform editing | Editable; drift tracked via diff/commit | **Read-only** for solution-managed entities |
-| Writer | In-platform edits + git commit | `bifrost deploy` **or** git-connected pull (exactly one per install) |
-| Scope | Global / shared library | One org per install |
-| Import root | `_repo/` | `solutions/{solution_id}/`, fallback to `_repo/` only if "global access" enabled |
+| Writer | In-platform edits + git commit | **Exactly one per install:** `bifrost deploy` **OR** git-connected auto-pull |
+| Scope | Global / shared library | One org **or** global (see §3.3) |
+| Runtime source (Python) | `_repo/` | `_solutions/{solution_id}/` |
+| Built app artifact (React) | `_apps/` | `_apps/` (same prefix; dist only) |
+| Import root | `_repo/` | `solutions/{solution_id}/`, fallback to `_repo/` only if "global repo access" on |
 | Purpose | Shared code, one-offs, fast iteration | Deployable client/product units |
 | Status | **Unchanged. Preserved as-is.** | New |
 
@@ -44,9 +50,11 @@ but that evolution is optional and not forced.
 
 ## 3. Locked Decisions
 
-### 3.1 Terminology
-- The unit is a **Solution**. (Not "capability", not "bundle", not "module".)
+### 3.1 Terminology & nature
+- The unit is a **Solution**: an **installable surface**, not a repo.
 - An installed Solution is an **install**, identified by `solution_id` (a UUID per install).
+- A Solution **may be connected to** a single git repo as its source (§3.9). The repo is a *source*,
+  not the Solution itself.
 
 ### 3.2 Source-of-truth contract (the drift solution)
 - Entities (**workflows, apps, forms, agents, tables + table policies**) gain a nullable `solution_id`.
@@ -59,32 +67,45 @@ but that evolution is optional and not forced.
   portable — **OAuth token mappings** and **secret config values**. Everything else that *can* be
   portable *is* portable and is locked.
 
-### 3.3 Org model
-- A Solution installs for **exactly one org**; every entity under it **inherits** that org. No
-  per-entity `organization_id` rewrite — org is a single property of the install.
-- **Global/shared functionality is NOT a Solution.** It lives in `_repo/`. Solutions reach it via
-  an opt-in **"Enable global repository access"** checkbox on the Solution (**off by default**).
-- Install identity is unique per **(solution, org)** — no scope overlap between installs.
+### 3.3 Scope model (two distinct meanings of "global")
+A Solution installs at a **scope**, using Bifrost's existing scoping system:
+- **Org scope:** entities are visible to that one org; everything under the install inherits the org.
+  No per-entity `organization_id` rewrite — scope is a single property of the install.
+- **Global scope:** entities are **globally available to people on the Bifrost tenant** (same as any
+  global-scoped entity today). This is purely about **who can see/use the deployed entities**.
+
+**"Global scope" is NOT "global repo access".** They are orthogonal:
+- *Global scope* (above) = visibility of deployed entities.
+- *Global repo access* (§3.5) = whether the Solution's **code** may import shared modules from `_repo/`.
+
+A Solution can be global-scoped without global repo access (self-contained code, visible to all), or
+org-scoped with global repo access (private entities, code reaches `_repo/` shared library), or any
+combination. **Genuinely-shared importable code still lives in `_repo/`, not in a Solution.**
 
 ### 3.4 Multiple installs
-- One Solution definition in git can be **installed multiple times** (e.g. ship `halo-ticketing`
-  once, install it for N client orgs). Each install is independent, keyed by `solution_id`.
-- Deploy resolves *which install* it targets by solution-identity + org; `--solution {uuid}` is the
-  explicit override when ambiguous. (On upload, matching solution name MAY update an existing install.)
+- One Solution definition can be **installed multiple times** (e.g. ship `halo-ticketing` once,
+  install it for N client orgs). Each install is independent, keyed by `solution_id`.
+- Install identity is unique per **(solution, scope)** — no scope overlap between installs.
+- Deploy resolves *which install* it targets by solution-identity + scope; `--solution {uuid}` is the
+  explicit override when ambiguous. (On upload, a matching solution name MAY update an existing install.)
 
 ### 3.5 Runtime / imports (resolves the flat-namespace problem)
 - Execution always starts by running a workflow. If the workflow has a `solution_id`:
   - Import root is `solutions/{solution_id}/` — `from modules.x import y` resolves to
     `_solutions/{solution_id}/modules/x.py` (imports work from the solution root, exactly like
     running locally from the directory root).
-  - Falls back to `_repo/` **only if "Enable global repository access" is on**.
+  - Falls back to `_repo/` **only if "Enable global repository access" is on** (off by default).
 - Solutions are **self-contained worlds**: `solutions/A/modules/x` and `solutions/B/modules/x` are
-  different files at different roots and never collide. The per-execution scoping is what makes
+  different files at different roots and never collide. Per-execution scoping is what makes
   multi-version solution-local code safe (no global `sys.modules` shadowing).
-- New S3 prefix `_solutions/` parallel to `_repo/`.
 
-### 3.6 Storage & reconcile
-- Solution source lives under S3 `_solutions/{solution_id}/`, parallel to `_repo/`.
+### 3.6 Storage, artifacts & reconcile
+- **Python (workflows, modules) installs as source** to `_solutions/{solution_id}/` — it is *executed*
+  as source by the virtual importer, not built.
+- **React app `src/` is build-input only and is NOT installed.** On deploy, the build runs
+  (`npm run build` or equivalent) and **only the `dist/` output is copied to the `_apps/` prefix**
+  (the existing app-artifact location). `_solutions/` does not contain app source — no more than it
+  contains the YAML manifest files. (See §6.3 for *where* the build runs.)
 - **Deploy = full replace, scoped strictly to `solution_id`:** upsert everything in the bundle;
   delete entities previously under this `solution_id` that are absent from the new bundle.
   - **Never touches `_repo/` or any other install.** `_repo/` is out of scope for all Solution ops.
@@ -96,32 +117,60 @@ but that evolution is optional and not forced.
 - **Row data is runtime state; deploy never writes or wipes it.** A redeploy with a changed schema
   migrates structure (add/alter) and **preserves rows**. Mirrors the existing app-source vs app-data split.
 
-### 3.8 Export / portability
-- "Export Solution" **scans the Solution's Python** for shared-module usage and offers to **vendor
-  those shared modules into the Solution**, so the export is genuinely self-contained and installable
-  on another instance.
-- Vendored shared modules compose cleanly with import resolution: a Solution's own copy wins because
-  resolution starts at the solution root — no copy into `_repo/`, no collision, no global shadowing.
-- Tables export schema + policies; data is never exported by deploy.
+### 3.8 Descriptor & manifest structure
+- A Solution workspace is marked by a root descriptor file: **`bifrost.solution.yaml`**.
+  - Holds Solution-level **identity + config**: id, slug, name, scope (org/global), global-repo-access
+    flag, declared shared deps.
+  - This is how tooling (`bifrost run`, deploy, export) detects it is operating against a Solution
+    (vs the ad-hoc `_repo/` workspace) and knows to target `_solutions/{id}/` and stamp `solution_id`.
+- **Per-entity content stays in the existing split `.bifrost/*.yaml` manifests** (`workflows.yaml`,
+  `apps.yaml`, `forms.yaml`, etc.). The descriptor **indexes** them. This reuses the generator +
+  importer that already round-trip — a Solution is "the import/export system promoted to a first-class,
+  enforced, git-first lifecycle." A Solution = `bifrost.solution.yaml` + `.bifrost/*.yaml` + Python
+  source + app `src/` (build input).
 
-### 3.9 Git-connected mode (keeps "one writer" true)
-- A Solution install can be **connected to a single git repo** (one repo per Solution; monorepo is
-  explicitly out of scope until a real need appears — YAGNI).
-- **Connected install:** the git repo is the only writer. Platform polls/webhooks `main` and
-  **auto-deploys** on new commits. `bifrost deploy` is **disabled** for this install.
+### 3.9 Source modes (keeps "one writer" true)
 - **Disconnected install:** `bifrost deploy` is the only writer.
+- **Git-connected install:** the Solution is connected to a single git repo. The platform
+  polls/webhooks `main` and **auto-deploys** on new commits (pulling changes in as if deployed).
+  **`bifrost deploy` is disabled** for this install.
+- Monorepo (multiple Solutions in one repo) is **out of scope** until a real need appears (YAGNI);
+  the contract is one repo per Solution.
 - Either way: **exactly one writer**, read-only in the UI. Connected mode reuses the existing git
-  pull machinery (`github_sync.py`) and disables the commit half.
+  pull machinery (`github_sync.py`) and disables the commit/deploy half.
 
-### 3.10 React apps (now a first-class success criterion)
-- A Solution's React app must feel like a **normal React project**: the local dev loop, the import
-  model, and deploy must make it behave like standard React — not the current synthesized-bundle
-  experience. (The viability study found this is orthogonal to the org/source model and structurally
-  blocked today by inline-render context inheritance; making it first-class is in scope here.)
+### 3.10 Dev loop (no `watch`)
+- **`watch` does not belong to the Solution paradigm.** Watch exists to accelerate the *drift* loop
+  (edit → push to `_repo/` → see live → reconcile via diff/commit). Solutions are deploy-driven,
+  one-writer, read-only — there is no drift loop to accelerate. Watch stays a `_repo/`-tier concept.
+- **The Solution dev loop:**
+  - *Disconnected:* iterate locally → `bifrost deploy` to a **dev install** (fast).
+  - *Connected:* iterate locally → merge to `main` → **auto-pull** deploys to the connected install.
+- **Local / offline = local execution, live data-plane:** Python workflows execute locally
+  (`bifrost run` against local Solution files) and the React app runs locally (`npm run dev`, the SDK
+  routes workflow calls to local). **Data-plane SDKs — tables, integrations, OAuth — still call a
+  real dev instance.** You write and run code fully offline; data and external calls hit a live
+  backend. (Avoids reimplementing the platform locally; full-offline is out of scope — §7.)
+
+### 3.11 React apps (first-class success criterion)
+- A Solution's React app must feel like a **normal React project**: standard `src/`, `npm run dev`
+  local loop, the SDK as ordinary imports, and a build that produces a `dist/` (deployed to `_apps/`).
+  Not the current synthesized-bundle experience. (The viability study found this is orthogonal to the
+  scope/source model and structurally blocked today by inline-render context inheritance; making it
+  first-class is in scope here — but may warrant its own sub-spec, see §6.3.)
 
 ---
 
 ## 4. Success Criteria (falsifiable "done")
+
+> **Autonomy bar (overarching).** This work will be executed by a goal-driven agent running
+> **autonomously, end-to-end**. "Done" means working, fully tested, and verified against a live
+> stack — not "code written." The implementing agent is **empowered to make whatever changes are
+> needed to operate autonomously**, including fixing tooling that assumes an interactive session
+> (e.g. making the CLI runnable **non-interactively / without a TUI**, adding `--yes`/`--json`/
+> non-tty flags, scriptable auth). It is expected to **iterate until every criterion below passes**,
+> however tedious, re-running the full verification sequence rather than declaring success early.
+> Non-interactive operability of any tool it depends on is itself a success criterion (#17).
 
 The end-to-end proof uses the **real `bifrost-workspace`** (`gocovi/bifrost-workspace`) as source
 material — take a real slice (e.g. `clients/mna` or `braytel`), turn it into a Solution, and confirm:
@@ -130,25 +179,40 @@ material — take a real slice (e.g. `clients/mna` or `braytel`), turn it into a
 2. **Side-by-side deploy:** the Solution deploys and runs concurrently with `_repo/` functionality.
 3. **Solution-local imports:** a workflow in the Solution imports its own `modules/*` from the
    solution root and runs.
-4. **Global-access fallback:** with "Enable global repository access" ON, the Solution can import a
-   `shared.*` module from `_repo/`; with it OFF, that import does **not** resolve (no silent fallback).
+4. **Global-repo-access fallback:** with the flag ON, the Solution imports a `shared.*` module from
+   `_repo/`; with it OFF, that import does **not** resolve (no silent fallback).
 5. **Vendored shared deps:** export-with-shared-scan produces a self-contained Solution that installs
-   on a *fresh* instance (no `_repo/` shared deps present) and its imports resolve to the vendored copies.
-6. **Read-only enforcement:** solution-managed entities are read-only in the UI **and** every non-deploy
-   mutation API returns the "Solution-managed…" error.
+   on a *fresh* instance (no `_repo/` shared deps present) and its imports resolve to vendored copies.
+6. **Read-only enforcement:** solution-managed entities are read-only in the UI **and** every
+   non-deploy mutation API returns the "Solution-managed…" error.
 7. **Editable carve-out:** OAuth token mappings and secret config values remain editable on a
    solution-managed entity's install.
-8. **Org inheritance:** all entities in an install carry the install's org; no per-entity org binding step.
-9. **Multiple installs:** the same Solution installs for two different orgs as two independent installs
-   with no scope overlap.
+8. **Scope inheritance:** all entities in an install carry the install's scope (org or global); no
+   per-entity scope binding step.
+9. **Multiple installs:** the same Solution installs for two different scopes as two independent
+   installs with no scope overlap.
 10. **Full-replace reconcile:** redeploying a Solution with an entity removed deletes that entity for
     **this install only**, and never affects `_repo/` or other installs.
 11. **Table data preserved:** redeploying a Solution with a changed table schema migrates structure and
     preserves existing rows.
-12. **React app parity:** a Solution's React app builds and runs like a normal React project, with a
-    local dev loop that feels like standard React.
-13. **Git-connected:** a connected install auto-deploys on a push to `main`, and `bifrost deploy` is
-    refused for that install (one-writer invariant holds).
+12. **App artifact:** a Solution's React app builds to `dist/` and is served from `_apps/`; the
+    Solution surface contains **no** app `src/`. The app runs like a normal React app, with an
+    `npm run dev` local loop.
+13. **Git-connected one-writer:** a connected install auto-deploys on a push to `main`, and
+    `bifrost deploy` is **refused** for that install (one-writer invariant holds).
+14. **Solution context detection:** `bifrost run`/deploy correctly detect a Solution workspace via
+    `bifrost.solution.yaml` and target `_solutions/{id}/`, vs the ad-hoc `_repo/` workspace.
+15. **Offline dev:** `bifrost run` executes local Solution workflows offline while tables/integrations
+    resolve against a live dev instance.
+16. **Invisible to users:** end users see only the deployed entities (unchanged from their view); the
+    Solution itself is not user-visible.
+17. **Non-interactive operability:** every CLI/tooling path the deploy/dev/test loop depends on runs
+    **headless** — no TUI, no interactive prompt — so the whole flow (create → deploy → run → verify)
+    can execute unattended in a script or CI. Where a tool only had an interactive mode, a
+    non-interactive path is added.
+18. **Verified on a live stack, all tests green:** the full pre-completion verification (pyright,
+    ruff, tsc, lint, `./test.sh all`, client unit, relevant client e2e) passes, and criteria 1–17 are
+    demonstrated against a running debug stack — not asserted from code inspection.
 
 ---
 
@@ -158,31 +222,38 @@ material — take a real slice (e.g. `clients/mna` or `braytel`), turn it into a
   destructive). Highest leverage.
 - **MCP `service_oauth_token_id`** added to the portable scrub + test (it currently leaks a live
   service-token FK in "portable" exports — relevant because Export Solution rides the same boundary).
-- **Org-scoping in manifest generation** (`generate_manifest` currently dumps all orgs — a per-org
+- **Scope-aware manifest generation** (`generate_manifest` currently dumps all orgs — a per-scope
   Solution export must not cross-contaminate tenants).
 
 ---
 
 ## 6. Open Questions (resolve in spec, not story)
 
-1. **Connected-mode dev loop:** intended path is to iterate against a *disconnected dev install*
-   (`bifrost deploy` works there) and ship to the *connected prod install* via merge-to-main. Confirm
-   this is the only fast-iteration path, or whether a guarded preview-deploy is wanted (leaning no —
-   re-opens a drift window).
+1. **Connected-mode dev loop:** intended path is to iterate against a *disconnected dev install* and
+   ship to the *connected prod install* via merge-to-main → auto-pull. Confirm this is the only fast
+   path, or whether a guarded preview-deploy is wanted (leaning no — re-opens a drift window).
 2. **`bifrost deploy` ↔ git-sync refactor:** how much of the existing git experience to refactor while
-   maintaining the ad-hoc version. Scope undefined.
-3. **React app first-class mechanics:** the concrete approach to standard-React parity (de-magic the
-   esbuild pipeline vs. real Vite + context-delivery rework). Big enough to be its own sub-spec.
-4. **Solution definition file:** what the in-repo Solution descriptor looks like (id, slug, name,
-   global-access flag, declared deps) and whether install metadata is DB-backed or manifest-only first.
+   maintaining the ad-hoc `_repo/` version. Scope undefined.
+3. **React app first-class mechanics (likely its own sub-spec):** the concrete approach to standard-React
+   parity (de-magic the esbuild pipeline vs. real Vite + context-delivery rework) **and where the
+   build runs** — in CI / `bifrost deploy` client-side (ship dist), or on the platform at deploy
+   (ship src, build server-side). Leaning client-side build (ship dist; `_solutions/` stays
+   source-free for React).
+4. **Offline app SDK boundary:** exactly which web SDKs can run local vs. must hit the live data-plane
+   (workflows local; tables/integrations/OAuth live is the starting line — confirm edge cases).
+5. **`bifrost.solution.yaml` schema:** precise fields, and whether install metadata is DB-backed or
+   manifest-only first.
 
 ---
 
 ## 7. Explicitly Out of Scope
 
 - Monorepo-of-solutions (one repo per Solution until proven otherwise).
-- Cross-org Solutions (org is single-valued per install; global = use `_repo/`).
+- Fully-offline dev (local data-plane / local stand-in backend). Offline = local exec + live data-plane.
+- `watch` for Solutions (it is a `_repo/`-tier drift concept; Solutions are deploy-driven).
+- Installing React app **source** onto the Solution surface (ship built `dist/` to `_apps/` instead).
 - Multi-version *global* shared code (solution-local multi-version is solved by per-execution roots;
-  genuinely shared code stays single-version in `_repo/`).
+  genuinely shared importable code stays single-version in `_repo/`).
 - Replacing or deprecating the ad-hoc `_repo/` git-sync workflow.
 - Exporting table row data via deploy.
+- Making Solutions themselves user-visible (only deployed entities are visible).
