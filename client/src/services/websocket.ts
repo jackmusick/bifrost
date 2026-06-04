@@ -362,6 +362,9 @@ export interface PoolHeartbeatMessage {
 	started_at?: string;
 	timestamp?: string;
 	pool_size?: number;
+	active_process_count?: number;
+	configured_capacity?: number;
+	max_workers?: number;
 	idle_count?: number;
 	busy_count?: number;
 	requirements_installed?: number;

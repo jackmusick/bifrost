@@ -65,7 +65,22 @@ class PoolSummary(BaseModel):
         description="Pool status: online or offline"
     )
     started_at: str | None = None
-    pool_size: int = Field(default=0, description="Total number of processes in pool")
+    pool_size: int = Field(
+        default=0,
+        description="Backward-compatible alias for active_process_count",
+    )
+    active_process_count: int = Field(
+        default=0,
+        description="Currently forked one-shot child processes",
+    )
+    configured_capacity: int | None = Field(
+        default=None,
+        description="Maximum concurrent child processes this pool may admit",
+    )
+    max_workers: int | None = Field(
+        default=None,
+        description="Configured ProcessPoolManager max_workers value",
+    )
     idle_count: int = Field(default=0, description="Number of idle processes")
     busy_count: int = Field(default=0, description="Number of busy processes")
     last_heartbeat: str | None = None
@@ -111,6 +126,10 @@ class PoolStatsResponse(BaseModel):
 
     total_pools: int = Field(..., description="Number of registered pools")
     total_processes: int = Field(..., description="Total processes across all pools")
+    total_configured_capacity: int | None = Field(
+        default=None,
+        description="Total configured concurrent execution capacity across pools",
+    )
     total_idle: int = Field(..., description="Total idle processes across all pools")
     total_busy: int = Field(..., description="Total busy processes across all pools")
 
@@ -218,4 +237,3 @@ class WorkerMetricsResponse(BaseModel):
 
     range: str = Field(..., description="Requested time range: 1h, 6h, 24h, 7d")
     points: list[WorkerMetricPoint] = Field(default_factory=list)
-

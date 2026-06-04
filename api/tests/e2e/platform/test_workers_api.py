@@ -184,6 +184,9 @@ class TestWorkersListEndpoint:
                 {"pid": 12346, "process_id": "process-2", "state": "busy"},
             ],
             "pool_size": 2,
+            "active_process_count": 2,
+            "configured_capacity": 4,
+            "max_workers": 4,
             "idle_count": 1,
             "busy_count": 1,
         }
@@ -207,6 +210,9 @@ class TestWorkersListEndpoint:
         assert pool.hostname == "test-host"
         assert pool.status == "online"
         assert pool.pool_size == 2
+        assert pool.active_process_count == 2
+        assert pool.configured_capacity == 4
+        assert pool.max_workers == 4
         assert pool.busy_count == 1
 
 

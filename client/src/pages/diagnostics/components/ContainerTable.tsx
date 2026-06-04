@@ -51,14 +51,18 @@ function getPoolCounts(pool: PoolData) {
         const processes = pool.processes as ProcessInfo[];
         return {
             total: processes.length,
+            capacity: processes.length,
             idle: processes.filter((p) => p.state === "idle").length,
             busy: processes.filter((p) => p.state === "busy").length,
             processes,
         };
     }
     const summary = pool as PoolSummary;
+    const active = summary.active_process_count ?? summary.pool_size ?? 0;
+    const capacity = summary.configured_capacity ?? summary.max_workers ?? active;
     return {
-        total: summary.pool_size ?? 0,
+        total: active,
+        capacity,
         idle: summary.idle_count ?? 0,
         busy: summary.busy_count ?? 0,
         processes: [] as ProcessInfo[],
@@ -105,7 +109,7 @@ export function ContainerTable({ pools, workerIds }: ContainerTableProps) {
                         <TableHead className="w-8" />
                         <TableHead>Container</TableHead>
                         <TableHead className="w-[80px]">Status</TableHead>
-                        <TableHead className="w-[100px]">Forks</TableHead>
+                        <TableHead className="w-[120px]">Forks</TableHead>
                         <TableHead className="w-[200px]">Memory</TableHead>
                         <TableHead className="w-[90px]">Uptime</TableHead>
                     </TableRow>
@@ -191,7 +195,7 @@ export function ContainerTable({ pools, workerIds }: ContainerTableProps) {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-sm">
-                                        {counts.total}{" "}
+                                        {counts.total}/{counts.capacity}{" "}
                                         {counts.busy > 0 && (
                                             <span className="text-xs text-muted-foreground">
                                                 ({counts.busy} busy)

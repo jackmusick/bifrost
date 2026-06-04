@@ -512,6 +512,9 @@ class TestProcessPoolManagerHeartbeat:
         assert heartbeat["type"] == "worker_heartbeat"
         assert heartbeat["worker_id"] == "test-worker-123"
         assert heartbeat["pool_size"] == 2
+        assert heartbeat["active_process_count"] == 2
+        assert heartbeat["configured_capacity"] == pool.max_workers
+        assert heartbeat["max_workers"] == pool.max_workers
         # In on-demand mode every running handle is BUSY (the IDLE-marked
         # handle above is for test-shape parity with persistent-pool
         # heartbeats; idle_count is reported as 0 in this mode).
