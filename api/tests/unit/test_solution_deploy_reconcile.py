@@ -48,16 +48,21 @@ async def _active_wf_names(db, solution_id) -> set[str]:
 
 
 @_pytest.fixture(autouse=True)
-async def _reset_redis_singleton():
+def _reset_redis_singleton():
     """The deployer's cache-sync opens the async Redis singleton, which binds
-    its pool to this test's event loop. Reset it around each test so a later
-    test on a fresh loop doesn't hit a closed-loop pool (these tests live in
-    tests/unit/ where the global redis-isolation fixture is skipped)."""
-    from src.core.redis_client import close_redis_client
+    its connection pool to the event loop that first used it. Across the full
+    suite a prior test's (now-closed) loop leaves a stale singleton, so the
+    next async Redis call raises "Event loop is closed".
 
-    await close_redis_client()
+    Drop the singleton *reference* synchronously (no await — awaiting .close()
+    on a stale-loop client is itself what fails); the next get_redis_client()
+    rebinds to the current loop and the stale connection is GC'd. These tests
+    live in tests/unit/ where the global redis-isolation fixture is skipped."""
+    import src.core.redis_client as rc
+
+    rc._redis_client = None
     yield
-    await close_redis_client()
+    rc._redis_client = None
 
 
 @pytest.mark.e2e

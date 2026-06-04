@@ -91,6 +91,7 @@ class TestGetWorkflowForExecution:
         mock_workflow.value = 10.0
         mock_workflow.execution_mode = "async"
         mock_workflow.organization_id = org_id
+        mock_workflow.solution_id = None
         mock_workflow.type = "workflow"
         mock_workflow.cache_ttl_seconds = 0
 
@@ -103,7 +104,7 @@ class TestGetWorkflowForExecution:
         expected_keys = {
             "name", "function_name", "path", "timeout_seconds",
             "time_saved", "value", "execution_mode", "organization_id",
-            "type", "cache_ttl_seconds",
+            "solution_id", "type", "cache_ttl_seconds",
         }
         assert set(result.keys()) == expected_keys
         assert "code" not in result

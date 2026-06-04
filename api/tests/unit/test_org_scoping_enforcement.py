@@ -233,6 +233,9 @@ IDENTITY_MODELS: set[str] = {
     "KnowledgeNamespaceRole",
     "Event",
     "AuditLog",
+    # A Solution install belongs to a scope (organization_id) but is never
+    # resolved by name with cascade — it is identity, like Organization.
+    "Solution",
 }
 
 
