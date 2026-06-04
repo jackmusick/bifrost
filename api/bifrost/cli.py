@@ -1543,9 +1543,13 @@ def _parse_push_watch_args(args: list[str]) -> _PushWatchArgs | None:
             result.mirror = True
         elif arg == "--validate":
             result.validate = True
-        elif arg == "--force":
+        elif arg in ("--force", "--yes", "-y"):
+            # --yes/-y are the intent-revealing aliases for headless runs:
+            # take the default per-file action for every change (the
+            # full-replace contract) instead of opening the interactive TUI.
+            # They share --force's mechanism — see _sync_files's guard.
             result.force = True
-        elif arg.startswith("--"):
+        elif arg.startswith("-"):
             print(f"Unknown option: {arg}", file=sys.stderr)
             return None
         elif result.local_path == ".":
@@ -1584,7 +1588,11 @@ Options:
   --mirror              Make target match source exactly (delete files not present locally)
   --validate            Validate after push (for apps)
   --force               Skip confirmation prompts
+  --yes, -y             Non-interactive: take default actions, no TUI (alias of --force)
   --help, -h            Show this help message
+
+Non-interactive: pass --yes/-y, set BIFROST_NONINTERACTIVE=1, or run without a
+TTY (e.g. in CI) to skip the selection TUI and apply default actions.
 
 Use 'bifrost watch' for continuous file watching.
 
@@ -1663,13 +1671,17 @@ Options:
   --mirror              Include server-only files (for pull or delete)
   --validate            Validate after sync (for apps)
   --force               Skip confirmation prompts (use default actions)
+  --yes, -y             Non-interactive: take default actions, no TUI (alias of --force)
   --help, -h            Show this help message
+
+Non-interactive: pass --yes/-y, set BIFROST_NONINTERACTIVE=1, or run without a
+TTY (e.g. in CI) to skip the selection TUI and apply default actions.
 
 Examples:
   bifrost sync
   bifrost sync apps/my-app
   bifrost sync --mirror
-  bifrost sync --force
+  bifrost sync --yes
 """.strip())
         return 0
 
@@ -2923,8 +2935,12 @@ async def _sync_files(
 
     # ── 6. Interactive TUI or auto-accept ────────────────────────────────
     _is_tty = sys.stdin.isatty() and sys.stdout.isatty()
+    # BIFROST_NONINTERACTIVE=1 forces the headless path even on a TTY, so a
+    # scripted/CI run never blocks on the selection TUI (criterion 17). --yes/-y
+    # set `force`; this env var is the ambient equivalent.
+    _noninteractive = os.environ.get("BIFROST_NONINTERACTIVE") == "1"
 
-    if force or not _is_tty:
+    if force or _noninteractive or not _is_tty:
         # Auto-accept: use default actions
         from bifrost.tui.sync_app import SyncResult
         result = SyncResult()
