@@ -1,0 +1,78 @@
+"""
+Solution ORM model.
+
+A Solution is an *installable surface* — the deployable unit installed onto a
+Bifrost instance (success-criteria doc §3.1). Each row here is one **install**,
+identified by ``id`` (the ``solution_id`` stamped on managed entities). One
+Solution *definition* (same ``slug``) can be installed multiple times — once per
+scope — producing multiple rows with the same slug and distinct ids/scopes
+(§3.4).
+
+Scope (§3.3) is expressed with the platform's existing scoping system via
+``organization_id``: a UUID = org scope (visible to that one org), ``NULL`` =
+global scope (visible across the tenant). There is no per-entity scope binding —
+the install's scope is inherited by everything it deploys.
+
+Source mode (§3.9) keeps the one-writer invariant: a *disconnected* install is
+written only by ``bifrost deploy``; a *git-connected* install
+(``git_connected=True``) is written only by auto-pull from its repo, and deploy
+is refused.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.models.orm.base import Base
+
+
+# Identity entity — a Solution install. Managed entities reference it by
+# solution_id. It is NOT itself resolved by name with cascade (it is not an
+# execution-resolution entity), so it does not go through OrgScopedRepository.
+class Solution(Base):
+    """One installed Solution (an *install*), keyed by ``id`` == solution_id."""
+
+    __tablename__ = "solutions"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+
+    # Definition identity (shared across installs of the same Solution).
+    slug: Mapped[str] = mapped_column(String(255), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+
+    # Scope (§3.3): UUID = org scope, NULL = global scope.
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
+
+    # Whether this Solution's code may import shared modules from _repo/ (§3.5).
+    # Orthogonal to scope. Off by default — Solutions are self-contained worlds.
+    global_repo_access: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+
+    # Source mode (§3.9). Disconnected (default): deploy is the only writer.
+    # Connected: auto-pull from git_repo_url is the only writer; deploy refused.
+    git_connected: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    git_repo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True, default=None)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("NOW()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("NOW()"),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

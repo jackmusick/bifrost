@@ -46,6 +46,15 @@ class Application(Base):
         ForeignKey("organizations.id", ondelete="CASCADE"), default=None
     )
 
+    # Solution scoping - NULL means ad-hoc _repo/ entity. NOT NULL = solution-
+    # managed (read-only on platform). See solutions.py / success-criteria §3.2.
+    solution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("solutions.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
+
     # Publish history
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 

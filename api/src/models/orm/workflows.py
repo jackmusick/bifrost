@@ -60,6 +60,16 @@ class Workflow(Base):
         index=True,
     )
 
+    # Solution scoping - NULL means ad-hoc _repo/ entity (unchanged behavior).
+    # NOT NULL means solution-managed: read-only on the platform, one writer per
+    # install (deploy or git auto-pull). See solutions.py / success-criteria §3.2.
+    solution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("solutions.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
+
     # File discovery metadata
     path: Mapped[str] = mapped_column(String(1000))  # Relative path from workspace root
     module_path: Mapped[str | None] = mapped_column(String(500), default=None)

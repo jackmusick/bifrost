@@ -47,6 +47,15 @@ class Table(Base):
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), default=None
     )
+    # Solution scoping - NULL means ad-hoc _repo/ entity. NOT NULL = solution-
+    # managed (read-only on platform). The Solution owns table schema + policies;
+    # row data is runtime state and never written by deploy (success-criteria §3.7).
+    solution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("solutions.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
     schema: Mapped[dict | None] = mapped_column(JSONB, default=None)
     # Stores the policies block per
     # docs/superpowers/specs/2026-04-30-table-policies-design.md.
