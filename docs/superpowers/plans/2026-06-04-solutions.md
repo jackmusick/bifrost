@@ -18,6 +18,8 @@ This is **one continuous effort to all 18 success criteria.** The sub-plans belo
 
 | # | Sub-plan | Proves criteria | Depth in this doc |
 |---|---|---|---|
+> **Quality gate on every sub-plan:** after local verification passes, an independent **Codex review** of the chunk runs (see Conventions → "Codex second-opinion gate"). Findings are triaged, not auto-applied.
+
 | 0 | **Headless deploy/sync path** (no interactive sync-selection prompt) | 17 | **Full** |
 | 1 | **Core: `solution_id`, `_solutions/` storage, per-execution import root, deploy=full-replace, descriptor** | 1,2,3,4,8,9,10,14,16 | **Full** |
 | 2 | **Read-only enforcement + editable carve-out** | 6,7 | Roadmap → expand at task time |
@@ -40,6 +42,11 @@ This is **one continuous effort to all 18 success criteria.** The sub-plans belo
 - **DTO parity:** any `XxxCreate`/`XxxUpdate` change must pass `./test.sh tests/unit/test_dto_flags.py` (add field to CLI+MCP or to `DTO_EXCLUDES`).
 - **Commit cadence:** commit after every green step. End messages with the Co-Authored-By trailer.
 - **Datetime:** `datetime.now(timezone.utc)` + `DateTime(timezone=True)` only (enforced by `test_datetime_consistency.py`).
+- **Codex second-opinion gate (every sub-plan):** after a sub-plan's own verification passes (pyright/ruff/tsc/lint/tests green), run an independent Codex review of that chunk via the `codex` skill before moving on. This is an adversarial cross-check by a different model to maximize output quality.
+  - Scope it to the chunk: `codex review --base <sub-plan-start-sha>` (or `--commit <SHA>` for a single-commit chunk). Backgrounded if it may run >2 min; read the output when it completes.
+  - Triage findings with `superpowers:receiving-code-review` — verify each against the code, fix confirmed issues (with their own TDD test), discard noise. Do NOT auto-apply.
+  - Record in the sub-plan's gate: the Codex scope reviewed, confirmed issues + their fix commits, and dismissed findings with one-line reasons.
+  - If `codex` is unavailable (`command -v codex` fails), note it and proceed — do not block the run on a missing optional reviewer.
 
 ---
 
@@ -282,7 +289,8 @@ def test_full_replace_scoped(db, deploy):
 - [ ] **Step 1:** `cd api && pyright && ruff check .` → 0 errors.
 - [ ] **Step 2:** `cd client && npm run generate:types && npm run tsc && npm run lint` (if any client types changed).
 - [ ] **Step 3:** `./test.sh all` → green; parse `/tmp/bifrost-<project>/test-results.xml`.
-- [ ] **Step 4: Commit** any type regen. Sub-plan 1 done → criteria 1,2,3,4,8,9,10,14,16 demonstrable.
+- [ ] **Step 4: Codex second-opinion gate.** Run `codex review --base <sub-plan-1-start-sha>` (via the `codex` skill; background if >2 min). Triage findings with `superpowers:receiving-code-review` — fix confirmed issues (each with its own failing test first), discard noise. Record reviewed scope + confirmed fixes + dismissed findings.
+- [ ] **Step 5: Commit** any type regen + Codex-driven fixes. Sub-plan 1 done → criteria 1,2,3,4,8,9,10,14,16 demonstrable.
 
 ---
 
