@@ -1,0 +1,156 @@
+"""Deploy = full-replace reconcile, scoped strictly to solution_id.
+
+Criterion 10: redeploying a Solution with an entity removed deletes that entity
+for THIS install only — never _repo/ and never another install. The scoping is
+correct by construction: the deletion sweep is ``WHERE solution_id == sid AND id
+NOT IN bundle_ids``, so _repo/ rows (solution_id IS NULL) and other installs
+(different solution_id) are unreachable.
+"""
+from __future__ import annotations
+
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import select
+
+from src.models.orm.solutions import Solution
+from src.models.orm.workflows import Workflow
+from src.services.solutions.deploy import SolutionDeployer, SolutionBundle
+
+
+def _wf_entry(wf_id: str, name: str) -> dict:
+    """A minimal manifest-shaped workflow entry."""
+    return {
+        "id": wf_id,
+        "name": name,
+        "function_name": "run",
+        "path": f"workflows/{name}.py",
+        "type": "workflow",
+    }
+
+
+async def _active_wf_names(db, solution_id) -> set[str]:
+    rows = (
+        await db.execute(
+            select(Workflow.name).where(
+                Workflow.solution_id == solution_id,
+                Workflow.is_active == True,  # noqa: E712
+            )
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+@pytest.mark.e2e
+class TestSolutionDeployReconcile:
+    async def _make_install(self, db, slug: str) -> Solution:
+        sol = Solution(id=uuid4(), slug=slug, name=slug.upper(), organization_id=None)
+        db.add(sol)
+        await db.flush()
+        return sol
+
+    async def test_full_replace_scoped_to_solution(self, db_session) -> None:
+        db = db_session
+        sol = await self._make_install(db, f"recon-{uuid4().hex[:8]}")
+
+        deployer = SolutionDeployer(db)
+
+        # Deploy bundle A: two workflows.
+        w1, w2 = str(uuid4()), str(uuid4())
+        await deployer.deploy(
+            SolutionBundle(
+                solution=sol,
+                python_files={
+                    "workflows/w1.py": "def run():\n    return 1\n",
+                    "workflows/w2.py": "def run():\n    return 2\n",
+                },
+                workflows=[_wf_entry(w1, "w1"), _wf_entry(w2, "w2")],
+            )
+        )
+        await db.flush()
+        assert await _active_wf_names(db, sol.id) == {"w1", "w2"}
+
+        # Redeploy bundle B: w2 removed → deleted for THIS install only.
+        await deployer.deploy(
+            SolutionBundle(
+                solution=sol,
+                python_files={"workflows/w1.py": "def run():\n    return 1\n"},
+                workflows=[_wf_entry(w1, "w1")],
+            )
+        )
+        await db.flush()
+        assert await _active_wf_names(db, sol.id) == {"w1"}
+
+    async def test_repo_and_other_install_untouched(self, db_session) -> None:
+        db = db_session
+
+        # A _repo/ workflow named "w2" (solution_id IS NULL) — must survive.
+        repo_wf = Workflow(
+            id=uuid4(), name="w2", function_name="run", path="workflows/w2.py",
+            type="workflow", organization_id=None, solution_id=None,
+        )
+        db.add(repo_wf)
+
+        # A *second* install that also has a "w2".
+        other = await self._make_install(db, f"other-{uuid4().hex[:8]}")
+        other_w2 = uuid4()
+        db.add(Workflow(
+            id=other_w2, name="w2", function_name="run", path="workflows/w2.py",
+            type="workflow", organization_id=None, solution_id=other.id,
+        ))
+        await db.flush()
+
+        sol = await self._make_install(db, f"recon-{uuid4().hex[:8]}")
+        deployer = SolutionDeployer(db)
+
+        # Deploy w1+w2 to sol, then redeploy w1 only — sol's w2 is deleted.
+        w1, w2 = str(uuid4()), str(uuid4())
+        await deployer.deploy(SolutionBundle(
+            solution=sol,
+            python_files={"workflows/w1.py": "x", "workflows/w2.py": "y"},
+            workflows=[_wf_entry(w1, "w1"), _wf_entry(w2, "w2")],
+        ))
+        await db.flush()
+        await deployer.deploy(SolutionBundle(
+            solution=sol,
+            python_files={"workflows/w1.py": "x"},
+            workflows=[_wf_entry(w1, "w1")],
+        ))
+        await db.flush()
+
+        # sol now has only w1.
+        assert await _active_wf_names(db, sol.id) == {"w1"}
+        # _repo/ w2 untouched.
+        assert (await db.get(Workflow, repo_wf.id)) is not None
+        # other install's w2 untouched.
+        assert (await db.get(Workflow, other_w2)) is not None
+
+    async def test_deploy_stamps_scope_from_install(self, db_session) -> None:
+        """Every deployed entity inherits the install's solution_id (and the
+        install's org scope) — no per-entity scope binding (criterion 8)."""
+        from src.models.orm.organizations import Organization
+
+        db = db_session
+        org = Organization(id=uuid4(), name=f"DeployOrg-{uuid4().hex[:8]}", created_by="test")
+        db.add(org)
+        await db.flush()
+
+        org_install = Solution(
+            id=uuid4(), slug=f"org-{uuid4().hex[:8]}", name="Org", organization_id=org.id
+        )
+        db.add(org_install)
+        await db.flush()
+
+        deployer = SolutionDeployer(db)
+        w1 = str(uuid4())
+        await deployer.deploy(SolutionBundle(
+            solution=org_install,
+            python_files={"workflows/w1.py": "x"},
+            workflows=[_wf_entry(w1, "w1")],
+        ))
+        await db.flush()
+
+        wf = await db.get(Workflow, w1)
+        assert wf is not None
+        assert wf.solution_id == org_install.id
+        assert wf.organization_id == org_install.organization_id

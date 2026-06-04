@@ -85,8 +85,71 @@ def upgrade() -> None:
         )
         op.create_index(index_name, table, ["solution_id"])
 
+    # Workflow (path, function_name) uniqueness must be scoped per source so a
+    # solution can reuse the same relative path as _repo/ or another install
+    # (self-contained worlds, criterion 2 / §3.5). Replace the single global
+    # constraint with two partial unique indexes.
+    op.drop_constraint("workflows_path_function_key", "workflows", type_="unique")
+    op.create_index(
+        "uq_workflows_path_function_repo",
+        "workflows",
+        ["path", "function_name"],
+        unique=True,
+        postgresql_where=sa.text("solution_id IS NULL"),
+    )
+    op.create_index(
+        "uq_workflows_path_function_solution",
+        "workflows",
+        ["path", "function_name", "solution_id"],
+        unique=True,
+        postgresql_where=sa.text("solution_id IS NOT NULL"),
+    )
+
+    # Workflow NAME uniqueness must likewise be scoped per source: a solution
+    # workflow may share a name with a _repo/ workflow or another install
+    # (criterion 2). Restrict the existing _repo/ name indexes to non-solution
+    # rows and add solution-scoped equivalents.
+    op.drop_index("uq_workflows_global_name", table_name="workflows")
+    op.drop_index("uq_workflows_org_name", table_name="workflows")
+    op.execute(sa.text("""
+        CREATE UNIQUE INDEX uq_workflows_global_name
+        ON workflows (name)
+        WHERE organization_id IS NULL AND solution_id IS NULL AND is_active = true
+    """))
+    op.execute(sa.text("""
+        CREATE UNIQUE INDEX uq_workflows_org_name
+        ON workflows (organization_id, name)
+        WHERE organization_id IS NOT NULL AND solution_id IS NULL AND is_active = true
+    """))
+    # Solution-scoped: one name per install (active rows only).
+    op.execute(sa.text("""
+        CREATE UNIQUE INDEX uq_workflows_solution_name
+        ON workflows (solution_id, name)
+        WHERE solution_id IS NOT NULL AND is_active = true
+    """))
+
 
 def downgrade() -> None:
+    op.execute(sa.text("DROP INDEX IF EXISTS uq_workflows_solution_name"))
+    op.drop_index("uq_workflows_org_name", table_name="workflows")
+    op.drop_index("uq_workflows_global_name", table_name="workflows")
+    op.execute(sa.text("""
+        CREATE UNIQUE INDEX uq_workflows_org_name
+        ON workflows (organization_id, name)
+        WHERE organization_id IS NOT NULL AND is_active = true
+    """))
+    op.execute(sa.text("""
+        CREATE UNIQUE INDEX uq_workflows_global_name
+        ON workflows (name)
+        WHERE organization_id IS NULL AND is_active = true
+    """))
+
+    op.drop_index("uq_workflows_path_function_solution", table_name="workflows")
+    op.drop_index("uq_workflows_path_function_repo", table_name="workflows")
+    op.create_unique_constraint(
+        "workflows_path_function_key", "workflows", ["path", "function_name"]
+    )
+
     for table, index_name in _MANAGED:
         op.drop_index(index_name, table_name=table)
         op.drop_column(table, "solution_id")
