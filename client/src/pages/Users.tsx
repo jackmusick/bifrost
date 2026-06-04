@@ -570,20 +570,14 @@ export function Users() {
 											)}
 										</DataTableCell>
 										<DataTableCell className="w-0 whitespace-nowrap text-sm">
-											{user.is_superuser ? (
-												<span className="text-muted-foreground">
-													—
-												</span>
-											) : (
-												<span className="inline-flex items-center gap-1">
-													{orgInfo.isProvider ? (
-														<Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-													) : (
-														<Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-													)}
-													<span>{orgInfo.name}</span>
-												</span>
-											)}
+											<span className="inline-flex items-center gap-1">
+												{orgInfo.isProvider ? (
+													<Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+												) : (
+													<Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+												)}
+												<span>{orgInfo.name}</span>
+											</span>
 										</DataTableCell>
 										<DataTableCell className="w-0 whitespace-nowrap">
 											<div className="flex items-center gap-1.5">

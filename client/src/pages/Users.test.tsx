@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen, waitFor } from "@/test-utils";
+import { renderWithProviders, screen, waitFor, within } from "@/test-utils";
 
 const mockUseUsersFiltered = vi.fn();
 const mockUseDeleteUser = vi.fn();
@@ -14,15 +14,16 @@ const mockSendInviteMutate = vi.fn();
 const mockUseEventSources = vi.fn();
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
+const mockRefetch = vi.fn();
 
 vi.mock("@/hooks/useUsers", () => ({
-	useUsersFiltered: () => mockUseUsersFiltered(),
+	useUsersFiltered: (...args: unknown[]) => mockUseUsersFiltered(...args),
 	useDeleteUser: () => mockUseDeleteUser(),
 	useUpdateUser: () => mockUseUpdateUser(),
 }));
 
 vi.mock("@/hooks/useOrganizations", () => ({
-	useOrganizations: () => mockUseOrganizations(),
+	useOrganizations: (...args: unknown[]) => mockUseOrganizations(...args),
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -76,7 +77,6 @@ vi.mock("@/components/users/BulkUserDialogs", () => ({
 import { Users } from "./Users";
 
 const registrationUrl = "https://example.test/accept-invite?token=invite-token";
-let originalWriteText: typeof navigator.clipboard.writeText | undefined;
 
 function pendingInviteUser() {
 	return {
@@ -92,65 +92,87 @@ function pendingInviteUser() {
 	};
 }
 
-beforeEach(() => {
-	originalWriteText = navigator.clipboard?.writeText.bind(
-		navigator.clipboard,
-	);
-	mockUseUsersFiltered.mockReturnValue({
-		data: [pendingInviteUser()],
-		isLoading: false,
-		refetch: vi.fn(),
-	});
-	mockUseDeleteUser.mockReturnValue({ mutateAsync: vi.fn() });
-	mockUseUpdateUser.mockReturnValue({ mutateAsync: vi.fn() });
-	mockUseOrganizations.mockReturnValue({
-		data: [{ id: "org-1", name: "Acme", is_provider: false }],
-	});
-	mockUseAuth.mockReturnValue({
-		user: { id: "admin-1" },
-		isPlatformAdmin: false,
-	});
-	mockUseOrgScope.mockReturnValue({
-		scope: { type: "global", orgName: null },
-	});
-	mockRegenerateMutate.mockImplementation((_userId, options) => {
-		options?.onSuccess?.({
-			registration_url: registrationUrl,
-			event_emitted: false,
-		});
-	});
-	mockResendMutate.mockReset();
-	mockRevokeMutate.mockReset();
-	mockSendInviteMutate.mockReset();
-	mockSendInviteMutate.mockResolvedValue({});
-	mockUseEventSources.mockReturnValue({
-		data: {
-			items: [
-				{
-					id: "source-1",
-					source_type: "topic",
-					event_type: "user.invited",
-					is_active: true,
-					subscription_count: 1,
-				},
-			],
-		},
-	});
-	mockToastSuccess.mockReset();
-	mockToastError.mockReset();
-});
-
-afterEach(() => {
-	if (originalWriteText && navigator.clipboard) {
-		(
-			navigator.clipboard as unknown as {
-				writeText: typeof originalWriteText;
-			}
-		).writeText = originalWriteText;
-	}
-});
+function makeUser(overrides: Record<string, unknown> = {}) {
+	return {
+		id: "user-1",
+		email: "dev@gobifrost.com",
+		name: "Dev Admin",
+		is_active: true,
+		is_superuser: true,
+		is_verified: true,
+		is_registered: true,
+		is_system: false,
+		mfa_enabled: false,
+		organization_id: "org-provider",
+		last_login: null,
+		created_at: "2026-06-01T00:00:00Z",
+		updated_at: "2026-06-01T00:00:00Z",
+		invite_status: "active",
+		...overrides,
+	};
+}
 
 describe("Users — registration links", () => {
+	let originalWriteText: typeof navigator.clipboard.writeText | undefined;
+
+	beforeEach(() => {
+		originalWriteText = navigator.clipboard?.writeText.bind(
+			navigator.clipboard,
+		);
+		mockUseUsersFiltered.mockReturnValue({
+			data: [pendingInviteUser()],
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		mockUseDeleteUser.mockReturnValue({ mutateAsync: vi.fn() });
+		mockUseUpdateUser.mockReturnValue({ mutateAsync: vi.fn() });
+		mockUseOrganizations.mockReturnValue({
+			data: [{ id: "org-1", name: "Acme", is_provider: false }],
+		});
+		mockUseAuth.mockReturnValue({
+			user: { id: "admin-1" },
+			isPlatformAdmin: false,
+		});
+		mockUseOrgScope.mockReturnValue({
+			scope: { type: "global", orgName: null },
+		});
+		mockRegenerateMutate.mockImplementation((_userId, options) => {
+			options?.onSuccess?.({
+				registration_url: registrationUrl,
+				event_emitted: false,
+			});
+		});
+		mockResendMutate.mockReset();
+		mockRevokeMutate.mockReset();
+		mockSendInviteMutate.mockReset();
+		mockSendInviteMutate.mockResolvedValue({});
+		mockUseEventSources.mockReturnValue({
+			data: {
+				items: [
+					{
+						id: "source-1",
+						source_type: "topic",
+						event_type: "user.invited",
+						is_active: true,
+						subscription_count: 1,
+					},
+				],
+			},
+		});
+		mockToastSuccess.mockReset();
+		mockToastError.mockReset();
+	});
+
+	afterEach(() => {
+		if (originalWriteText && navigator.clipboard) {
+			(
+				navigator.clipboard as unknown as {
+					writeText: typeof originalWriteText;
+				}
+			).writeText = originalWriteText;
+		}
+	});
+
 	it("shows a generated registration link in a modal", async () => {
 		const { user } = renderWithProviders(<Users />);
 
@@ -222,5 +244,54 @@ describe("Users — registration links", () => {
 		expect(mockToastSuccess).toHaveBeenCalledWith(
 			"Registration email sent",
 		);
+	});
+});
+
+describe("Users", () => {
+	beforeEach(() => {
+		mockRefetch.mockReset();
+		mockUseUsersFiltered.mockReset();
+		mockUseUsersFiltered.mockReturnValue({
+			data: [makeUser()],
+			isLoading: false,
+			refetch: mockRefetch,
+		});
+		mockUseOrganizations.mockReset();
+		mockUseOrganizations.mockReturnValue({
+			data: [
+				{
+					id: "org-provider",
+					name: "Provider",
+					domain: null,
+					is_provider: true,
+					is_active: true,
+				},
+			],
+		});
+		mockUseAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			user: { id: "current-user" },
+		});
+		mockUseOrgScope.mockReturnValue({
+			scope: { type: "global", orgId: null, orgName: null },
+		});
+		mockUseDeleteUser.mockReturnValue({
+			mutateAsync: vi.fn(),
+			isPending: false,
+		});
+		mockUseUpdateUser.mockReturnValue({
+			mutateAsync: vi.fn(),
+			isPending: false,
+		});
+		mockUseEventSources.mockReturnValue({ data: { items: [] } });
+	});
+
+	it("shows the provider organization for provider-scoped superusers", () => {
+		renderWithProviders(<Users />);
+
+		const row = screen.getByText("Dev Admin").closest("tr");
+		expect(row).not.toBeNull();
+		expect(within(row!).getByText("Provider")).toBeInTheDocument();
+		expect(row).not.toHaveTextContent("—");
 	});
 });
