@@ -111,14 +111,17 @@ def test_sync_use_tui_headless_decision(monkeypatch: pytest.MonkeyPatch) -> None
     assert _sync_use_tui(force=False, is_tty=True) is False
 
 
-@pytest.mark.xfail(reason="deploy command implemented in Sub-plan 1", strict=False)
 def test_deploy_help_is_noninteractive(tmp_path: pathlib.Path) -> None:
-    """``bifrost deploy --help`` exists and advertises a non-interactive contract.
-
-    Anchored here per the plan; the ``deploy`` command lands in Sub-plan 1, at
-    which point the ``xfail`` becomes an ``xpass`` and the marker is removed.
-    """
+    """``bifrost deploy --help`` exists and advertises a non-interactive contract."""
     r = _run(["deploy", "--help"], cwd=str(tmp_path))
     assert r.returncode == 0, r.stderr
     out = r.stdout.lower()
     assert "--yes" in out or "non-interactive" in out, r.stdout
+
+
+def test_solution_deploy_help_is_noninteractive(tmp_path: pathlib.Path) -> None:
+    """``bifrost solution deploy --help`` also advertises the contract."""
+    r = _run(["solution", "deploy", "--help"], cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    out = r.stdout.lower()
+    assert "--yes" in out or "-y" in out or "non-interactive" in out, r.stdout

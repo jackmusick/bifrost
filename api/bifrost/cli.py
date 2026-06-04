@@ -588,6 +588,14 @@ def main(args: list[str] | None = None) -> int:
             from bifrost.skill import handle_skill
             return handle_skill(args[1:])
 
+        if command == "solution":
+            from bifrost.commands.solution import handle_solution
+            return handle_solution(args[1:])
+
+        if command == "deploy":
+            from bifrost.commands.solution import handle_deploy
+            return handle_deploy(args[1:])
+
         # Entity mutation subgroups (bifrost orgs ..., bifrost roles ..., etc.).
         from bifrost.commands import ENTITY_GROUPS, dispatch_entity_subgroup
 

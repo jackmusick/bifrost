@@ -40,6 +40,14 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class DeployResult:
+    """Counts from one full-replace deploy."""
+
+    workflows_upserted: int = 0
+    workflows_deleted: int = 0
+
+
+@dataclass
 class SolutionBundle:
     """The deployable contents of one Solution install.
 
@@ -60,7 +68,7 @@ class SolutionDeployer:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def deploy(self, bundle: SolutionBundle) -> None:
+    async def deploy(self, bundle: SolutionBundle) -> DeployResult:
         """Full-replace this install from ``bundle``.
 
         1. Write Python source to SolutionStorage (_solutions/{id}/).
@@ -72,7 +80,11 @@ class SolutionDeployer:
 
         await self._write_python(sid, bundle.python_files)
         await self._upsert_workflows(solution, bundle.workflows)
-        await self._reconcile_deletions(sid, bundle)
+        deleted = await self._reconcile_deletions(sid, bundle)
+        return DeployResult(
+            workflows_upserted=len(bundle.workflows),
+            workflows_deleted=deleted,
+        )
 
     # ── 1. Python source → SolutionStorage ──────────────────────────────────
     async def _write_python(self, sid: UUID, python_files: dict[str, str]) -> None:
@@ -106,25 +118,26 @@ class SolutionDeployer:
             ).execute(self.db)
 
     # ── 3. Scoped full-replace deletion ─────────────────────────────────────
-    async def _reconcile_deletions(self, sid: UUID, bundle: SolutionBundle) -> None:
+    async def _reconcile_deletions(self, sid: UUID, bundle: SolutionBundle) -> int:
         """Delete this install's entities that are absent from the bundle.
 
         Strictly scoped: ``solution_id == sid AND id NOT IN bundle_ids``. Never
-        touches _repo/ (solution_id IS NULL) or another install.
+        touches _repo/ (solution_id IS NULL) or another install. Returns the
+        number of rows deleted.
         """
-        await self._reconcile_one(
+        return await self._reconcile_one(
             Workflow, sid, {UUID(w["id"]) for w in bundle.workflows}
         )
 
     async def _reconcile_one(
         self, model: type, sid: UUID, present_ids: set[UUID]
-    ) -> None:
+    ) -> int:
         # Find this install's rows that are NOT in the bundle.
         stmt = select(model.id).where(model.solution_id == sid)  # type: ignore[attr-defined]
         existing = set((await self.db.execute(stmt)).scalars().all())
         stale = existing - present_ids
         if not stale:
-            return
+            return 0
         await self.db.execute(
             delete(model).where(
                 model.solution_id == sid,  # type: ignore[attr-defined]
@@ -137,3 +150,4 @@ class SolutionDeployer:
             len(stale),
             model.__tablename__,  # type: ignore[attr-defined]
         )
+        return len(stale)
