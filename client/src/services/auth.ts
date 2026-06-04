@@ -57,6 +57,23 @@ export async function initOAuth(
 // Note: getOAuthVerifier() has been removed - PKCE is now handled server-side
 // The backend stores the code_verifier when init is called and uses it during callback
 
+/**
+ * Hash the OAuth `state` (a CSRF nonce) before persisting it for the callback
+ * round-trip. We store only the SHA-256 digest, never the raw token: the
+ * browser-binding CSRF check still works by comparing digests, but an XSS
+ * reader of sessionStorage can't lift a usable state value. SubtleCrypto is
+ * available in the secure (HTTPS/localhost) contexts where OAuth runs.
+ */
+export async function hashOAuthState(state: string): Promise<string> {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(state),
+	);
+	return Array.from(new Uint8Array(digest))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
+}
+
 // =============================================================================
 // MFA Operations
 // =============================================================================

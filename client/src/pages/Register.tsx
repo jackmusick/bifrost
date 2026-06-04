@@ -16,6 +16,7 @@ import { AuthTransition } from "@/components/auth/AuthTransition";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	getOAuthProviders,
+	hashOAuthState,
 	initOAuth,
 	registerFromInvite,
 	type OAuthProvider,
@@ -95,13 +96,12 @@ export function Register() {
 		setError(null);
 		try {
 			sessionStorage.setItem("oauth_redirect_from", "/");
-			sessionStorage.setItem("oauth_provider", provider);
 			const callbackUrl = `${window.location.origin}/auth/callback/${provider}`;
 			const { authorization_url, state } = await initOAuth(
 				provider,
 				callbackUrl,
 			);
-			sessionStorage.setItem("oauth_state", state);
+			sessionStorage.setItem("oauth_state", await hashOAuthState(state));
 			setFinalizing("Redirecting to sign-in…");
 			window.location.assign(authorization_url);
 		} catch (e: unknown) {
