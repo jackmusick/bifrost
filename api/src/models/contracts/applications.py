@@ -143,6 +143,7 @@ class ApplicationPublic(ApplicationBase):
     is_published: bool
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
+    is_solution_managed: bool = Field(default=False, description="True if managed by a deployed Solution (read-only on platform)")
     role_ids: list[UUID] = Field(default_factory=list)
     repo_path: str = Field(
         description="Workspace-relative path to the app's source directory. Mutated via POST /api/applications/{id}/replace."

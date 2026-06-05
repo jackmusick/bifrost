@@ -16,6 +16,7 @@ from pydantic import (
     Field,
     field_serializer,
     field_validator,
+    model_validator,
 )
 
 from src.models.contracts.policies import TablePolicies
@@ -95,6 +96,23 @@ class TablePublic(TableBase):
     created_at: datetime
     updated_at: datetime
     created_by: str | None
+    is_solution_managed: bool = Field(default=False, description="True if managed by a deployed Solution (read-only on platform)")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_solution_managed(cls, data):
+        """Derive is_solution_managed from the ORM's solution_id.
+
+        The DTO field has no matching ORM attribute, so set a transient
+        attribute on the ORM instance for from_attributes to read. This is a
+        non-mapped attribute — SQLAlchemy ignores it for flush.
+        """
+        if not isinstance(data, dict) and hasattr(data, "solution_id"):
+            try:
+                data.is_solution_managed = data.solution_id is not None
+            except (AttributeError, ValueError):
+                pass  # read-only/detached instance — DTO default (False) applies
+        return data
 
     @field_serializer("created_at", "updated_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
