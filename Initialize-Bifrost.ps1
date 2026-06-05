@@ -72,7 +72,7 @@ function Set-BifrostEnvLine {
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string[]]$Lines,
+        [Parameter(Mandatory)][object[]]$Lines,
         [Parameter(Mandatory)][string]$Key,
         [Parameter(Mandatory)][string]$Value
     )
@@ -98,7 +98,7 @@ function Write-BifrostEnvFile {
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string[]]$Lines,
+        [Parameter(Mandatory)][object[]]$Lines,
         [Parameter(Mandatory)][string]$Path
     )
     $text = ($Lines -join "`n") + "`n"
@@ -140,6 +140,95 @@ function Initialize-Bifrost {
     }
 
     Write-Host 'Preflight OK (Docker running, .env.example present).'
+
+    # --- Overwrite guard ---
+    if ((Test-Path $envFile) -and -not $Force) {
+        $confirm = Read-Host '.env already exists. Overwrite? (y/N)'
+        if ($confirm -ne 'y' -and $confirm -ne 'Y') {
+            Write-Host 'Setup cancelled.'
+            return 0
+        }
+    }
+
+    # --- Domain ---
+    if (-not $Domain) {
+        $entered = Read-Host 'Enter your domain (e.g., localhost, app.example.com) [localhost]'
+        $Domain = if ([string]::IsNullOrWhiteSpace($entered)) { 'localhost' } else { $entered.Trim() }
+    }
+    if ($Domain -match '\s' -or $Domain -match '^https?://') {
+        Write-Error "Invalid domain '$Domain'. Use a bare host like 'localhost' or 'app.example.com' (no scheme, no spaces)."
+        return 1
+    }
+    $derived = Get-BifrostOrigin -Domain $Domain
+    $origin = $derived.Origin
+    $environment = $derived.Environment
+
+    Write-Host ''
+    Write-Host 'Using:'
+    Write-Host "  Domain (RP ID): $Domain"
+    Write-Host "  Origin: $origin"
+    Write-Host "  Environment: $environment"
+    Write-Host ''
+
+    # --- Secrets ---
+    $postgresPass = New-BifrostSecret -Length 24
+    $rabbitmqPass = New-BifrostSecret -Length 24
+    $seaweedfsSecret = New-BifrostSecret -Length 24
+    $secretKey = New-BifrostSecret -Length 48
+
+    # --- Assemble .env from .env.example ---
+    $lines = Get-Content $envExample
+    $lines = Set-BifrostEnvLine -Lines $lines -Key 'POSTGRES_PASSWORD'       -Value $postgresPass
+    $lines = Set-BifrostEnvLine -Lines $lines -Key 'RABBITMQ_PASSWORD'       -Value $rabbitmqPass
+    $lines = Set-BifrostEnvLine -Lines $lines -Key 'SEAWEEDFS_SECRET_KEY'    -Value $seaweedfsSecret
+    $lines = Set-BifrostEnvLine -Lines $lines -Key 'BIFROST_SECRET_KEY'      -Value $secretKey
+    $lines = Set-BifrostEnvLine -Lines $lines -Key 'BIFROST_WEBAUTHN_RP_ID'  -Value $Domain
+    $lines = Set-BifrostEnvLine -Lines $lines -Key 'BIFROST_WEBAUTHN_ORIGIN' -Value $origin
+    $lines = Set-BifrostEnvLine -Lines $lines -Key 'BIFROST_ENVIRONMENT'     -Value $environment
+    if ($Domain -ne 'localhost' -and $Domain -ne '127.0.0.1') {
+        $lines = Set-BifrostEnvLine -Lines $lines -Key 'BIFROST_PUBLIC_URL'            -Value "https://$Domain"
+        $lines = Set-BifrostEnvLine -Lines $lines -Key 'BIFROST_S3_PUBLIC_ENDPOINT_URL' -Value '/s3'
+    }
+    Write-BifrostEnvFile -Lines $lines -Path $envFile
+
+    Write-Host '  Created .env with secure secrets'
+    Write-Host ''
+    Write-Host 'Generated:'
+    Write-Host '  - POSTGRES_PASSWORD (24 chars)'
+    Write-Host '  - RABBITMQ_PASSWORD (24 chars)'
+    Write-Host '  - SEAWEEDFS_SECRET_KEY (24 chars)'
+    Write-Host '  - BIFROST_SECRET_KEY (48 chars)'
+    Write-Host ''
+    Write-Host 'Configured:'
+    Write-Host "  - BIFROST_WEBAUTHN_RP_ID=$Domain"
+    Write-Host "  - BIFROST_WEBAUTHN_ORIGIN=$origin"
+    Write-Host "  - BIFROST_ENVIRONMENT=$environment"
+    if ($Domain -ne 'localhost' -and $Domain -ne '127.0.0.1') {
+        Write-Host "  - BIFROST_PUBLIC_URL=https://$Domain"
+        Write-Host '  - BIFROST_S3_PUBLIC_ENDPOINT_URL=/s3'
+    }
+    Write-Host ''
+
+    # --- Launch ---
+    if ($NoStart) {
+        Write-Host 'Skipping launch (-NoStart). To start later:  docker compose up -d'
+    } else {
+        Write-Host 'Starting Bifrost (docker compose up -d)...'
+        & docker compose up -d
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error 'docker compose up -d failed. Check the output above.'
+            return 1
+        }
+    }
+
+    # --- Instructions ---
+    $accessUrl = if ($Domain -eq 'localhost' -or $Domain -eq '127.0.0.1') { 'http://localhost:3000' } else { "https://$Domain" }
+    Write-Host ''
+    Write-Host 'Next steps:'
+    Write-Host "  - Access the platform at: $accessUrl"
+    Write-Host '  - View logs:              docker compose logs -f'
+    Write-Host '  - Stop the stack:         docker compose down'
+    Write-Host ''
     return 0
 }
 
