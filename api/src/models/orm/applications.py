@@ -69,6 +69,13 @@ class Application(Base):
         String(20), default=AppAccessLevel.AUTHENTICATED, server_default="'authenticated'"
     )
 
+    # Render model: 'inline_v1' (legacy — app renders inline inside the platform
+    # React tree, SDK via globalThis) | 'standalone_v2' (own createRoot + router +
+    # the bifrost SDK as a real import). See the v2 app model spec.
+    app_model: Mapped[str] = mapped_column(
+        String(20), default="inline_v1", server_default="inline_v1"
+    )
+
     # Metadata
     description: Mapped[str | None] = mapped_column(Text, default=None)
     dependencies: Mapped[dict | None] = mapped_column(JSON, default=None, nullable=True)
