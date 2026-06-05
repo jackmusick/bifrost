@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.agents import Agent, AgentRole
@@ -50,6 +50,11 @@ logger = logging.getLogger(__name__)
 
 class SolutionDeployConflict(Exception):
     """A bundle references an entity id owned by _repo/ or another install."""
+
+
+class SolutionFinalizeIncomplete(Exception):
+    """Deploy committed but the post-commit S3 finalize failed partway. The
+    deploy is full-replace + idempotent, so re-running it heals the state."""
 
 
 async def _noop_finalize() -> None:  # default so an unbound result is still awaitable
@@ -140,10 +145,29 @@ class SolutionDeployer:
         compiled = await self._compile_app_dists(builds)
 
         # ── S3 phase, DEFERRED until after the caller's commit (cheap PUTs) ───
+        # All steps are FULL-REPLACE (idempotent), so a failed finalize is healed
+        # by simply re-running the deploy. We order them execution-first (Python
+        # source before app dist) so a mid-finalize failure leaves the install
+        # runnable, and re-raise a clear error so the operator knows to re-run —
+        # the DB is already committed but every step is safe to repeat (Codex R5).
         async def _finalize_s3() -> None:
-            await self._write_python(sid, bundle.python_files)
-            await self._upload_compiled_dists(compiled)
-            await self._delete_stale_app_dist(stale_app_dist)
+            try:
+                # 1. Python source first — workflows must be executable even if a
+                #    later app upload fails.
+                await self._write_python(sid, bundle.python_files)
+                # 2. App dists.
+                await self._upload_compiled_dists(compiled)
+                # 3. Sweep stale dist last (cosmetic — orphaned bytes, not wrong code).
+                await self._delete_stale_app_dist(stale_app_dist)
+            except Exception as exc:  # noqa: BLE001 - surface + re-raise for retry
+                logger.error(
+                    "Deploy of solution %s committed but S3 finalization failed: "
+                    "%s. The deploy is full-replace + idempotent — re-run it to "
+                    "heal (no data loss; running code is unchanged from before "
+                    "this deploy until finalize completes).",
+                    sid, exc,
+                )
+                raise SolutionFinalizeIncomplete(str(sid)) from exc
 
         return DeployResult(
             workflows_upserted=len(bundle.workflows),
@@ -393,6 +417,17 @@ class SolutionDeployer:
                 )
 
             slug = mapp["slug"]
+            # Serialize the check-then-insert across CONCURRENT deploys (Codex
+            # R5): two deploys with the same slug could both pass the SELECT
+            # below before either commits (the DB's per-solution_id unique index
+            # doesn't stop a cross-scope route collision). A transaction-scoped
+            # advisory lock keyed on the slug makes this atomic — a racing deploy
+            # blocks here until the first commits, then sees the row. Released at
+            # commit/rollback. (hashtext gives a stable bigint key per slug.)
+            await self.db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext('bifrost:appslug:' || :s))"),
+                {"s": slug},
+            )
             # Route-collision guard (Codex P2-f + R4): the per-install unique
             # index keeps (solution_id, slug) unique, but the /apps/{slug}
             # resolver (scalar_one_or_none) raises MultipleResultsFound if two

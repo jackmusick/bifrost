@@ -26,7 +26,11 @@ from src.models.contracts.solutions import (
     SolutionsList,
 )
 from src.models.orm.solutions import Solution as SolutionORM
-from src.services.solutions.deploy import SolutionBundle, SolutionDeployer
+from src.services.solutions.deploy import (
+    SolutionBundle,
+    SolutionDeployer,
+    SolutionFinalizeIncomplete,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +117,18 @@ async def deploy_solution(
     )
     await ctx.db.commit()
     # S3 only after the DB is durable — a failed commit changes no running code (P1-c).
-    await result.finalize_s3()
+    try:
+        await result.finalize_s3()
+    except SolutionFinalizeIncomplete as exc:
+        # DB is committed; the deploy is full-replace + idempotent, so re-running
+        # heals it. Surface 502 so the operator knows to retry (R5).
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Deploy committed but storage finalization failed partway. "
+                "Re-run the deploy to complete it (it is idempotent)."
+            ),
+        ) from exc
     return SolutionDeployResponse(
         solution_id=solution_id,
         workflows_upserted=result.workflows_upserted,

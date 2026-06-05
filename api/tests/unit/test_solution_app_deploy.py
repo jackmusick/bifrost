@@ -263,6 +263,30 @@ class TestAppSlugRouteCollision:
         ))
         await db.flush()
 
+    async def test_deploy_takes_advisory_lock_on_slug(self, db_session, _stub_app_build, monkeypatch):
+        """The check-then-insert is serialized across concurrent deploys by a
+        per-slug transaction advisory lock (Codex R5). Assert the lock SQL is
+        issued for the app's slug before the row is upserted."""
+        db = db_session
+        sol = await self._install(db)
+        slug = f"dash-{uuid.uuid4().hex[:8]}"
+
+        lock_calls: list[str | None] = []
+        orig_execute = db.execute
+
+        async def _spy_execute(stmt, params=None, *a, **k):
+            s = str(stmt)
+            if "pg_advisory_xact_lock" in s:
+                lock_calls.append((params or {}).get("s"))
+            return await orig_execute(stmt, params, *a, **k)
+
+        monkeypatch.setattr(db, "execute", _spy_execute)
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol, apps=[_app_entry(str(uuid.uuid4()), slug)],
+        ))
+        await db.flush()
+        assert slug in lock_calls, "no advisory lock taken on the app slug"
+
     async def test_org_install_refused_against_visible_global_app(self, db_session, _stub_app_build):
         """An ORG install must not stomp a GLOBAL app's slug — that org sees
         both (global apps are visible to every org). Codex R4."""
