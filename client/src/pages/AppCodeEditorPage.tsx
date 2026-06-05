@@ -25,6 +25,7 @@ import { AppInfoDialog } from "@/components/app-builder/AppInfoDialog";
 import { EmbedSettingsDialog } from "@/components/app-builder/EmbedSettingsDialog";
 import { toast } from "sonner";
 import { AppCodeEditorLayout } from "@/components/app-code-editor/AppCodeEditorLayout";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import {
 	useApplication,
 	useCreateApplication,
@@ -66,6 +67,11 @@ export function AppCodeEditorPage() {
 	const [publishMessage, setPublishMessage] = useState("");
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isEmbedOpen, setIsEmbedOpen] = useState(false);
+
+	// Solution-managed apps are read-only on the platform (deploy is the only
+	// writer). The API rejects edits/publish regardless; this drives the UI
+	// affordance (banner + hidden Publish).
+	const isManaged = !!existingApp?.is_solution_managed;
 
 	// For existing apps, we skip the creation form and go straight to the editor
 	// For new apps, we show the creation form first
@@ -302,8 +308,9 @@ export function AppCodeEditorPage() {
 						onOpenChange={setIsSettingsOpen}
 					/>
 
-					{/* Publish */}
-					{hasDraft && (
+					{/* Publish — hidden for solution-managed apps (deploy is the
+					    only writer; the API rejects publish regardless). */}
+					{hasDraft && !isManaged && (
 						<Button
 							size="sm"
 							onClick={() => setIsPublishDialogOpen(true)}
@@ -315,6 +322,13 @@ export function AppCodeEditorPage() {
 					)}
 				</div>
 			</div>
+
+			{/* Solution-managed read-only affordance */}
+			{isManaged && (
+				<div className="px-4 pt-3">
+					<SolutionManagedBanner entityLabel="app" />
+				</div>
+			)}
 
 			{/* Code Editor */}
 			<div className="flex-1 min-h-0">
