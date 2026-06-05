@@ -6,10 +6,9 @@
  * AND that a Solution has already been deployed to it (the "Live Dash" v2 app,
  * "hello_live" workflow, "Legacy V1" app, and the hard-coded app UUID below) —
  * none of which exist on a clean CI test stack. Operator deploys the fixture
- * via the CLI first, then runs:
+ * via the CLI first, then runs (uses playwright.manual.config.ts):
  *   cd client && TEST_BASE_URL=http://localhost:<port> \
- *     npx playwright test manual-verify/solutions-deployed-verify.manual.ts \
- *     --project=unauthenticated --no-deps
+ *     npx playwright test -c playwright.manual.config.ts
  */
 import { test, expect } from "@playwright/test";
 

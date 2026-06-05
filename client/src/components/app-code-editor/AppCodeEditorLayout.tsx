@@ -452,10 +452,10 @@ export function AppCodeEditorLayout({
 									refreshTrigger={fileTreeRefresh}
 									config={{
 										enableUpload: false,
-										enableDragMove: true,
-										enableCreate: true,
-										enableRename: true,
-										enableDelete: true,
+										enableDragMove: !readOnly,
+										enableCreate: !readOnly,
+										enableRename: !readOnly,
+										enableDelete: !readOnly,
 										emptyMessage: "No files yet",
 										loadingMessage: "Loading files...",
 										pathValidator: validateAppCodePath,
@@ -463,7 +463,7 @@ export function AppCodeEditorLayout({
 								/>
 							</div>
 						) : (
-							<DependencyPanel appId={appId} />
+							<DependencyPanel appId={appId} readOnly={readOnly} />
 						)}
 					</div>
 				)}
@@ -479,6 +479,7 @@ export function AppCodeEditorLayout({
 									onSave={handleSave}
 									errors={editorState.errors}
 									path={currentFile.path}
+									readOnly={readOnly}
 								/>
 							) : (
 								<div className="h-full flex items-center justify-center text-muted-foreground">

@@ -6,10 +6,10 @@
  * It logs in with the debug-stack dev credentials and assumes the operator has
  * a port-mode debug stack running — neither holds on a clean CI test stack.
  *
- * Run it explicitly against a live debug stack:
+ * Run it explicitly against a live debug stack (uses playwright.manual.config.ts,
+ * whose testDir is manual-verify/):
  *   cd client && TEST_BASE_URL=http://localhost:<port> \
- *     npx playwright test manual-verify/solutions-live-verify.manual.ts \
- *     --project=unauthenticated --no-deps
+ *     npx playwright test -c playwright.manual.config.ts
  */
 import { test, expect } from "@playwright/test";
 

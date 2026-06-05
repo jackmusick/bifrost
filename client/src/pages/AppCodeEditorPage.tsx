@@ -272,8 +272,8 @@ export function AppCodeEditorPage() {
 				</div>
 
 				<div className="flex items-center gap-2">
-					{/* Embed */}
-					{isEditing && existingApp && (
+					{/* Embed — hidden for managed apps (embed secrets are mutations) */}
+					{isEditing && existingApp && !isManaged && (
 						<>
 							<Button
 								variant="ghost"
@@ -292,21 +292,26 @@ export function AppCodeEditorPage() {
 						</>
 					)}
 
-					{/* Settings */}
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={() => setIsSettingsOpen(true)}
-						title="Settings"
-						aria-label="Settings"
-					>
-						<Settings className="h-4 w-4" />
-					</Button>
-					<AppInfoDialog
-						appSlug={existingApp?.slug}
-						open={isSettingsOpen}
-						onOpenChange={setIsSettingsOpen}
-					/>
+					{/* Settings — hidden for solution-managed apps: the dialog
+					    exposes Save/Delete/Replace/logo mutations the API rejects. */}
+					{!isManaged && (
+						<>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => setIsSettingsOpen(true)}
+								title="Settings"
+								aria-label="Settings"
+							>
+								<Settings className="h-4 w-4" />
+							</Button>
+							<AppInfoDialog
+								appSlug={existingApp?.slug}
+								open={isSettingsOpen}
+								onOpenChange={setIsSettingsOpen}
+							/>
+						</>
+					)}
 
 					{/* Publish — hidden for solution-managed apps (deploy is the
 					    only writer; the API rejects publish regardless). */}
