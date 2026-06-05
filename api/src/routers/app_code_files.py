@@ -28,6 +28,7 @@ from fastapi import APIRouter, HTTPException, Path, status
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.models.contracts.applications import (
     AppFileUpdate,
     AppRenderResponse,
@@ -378,6 +379,10 @@ async def write_app_file(
     S3 _repo/ storage, file_index update, pubsub, and preview sync).
     """
     app = await get_application_or_404(ctx, app_id)
+    # Solution-managed app source is read-only on the platform — only deploy
+    # may write it. The before_flush backstop can't see this: it writes to S3 +
+    # file_index, never dirtying the Application ORM row. (criterion 6)
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 
     # Validate path conventions
     validate_file_path(file_path)
@@ -424,6 +429,8 @@ async def delete_app_file(
     file_index cleanup, pubsub, and preview sync).
     """
     app = await get_application_or_404(ctx, app_id)
+    # Read-only for solution-managed apps (S3 delete bypasses the ORM backstop).
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     prefix = app.repo_prefix
     full_path = f"{prefix}{file_path}"
 
@@ -807,6 +814,8 @@ async def put_dependencies(
     Validates every package name and version, enforces the max-dependency limit.
     """
     app = await get_application_or_404(ctx, app_id)
+    # Dependencies are solution-owned metadata — read-only for managed apps.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 
     # Validate
     if len(deps) > _MAX_DEPENDENCIES:

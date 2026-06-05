@@ -488,6 +488,8 @@ async def publish_application(
 
     Copies all draft files to a new live version.
     """
+    # Publishing a solution-managed app is a deploy-owned action.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
@@ -541,6 +543,8 @@ async def replace_application_endpoint(
     Validates that the new path is unique, non-nested with other apps, and has
     source files under it. ``force: true`` bypasses all three checks.
     """
+    # Repointing a solution-managed app's source is a deploy-owned action.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
@@ -807,6 +811,8 @@ async def rollback_application(
     Sets the specified version as the new active version.
     The draft version remains unchanged.
     """
+    # Version rollback of a solution-managed app is a deploy-owned action.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
@@ -846,6 +852,7 @@ async def upload_application_logo(
 
     Requires the same permissions as updating the application.
     """
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     application = await get_application_by_id_or_404(ctx, app_id)
 
     if file.content_type not in LOGO_ALLOWED_CONTENT_TYPES:
@@ -909,6 +916,7 @@ async def delete_application_logo(
     app_id: UUID,
     ctx: Context,
 ) -> Response:
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     application = await get_application_by_id_or_404(ctx, app_id)
     application.logo_data = None
     application.logo_content_type = None

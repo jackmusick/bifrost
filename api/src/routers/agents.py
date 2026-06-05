@@ -874,6 +874,7 @@ async def promote_agent(
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(404, f"Agent {agent_id} not found")
+    assert_not_solution_managed(agent)
 
     if agent.access_level != AgentAccessLevel.PRIVATE:
         raise HTTPException(400, "Agent is not private — nothing to promote")
@@ -1054,6 +1055,7 @@ async def upload_agent_logo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+    assert_not_solution_managed(agent)
 
     if file.content_type not in LOGO_ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -1133,6 +1135,7 @@ async def delete_agent_logo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+    assert_not_solution_managed(agent)
     agent.logo_data = None
     agent.logo_content_type = None
     await db.commit()

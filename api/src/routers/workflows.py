@@ -60,7 +60,10 @@ from src.models.orm.applications import Application
 from src.models.orm.agents import Agent, AgentTool
 from src.models.orm.users import Role
 from src.services.workflow_validation import _extract_relative_path
-from src.services.solutions.guard import assert_not_solution_managed
+from src.services.solutions.guard import (
+    assert_entity_id_not_solution_managed,
+    assert_not_solution_managed,
+)
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
@@ -1702,6 +1705,7 @@ async def replace_workflow(
     """
     from src.services.workflow_orphan import WorkflowOrphanService
 
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     try:
         orphan_service = WorkflowOrphanService(db)
         workflow = await orphan_service.replace_workflow(
@@ -1762,6 +1766,7 @@ async def recreate_workflow_file(
     from src.services.workflow_orphan import WorkflowOrphanService
     from src.services.file_storage import FileStorageService
 
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     try:
         orphan_service = WorkflowOrphanService(db)
 
@@ -1832,6 +1837,7 @@ async def deactivate_workflow(
     """
     from src.services.workflow_orphan import WorkflowOrphanService
 
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     try:
         orphan_service = WorkflowOrphanService(db)
         workflow, ref_count = await orphan_service.deactivate_workflow(workflow_id)
@@ -1934,6 +1940,10 @@ async def assign_roles_to_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workflow with ID '{workflow_id}' not found",
         )
+    # Roles are solution-owned and portable — locked for managed workflows.
+    # The before_flush backstop can't see this (we add WorkflowRole rows, never
+    # dirtying the Workflow itself), so the explicit guard is load-bearing here.
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
 
     now = datetime.now(timezone.utc)
 
@@ -1991,6 +2001,10 @@ async def remove_role_from_workflow(
         workflow_id: UUID of the workflow
         role_id: UUID of the role to remove
     """
+    # Locked for managed workflows. This is a Core delete() that bypasses the
+    # ORM unit-of-work, so the before_flush backstop never sees it — the guard
+    # is the only protection here.
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     result = await db.execute(
         delete(WorkflowRole).where(
             WorkflowRole.workflow_id == workflow_id,
