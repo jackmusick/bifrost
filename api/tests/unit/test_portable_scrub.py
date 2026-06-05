@@ -222,6 +222,27 @@ def test_strips_oauth_secrets_anywhere_in_tree() -> None:
     assert any("OAuth" in rule for rule in rules)
 
 
+def test_strips_service_oauth_token_id_anywhere_in_tree() -> None:
+    """MCP connections carry service_oauth_token_id — a live service-token FK.
+    It must be scrubbed from portable exports just like oauth_token_id
+    (prereq for Export Solution; success-criteria §5)."""
+    manifest = {
+        "mcp_connections": {
+            "conn-1": {
+                "id": "conn-1",
+                "name": "halo-mcp",
+                "organization_id": "org-aaaa",
+                "service_oauth_token_id": "svc-token-999",
+            }
+        }
+    }
+    scrubbed, _rules = scrub(manifest, role_names_by_id=ROLE_NAMES)
+    conn = scrubbed["mcp_connections"]["conn-1"]
+    assert "service_oauth_token_id" not in conn
+    # Non-secret identity fields remain.
+    assert conn["name"] == "halo-mcp"
+
+
 def test_nulls_secret_config_values_preserving_description() -> None:
     scrubbed, rules = scrub(_fresh_manifest(), role_names_by_id=ROLE_NAMES)
     secret_cfg = scrubbed["configs"]["cfg-1"]
@@ -324,6 +345,7 @@ _STRIPPED_FIELD_NAMES = {
     "deleted_at",
     "client_secret",
     "oauth_token_id",
+    "service_oauth_token_id",
     "access_token",
     "refresh_token",
     "external_id",

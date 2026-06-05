@@ -46,6 +46,9 @@ _TIMESTAMP_FIELDS: frozenset[str] = frozenset({
 _OAUTH_SECRETS: frozenset[str] = frozenset({
     "client_secret",
     "oauth_token_id",
+    # MCP connections carry a live service-token FK; scrub it from portable
+    # exports too (it is not portable across environments).
+    "service_oauth_token_id",
     "access_token",
     "refresh_token",
 })
