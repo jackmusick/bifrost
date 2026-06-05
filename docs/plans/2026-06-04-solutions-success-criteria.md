@@ -257,3 +257,29 @@ material — take a real slice (e.g. `clients/mna` or `braytel`), turn it into a
 - Replacing or deprecating the ad-hoc `_repo/` git-sync workflow.
 - Exporting table row data via deploy.
 - Making Solutions themselves user-visible (only deployed entities are visible).
+
+---
+
+## 8. REAL STATUS (2026-06-05) — corrected after full Codex spec review
+
+> An initial pass claimed all 18 criteria pass. A subsequent **full adversarial Codex
+> review against this spec** found several criteria met only *superficially* — the
+> mechanisms work in isolation but the spec's full intent (entity set, multi-install,
+> connected mode, entity visibility) was not satisfied. PR #347 is **draft/experimental**
+> until these clear.
+
+### Confirmed P1 gaps (criteria NOT actually met)
+
+| # | Gap | Criterion(s) | Where |
+|---|-----|--------------|-------|
+| G1 | **Deployed entities hidden from users** — `_apply_cascade_scope` filters `solution_id IS NULL` in `list()`, so deployed entities are invisible in normal list views. | **16** inverted | `api/src/repositories/org_scoped.py:321` |
+| G2 | **Forms + agents cannot be deployed** — deploy/bundle/reconcile only handle workflows/tables/apps. | **6,10** | `contracts/solutions.py`, `deploy.py`, `git_sync.py`, CLI |
+| G3 | **Multi-install collides for apps** — global unique index on app slug + repo_path. | **9** | `applications` unique index + `deploy.py:293` |
+| G4 | **Git-connected sync drops apps** — `read_workspace_bundle` collects only workflows+tables; reconcile DELETES the app. | **13,12** | `git_sync.py:31` |
+| G5 | **Ambiguous org-scoped deploy** — matches any same-slug non-null-org install, full-replaces the first. | **4** | `bifrost/commands/solution.py:204` |
+| G6 | **Module isolation can bleed** — per-execution root doesn't namespace `sys.modules` (partly mitigated by content-hash clear). | **3** | `core/module_cache_sync.py` |
+| G7 (P2) | **v2 app served at `/api/.../dist/` not `/apps/{slug}`** — routing/deep-links differ from spec. | **12** | `BundledAppShell.tsx:399` |
+
+### Loop to "QA-ready"
+Fix G1→G7 (TDD each), local-verify, re-run full Codex spec review, repeat until Codex
+finds no P1/P2 spec gaps. Only then is this worth human QA.
