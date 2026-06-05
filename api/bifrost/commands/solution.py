@@ -92,17 +92,20 @@ def _collect_workflows(workspace: pathlib.Path) -> list[dict]:
     raw = data.get("workflows", {})
     entries: list[dict] = []
     # workflows.yaml is keyed by workflow UUID; the display name is body["name"].
+    # Pass the FULL body through (not a narrowed subset): the deployer's
+    # _upsert_workflows consumes endpoint_enabled/public_endpoint/timeout_seconds/
+    # category/tags as a full-replace, so dropping them here would silently reset
+    # an exported workflow's endpoint + timeout on a disconnected redeploy (P2-e).
+    # function_name/path are required by the deployer, so fail loudly if missing.
     for key, body in raw.items():
         if not isinstance(body, dict):
             continue
         entries.append({
+            **body,
             "id": body.get("id", key),
             "name": body.get("name") or key,
             "function_name": body["function_name"],
             "path": body["path"],
-            "type": body.get("type", "workflow"),
-            "description": body.get("description"),
-            "access_level": body.get("access_level"),
         })
     return entries
 
