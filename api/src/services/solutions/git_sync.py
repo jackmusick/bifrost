@@ -72,11 +72,27 @@ def read_workspace_bundle(solution: Solution, workspace: Path) -> SolutionBundle
     for wf in workflows:
         wf.setdefault("name", wf["id"])
     tables = _collect_entities(workspace, "tables.yaml", "tables")
+    forms = _collect_entities(workspace, "forms.yaml", "forms")
+    for f in forms:
+        f.setdefault("name", f["id"])
+    agents = _collect_entities(workspace, "agents.yaml", "agents")
+    for a in agents:
+        a.setdefault("name", a["id"])
+    # Apps need their source dir read (mirror the CLI collector). Reusing the
+    # CLI helper keeps the connected-mode bundle identical to a disconnected
+    # `bifrost deploy` — without apps, reconcile would delete a connected
+    # install's app (criteria 12/13).
+    from bifrost.commands.solution import _collect_apps
+
+    apps = _collect_apps(workspace)
     return SolutionBundle(
         solution=solution,
         python_files=_collect_python_files(workspace),
         workflows=workflows,
         tables=tables,
+        apps=apps,
+        forms=forms,
+        agents=agents,
     )
 
 

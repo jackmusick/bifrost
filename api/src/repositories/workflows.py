@@ -107,7 +107,10 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
                 Workflow.is_active.is_(True),
             )
         )
-        stmt = self._apply_cascade_scope(stmt)
+        # Single-result path lookup: exclude solution-managed rows so a _repo/
+        # path and a solution path sharing the same path don't collide into
+        # MultipleResultsFound (solution workflows resolve by id at execution).
+        stmt = self._apply_cascade_scope(stmt, exclude_solution_managed=True)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 

@@ -31,7 +31,9 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.models.orm.agents import Agent
 from src.models.orm.applications import Application
+from src.models.orm.forms import Form, FormField
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
@@ -55,6 +57,10 @@ class DeployResult:
     tables_deleted: int = 0
     apps_upserted: int = 0
     apps_deleted: int = 0
+    forms_upserted: int = 0
+    forms_deleted: int = 0
+    agents_upserted: int = 0
+    agents_deleted: int = 0
 
 
 @dataclass
@@ -72,6 +78,8 @@ class SolutionBundle:
     workflows: list[dict[str, Any]] = field(default_factory=list)
     tables: list[dict[str, Any]] = field(default_factory=list)
     apps: list[dict[str, Any]] = field(default_factory=list)
+    forms: list[dict[str, Any]] = field(default_factory=list)
+    agents: list[dict[str, Any]] = field(default_factory=list)
 
 
 class SolutionDeployer:
@@ -94,7 +102,11 @@ class SolutionDeployer:
         await self._upsert_workflows(solution, bundle.workflows)
         await self._upsert_tables(solution, bundle.tables)
         await self._upsert_apps(solution, bundle.apps)
-        wf_deleted, tbl_deleted, app_deleted = await self._reconcile_deletions(sid, bundle)
+        await self._upsert_forms(solution, bundle.forms)
+        await self._upsert_agents(solution, bundle.agents)
+        (
+            wf_deleted, tbl_deleted, app_deleted, form_deleted, agent_deleted
+        ) = await self._reconcile_deletions(sid, bundle)
         return DeployResult(
             workflows_upserted=len(bundle.workflows),
             workflows_deleted=wf_deleted,
@@ -102,6 +114,10 @@ class SolutionDeployer:
             tables_deleted=tbl_deleted,
             apps_upserted=len(bundle.apps),
             apps_deleted=app_deleted,
+            forms_upserted=len(bundle.forms),
+            forms_deleted=form_deleted,
+            agents_upserted=len(bundle.agents),
+            agents_deleted=agent_deleted,
         )
 
     # ── 1. Python source → SolutionStorage (full replace + cache sync) ───────
@@ -327,10 +343,98 @@ class SolutionDeployer:
                 prebuilt_dist=prebuilt_bytes,
             )
 
+    async def _upsert_forms(
+        self, solution: Solution, forms: list[dict[str, Any]]
+    ) -> None:
+        """Upsert form rows stamped with solution_id + inherited scope.
+
+        Forms become solution-managed (read-only on the platform). The portable
+        ``content`` (title/fields/prompts) lives in the ``content`` text column;
+        env-specific fields (access_level/roles/created_by) stay instance-owned.
+        Ownership guard mirrors workflows/apps/tables.
+        """
+        sid = solution.id
+        for mform in forms:
+            form_id = UUID(mform["id"])
+            await self._guard_owner(Form, form_id, sid)
+            values: dict[str, Any] = {
+                "name": mform["name"],
+                "description": mform.get("description"),
+                "workflow_id": mform.get("workflow_id"),
+                "launch_workflow_id": mform.get("launch_workflow_id"),
+                "is_active": True,
+                "organization_id": solution.organization_id,
+                "solution_id": sid,
+                # created_by is NOT NULL; deploy is the writer.
+                "created_by": mform.get("created_by") or "solution-deploy",
+            }
+            await Upsert(model=Form, id=form_id, values=values, match_on="id").execute(self.db)
+            await self._upsert_form_fields(form_id, mform.get("fields") or [])
+
+    async def _upsert_form_fields(
+        self, form_id: UUID, fields: list[dict[str, Any]]
+    ) -> None:
+        """Full-replace a form's fields from the bundle (portable content)."""
+        await self.db.execute(delete(FormField).where(FormField.form_id == form_id))
+        for pos, fld in enumerate(fields):
+            self.db.add(FormField(
+                form_id=form_id,
+                name=fld["name"],
+                label=fld.get("label"),
+                type=fld.get("type", "text"),
+                required=bool(fld.get("required", False)),
+                position=fld.get("position", pos),
+                placeholder=fld.get("placeholder"),
+                help_text=fld.get("help_text"),
+                default_value=fld.get("default_value"),
+                options=fld.get("options"),
+            ))
+
+    async def _upsert_agents(
+        self, solution: Solution, agents: list[dict[str, Any]]
+    ) -> None:
+        """Upsert agent rows stamped with solution_id + inherited scope."""
+        sid = solution.id
+        for magent in agents:
+            agent_id = UUID(magent["id"])
+            await self._guard_owner(Agent, agent_id, sid)
+            values: dict[str, Any] = {
+                "name": magent["name"],
+                "system_prompt": magent.get("system_prompt") or "",
+                "is_active": True,
+                "organization_id": solution.organization_id,
+                "solution_id": sid,
+                # created_by is NOT NULL; deploy is the writer.
+                "created_by": magent.get("created_by") or "solution-deploy",
+            }
+            if magent.get("description") is not None:
+                values["description"] = magent["description"]
+            if magent.get("channels") is not None:
+                values["channels"] = magent["channels"]
+            if magent.get("llm_model") is not None:
+                values["llm_model"] = magent["llm_model"]
+            await Upsert(model=Agent, id=agent_id, values=values, match_on="id").execute(self.db)
+
+    async def _guard_owner(self, model: type, entity_id: UUID, sid: UUID) -> None:
+        """Raise SolutionDeployConflict if ``entity_id`` exists and is owned by
+        _repo/ (NULL) or a different install — a bundle may not hijack it."""
+        row = (
+            await self.db.execute(
+                select(model.solution_id).where(model.id == entity_id)  # type: ignore[attr-defined]
+            )
+        ).first()
+        if row is not None and row[0] != sid:
+            owner = row[0]
+            raise SolutionDeployConflict(
+                f"{model.__tablename__} {entity_id} is already owned by "  # type: ignore[attr-defined]
+                f"{'_repo/' if owner is None else f'solution {owner}'}; "
+                f"a bundle may not reuse another owner's entity id"
+            )
+
     # ── 3. Scoped full-replace deletion ─────────────────────────────────────
     async def _reconcile_deletions(
         self, sid: UUID, bundle: SolutionBundle
-    ) -> tuple[int, int, int]:
+    ) -> tuple[int, int, int, int, int]:
         """Delete this install's entities that are absent from the bundle.
 
         Strictly scoped: ``solution_id == sid AND id NOT IN bundle_ids``. Never
@@ -339,7 +443,7 @@ class SolutionDeployer:
         a removed table's rows go via the Table FK cascade, which only fires when
         the table itself is genuinely absent from the bundle. For apps, the
         ``_apps/{id}/dist/`` artifact is deleted alongside the row. Returns
-        (workflows_deleted, tables_deleted, apps_deleted).
+        (workflows, tables, apps, forms, agents) deleted counts.
         """
         wf_deleted = await self._reconcile_one(
             Workflow, sid, {UUID(w["id"]) for w in bundle.workflows}
@@ -350,7 +454,13 @@ class SolutionDeployer:
         app_deleted = await self._reconcile_apps(
             sid, {UUID(a["id"]) for a in bundle.apps}
         )
-        return wf_deleted, tbl_deleted, app_deleted
+        form_deleted = await self._reconcile_one(
+            Form, sid, {UUID(f["id"]) for f in bundle.forms}
+        )
+        agent_deleted = await self._reconcile_one(
+            Agent, sid, {UUID(a["id"]) for a in bundle.agents}
+        )
+        return wf_deleted, tbl_deleted, app_deleted, form_deleted, agent_deleted
 
     async def _reconcile_apps(self, sid: UUID, present_ids: set[UUID]) -> int:
         """Sweep this install's Application rows absent from the bundle, and

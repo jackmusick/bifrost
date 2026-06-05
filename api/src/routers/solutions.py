@@ -107,6 +107,8 @@ async def deploy_solution(
             workflows=body.workflows,
             tables=body.tables,
             apps=body.apps,
+            forms=body.forms,
+            agents=body.agents,
         )
     )
     await ctx.db.commit()
@@ -118,6 +120,10 @@ async def deploy_solution(
         tables_deleted=result.tables_deleted,
         apps_upserted=result.apps_upserted,
         apps_deleted=result.apps_deleted,
+        forms_upserted=result.forms_upserted,
+        forms_deleted=result.forms_deleted,
+        agents_upserted=result.agents_upserted,
+        agents_deleted=result.agents_deleted,
     )
 
 

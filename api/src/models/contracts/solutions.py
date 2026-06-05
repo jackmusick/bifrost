@@ -83,6 +83,10 @@ class SolutionDeployRequest(BaseModel):
     # src_files: {rel: text} | dist_files: {rel: text}}. dist_files is the
     # disconnected fast-path (skip the server build).
     apps: list[dict[str, Any]] = Field(default_factory=list)
+    # Each form: {id, name, description?, workflow_id?, fields: [...]}.
+    forms: list[dict[str, Any]] = Field(default_factory=list)
+    # Each agent: {id, name, system_prompt, description?, channels?, llm_model?}.
+    agents: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SolutionDeployResponse(BaseModel):
@@ -93,3 +97,7 @@ class SolutionDeployResponse(BaseModel):
     tables_deleted: int = 0
     apps_upserted: int = 0
     apps_deleted: int = 0
+    forms_upserted: int = 0
+    forms_deleted: int = 0
+    agents_upserted: int = 0
+    agents_deleted: int = 0

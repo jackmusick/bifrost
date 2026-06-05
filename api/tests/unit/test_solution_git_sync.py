@@ -96,3 +96,39 @@ class TestDeployFromWorkspace:
             await db.execute(select(Workflow.name).where(Workflow.solution_id == sol.id))
         ).scalars().all()
         assert survivors == ["keepme"]
+
+
+@pytest.mark.e2e
+class TestConnectedBundleCompleteness:
+    """read_workspace_bundle must collect apps + forms + agents, not just
+    workflows/tables. Otherwise auto-pull reconcile DELETES a connected
+    install's app/form/agent (Codex G4)."""
+
+    async def test_bundle_includes_apps_forms_agents(self, tmp_path) -> None:
+        from src.models.orm.solutions import Solution
+        from src.services.solutions.git_sync import read_workspace_bundle
+
+        (tmp_path / "bifrost.solution.yaml").write_text("slug: c\nname: C\nscope: global\n")
+        (tmp_path / ".bifrost").mkdir()
+        app_id = str(uuid.uuid4())
+        (tmp_path / "apps" / "dash").mkdir(parents=True)
+        (tmp_path / "apps" / "dash" / "index.html").write_text("<html></html>")
+        (tmp_path / ".bifrost" / "apps.yaml").write_text(
+            f"apps:\n  {app_id}:\n    id: {app_id}\n    slug: dash\n    name: Dash\n"
+            f"    path: apps/dash\n    app_model: standalone_v2\n"
+        )
+        form_id = str(uuid.uuid4())
+        (tmp_path / ".bifrost" / "forms.yaml").write_text(
+            f"forms:\n  {form_id}:\n    id: {form_id}\n    name: intake\n    fields: []\n"
+        )
+        agent_id = str(uuid.uuid4())
+        (tmp_path / ".bifrost" / "agents.yaml").write_text(
+            f"agents:\n  {agent_id}:\n    id: {agent_id}\n    name: helper\n"
+            f"    system_prompt: hi\n"
+        )
+
+        sol = Solution(id=uuid.uuid4(), slug="c", name="C", organization_id=None)
+        bundle = read_workspace_bundle(sol, tmp_path)
+        assert [a["id"] for a in bundle.apps] == [app_id]
+        assert [f["id"] for f in bundle.forms] == [form_id]
+        assert [a["id"] for a in bundle.agents] == [agent_id]

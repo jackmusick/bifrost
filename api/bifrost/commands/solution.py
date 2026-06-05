@@ -134,6 +134,31 @@ def _collect_tables(workspace: pathlib.Path) -> list[dict]:
     return entries
 
 
+def _collect_manifest_entities(workspace: pathlib.Path, filename: str, key: str) -> list[dict]:
+    """Pass through inline manifest entries (forms/agents) keyed by UUID.
+
+    The form/agent inline content (fields, system_prompt, etc.) lives in the
+    manifest body; deploy stamps solution_id + scope and full-replaces.
+    """
+    f = workspace / ".bifrost" / filename
+    if not f.is_file():
+        return []
+    data = yaml.safe_load(f.read_text()) or {}
+    entries: list[dict] = []
+    for map_key, body in (data.get(key, {}) or {}).items():
+        if isinstance(body, dict):
+            entries.append({**body, "id": body.get("id", map_key)})
+    return entries
+
+
+def _collect_forms(workspace: pathlib.Path) -> list[dict]:
+    return _collect_manifest_entities(workspace, "forms.yaml", "forms")
+
+
+def _collect_agents(workspace: pathlib.Path) -> list[dict]:
+    return _collect_manifest_entities(workspace, "agents.yaml", "agents")
+
+
 # App source files we send as build input (text). Binary assets in an app source
 # dir are rare; the build produces the real binary dist server-side.
 _APP_SRC_SUFFIXES = (".tsx", ".ts", ".jsx", ".js", ".css", ".html", ".json", ".svg", ".md")
@@ -230,6 +255,8 @@ def deploy_cmd(path: str, solution_id: str | None, yes: bool) -> None:
     workflows = _collect_workflows(workspace)
     tables = _collect_tables(workspace)
     apps = _collect_apps(workspace)
+    forms = _collect_forms(workspace)
+    agents = _collect_agents(workspace)
 
     async def _run() -> int:
         client = BifrostClient.get_instance(require_auth=True)
@@ -283,6 +310,8 @@ def deploy_cmd(path: str, solution_id: str | None, yes: bool) -> None:
             "workflows": workflows,
             "tables": tables,
             "apps": apps,
+            "forms": forms,
+            "agents": agents,
         })
         if deploy.status_code not in (200, 201):
             click.echo(f"Deploy failed: {deploy.status_code} {deploy.text}", err=True)
