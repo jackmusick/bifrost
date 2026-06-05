@@ -112,6 +112,8 @@ async def deploy_solution(
         )
     )
     await ctx.db.commit()
+    # S3 only after the DB is durable — a failed commit changes no running code (P1-c).
+    await result.finalize_s3()
     return SolutionDeployResponse(
         solution_id=solution_id,
         workflows_upserted=result.workflows_upserted,
@@ -157,10 +159,11 @@ async def sync_solution(solution_id: UUID, ctx: Context, user: CurrentSuperuser)
     from src.services.solutions.git_sync import sync as git_sync
 
     try:
+        # git_sync commits + runs the S3 phase itself (inside its per-install
+        # lock, DB-commit-before-S3 per P1-c), so the router does not commit here.
         await git_sync(ctx.db, solution)
     except NotASolutionWorkspace as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    await ctx.db.commit()
     return {"solution_id": str(solution_id), "status": "synced"}

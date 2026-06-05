@@ -24,6 +24,7 @@ and are added in their sub-plans.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -49,9 +50,19 @@ class SolutionDeployConflict(Exception):
     """A bundle references an entity id owned by _repo/ or another install."""
 
 
+async def _noop_finalize() -> None:  # default so an unbound result is still awaitable
+    return None
+
+
 @dataclass
 class DeployResult:
-    """Counts from one full-replace deploy."""
+    """Counts from one full-replace deploy.
+
+    ``finalize_s3`` is the deferred S3 phase (Python source write + app builds +
+    stale-dist sweep). ``deploy()`` returns BEFORE running it; the caller awaits
+    it only after a durable ``commit()`` so a commit failure changes no running
+    code (Codex P1-c). ``compare=False`` keeps the closure out of equality.
+    """
 
     workflows_upserted: int = 0
     workflows_deleted: int = 0
@@ -63,6 +74,9 @@ class DeployResult:
     forms_deleted: int = 0
     agents_upserted: int = 0
     agents_deleted: int = 0
+    finalize_s3: Callable[[], Awaitable[None]] = field(
+        default=_noop_finalize, compare=False, repr=False
+    )
 
 
 @dataclass
@@ -91,17 +105,17 @@ class SolutionDeployer:
         self.db = db
 
     async def deploy(self, bundle: SolutionBundle) -> DeployResult:
-        """Full-replace this install from ``bundle``.
+        """Full-replace this install from ``bundle`` — **DB phase only**.
 
-        **DB work first, S3 writes last.** All DB upserts + the scoped reconcile
-        run before any S3 mutation, so the common failure modes (ownership
-        conflict, FK/unique constraint, content validation) roll back the DB
-        with ZERO S3 side effects — a failed deploy must not change running code
-        (Codex P1-e). Only after the DB ops succeed do we write Python source to
-        ``_solutions/{id}/`` and build/upload app ``dist/`` + sweep stale
-        artifacts. The caller commits after this returns; the residual
-        DB-ok-but-S3-write-fails window is small and retryable, vs the prior
-        order which wrote S3 before validating anything.
+        All DB upserts + the scoped reconcile run here, so the common failure
+        modes (ownership conflict, FK/unique constraint, content validation)
+        roll back the DB with ZERO S3 side effects. The S3 phase (Python source
+        write + app builds + stale-dist sweep) is NOT run here — it is bound onto
+        the returned ``DeployResult.finalize_s3`` and the caller awaits it only
+        **after a durable ``commit()``**. So a commit that fails after this
+        returns changes no running code (Codex P1-c) — the prior order ran S3
+        before the caller's commit, leaving a window where a failed deploy had
+        already replaced the install's executing Python source.
         """
         solution = bundle.solution
         sid = solution.id
@@ -117,10 +131,11 @@ class SolutionDeployer:
             stale_app_dist,
         ) = await self._reconcile_deletions(sid, bundle)
 
-        # ── S3 phase (only after all DB work succeeded) ──────────────────────
-        await self._write_python(sid, bundle.python_files)
-        await self._run_app_builds(builds)
-        await self._delete_stale_app_dist(stale_app_dist)
+        # ── S3 phase, DEFERRED until after the caller's commit ───────────────
+        async def _finalize_s3() -> None:
+            await self._write_python(sid, bundle.python_files)
+            await self._run_app_builds(builds)
+            await self._delete_stale_app_dist(stale_app_dist)
 
         return DeployResult(
             workflows_upserted=len(bundle.workflows),
@@ -133,6 +148,7 @@ class SolutionDeployer:
             forms_deleted=form_deleted,
             agents_upserted=len(bundle.agents),
             agents_deleted=agent_deleted,
+            finalize_s3=_finalize_s3,
         )
 
     # ── 1. Python source → SolutionStorage (full replace + cache sync) ───────

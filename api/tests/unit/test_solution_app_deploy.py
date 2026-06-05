@@ -89,6 +89,8 @@ class TestSolutionAppDeploy:
             SolutionBundle(solution=sol, apps=[_app_entry(app_id, "dash")])
         )
         await db.flush()
+        # S3 phase is deferred until after commit (P1-c); run it explicitly.
+        await result.finalize_s3()
 
         app = await db.get(Application, uuid.UUID(app_id))
         assert app is not None
@@ -217,6 +219,9 @@ class TestAppPublishAndBuildModel:
             }],
         ))
         await db.flush()
+        # Run the deferred S3 phase too: if a v1 app leaked into the build set,
+        # the stubbed build() would fire here (P1-c defers builds to finalize).
+        await result.finalize_s3()
         app = await db.get(Application, uuid.UUID(app_id))
         assert app.app_model == "inline_v1"
         assert result.apps_upserted == 1

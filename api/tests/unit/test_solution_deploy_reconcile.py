@@ -233,20 +233,22 @@ class TestSolutionDeployReconcile:
         w1 = str(uuid4())
         storage_key = SolutionStorage(sol.id)._key("workflows/w1.py")
 
-        await deployer.deploy(SolutionBundle(
+        r1 = await deployer.deploy(SolutionBundle(
             solution=sol,
             python_files={"workflows/w1.py": "VALUE = 1\n"},
             workflows=[_wf_entry(w1, "w1")],
         ))
+        await r1.finalize_s3()  # Python write is deferred to the S3 phase (P1-c).
         cached = await get_module(storage_key)
         assert cached is not None and "VALUE = 1" in cached["content"]
 
         # Redeploy with changed bytes — cache must reflect the new content.
-        await deployer.deploy(SolutionBundle(
+        r2 = await deployer.deploy(SolutionBundle(
             solution=sol,
             python_files={"workflows/w1.py": "VALUE = 2\n"},
             workflows=[_wf_entry(w1, "w1")],
         ))
+        await r2.finalize_s3()
         cached2 = await get_module(storage_key)
         assert cached2 is not None and "VALUE = 2" in cached2["content"]
 

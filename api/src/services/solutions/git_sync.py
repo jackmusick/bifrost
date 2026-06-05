@@ -24,7 +24,11 @@ import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.solutions import Solution
-from src.services.solutions.deploy import SolutionBundle, SolutionDeployer
+from src.services.solutions.deploy import (
+    DeployResult,
+    SolutionBundle,
+    SolutionDeployer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +102,14 @@ def read_workspace_bundle(solution: Solution, workspace: Path) -> SolutionBundle
 
 async def deploy_from_workspace(
     db: AsyncSession, solution: Solution, workspace: Path
-) -> None:
+) -> DeployResult:
     """Deploy a connected install from an already-checked-out workspace dir.
 
     This is the testable core of auto-pull (no git): read the workspace, run the
-    full-replace deploy. ``sync`` wraps this with the clone.
+    full-replace deploy's DB phase. ``sync`` wraps this with the clone and runs
+    the returned ``finalize_s3`` after committing. The bundle (Python source, app
+    inputs) is read fully into memory here, so ``finalize_s3`` is safe to run
+    after the checkout dir is gone.
 
     REFUSES if the checkout is not a Solution workspace (no bifrost.solution.yaml)
     — otherwise an empty/ wrong checkout would full-replace the install down to
@@ -114,7 +121,7 @@ async def deploy_from_workspace(
             f"refusing to full-replace install {solution.id} from a non-Solution repo"
         )
     bundle = read_workspace_bundle(solution, workspace)
-    await SolutionDeployer(db).deploy(bundle)
+    return await SolutionDeployer(db).deploy(bundle)
 
 
 async def sync(db: AsyncSession, solution: Solution) -> None:
@@ -146,6 +153,12 @@ async def sync(db: AsyncSession, solution: Solution) -> None:
             work_dir = Path(tmp)
             GitRepo.clone_from(solution.git_repo_url, str(work_dir), branch="main", depth=1)
             logger.info("Cloned connected solution %s from %s", solution.id, solution.git_repo_url)
-            await deploy_from_workspace(db, solution, work_dir)
+            result = await deploy_from_workspace(db, solution, work_dir)
+        # Commit the DB phase, THEN run S3 — a failed commit changes no running
+        # code (Codex P1-c). Both happen while the per-install lock is held so a
+        # racing sync can't interleave. The bundle is in-memory, so finalizing
+        # after the checkout temp dir is gone is fine.
+        await db.commit()
+        await result.finalize_s3()
     finally:
         await redis.delete(lock_key)

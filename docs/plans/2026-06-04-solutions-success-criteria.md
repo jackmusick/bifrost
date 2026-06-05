@@ -283,3 +283,34 @@ material — take a real slice (e.g. `clients/mna` or `braytel`), turn it into a
 ### Loop to "QA-ready"
 Fix G1→G7 (TDD each), local-verify, re-run full Codex spec review, repeat until Codex
 finds no P1/P2 spec gaps. Only then is this worth human QA.
+
+---
+
+## 8. REAL STATUS (2026-06-05) — corrected after full Codex spec review
+
+> An initial pass claimed all 18 criteria pass. A subsequent **full adversarial Codex
+> review against this spec** found that several criteria were met only *superficially* —
+> the mechanisms work in isolation but the spec's full intent (entity set, multi-install,
+> connected mode, entity visibility) was not satisfied. This section is the corrected,
+> honest status. PR #347 is **draft/experimental** until these clear.
+
+### Confirmed P1 gaps (criteria NOT actually met)
+
+| # | Gap | Criterion(s) broken | Where |
+|---|-----|---------------------|-------|
+| G1 | **Deployed entities hidden from users** — `_apply_cascade_scope` filters `solution_id IS NULL` in `list()`, so deployed solution entities are invisible in normal list views. | **16** (inverted), usability of all | `api/src/repositories/org_scoped.py:321` |
+| G2 | **Forms + agents cannot be deployed** — deploy/bundle/reconcile only handle workflows/tables/apps. | **6,10** (forms/agents read-only is superficial) | `api/src/models/contracts/solutions.py`, `deploy.py`, `git_sync.py`, CLI |
+| G3 | **Multi-install collides for apps** — global unique index on app slug + repo_path; a 2nd install of an app-bearing solution violates it. | **9** | `applications` unique index (migration 20260220) + `deploy.py:293` |
+| G4 | **Git-connected sync drops apps** — `read_workspace_bundle` collects only workflows+tables; auto-pull reconcile DELETES a connected install's app. | **13, 12** for connected | `api/src/services/solutions/git_sync.py:31-40` |
+| G5 | **Ambiguous org-scoped deploy** — matches any same-slug non-null-org install, full-replaces the first; can hit the wrong client. | **4 (multi-install safety)** | `api/bifrost/commands/solution.py:204` |
+| G6 | **Module isolation can bleed** — per-execution thread-local root doesn't namespace `sys.modules`; same-name modules across installs can collide (partially mitigated by content-hash clear in `_clear_workspace_modules`). | **3 (self-contained worlds)** | `api/src/core/module_cache_sync.py` |
+| G7 (P2) | **v2 app served at `/api/.../dist/` not `/apps/{slug}`** — iframe document location differs from the spec scaffold; routing/deep-links don't behave like a normal app at the app route. | **12** | `client/src/components/jsx-app/BundledAppShell.tsx:399` |
+
+### What IS genuinely solid
+- Read-only enforcement on REST routers + the `before_flush` backstop + MCP (for ORM mutations) — proven by exhaustive e2e returning 409.
+- Scoped full-replace reconcile for workflows/tables (never touches `_repo/`); table row data preserved.
+- v2 app build → dist → `_apps/` serving; offline `bifrost run` with solution-local imports; vendoring; the read-only UI affordance (card/table/editor).
+- CLI packaged correctly (no `src.*` imports; regression-guarded).
+
+### Loop to "QA-ready"
+Fix G1→G7 (TDD each), local-verify, re-run full Codex spec review, repeat until Codex finds no P1/P2 spec gaps. Only then is this worth human QA.
