@@ -1,0 +1,117 @@
+# Solutions — Resume Plan (handoff for a new session)
+
+Date: 2026-06-05
+Worktree: `/home/jack/GitHub/bifrost/.claude/worktrees/solutions-success-criteria`
+Branch: `worktree-solutions-success-criteria`  •  Draft PR: **#347** (experimental — do NOT merge)
+Spec: `docs/plans/2026-06-04-solutions-success-criteria.md` (see §8 "REAL STATUS")
+
+## The loop (the bar to clear)
+Fix findings → TDD each → local verify → **full Codex spec review** → repeat until
+**two CONSECUTIVE full Codex reviews come back with ZERO P1/P2 spec findings**. Only then is
+it worth human QA. (User directive: 2 clean reviews; reuse `ManifestResolver`/indexers so future
+fields can't create deploy gaps — done for forms/agents.)
+
+## How to run Codex review (the gate)
+```bash
+cd <worktree>
+codex review - < /tmp/codex_review3.txt   # prompt file already written; or rebuild from the one below
+```
+Triage with `superpowers:receiving-code-review` — VERIFY each finding against the code before fixing
+(several past findings were right; some I over-asserted in tests). The prompt that found the deep
+issues is saved at `/tmp/codex_spec_review_prompt.txt` (+ `/tmp/codex_review3.txt` with the "what's
+fixed" context). Re-create it if /tmp is cleared — it's a "full adversarial spec review, file:line +
+severity, hunt for issues the fixes introduced."
+
+## IN-FLIGHT right now
+- **Codex review #3 is running in the background** → output at `/tmp/codex_review3_out.txt`.
+  Read its final `^codex$` block first thing. It re-reviews all batch-2 fixes + hunts new issues.
+- Tree is CLEAN (an incomplete P2-j edit was reverted — see below).
+
+## DONE this session (all committed, each with a test)
+Original Codex spec review found 7 (G1–G7); a re-review found 10 more (batch 2). Fixed:
+- **G1** deployed entities visible in `list()` (filter moved to name-cascade get(), opt-in via
+  `exclude_solution_managed`/`include_solution_managed` flags).
+- **G2** forms + agents deploy — **via canonical FormIndexer/AgentIndexer** (full content, gap-proof).
+- **G3** per-install app identity — migration `20260605_app_identity` (partial unique indexes).
+- **G4** git-sync `read_workspace_bundle` bundles apps + forms + agents.
+- **G5** ambiguous org-scoped deploy refused (`_resolve_target_install`).
+- **G6** cross-solution `sys.modules` eviction in `_clear_workspace_modules`.
+- **batch2 P1-a** role-centric endpoints `/api/roles/{id}/{workflows,apps,forms,agents}` (assign,
+  remove, bulk-unassign — 12 endpoints) now guard managed entities.
+- **batch2 P1-b** app-by-slug open path passes `include_solution_managed=True`.
+- **batch2 P1-c** deploy marks apps published (`published_snapshot`+`published_at`).
+- **batch2 P1-d** bundle-manifest returns `app_model` for `standalone_v2` BEFORE the v1 build.
+- **batch2 P1-e** **DB-first deploy** — all DB upserts/reconcile run before ANY S3 write; app builds +
+  stale-dist deletes deferred to an S3 phase that runs only after DB succeeds.
+- **batch2 P1-f** form fields read from `form_schema.fields` (was wrong key; old test passed falsely).
+- **batch2 P1-g** only `standalone_v2` apps are vite-built (inline_v1 would fail a Vite build).
+- **batch2 P2-h** agent tool/delegation/knowledge bindings deploy (via indexer).
+- **batch2 P2-i** full workflow metadata deployed (endpoint/timeout/category/tags, full-replace).
+
+## REMAINING (do these next, then re-run Codex until 2 clean)
+1. **P2-j — binary app assets dropped.** `_collect_apps` (api/bifrost/commands/solution.py:167)
+   only collects `_APP_SRC_SUFFIXES` (text); png/woff/etc. are skipped → server build emits a dist
+   with missing assets. **Half-done edit was reverted** — redo cleanly:
+   - In `_collect_apps`: `import base64` (top of file); collect non-text files into a `bin_files`
+     dict as `{rel: base64(bytes)}`; add `"bin_files": bin_files` to each entry. Skip `.DS_Store`.
+   - Thread `bin_files` through: `SolutionDeployRequest.apps` already free-form dict;
+     `_run_app_builds` (deploy.py) must decode `bin_files` (base64→bytes) and merge into `src_bytes`
+     before `builder.build(...)`. Also collect them in `git_sync._collect_apps` reuse path.
+   - Test: an app dir with a `.png` deploys and the bytes reach the builder.
+2. **G7 (P2) — v2 app route.** The v2 iframe loads `/api/applications/{id}/dist/index.html`, so the
+   inner app's `window.location` is the dist URL and `<BrowserRouter basename='/apps/{slug}'>`
+   won't match → deep-links differ from a normal app (criterion 12 / spec §2). This is a DESIGN
+   FORK — needs a decision: (a) serve dist as a document AT `/apps/{slug}` (nginx/backend route work
+   so window.location matches), (b) scaffold uses a pathname-independent router, or (c) accept
+   iframe-at-dist + document the limitation. Recommend deciding with the user. Also: the
+   BundledAppShell v2 branch (client/src/components/jsx-app/BundledAppShell.tsx) builds the iframe
+   src from the dist route — align with whatever serving decision is made. The vite `--base` is set
+   to `/api/applications/{id}/dist/` in app_build.py `_run_vite_build`.
+3. Anything Codex #3 (and subsequent reviews) surface.
+
+## KEY FILES
+- `api/src/services/solutions/deploy.py` — the deployer (DB-first phases; `_upsert_*`, `_run_app_builds`,
+  `_delete_stale_app_dist`, `_reconcile_*`). Forms/agents delegate to indexers.
+- `api/src/services/solutions/git_sync.py` — connected auto-pull bundle (`read_workspace_bundle`).
+- `api/src/repositories/org_scoped.py` — `get()`/`can_access()`/`_apply_cascade_scope()` +
+  `include_solution_managed`/`exclude_solution_managed` flags (the visibility model — read carefully).
+- `api/src/routers/roles.py` — the 12 now-guarded role-junction endpoints.
+- `api/src/routers/app_code_files.py` — bundle-manifest v2 short-circuit; dist serve route; S3 file guards.
+- `api/bifrost/commands/solution.py` — CLI deploy + `_collect_*` (P2-j lives here).
+- `api/src/services/file_storage/indexers/{form,agent}.py` — canonical content indexers deploy reuses.
+- `api/src/services/manifest_import.py` — `_form_content_from_manifest`, `_agent_content_from_manifest`.
+
+## VERIFY / TEST commands (from worktree root)
+```bash
+./test.sh stack up        # boot once
+# the solution suite (all should pass):
+./test.sh tests/unit/test_solution_guard.py tests/unit/test_solution_deploy_reconcile.py \
+  tests/unit/test_solution_app_deploy.py tests/unit/test_solution_form_agent_deploy.py \
+  tests/unit/test_solution_git_sync.py tests/unit/test_solution_module_isolation.py \
+  tests/unit/test_solution_resolve_install.py tests/unit/test_mcp_solution_managed.py \
+  tests/unit/repositories/test_org_scoped_solution_visibility.py \
+  tests/unit/test_contracts_parity.py \
+  tests/e2e/platform/test_solution_readonly.py tests/e2e/platform/test_solution_readonly_full.py \
+  tests/e2e/platform/test_solution_v2_app_e2e.py tests/e2e/platform/test_solution_deploy_execution.py \
+  tests/e2e/platform/test_solution_table_e2e.py tests/e2e/platform/test_solution_git_connected_e2e.py
+cd api && ruff check . && pyright    # pyright host shows ~40 false reportMissingImports (aiobotocore etc.) — filter those
+```
+Migrations: a new one landed (`20260605_app_identity`). `./test.sh stack reset` applies it to the
+test template. For the debug stack: restart bifrost-init then api (see CLAUDE.md).
+
+## LIVE DEBUG (for hands-on / browser)
+- Debug stack was UP in **port mode** at `http://localhost:37791` (login dev@gobifrost.com/password).
+  Netbird mode can't be browser-driven (Vite HMR hang) — to force port mode, the user's
+  `~/.config/bifrost/debug.env` sets NETBIRD_SETUP_KEY; temporarily move it aside, `./debug.sh up`,
+  then restore it. (It was restored at end of session; re-do if you need the browser.)
+- Scratch CLI: `/tmp/bifrost-cli-sol/.venv/bin/bifrost` (API-matched, logged in). Sample solution
+  workspace at `/tmp/bifrost-cli-sol/v2sol/`. Manual Playwright harnesses:
+  `cd client && TEST_BASE_URL=http://localhost:<port> npx playwright test -c playwright.manual.config.ts`
+- Local git-connected testing pattern: a bare repo INSIDE the api container
+  (`git init --bare /tmp/livegitrepo`), connected install `git_repo_url=file:///tmp/livegitrepo`,
+  then `POST /api/solutions/{id}/sync`. Set `git config --system --add safe.directory '*'` in the
+  container first (else "dubious ownership" — a `file://`-local-only quirk, not a prod concern).
+
+## DONE-BAR REMINDER
+Do NOT claim "done" again until two consecutive full Codex reviews are clean (zero P1/P2). I've been
+wrong about "done" three times — each review found real depth. Trust the gate, not optimism.
