@@ -22,19 +22,38 @@ issues is saved at `/tmp/codex_spec_review_prompt.txt` (+ `/tmp/codex_review3.tx
 fixed" context). Re-create it if /tmp is cleared — it's a "full adversarial spec review, file:line +
 severity, hunt for issues the fixes introduced."
 
-## SESSION 2 END — START HERE (2026-06-05)
+## SESSION 3 END — START HERE (2026-06-05)
 
-**State: clean, all pushed.** HEAD = 5d678cb0+ on `worktree-solutions-success-criteria` (PR #347).
-ALL findings from Codex reviews #3 (6), #4 (8), #5 (6) are FIXED + committed + pushed + green.
+**State: clean, all pushed.** HEAD = 834e806b on `worktree-solutions-success-criteria` (PR #347).
+Reviews #3 (6), #4 (8), #5 (6), **#6 (4 P1 + 2 P2)** all triaged + fixed/rejected + green.
 
-**Codex review #6 is RUNNING in the background.** Output → `/tmp/codex_review6_out.txt`
-(prompt `/tmp/codex_review6.txt`). FIRST THING NEXT SESSION:
-1. Check it's done: `pgrep -f 'codex review -'` (empty = done). Read the final `^codex$` block
-   in `/tmp/codex_review6_out.txt` (`grep -n '^codex$' …` → read from there).
-2. Triage with `superpowers:receiving-code-review` — VERIFY each finding against the code before
-   fixing (history: most findings real, ~2 of 14 were holes in a prior fix, a few I over-asserted).
+**Review #6 outcome (commit 834e806b):** 5 findings verified REAL and fixed; 1 P1 REJECTED as a
+design misread. Per-finding detail in the commit message. The rejected one (P1 "remap entity IDs
+per install") was wrong because criterion 9 = two INDEPENDENT installs (distinct UUIDs), and the
+ownership guard correctly forbids cross-install UUID reuse (criterion 10). The fixes:
+- R6-P1-b: `_resolve_target_install` matches the deployer's OWN org (was: any org-scoped install).
+- R6-P1-c (security): exclude `.env*` from `_collect_apps` + gate scaffold vite `define` on
+  `command==="serve"` so `vite build` never bakes the access token into the public bundle.
+- R6-P1-d: stage `sdk_src` in the PROD `api/Dockerfile` (was Dockerfile.dev only → prod 500s).
+- R6-P2-e: scaffold/JSDoc use UUID or `path::function` ref, not bare names (param→`workflowRef`).
+- R6-P2-f: `assert_not_solution_managed` guard in MCP `publish_app`/`push_files` before S3 writes.
+
+**Codex review #7 is RUNNING in the background.** Output → `/tmp/codex_review7_out.txt`
+(prompt `/tmp/codex_review7.txt`). It NARROWS to the two high-risk areas (deploy
+atomicity/concurrency/multi-install + v2 mount/dev lifecycle) per user directive ("fix all, then
+narrow"), re-verifies the 5 fixes, and challenges the P1-a rejection. FIRST THING NEXT SESSION:
+1. Check it's done: `pgrep -f 'codex review -'` (empty = done; ignore stale `until`-loop watchers —
+   kill any leftover bash `until ! pgrep…` procs, they are NOT the review). Read the final `^codex$`
+   block: `grep -n '^codex$' /tmp/codex_review7_out.txt | tail -1` → read from there.
+2. Triage with `superpowers:receiving-code-review` — VERIFY each finding (use Explore subagents,
+   one per finding, to keep context lean — that worked well this session).
 3. Fix loop: TDD each → `./test.sh <suite>` → commit → re-run Codex until **2 CONSECUTIVE clean**.
-   If #6 is clean, that's review 1 of 2 — run one more clean pass to clear the bar.
+   If #7 is clean, that's review 1 of 2 — run one more (narrowed) clean pass to clear the bar.
+
+Tests green at session end: 115 solution unit + 111 client app-sdk/jsx-app; ruff + pyright clean.
+NOTE: 2 pre-existing `npm run tsc` errors (AppInfoDialog.tsx, AppReplacePathDialog.test.tsx — both
+`app_model` on the generated app type) are `v1.d.ts` DRIFT, NOT from this work (confirmed by
+stashing the one client change — they persist). Regen types against a running API to clear them.
 
 **If #6 is again non-trivial**, the open question to put to the user: keep reviewing the WHOLE
 surface each pass, or narrow to the two high-risk areas only (deploy atomicity/concurrency +
