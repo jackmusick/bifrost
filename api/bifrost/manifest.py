@@ -177,6 +177,7 @@ class ManifestApp(BaseModel):
         description="Role display names (used by portable bundles; resolved to UUIDs on import)",
     )
     access_level: str | None = Field(default=None, description="role_based | authenticated | public")
+    app_model: str = Field(default="inline_v1", description="Render model: inline_v1 | standalone_v2")
 
 
 # -- New entity types for manifest expansion --

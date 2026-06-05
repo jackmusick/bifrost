@@ -122,6 +122,7 @@ async def application_to_public(
         is_published=application.is_published,
         has_unpublished_changes=application.has_unpublished_changes,
         access_level=application.access_level,
+        app_model=application.app_model,
         role_ids=role_ids,
         repo_path=application.repo_path,
         logo=_logo_data_url(application.logo_data, application.logo_content_type),

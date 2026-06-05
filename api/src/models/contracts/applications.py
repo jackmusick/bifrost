@@ -51,6 +51,10 @@ class ApplicationCreate(ApplicationBase):
         default="authenticated",
         description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles)",
     )
+    app_model: str = Field(
+        default="inline_v1",
+        description="Render model: 'inline_v1' (legacy inline render) or 'standalone_v2' (own createRoot + router + real SDK)",
+    )
     role_ids: list[UUID] = Field(
         default_factory=list,
         description="Role IDs for role_based access (ignored if access_level is 'authenticated')",
@@ -143,6 +147,7 @@ class ApplicationPublic(ApplicationBase):
     is_published: bool
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
+    app_model: str = Field(default="inline_v1", description="Render model: inline_v1 (legacy inline) | standalone_v2")
     is_solution_managed: bool = Field(default=False, description="True if managed by a deployed Solution (read-only on platform)")
     role_ids: list[UUID] = Field(default_factory=list)
     repo_path: str = Field(

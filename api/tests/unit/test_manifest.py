@@ -2467,3 +2467,13 @@ def test_custom_claim_manifest_round_trip():
     restored = parse_manifest(serialize_manifest(manifest))
 
     assert restored.claims[entry.id] == entry
+
+
+def test_app_model_round_trips_through_manifest():
+    """ManifestApp carries app_model (inline_v1 default | standalone_v2)."""
+    from bifrost.manifest import ManifestApp
+
+    m = ManifestApp(id="a1", path="apps/x", app_model="standalone_v2")
+    assert m.app_model == "standalone_v2"
+    # default when omitted
+    assert ManifestApp(id="a2", path="apps/y").app_model == "inline_v1"

@@ -206,6 +206,7 @@ def serialize_app(app: Application, roles: list[str] | None = None) -> ManifestA
         organization_id=str(app.organization_id) if app.organization_id else None,
         roles=roles or [],
         access_level=app.access_level if app.access_level else "authenticated",
+        app_model=app.app_model or "inline_v1",
     )
 
 
