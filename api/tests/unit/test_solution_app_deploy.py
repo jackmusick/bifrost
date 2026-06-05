@@ -172,3 +172,53 @@ class TestMultiInstallAppIdentity:
         b = await db.get(Application, uuid.UUID(app_b))
         assert a.solution_id == sol_a.id and b.solution_id == sol_b.id
         assert a.slug == b.slug == shared_slug  # same slug, different installs
+
+
+@pytest.mark.e2e
+class TestAppPublishAndBuildModel:
+    """A deployed app is live (published) so /apps/{slug} serves it (P1-c).
+    inline_v1 apps are NOT vite-built (P1-g)."""
+
+    async def _install(self, db):
+        sol = Solution(id=uuid.uuid4(), slug=f"pb-{uuid.uuid4().hex[:8]}", name="PB", organization_id=None)
+        db.add(sol)
+        await db.flush()
+        return sol
+
+    async def test_deployed_v2_app_is_published(self, db_session, _stub_app_build):
+        db = db_session
+        sol = await self._install(db)
+        app_id = str(uuid.uuid4())
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol, apps=[_app_entry(app_id, "dash")],
+        ))
+        await db.flush()
+        app = await db.get(Application, uuid.UUID(app_id))
+        assert app.is_published is True, "deployed app must be live (published)"
+        assert app.published_at is not None
+
+    async def test_inline_v1_app_is_not_vite_built(self, db_session, monkeypatch):
+        db = db_session
+        sol = await self._install(db)
+        app_id = str(uuid.uuid4())
+        # If build() is called for an inline_v1 app, fail loudly.
+        from src.services.solutions import app_build
+
+        async def _boom(self, *a, **k):
+            raise AssertionError("inline_v1 app must not be vite-built")
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "build", _boom)
+
+        result = await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol,
+            apps=[{
+                "id": app_id, "slug": "legacy", "name": "Legacy",
+                "app_model": "inline_v1", "dependencies": {},
+                "src_files": {"pages/index.tsx": "export default 1"},
+            }],
+        ))
+        await db.flush()
+        app = await db.get(Application, uuid.UUID(app_id))
+        assert app.app_model == "inline_v1"
+        assert result.apps_upserted == 1
+        # And it's still published (renders via the inline path).
+        assert app.is_published is True

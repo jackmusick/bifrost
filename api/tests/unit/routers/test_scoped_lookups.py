@@ -1283,5 +1283,9 @@ class TestGetApplicationOr404SuperuserSlug:
             )
 
         assert result is org_b_app
-        repo_instance.can_access.assert_called_once_with(slug="org-b-app")
+        # include_solution_managed=True so a deployed (solution-managed) app is
+        # openable by slug for regular users (criterion 16).
+        repo_instance.can_access.assert_called_once_with(
+            slug="org-b-app", include_solution_managed=True
+        )
         repo_instance.get_by_slug_global.assert_not_called()

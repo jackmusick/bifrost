@@ -74,3 +74,29 @@ async def test_get_by_name_resolves_repo_not_solution(db_session):
     got = await repo.get(name=shared)  # must NOT raise MultipleResultsFound
     assert got is not None
     assert got.solution_id is None, "name cascade must resolve the _repo/ entity, not the solution one"
+
+
+async def test_app_slug_open_finds_managed(db_session):
+    """A deployed (solution-managed) app must be openable by slug via
+    can_access(slug=, include_solution_managed=True) (criterion 16, Codex P1-b)."""
+    from src.models.orm.applications import Application
+    from src.repositories.applications import ApplicationRepository
+
+    db = db_session
+    sol = Solution(id=uuid.uuid4(), slug=f"appvis-{uuid.uuid4().hex[:8]}", name="AV", organization_id=None)
+    db.add(sol)
+    await db.flush()
+    slug = f"dash-{uuid.uuid4().hex[:8]}"
+    app_id = uuid.uuid4()
+    db.add(Application(
+        id=app_id, name="Dash", slug=slug, repo_path=f"apps/{slug}",
+        organization_id=None, solution_id=sol.id,
+    ))
+    await db.flush()
+
+    repo = ApplicationRepository(db, org_id=None, user_id=None, is_superuser=False)
+    # Default get(slug=) would exclude managed → None (collision-safe default).
+    assert await repo.get(slug=slug) is None
+    # With the flag, the managed app resolves.
+    found = await repo.can_access(slug=slug, include_solution_managed=True)
+    assert found.id == app_id

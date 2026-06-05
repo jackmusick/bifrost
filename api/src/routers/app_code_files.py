@@ -564,6 +564,21 @@ async def get_bundle_manifest(
     storage_mode = "preview" if mode == FileMode.draft else "live"
     app_id_str = str(app.id)
 
+    # standalone_v2 apps have NO esbuild bundle/manifest — their source is not
+    # under _repo/, so the legacy build_with_migrate path would fail. The shell
+    # only needs app_model to switch to the dist iframe; return that directly.
+    if app.app_model == "standalone_v2":
+        return {
+            "entry": None,
+            "css": None,
+            "base_url": f"/api/applications/{app_id}/dist",
+            "mode": storage_mode,
+            "dependencies": app.dependencies or {},
+            "migrated": False,
+            "organization_id": str(app.organization_id) if app.organization_id else None,
+            "app_model": "standalone_v2",
+        }
+
     import json as _json
     from src.services.app_bundler import SCHEMA_VERSION, build_with_migrate
     from src.core.cache import get_shared_redis

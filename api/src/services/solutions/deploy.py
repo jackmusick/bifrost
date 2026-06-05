@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -308,15 +309,23 @@ class SolutionDeployer:
                 )
 
             slug = mapp["slug"]
+            app_model = mapp.get("app_model", "inline_v1")
+            # Deploy IS the publish: the dist (v2) / source (v1) the bundle
+            # carries is the live version. Mark it published so /apps/{slug}
+            # serves it rather than showing "Not Published" (is_published is
+            # published_snapshot is not None).
+            now = datetime.now(timezone.utc)
             values: dict[str, Any] = {
                 "name": mapp.get("name") or slug,
                 "slug": slug,
                 "repo_path": mapp.get("repo_path") or f"apps/{slug}",
                 "description": mapp.get("description"),
                 "dependencies": mapp.get("dependencies") or None,
-                "app_model": mapp.get("app_model", "inline_v1"),
+                "app_model": app_model,
                 "organization_id": solution.organization_id,
                 "solution_id": sid,
+                "published_snapshot": {"deployed_by": "solution", "app_model": app_model},
+                "published_at": now,
             }
             if mapp.get("access_level") is not None:
                 values["access_level"] = mapp["access_level"]
@@ -324,6 +333,13 @@ class SolutionDeployer:
             await Upsert(
                 model=Application, id=app_id, values=values, match_on="id"
             ).execute(self.db)
+
+            # Only standalone_v2 apps are built to dist/ and served from
+            # _apps/{id}/dist/. inline_v1 apps render through the existing
+            # esbuild bundle path from their source — running a Vite build on
+            # them would fail (they're not standalone Vite projects).
+            if app_model != "standalone_v2":
+                continue
 
             # Build (or accept prebuilt) dist → _apps/{id}/dist/. dist_files is a
             # str→str map in the bundle (JSON-friendly); the builder takes bytes.

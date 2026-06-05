@@ -138,9 +138,19 @@ class OrgScopedRepository(Generic[ModelT]):
     # Public API
     # =========================================================================
 
-    async def get(self, **filters: Any) -> ModelT | None:
+    async def get(
+        self, *, include_solution_managed: bool = False, **filters: Any
+    ) -> ModelT | None:
         """
         Get a single entity with appropriate scoping based on lookup type.
+
+        ``include_solution_managed`` (name/key lookups only): by default the
+        name-cascade excludes solution-managed rows (so a _repo/ name and a
+        solution name don't collide into MultipleResultsFound — workflows/
+        tables/configs resolve _repo/ by name, solution by id). The app-by-slug
+        open path passes ``True`` because a deployed app MUST be openable by its
+        slug (criterion 16). Per-install slug uniqueness (migration
+        20260605) keeps that single-result.
 
         Behavior differs based on lookup type:
 
@@ -203,7 +213,7 @@ class OrgScopedRepository(Generic[ModelT]):
         # name coexist without ``scalar_one_or_none`` raising MultipleResultsFound.
         # (The filter lives HERE, on the name-cascade path, NOT on list() — list()
         # must show deployed entities so users can see/use them, criterion 16.)
-        if _model_has_solution_id(self.model):
+        if _model_has_solution_id(self.model) and not include_solution_managed:
             query = query.where(self.model.solution_id.is_(None))  # type: ignore[attr-defined]
 
         # Step 1: Try org-specific lookup (if we have an org)
@@ -226,12 +236,15 @@ class OrgScopedRepository(Generic[ModelT]):
 
         return None
 
-    async def can_access(self, **filters: Any) -> ModelT:
+    async def can_access(
+        self, *, include_solution_managed: bool = False, **filters: Any
+    ) -> ModelT:
         """
         Get entity or raise AccessDeniedError.
 
         Convenience wrapper around get() that raises an exception if the
-        entity is not found or not accessible.
+        entity is not found or not accessible. ``include_solution_managed`` is
+        forwarded to :meth:`get` (the app-by-slug open path uses it).
 
         Args:
             **filters: Filter conditions (e.g., id=uuid, name="foo")
@@ -248,7 +261,9 @@ class OrgScopedRepository(Generic[ModelT]):
             except AccessDeniedError:
                 raise HTTPException(status_code=403, detail="Access denied")
         """
-        entity = await self.get(**filters)
+        entity = await self.get(
+            include_solution_managed=include_solution_managed, **filters
+        )
         if not entity:
             raise AccessDeniedError()
         return entity

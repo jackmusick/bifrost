@@ -159,7 +159,10 @@ async def get_application_or_404(
             if not app:
                 raise AccessDeniedError(f"Application '{slug}' not found")
             return app
-        return await repo.can_access(slug=slug)
+        # include_solution_managed: a deployed (solution-managed) app MUST be
+        # openable by its slug for regular users (criterion 16) — the deployed
+        # entities are visible/usable even though the Solution itself is not.
+        return await repo.can_access(slug=slug, include_solution_managed=True)
     except AccessDeniedError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
