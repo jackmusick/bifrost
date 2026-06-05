@@ -173,6 +173,45 @@ def _collect_apps(workspace: pathlib.Path) -> list[dict]:
     return entries
 
 
+class _AmbiguousInstall(Exception):
+    """More than one existing install matches (slug, scope); deploy can't pick."""
+
+
+def _resolve_target_install(
+    installs: list[dict], slug: str, scope: str
+) -> str | None:
+    """Resolve which existing install a disconnected deploy targets.
+
+    Matches by (slug, scope). For ``global`` scope an install is one with
+    ``organization_id is None``; for ``org`` scope, ``organization_id`` is set.
+
+    Returns the install id if exactly one matches, ``None`` if none match (the
+    caller creates a fresh install). Raises :class:`_AmbiguousInstall` if MORE
+    THAN ONE org-scoped install shares the slug — silently full-replacing the
+    first would clobber the wrong client's install (success-criteria §3.4). The
+    user must disambiguate with ``--solution <id>``.
+    """
+    matches = [
+        s for s in installs
+        if s.get("slug") == slug and (
+            (scope == "global" and s.get("organization_id") is None)
+            or (scope == "org" and s.get("organization_id") is not None)
+        )
+    ]
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]["id"]
+    listing = "\n".join(
+        f"  --solution {m['id']}  (org={m.get('organization_id')})" for m in matches
+    )
+    raise _AmbiguousInstall(
+        f"{len(matches)} installs of '{slug}' exist for scope '{scope}'. "
+        f"Deploy would full-replace one of them — refusing to guess.\n"
+        f"Re-run with an explicit target:\n{listing}"
+    )
+
+
 @solution_group.command(name="deploy", help="Deploy the current Solution workspace (full replace, non-interactive).")
 @click.argument("path", type=click.Path(exists=True, file_okay=False), default=".")
 @click.option("--solution", "solution_id", default=None, help="Target install id (override when ambiguous).")
@@ -199,15 +238,12 @@ def deploy_cmd(path: str, solution_id: str | None, yes: bool) -> None:
         if target_id is None:
             # Resolve or create the install by (slug, scope).
             resp = await client.get("/api/solutions")
-            if resp.status_code == 200:
-                for s in resp.json().get("solutions", []):
-                    same_scope = (
-                        (descriptor.scope == "global" and s.get("organization_id") is None)
-                        or (descriptor.scope == "org" and s.get("organization_id") is not None)
-                    )
-                    if s.get("slug") == descriptor.slug and same_scope:
-                        target_id = s["id"]
-                        break
+            installs = resp.json().get("solutions", []) if resp.status_code == 200 else []
+            try:
+                target_id = _resolve_target_install(installs, descriptor.slug, descriptor.scope)
+            except _AmbiguousInstall as e:
+                click.echo(str(e), err=True)
+                return 1
             if target_id is None:
                 create = await client.post("/api/solutions", json={
                     "slug": descriptor.slug,
