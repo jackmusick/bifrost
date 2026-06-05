@@ -45,6 +45,7 @@ from src.models.orm import (
 )
 from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
 from src.repositories.agents import AgentRepository
+from src.services.solutions.guard import assert_not_solution_managed
 from src.routers.tools import get_system_tool_ids
 from src.services.agent_stats import get_agent_stats, get_fleet_stats
 from src.services.workflow_role_service import sync_agent_roles_to_workflows
@@ -623,6 +624,9 @@ async def update_agent(
             detail=f"Agent {agent_id} not found",
         )
 
+    # Solution-managed agents are read-only here; deploy is the writer.
+    assert_not_solution_managed(agent)
+
     is_admin = user.is_platform_admin
 
     if not is_admin:
@@ -832,6 +836,9 @@ async def delete_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+
+    # Solution-managed agents are read-only here; deploy is the writer.
+    assert_not_solution_managed(agent)
 
     is_admin = user.is_platform_admin
 

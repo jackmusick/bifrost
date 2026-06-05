@@ -27,6 +27,7 @@ from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
 from src.models import Execution as ExecutionORM
 from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
+from src.services.solutions.guard import assert_not_solution_managed
 from src.models import Role as RoleORM
 from src.models import Workflow as WorkflowORM
 from src.models import FormCreate, FormUpdate, FormPublic
@@ -524,6 +525,9 @@ async def update_form(
             detail="Form not found",
         )
 
+    # Solution-managed forms are read-only here; deploy is the writer.
+    assert_not_solution_managed(form)
+
     # Validate references being updated
     form_schema_for_validation = None
     if request.form_schema is not None:
@@ -668,6 +672,9 @@ async def delete_form(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Form not found",
         )
+
+    # Solution-managed forms are read-only here; deploy is the writer.
+    assert_not_solution_managed(form)
 
     if purge:
         if form.is_active:

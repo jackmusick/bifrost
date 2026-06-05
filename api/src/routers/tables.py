@@ -54,6 +54,7 @@ from src.models.contracts.tables import (
 )
 from src.models.orm.custom_claims import CustomClaim as CustomClaimORM
 from src.models.orm.tables import Document, Table
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.repositories.tables import TableRepository
 from src.core.pubsub import publish_document_change, publish_policy_changed
 from src.services.audit import emit_audit
@@ -844,7 +845,12 @@ async def update_table(
     ctx: Context,
     user: CurrentSuperuser,
 ) -> TablePublic:
-    """Update table metadata by ID (platform admin only)."""
+    """Update table metadata by ID (platform admin only).
+
+    Solution-managed tables are read-only here: deploy owns schema + policies.
+    Row DATA (documents) stays editable — that's runtime state (criterion 7).
+    """
+    await assert_entity_id_not_solution_managed(ctx.db, Table, table_id)
     if "policies" in data.model_fields_set:
         existing_table = (
             await ctx.db.execute(select(Table).where(Table.id == table_id))
@@ -898,6 +904,7 @@ async def delete_table(
     user: CurrentSuperuser,
 ) -> None:
     """Delete a table and all its documents by ID (platform admin only)."""
+    await assert_entity_id_not_solution_managed(ctx.db, Table, table_id)
     repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
     success = await repo.delete_table(table_id)
 

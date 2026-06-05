@@ -60,6 +60,7 @@ from src.models.orm.applications import Application
 from src.models.orm.agents import Agent, AgentTool
 from src.models.orm.users import Role
 from src.services.workflow_validation import _extract_relative_path
+from src.services.solutions.guard import assert_not_solution_managed
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
@@ -1352,6 +1353,9 @@ async def update_workflow(
                 detail=f"Workflow with ID '{workflow_id}' not found",
             )
 
+        # Solution-managed workflows are read-only here; deploy is the writer.
+        assert_not_solution_managed(workflow)
+
         # Update organization_id - use model_fields_set to distinguish "not provided" from "explicitly null"
         if "organization_id" in request.model_fields_set:
             if request.organization_id is not None:
@@ -2047,6 +2051,9 @@ async def delete_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workflow with ID '{workflow_id}' not found",
         )
+
+    # Solution-managed workflows are read-only here; deploy is the writer.
+    assert_not_solution_managed(workflow)
 
     if not workflow.path:
         raise HTTPException(

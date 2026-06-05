@@ -39,6 +39,7 @@ from src.models.contracts.applications import (
     ApplicationUpdate,
 )
 from src.models.orm.applications import Application
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.core.exceptions import AccessDeniedError
 from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
 
@@ -321,6 +322,7 @@ async def update_application(
     user: CurrentUser,
 ) -> ApplicationPublic:
     """Update application metadata and access control by ID."""
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
@@ -375,6 +377,7 @@ async def delete_application(
     user: CurrentUser,
 ) -> None:
     """Delete an application by ID."""
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
@@ -441,6 +444,7 @@ async def save_draft(
 
     Replaces all existing draft files with the provided definition.
     """
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
