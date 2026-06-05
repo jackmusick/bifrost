@@ -85,3 +85,21 @@ def test_app_secondary_mutations_are_locked(e2e_client, platform_admin):
         resp = fn(path, headers=headers, json=body) if body is not None else fn(path, headers=headers)
         assert resp.status_code == 409, f"{method.upper()} {path} -> {resp.status_code} {resp.text}"
         assert resp.json()["detail"] == _MSG, f"{method.upper()} {path}: {resp.json()}"
+
+
+def test_role_endpoints_locked_for_managed_workflow(e2e_client, platform_admin):
+    """Role-centric endpoints (/api/roles/{id}/workflows) must refuse to mutate
+    role bindings on a solution-managed entity (Codex P1-a)."""
+    headers = platform_admin.headers
+    sid = _solution(e2e_client, headers, f"role-{uuid.uuid4().hex[:8]}")
+    wf_id, _ = _deploy_workflow_and_app(e2e_client, headers, sid)
+    # Create a role to assign.
+    r = e2e_client.post("/api/roles", headers=headers, json={"name": f"r-{uuid.uuid4().hex[:6]}"})
+    assert r.status_code in (200, 201), r.text
+    role_id = r.json()["id"]
+
+    # Assign the managed workflow to the role → must 409.
+    resp = e2e_client.post(f"/api/roles/{role_id}/workflows", headers=headers,
+                           json={"workflow_ids": [wf_id]})
+    assert resp.status_code == 409, f"{resp.status_code} {resp.text}"
+    assert resp.json()["detail"] == _MSG

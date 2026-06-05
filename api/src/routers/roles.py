@@ -16,6 +16,7 @@ from sqlalchemy import func, select, delete
 from src.core.auth import CurrentSuperuser
 from src.core.database import DbSession
 from src.core.log_safety import log_safe
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.services.audit import emit_audit
 from src.models import (
     Role as RoleORM,
@@ -530,6 +531,8 @@ async def assign_forms_to_role(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Form with ID '{form_id_str}' not found",
             )
+        # Role bindings are portable + solution-owned: locked for managed forms.
+        await assert_entity_id_not_solution_managed(db, FormORM, form_uuid)
 
         # Check if already assigned
         existing = await db.execute(
@@ -570,6 +573,7 @@ async def remove_form_from_role(
     db: DbSession,
 ) -> None:
     """Remove a form from a role."""
+    await assert_entity_id_not_solution_managed(db, FormORM, form_id)
     result = await db.execute(
         delete(FormRoleORM).where(
             FormRoleORM.form_id == form_id,
@@ -641,6 +645,7 @@ async def assign_agents_to_role(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Agent with ID '{agent_id_str}' not found",
             )
+        await assert_entity_id_not_solution_managed(db, AgentORM, agent_uuid)
 
         # Check if already assigned
         existing = await db.execute(
@@ -681,6 +686,7 @@ async def remove_agent_from_role(
     db: DbSession,
 ) -> None:
     """Remove an agent from a role."""
+    await assert_entity_id_not_solution_managed(db, AgentORM, agent_id)
     result = await db.execute(
         delete(AgentRoleORM).where(
             AgentRoleORM.agent_id == agent_id,
@@ -770,6 +776,8 @@ async def bulk_unassign_forms(
 ) -> None:
     """Remove multiple forms from a role in one statement."""
     uuids = [UUID(fid) for fid in request.form_ids]
+    for fid in uuids:
+        await assert_entity_id_not_solution_managed(db, FormORM, fid)
     await db.execute(
         delete(FormRoleORM).where(
             FormRoleORM.role_id == role_id,
@@ -804,6 +812,8 @@ async def bulk_unassign_agents(
 ) -> None:
     """Remove multiple agents from a role in one statement."""
     uuids = [UUID(aid) for aid in request.agent_ids]
+    for aid in uuids:
+        await assert_entity_id_not_solution_managed(db, AgentORM, aid)
     await db.execute(
         delete(AgentRoleORM).where(
             AgentRoleORM.role_id == role_id,
@@ -868,6 +878,7 @@ async def assign_apps_to_role(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Application with ID '{app_id_str}' not found",
             )
+        await assert_entity_id_not_solution_managed(db, ApplicationORM, app_uuid)
         existing = await db.execute(
             select(AppRoleORM).where(
                 AppRoleORM.app_id == app_uuid,
@@ -905,6 +916,8 @@ async def bulk_unassign_apps(
     db: DbSession,
 ) -> None:
     uuids = [UUID(aid) for aid in request.app_ids]
+    for aid in uuids:
+        await assert_entity_id_not_solution_managed(db, ApplicationORM, aid)
     await db.execute(
         delete(AppRoleORM).where(
             AppRoleORM.role_id == role_id,
@@ -967,6 +980,7 @@ async def assign_workflows_to_role(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow with ID '{wf_id_str}' not found",
             )
+        await assert_entity_id_not_solution_managed(db, WorkflowORM, wf_uuid)
         existing = await db.execute(
             select(WorkflowRoleORM).where(
                 WorkflowRoleORM.workflow_id == wf_uuid,
@@ -1004,6 +1018,8 @@ async def bulk_unassign_workflows(
     db: DbSession,
 ) -> None:
     uuids = [UUID(wid) for wid in request.workflow_ids]
+    for wid in uuids:
+        await assert_entity_id_not_solution_managed(db, WorkflowORM, wid)
     await db.execute(
         delete(WorkflowRoleORM).where(
             WorkflowRoleORM.role_id == role_id,
