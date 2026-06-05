@@ -1,0 +1,64 @@
+"""SolutionAppBuilder — server-side vite build → _apps/{app_id}/dist/ (criterion 12).
+
+The builder turns a v2 app's transient src/ into a built dist/ and uploads it to
+_apps/{app_id}/dist/. A bundle may instead ship a prebuilt dist/ (disconnected
+fast-path), in which case the vite build is skipped entirely. src/ is NEVER
+written under _solutions/.
+"""
+from __future__ import annotations
+
+import uuid
+
+import pytest
+
+from src.services.solutions.app_build import SolutionAppBuilder
+
+
+@pytest.mark.e2e
+async def test_prebuilt_dist_is_used_without_building(monkeypatch):
+    """A non-empty prebuilt_dist short-circuits the vite build and is uploaded."""
+    built = {"index.html": b"<html>v2</html>", "assets/app-abc.js": b"//js"}
+    app_id = uuid.uuid4()
+
+    b = SolutionAppBuilder()
+
+    def _boom(*a, **k):
+        raise AssertionError("vite build must not run when prebuilt dist is supplied")
+
+    monkeypatch.setattr(b, "_run_vite_build", _boom)
+
+    out = await b.build(
+        app_id=app_id,
+        src_files={},
+        dependencies={},
+        prebuilt_dist=built,
+    )
+    assert set(out) == set(built)
+
+    # And the uploaded dist is readable back from _apps/{app_id}/dist/.
+    index = await b.read_dist(app_id, "index.html")
+    assert index == b"<html>v2</html>"
+
+
+@pytest.mark.e2e
+async def test_build_runs_vite_when_no_prebuilt_dist(monkeypatch):
+    """With no prebuilt dist, the builder runs vite and uploads the produced dist."""
+    app_id = uuid.uuid4()
+    b = SolutionAppBuilder()
+
+    captured = {}
+
+    def _fake_vite(workdir):
+        captured["workdir"] = workdir
+        return {"index.html": b"<html>built</html>"}
+
+    monkeypatch.setattr(b, "_run_vite_build", _fake_vite)
+
+    out = await b.build(
+        app_id=app_id,
+        src_files={"src/main.tsx": b"console.log(1)", "index.html": b"<html></html>"},
+        dependencies={"bifrost": "1.0.0"},
+        prebuilt_dist=None,
+    )
+    assert out == {"index.html": b"<html>built</html>"}
+    assert "workdir" in captured
