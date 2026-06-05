@@ -10,6 +10,7 @@ Used for:
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -441,33 +442,47 @@ def serialize_mcp_server(
 # =============================================================================
 
 
-async def generate_manifest(db: AsyncSession) -> Manifest:
+async def generate_manifest(
+    db: AsyncSession, solution_id: "UUID | None" = None
+) -> Manifest:
     """
     Generate a Manifest from current DB state.
 
     Queries all active entities and builds a complete manifest
     with org bindings, role assignments, and runtime config.
+
+    When ``solution_id`` is given, the solution-capable entities
+    (workflows/forms/agents/apps/tables) are restricted to that one install —
+    a per-scope Solution export must not cross-contaminate other tenants or the
+    ad-hoc ``_repo/`` workspace (success-criteria §5). With no ``solution_id``
+    the legacy full-dump behavior is unchanged.
     """
+    def _scope(stmt, model):
+        # Restrict to one install when exporting a Solution; otherwise unchanged.
+        return stmt.where(model.solution_id == solution_id) if solution_id is not None else stmt
+
     # Fetch all active workflows (sorted by name for deterministic manifest output)
     wf_result = await db.execute(
-        select(Workflow).where(Workflow.is_active == True).order_by(Workflow.name)  # noqa: E712
+        _scope(
+            select(Workflow).where(Workflow.is_active == True), Workflow  # noqa: E712
+        ).order_by(Workflow.name)
     )
     workflows_list = wf_result.scalars().all()
 
     # Fetch all active forms (sorted by name)
     form_result = await db.execute(
-        select(Form).where(Form.is_active == True).order_by(Form.name)  # noqa: E712
+        _scope(select(Form).where(Form.is_active == True), Form).order_by(Form.name)  # noqa: E712
     )
     forms_list = form_result.scalars().all()
 
     # Fetch all active agents (sorted by name)
     agent_result = await db.execute(
-        select(Agent).where(Agent.is_active == True).order_by(Agent.name)  # noqa: E712
+        _scope(select(Agent).where(Agent.is_active == True), Agent).order_by(Agent.name)  # noqa: E712
     )
     agents_list = agent_result.scalars().all()
 
     # Fetch all apps (sorted by name)
-    app_result = await db.execute(select(Application).order_by(Application.name))
+    app_result = await db.execute(_scope(select(Application), Application).order_by(Application.name))
     apps_list = app_result.scalars().all()
 
     # Fetch organizations (sorted by name)
@@ -602,7 +617,7 @@ async def generate_manifest(db: AsyncSession) -> Manifest:
     # ------------------------------------------------------------------
     # Tables
     # ------------------------------------------------------------------
-    table_result = await db.execute(select(Table).order_by(Table.name))
+    table_result = await db.execute(_scope(select(Table), Table).order_by(Table.name))
     tables_list = table_result.scalars().all()
 
     # ------------------------------------------------------------------
