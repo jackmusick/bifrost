@@ -59,6 +59,14 @@ def scan_imported_modules(source: str) -> set[str]:
         elif isinstance(node, ast.ImportFrom):
             if node.level == 0 and node.module:
                 mods.add(node.module)
+                # `from pkg import name` may import a SUBMODULE (pkg/name.py),
+                # not just a symbol from pkg/__init__.py — matters for PEP 420
+                # namespace packages with no __init__.py. Record pkg.name too so
+                # vendoring can resolve the submodule file. ``import *`` (name
+                # "*") is not a module and is skipped.
+                for alias in node.names:
+                    if alias.name and alias.name != "*":
+                        mods.add(f"{node.module}.{alias.name}")
     return mods
 
 

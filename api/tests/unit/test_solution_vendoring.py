@@ -96,3 +96,14 @@ async def test_package_init_resolution() -> None:
     repo = {"shared/__init__.py": "thing = 1\n"}
     out = await vendor_shared_deps(bundle, _reader(repo))
     assert out == {"shared/__init__.py": "thing = 1\n"}
+
+
+@pytest.mark.asyncio
+async def test_from_namespace_pkg_import_submodule() -> None:
+    """`from shared import calc` where shared is a PEP-420 namespace (no
+    __init__.py) must vendor shared/calc.py, not just look for shared/__init__.py
+    (Codex Sub-plan 4 P2)."""
+    bundle = {"workflows/w.py": "from shared import calc\n"}
+    repo = {"shared/calc.py": "VALUE = 1\n"}  # no shared/__init__.py
+    out = await vendor_shared_deps(bundle, _reader(repo))
+    assert out == {"shared/calc.py": "VALUE = 1\n"}

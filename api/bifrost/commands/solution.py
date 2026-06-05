@@ -182,8 +182,28 @@ def deploy_cmd(path: str, solution_id: str | None, yes: bool) -> None:
                     return 1
                 target_id = create.json()["id"]
 
+        # Vendor referenced _repo/ shared modules into the bundle so the deployed
+        # Solution is self-contained (criterion 5). When global_repo_access is on
+        # the install can reach _repo/ at runtime, so vendoring is skipped.
+        bundle_python = python_files
+        if not descriptor.global_repo_access:
+            from src.services.solutions.vendoring import vendor_shared_deps
+
+            async def _repo_read(path: str) -> str | None:
+                resp = await client.post("/api/files/read", json={
+                    "path": path, "location": "workspace", "mode": "cloud",
+                })
+                if resp.status_code != 200:
+                    return None
+                return resp.json().get("content")
+
+            vendored = await vendor_shared_deps(python_files, _repo_read)
+            if vendored:
+                click.echo(f"Vendored {len(vendored)} shared dependency file(s).")
+                bundle_python = {**python_files, **vendored}
+
         deploy = await client.post(f"/api/solutions/{target_id}/deploy", json={
-            "python_files": python_files,
+            "python_files": bundle_python,
             "workflows": workflows,
             "tables": tables,
         })
