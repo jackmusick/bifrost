@@ -17,6 +17,7 @@ load-bearing workflow path.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import pathlib
 
@@ -68,6 +69,191 @@ def init_cmd(path: str, slug: str, name: str | None, scope: str, global_repo_acc
         )
     )
     click.echo(f"Wrote {descriptor}")
+
+
+@solution_group.command(
+    name="scaffold-app",
+    help="Scaffold a standalone_v2 React app (package.json, vite, main.tsx, App.tsx).",
+)
+@click.argument("slug")
+@click.option("--path", "path", default=None,
+              help="App dir (default: apps/<slug> under the cwd).")
+@click.option("--api-url", default=None,
+              help="Instance URL the app resolves `bifrost` from (default: $BIFROST_API_URL).")
+def scaffold_app_cmd(slug: str, path: str | None, api_url: str | None) -> None:
+    """Write a working v2 app skeleton wired for the CLI-login dev loop."""
+    url = api_url or os.getenv("BIFROST_API_URL") or "http://localhost:8000"
+    app_dir = pathlib.Path(path) if path else pathlib.Path("apps") / slug
+    if app_dir.exists() and any(app_dir.iterdir()):
+        raise click.ClickException(f"{app_dir} already exists and is not empty")
+    for rel, content in _v2_scaffold_files(slug, url).items():
+        dest = app_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content)
+    click.echo(f"Scaffolded standalone_v2 app at {app_dir}")
+    click.echo("Next: cd into it, `cp .env.example .env`, `npm install`, `npm run dev`.")
+
+
+def _v2_scaffold_files(slug: str, api_url: str) -> dict[str, str]:
+    """The files for a working standalone_v2 app skeleton.
+
+    Designed so a developer's local ``npm run dev`` works with ZERO token
+    pasting: ``vite.config.ts`` reads the CLI's own ``BIFROST_API_URL`` +
+    ``BIFROST_ACCESS_TOKEN`` (the ones ``bifrost login`` already wrote to .env)
+    and exposes them to the app. Deployed, the platform injects
+    ``window.__BIFROST_APP__`` instead; ``main.tsx`` prefers that and falls back
+    to the dev env, so one source builds + runs in both places (Codex R4 DX).
+    """
+    pkg = {
+        "name": slug,
+        "private": True,
+        "type": "module",
+        "scripts": {"dev": "vite", "build": "vite build", "preview": "vite preview"},
+        # `bifrost` resolves from THIS instance (same mechanism as the server
+        # build) — no public-npm publish, no token pasting.
+        "dependencies": {
+            "bifrost": f"{api_url.rstrip('/')}/api/sdk/download",
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0",
+            "react-router-dom": "^6.22.0",
+            "lucide-react": "^0.400.0",
+        },
+        "devDependencies": {
+            "@vitejs/plugin-react": "^4.2.0",
+            "typescript": "^5.4.0",
+            "vite": "^5.2.0",
+        },
+    }
+    vite_config = """\
+import { defineConfig, loadEnv } from "vite";
+import react from "@vitejs/plugin-react";
+
+// Make the CLI's own login available to `npm run dev` — bifrost login wrote
+// BIFROST_API_URL + BIFROST_ACCESS_TOKEN to .env, so the dev app authenticates
+// with no token pasting. Deployed, window.__BIFROST_APP__ supplies these instead.
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "BIFROST_");
+  return {
+    plugins: [react()],
+    define: {
+      "import.meta.env.VITE_BIFROST_API_URL": JSON.stringify(env.BIFROST_API_URL || ""),
+      "import.meta.env.VITE_BIFROST_TOKEN": JSON.stringify(env.BIFROST_ACCESS_TOKEN || ""),
+    },
+  };
+});
+"""
+    index_html = f"""\
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>{slug}</title></head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+"""
+    main_tsx = """\
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import { BifrostProvider } from "bifrost";
+
+import App from "./App";
+
+// Deployed: the platform injects window.__BIFROST_APP__ (mount node, basename,
+// per-viewer token, org). Local dev: fall back to the CLI's .env (via vite).
+const boot = window.__BIFROST_APP__;
+const mountEl = boot?.mountEl ?? document.getElementById("root")!;
+const basename = boot?.basename ?? "/";
+const baseUrl = boot?.baseUrl ?? import.meta.env.VITE_BIFROST_API_URL ?? window.location.origin;
+const token = boot?.token ?? import.meta.env.VITE_BIFROST_TOKEN ?? "";
+const orgScope = boot?.orgScope ?? null;
+
+const root = createRoot(mountEl);
+// Let the platform tear this root down on navigation (no leak).
+boot?.registerUnmount?.(() => root.unmount());
+
+root.render(
+  <StrictMode>
+    <BifrostProvider baseUrl={baseUrl} token={token} orgScope={orgScope} onLogout={boot?.onLogout}>
+      <BrowserRouter basename={basename}>
+        <App />
+      </BrowserRouter>
+    </BifrostProvider>
+  </StrictMode>,
+);
+"""
+    app_tsx = """\
+import { Routes, Route, Link } from "react-router-dom";
+import { BifrostHeader, useWorkflow } from "bifrost";
+
+function Home() {
+  // Replace "your-workflow" with a real workflow name/id in your solution.
+  const wf = useWorkflow<{ message: string }>("your-workflow");
+  return (
+    <main style={{ padding: 24 }}>
+      <h1>Hello from your Bifrost app</h1>
+      <p>
+        <Link to="/about">About</Link>
+      </p>
+      <button onClick={() => wf.run({})} disabled={wf.loading}>
+        {wf.loading ? "Running…" : "Run workflow"}
+      </button>
+      {wf.error && <pre style={{ color: "crimson" }}>{wf.error.message}</pre>}
+      {wf.data && <pre>{JSON.stringify(wf.data, null, 2)}</pre>}
+    </main>
+  );
+}
+
+function About() {
+  return (
+    <main style={{ padding: 24 }}>
+      <h1>About</h1>
+      <p>This route is at /about — refresh works because the URL is real.</p>
+      <Link to="/">Home</Link>
+    </main>
+  );
+}
+
+export default function App() {
+  return (
+    <>
+      <BifrostHeader title="My App" />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+      </Routes>
+    </>
+  );
+}
+"""
+    env_example = """\
+# `bifrost login` writes these; copy to .env (or symlink your CLI scratch .env).
+BIFROST_API_URL=http://localhost:8000
+BIFROST_ACCESS_TOKEN=
+"""
+    readme = f"""\
+# {slug} — a Bifrost standalone_v2 app
+
+Local dev (no token pasting — uses your `bifrost login`):
+
+    cp .env.example .env      # then paste BIFROST_ACCESS_TOKEN from your CLI .env
+    npm install               # resolves `bifrost` from {api_url}
+    npm run dev               # http://localhost:5173
+
+Deploy (the platform builds + serves it at /apps/{slug}):
+
+    bifrost deploy
+"""
+    return {
+        "package.json": json.dumps(pkg, indent=2) + "\n",
+        "vite.config.ts": vite_config,
+        "index.html": index_html,
+        "src/main.tsx": main_tsx,
+        "src/App.tsx": app_tsx,
+        ".env.example": env_example,
+        "README.md": readme,
+    }
 
 
 def _collect_python_files(workspace: pathlib.Path) -> dict[str, str]:
