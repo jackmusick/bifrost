@@ -35,20 +35,25 @@ def _reset_redis_singleton():
 
 @pytest.fixture(autouse=True)
 def _stub_app_build(monkeypatch):
-    """No real vite — capture the dist that would be uploaded."""
+    """No real vite — compile to a stub dist (sync) + capture uploads.
+
+    The deployer compiles dists pre-commit (compile_dist, sync) and uploads them
+    post-commit (upload_dist), so both seams are stubbed."""
     from src.services.solutions import app_build
 
     uploaded: dict[str, dict] = {}
 
-    async def _fake_build(self, app_id, src_files, dependencies, prebuilt_dist=None):
-        dist = prebuilt_dist or {"index.html": b"<html></html>"}
+    def _fake_compile(self, app_id, src_files, dependencies, prebuilt_dist=None):
+        return prebuilt_dist or {"index.html": b"<html></html>"}
+
+    async def _fake_upload(self, app_id, dist):
         uploaded[str(app_id)] = dist
-        return dist
 
     async def _fake_delete(self, app_id):
         uploaded.pop(str(app_id), None)
 
-    monkeypatch.setattr(app_build.SolutionAppBuilder, "build", _fake_build)
+    monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _fake_compile)
+    monkeypatch.setattr(app_build.SolutionAppBuilder, "upload_dist", _fake_upload, raising=False)
     monkeypatch.setattr(
         app_build.SolutionAppBuilder, "delete_dist", _fake_delete, raising=False
     )
@@ -289,14 +294,18 @@ class TestAppSlugRouteCollision:
 
         captured: dict = {}
 
-        async def _capture_build(self, app_id, src_files, dependencies, prebuilt_dist=None):
+        def _capture_compile(self, app_id, src_files, dependencies, prebuilt_dist=None):
             captured["src_files"] = src_files
             return {"index.html": b"<html></html>"}
+
+        async def _noop_upload(self, app_id, dist):
+            return None
 
         async def _noop_delete(self, app_id):
             return None
 
-        monkeypatch.setattr(app_build.SolutionAppBuilder, "build", _capture_build)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _capture_compile)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "upload_dist", _noop_upload, raising=False)
         monkeypatch.setattr(app_build.SolutionAppBuilder, "delete_dist", _noop_delete, raising=False)
 
         db = db_session
@@ -314,7 +323,7 @@ class TestAppSlugRouteCollision:
         ))
         await db.flush()
         await result.finalize_s3()
-        # The decoded PNG bytes reached the builder alongside the text source.
+        # The decoded PNG bytes reached the builder (at compile time, pre-commit).
         assert captured["src_files"]["logo.png"] == png
         assert captured["src_files"]["src/main.tsx"] == b"import './logo.png'"
 
@@ -371,9 +380,9 @@ class TestAppPublishAndBuildModel:
         # If build() is called for an inline_v1 app, fail loudly.
         from src.services.solutions import app_build
 
-        async def _boom(self, *a, **k):
+        def _boom(self, *a, **k):
             raise AssertionError("inline_v1 app must not be vite-built")
-        monkeypatch.setattr(app_build.SolutionAppBuilder, "build", _boom)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _boom)
 
         result = await SolutionDeployer(db).deploy(SolutionBundle(
             solution=sol,
@@ -413,14 +422,19 @@ class TestDeployTransactionalS3:
         ))
         await db.flush()
 
-        # Spy on S3-writing methods — none should be called when the deploy fails.
+        # Spy on the build seams — none should run when the deploy fails in the
+        # DB phase (the conflict raises BEFORE compile, which is before upload).
         from src.services.solutions import app_build
-        calls = {"build": 0}
+        calls = {"compile": 0, "upload": 0}
 
-        async def _count_build(self, *a, **k):
-            calls["build"] += 1
+        def _count_compile(self, *a, **k):
+            calls["compile"] += 1
             return {"index.html": b""}
-        monkeypatch.setattr(app_build.SolutionAppBuilder, "build", _count_build)
+
+        async def _count_upload(self, *a, **k):
+            calls["upload"] += 1
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _count_compile)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "upload_dist", _count_upload, raising=False)
 
         wrote_python = {"n": 0}
         orig = SolutionDeployer._write_python
@@ -442,6 +456,46 @@ class TestDeployTransactionalS3:
                 apps=[_app_entry(app_id, "dash")],
             ))
 
-        # No S3 writes happened (conflict raised during the DB phase).
-        assert calls["build"] == 0, "app dist was built despite a failed deploy"
+        # No build/upload/python-write happened (conflict raised in the DB phase,
+        # before compile and before the post-commit finalize).
+        assert calls["compile"] == 0, "app dist was compiled despite a failed deploy"
+        assert calls["upload"] == 0, "app dist was uploaded despite a failed deploy"
         assert wrote_python["n"] == 0, "python source was written despite a failed deploy"
+
+    async def test_build_failure_rolls_back_and_uploads_nothing(self, db_session, monkeypatch):
+        """A vite/npm BUILD error must raise from deploy() (pre-commit), so the
+        caller never commits and uploads nothing — DB never ends up ahead of S3
+        (Codex R4 atomicity). The compile runs before commit; if it throws, the
+        deploy is abandoned with no upload and no DeployResult to finalize."""
+        from src.services.solutions import app_build
+
+        uploaded = {"n": 0}
+
+        def _compile_boom(self, *a, **k):
+            raise RuntimeError("vite build failed: missing import './nope.png'")
+
+        async def _count_upload(self, *a, **k):
+            uploaded["n"] += 1
+
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _compile_boom)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "upload_dist", _count_upload, raising=False)
+
+        db = db_session
+        sol = Solution(id=uuid.uuid4(), slug=f"bf-{uuid.uuid4().hex[:8]}", name="BF", organization_id=None)
+        db.add(sol)
+        await db.flush()
+        app_id = str(uuid.uuid4())
+
+        with pytest.raises(RuntimeError, match="vite build failed"):
+            await SolutionDeployer(db).deploy(SolutionBundle(
+                solution=sol,
+                apps=[{
+                    "id": app_id, "slug": f"dash-{uuid.uuid4().hex[:6]}", "name": "D",
+                    "app_model": "standalone_v2", "dependencies": {},
+                    "src_files": {"src/main.tsx": "import './nope.png'"},
+                }],
+            ))
+
+        # The build error happened BEFORE any upload, and the caller would not
+        # commit — so nothing was uploaded.
+        assert uploaded["n"] == 0, "dist uploaded despite a failed build"

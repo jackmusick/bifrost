@@ -51,6 +51,36 @@ class SolutionAppBuilder:
             region_name=self._settings.s3_region,
         )
 
+    def compile_dist(
+        self,
+        app_id: UUID | str,
+        src_files: dict[str, bytes],
+        dependencies: dict[str, str],
+        prebuilt_dist: dict[str, bytes] | None = None,
+    ) -> dict[str, bytes]:
+        """Produce the app's dist/ IN MEMORY (no S3). This is the failure-prone
+        part — npm install + vite build — isolated so a deploy can run it BEFORE
+        the durable DB commit; a build error then rolls the deploy back with no
+        S3 or DB side effects (Codex R4 atomicity).
+
+        If ``prebuilt_dist`` is non-empty it's returned verbatim (disconnected
+        fast-path, no build). Synchronous (subprocess-bound); call via
+        ``asyncio.to_thread`` from async deploy code.
+        """
+        if prebuilt_dist:
+            return prebuilt_dist
+        with tempfile.TemporaryDirectory(prefix=f"bifrost-appbuild-{app_id}-") as tmp:
+            workdir = Path(tmp)
+            self._materialize(workdir, src_files, dependencies)
+            # base must match the serving route so emitted asset URLs resolve
+            # under /api/applications/{id}/dist/ rather than the site root.
+            return self._run_vite_build(workdir, base=self._dist_base(app_id))
+
+    async def upload_dist(self, app_id: UUID | str, dist: dict[str, bytes]) -> None:
+        """Full-replace upload of an already-compiled dist/ to
+        ``_apps/{app_id}/dist/`` (cheap PUTs). Runs AFTER the DB commit."""
+        await self._upload_dist(app_id, dist)
+
     async def build(
         self,
         app_id: UUID | str,
@@ -58,24 +88,9 @@ class SolutionAppBuilder:
         dependencies: dict[str, str],
         prebuilt_dist: dict[str, bytes] | None = None,
     ) -> dict[str, bytes]:
-        """Produce + upload the app's dist/ to ``_apps/{app_id}/dist/``.
-
-        If ``prebuilt_dist`` is non-empty, it is uploaded verbatim and the Vite
-        build is skipped (disconnected fast-path). Otherwise ``src_files`` are
-        written to a temp workspace, ``vite build`` runs, and the produced dist/
-        is uploaded. Returns the dist file map that was uploaded.
-        """
-        if prebuilt_dist:
-            dist = prebuilt_dist
-        else:
-            with tempfile.TemporaryDirectory(prefix=f"bifrost-appbuild-{app_id}-") as tmp:
-                workdir = Path(tmp)
-                self._materialize(workdir, src_files, dependencies)
-                # base must match the serving route so the emitted index.html
-                # references assets as /api/applications/{id}/dist/assets/...
-                # rather than the site root (otherwise they 404 in the iframe).
-                dist = self._run_vite_build(workdir, base=self._dist_base(app_id))
-
+        """Compile + upload in one step (compile_dist then upload_dist). Kept for
+        callers/tests that don't need the build/upload split."""
+        dist = self.compile_dist(app_id, src_files, dependencies, prebuilt_dist)
         await self._upload_dist(app_id, dist)
         return dist
 

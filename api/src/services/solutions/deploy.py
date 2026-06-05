@@ -107,17 +107,19 @@ class SolutionDeployer:
         self.db = db
 
     async def deploy(self, bundle: SolutionBundle) -> DeployResult:
-        """Full-replace this install from ``bundle`` — **DB phase only**.
+        """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
-        All DB upserts + the scoped reconcile run here, so the common failure
-        modes (ownership conflict, FK/unique constraint, content validation)
-        roll back the DB with ZERO S3 side effects. The S3 phase (Python source
-        write + app builds + stale-dist sweep) is NOT run here — it is bound onto
-        the returned ``DeployResult.finalize_s3`` and the caller awaits it only
-        **after a durable ``commit()``**. So a commit that fails after this
-        returns changes no running code (Codex P1-c) — the prior order ran S3
-        before the caller's commit, leaving a window where a failed deploy had
-        already replaced the install's executing Python source.
+        Everything that can fail on bad input runs BEFORE the caller's commit, so
+        a failure rolls the deploy back with ZERO durable side effects:
+          - DB upserts + scoped reconcile (ownership/FK/unique/content), and
+          - **app dist compilation** (npm install + vite build) — the
+            failure-prone step — done here, IN MEMORY, no S3 write yet.
+        Only the cheap, durable-after-commit work is deferred onto
+        ``DeployResult.finalize_s3``: write Python source, UPLOAD the
+        already-compiled dists, sweep stale dist artifacts. The caller commits
+        first, then awaits ``finalize_s3``. So neither a failed commit (Codex
+        P1-c) NOR a failed build (Codex R4) leaves DB ahead of S3 — a build error
+        raises here, before commit; finalize is just retryable PUTs.
         """
         solution = bundle.solution
         sid = solution.id
@@ -133,10 +135,14 @@ class SolutionDeployer:
             stale_app_dist,
         ) = await self._reconcile_deletions(sid, bundle)
 
-        # ── S3 phase, DEFERRED until after the caller's commit ───────────────
+        # ── COMPILE app dists to memory NOW (pre-commit) — a vite/npm failure
+        #    raises here and rolls back the whole deploy, no S3 touched. ───────
+        compiled = await self._compile_app_dists(builds)
+
+        # ── S3 phase, DEFERRED until after the caller's commit (cheap PUTs) ───
         async def _finalize_s3() -> None:
             await self._write_python(sid, bundle.python_files)
-            await self._run_app_builds(builds)
+            await self._upload_compiled_dists(compiled)
             await self._delete_stale_app_dist(stale_app_dist)
 
         return DeployResult(
@@ -460,14 +466,25 @@ class SolutionDeployer:
                 })
         return builds
 
-    async def _run_app_builds(self, builds: list[dict[str, Any]]) -> None:
-        """S3 phase: build/upload each deferred app dist. Runs only after all DB
-        work succeeded (Codex P1-e)."""
+    async def _compile_app_dists(
+        self, builds: list[dict[str, Any]]
+    ) -> list[tuple[UUID, dict[str, bytes]]]:
+        """PRE-COMMIT: compile each app's dist to memory (npm install + vite
+        build, or a shipped prebuilt dist). This is the failure-prone step — a
+        build error raises HERE, before the deploy commits, so the whole deploy
+        rolls back with no S3 side effects (Codex R4 atomicity). No S3 writes.
+
+        Returns ``[(app_id, dist_bytes), ...]`` for the post-commit upload.
+        """
+        import asyncio
+        import base64 as _b64
+
         from src.services.solutions.app_build import SolutionAppBuilder
 
         if not builds:
-            return
+            return []
         builder = SolutionAppBuilder()
+        out: list[tuple[UUID, dict[str, bytes]]] = []
         for b in builds:
             prebuilt = b["dist"]
             prebuilt_bytes = (
@@ -479,17 +496,32 @@ class SolutionDeployer:
                 k: v.encode("utf-8") if isinstance(v, str) else v
                 for k, v in b["src"].items()
             }
-            # Merge decoded binary assets (base64 → bytes) into the build input.
-            import base64 as _b64
-
             for rel, b64 in (b.get("bin") or {}).items():
                 src_bytes[rel] = _b64.b64decode(b64)
-            await builder.build(
-                app_id=b["app_id"],
-                src_files=src_bytes,
-                dependencies=b["dependencies"],
-                prebuilt_dist=prebuilt_bytes,
+            # compile_dist is subprocess-bound (npm/vite) → run off the loop.
+            dist = await asyncio.to_thread(
+                builder.compile_dist,
+                b["app_id"],
+                src_bytes,
+                b["dependencies"],
+                prebuilt_bytes,
             )
+            out.append((b["app_id"], dist))
+        return out
+
+    async def _upload_compiled_dists(
+        self, compiled: list[tuple[UUID, dict[str, bytes]]]
+    ) -> None:
+        """POST-COMMIT: upload the already-compiled dists (cheap, retryable
+        PUTs). The compile already succeeded pre-commit, so this can't fail the
+        deploy on bad input — only a transient S3 outage, which is re-runnable."""
+        from src.services.solutions.app_build import SolutionAppBuilder
+
+        if not compiled:
+            return
+        builder = SolutionAppBuilder()
+        for app_id, dist in compiled:
+            await builder.upload_dist(app_id, dist)
 
     async def _delete_stale_app_dist(self, app_ids: set[UUID]) -> None:
         """S3 phase: delete the dist artifacts of apps reconciled away."""
