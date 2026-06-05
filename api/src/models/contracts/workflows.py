@@ -65,6 +65,11 @@ class WorkflowMetadata(BaseModel):
     # Organization scoping - NULL means global (available to all orgs)
     organization_id: str | None = Field(default=None, description="Organization ID if org-scoped, None for global")
 
+    # Solution scoping - true when this entity is solution-managed (deployed,
+    # read-only on the platform). The UI uses this to render it read-only with a
+    # "managed by Solution" affordance. The install id itself is not exposed.
+    is_solution_managed: bool = Field(default=False, description="True if managed by a deployed Solution (read-only on platform)")
+
     # Access control
     access_level: str = Field(default="role_based", description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required)")
 

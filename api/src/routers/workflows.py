@@ -106,6 +106,7 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM, used_by_count: int = 
         tags=workflow.tags or [],
         type=workflow_type,
         organization_id=str(workflow.organization_id) if workflow.organization_id else None,
+        is_solution_managed=workflow.solution_id is not None,
         access_level=workflow.access_level or "role_based",
         parameters=parameters,
         execution_mode=execution_mode,
