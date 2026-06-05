@@ -44,10 +44,10 @@ This is NOT whack-a-mole on my fixes (only ~2 of 14 R4/R5 findings were holes in
 rest are genuinely new surfaces (concurrency/TOCTOU, ES-module caching, dev-loop papercuts, partial-
 failure). The bar is "two CONSECUTIVE clean reviews" and we have not had ONE clean review yet. The
 honest read: the v2-app-model + deploy surface is broad enough that a single reviewer keeps finding
-a fresh corner. **Recommendation for next session:** after fixing #21, run review #6; if it's again
-non-trivial, consider (a) a focused adversarial sweep on JUST the two riskiest areas (deploy
-atomicity/concurrency, and the v2 mount lifecycle) rather than the whole surface each time, or (b)
-accept that "2 clean" may take 2-3 more passes and budget for it. Don't claim done until 2 clean.
+a fresh corner. **NOW: all R3+R4+R5 findings fixed — running Codex review #6** (`/tmp/codex_review6.txt`,
+output `/tmp/codex_review6_out.txt`). If #6 is again non-trivial, consider (a) a focused adversarial
+sweep on JUST the two riskiest areas (deploy atomicity/concurrency, v2 mount lifecycle) rather than
+the whole surface each pass, or (b) accept "2 clean" may take 2-3 more passes. Don't claim done until 2 clean.
 
 ## RAISED DONE-BAR (user, 2026-06-05)
 "Done" requires the FULL E2E dev experience validated (a dev builds+runs a v2 app with no
