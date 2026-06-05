@@ -194,7 +194,17 @@ class OrgScopedRepository(Generic[ModelT]):
             return None
 
         # Name/key lookup: cascade scoping applies (even for superusers)
-        # This ensures correct entity resolution when names exist in multiple orgs
+        # This ensures correct entity resolution when names exist in multiple orgs.
+        #
+        # Name/path cascade is a ``_repo/``-tier concept: solution-managed entities
+        # (``solution_id IS NOT NULL``) are a separate world resolved BY ID at
+        # execution, never by name. So the cascade lookup restricts to
+        # ``solution_id IS NULL`` — this is what lets a _repo/ name and a solution
+        # name coexist without ``scalar_one_or_none`` raising MultipleResultsFound.
+        # (The filter lives HERE, on the name-cascade path, NOT on list() — list()
+        # must show deployed entities so users can see/use them, criterion 16.)
+        if _model_has_solution_id(self.model):
+            query = query.where(self.model.solution_id.is_(None))  # type: ignore[attr-defined]
 
         # Step 1: Try org-specific lookup (if we have an org)
         if self.org_id is not None:
@@ -302,12 +312,12 @@ class OrgScopedRepository(Generic[ModelT]):
         - org_id set: WHERE (organization_id = org_id OR organization_id IS NULL)
         - org_id None: WHERE organization_id IS NULL
 
-        Cascade resolution is a ``_repo/``-tier concept: solution-managed
-        entities (``solution_id IS NOT NULL``) are a separate world resolved by
-        id at execution, never by name/path cascade. So for solution-capable
-        models we also require ``solution_id IS NULL`` — this both honors that
-        boundary and prevents MultipleResultsFound now that a solution may reuse
-        a _repo/ name/path (success-criteria §3.5).
+        Unlike the name-cascade ``get()`` path, ``list()`` does NOT filter out
+        solution-managed entities: criterion 16 says the Solution *object* is
+        invisible, but the entities it deploys must appear in normal listings so
+        users can see and use them. The ``solution_id IS NULL`` restriction is
+        applied only on the by-name cascade in ``get()`` (where it prevents a
+        _repo/ name and a solution name from colliding) — see ``get()``.
         """
         if self.org_id is not None:
             query = query.where(
@@ -318,8 +328,6 @@ class OrgScopedRepository(Generic[ModelT]):
             )
         else:
             query = query.where(_org_is_null(self.model))
-        if _model_has_solution_id(self.model):
-            query = query.where(self.model.solution_id.is_(None))  # type: ignore[attr-defined]
         return query
 
     def _has_role_table(self) -> bool:
