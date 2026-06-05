@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Save, Eye, Pencil, Info, Play } from "lucide-react";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +46,9 @@ export function FormBuilder() {
 	const createForm = useCreateForm();
 	const updateForm = useUpdateForm();
 	const { data: workflowsMetadata } = useWorkflowsMetadata();
+
+	// Solution-managed forms are read-only on the platform (criterion 6).
+	const isSolutionManaged = existingForm?.is_solution_managed ?? false;
 
 	const defaultOrgId = isPlatformAdmin
 		? null
@@ -414,6 +418,7 @@ export function FormBuilder() {
 							onClick={handleSave}
 							disabled={
 								isSaveDisabled ||
+									isSolutionManaged ||
 								createForm.isPending ||
 								updateForm.isPending
 							}
@@ -431,6 +436,12 @@ export function FormBuilder() {
 					</div>
 				</div>
 			</div>
+
+			{isSolutionManaged && (
+				<div className="px-1 pb-3">
+					<SolutionManagedBanner entityLabel="form" />
+				</div>
+			)}
 
 			<Tabs
 				defaultValue="builder"

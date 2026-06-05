@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -176,6 +177,10 @@ export function AgentSettingsTab({
 	const { isPlatformAdmin, user } = useAuth();
 	const createAgent = useCreateAgent();
 	const updateAgent = useUpdateAgent();
+
+	// Solution-managed agents are read-only on the platform (criterion 6):
+	// show the banner and block Save. Only meaningful in edit mode.
+	const isSolutionManaged = mode === "edit" && (agent?.is_solution_managed ?? false);
 
 	const { data: allAgents } = useAgents();
 	const { data: toolsGrouped } = useToolsGrouped({ include_inactive: true });
@@ -372,6 +377,11 @@ export function AgentSettingsTab({
 				className={cn("overflow-hidden", CARD_SURFACE)}
 				data-testid="agent-settings-form"
 			>
+				{isSolutionManaged && (
+					<div className="px-5 pt-4">
+						<SolutionManagedBanner entityLabel="agent" />
+					</div>
+				)}
 				{/* Identity */}
 				<FormSection title="Identity">
 					{isPlatformAdmin ? (
@@ -1276,7 +1286,7 @@ export function AgentSettingsTab({
 				<div className="flex items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
 					<Button
 						type="submit"
-						disabled={pending || hasMismatchedTools}
+						disabled={pending || hasMismatchedTools || isSolutionManaged}
 						data-testid="save-agent-button"
 					>
 						{pending ? (
