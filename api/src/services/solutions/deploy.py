@@ -53,8 +53,48 @@ class SolutionDeployConflict(Exception):
 
 
 class SolutionFinalizeIncomplete(Exception):
-    """Deploy committed but the post-commit S3 finalize failed partway. The
-    deploy is full-replace + idempotent, so re-running it heals the state."""
+    """Deploy committed but a post-commit S3 finalize step failed even after
+    retries (a real storage outage). The deploy is full-replace + idempotent, so
+    re-running it heals the state."""
+
+
+# Post-commit finalize retry policy. Steps are idempotent full-replace writes, so
+# a transient blip is absorbed by retrying; only a sustained outage escalates.
+_FINALIZE_RETRIES = 3
+_FINALIZE_BACKOFF_S = 0.5
+
+
+async def _retry_idempotent(
+    what: str, sid: object, op: Callable[[], Awaitable[None]]
+) -> None:
+    """Run an idempotent finalize step, retrying transient failures with backoff.
+
+    Raises :class:`SolutionFinalizeIncomplete` only if every attempt fails — a
+    genuine storage outage, which a later deploy/sync still heals (the writes are
+    full-replace). Logs each retry so the blip is observable.
+    """
+    import asyncio
+
+    last: Exception | None = None
+    for attempt in range(1, _FINALIZE_RETRIES + 1):
+        try:
+            await op()
+            return
+        except Exception as exc:  # noqa: BLE001 - storage is the only failure here
+            last = exc
+            if attempt < _FINALIZE_RETRIES:
+                logger.warning(
+                    "Solution %s finalize step '%s' failed (attempt %d/%d): %s — retrying",
+                    sid, what, attempt, _FINALIZE_RETRIES, exc,
+                )
+                await asyncio.sleep(_FINALIZE_BACKOFF_S * attempt)
+    logger.error(
+        "Solution %s finalize step '%s' failed after %d attempts: %s. The deploy "
+        "is committed; re-run it (or wait for the next sync) to heal — every step "
+        "is full-replace and safe to repeat.",
+        sid, what, _FINALIZE_RETRIES, last,
+    )
+    raise SolutionFinalizeIncomplete(str(sid)) from last
 
 
 async def _noop_finalize() -> None:  # default so an unbound result is still awaitable
@@ -145,29 +185,25 @@ class SolutionDeployer:
         compiled = await self._compile_app_dists(builds)
 
         # ── S3 phase, DEFERRED until after the caller's commit (cheap PUTs) ───
-        # All steps are FULL-REPLACE (idempotent), so a failed finalize is healed
-        # by simply re-running the deploy. We order them execution-first (Python
-        # source before app dist) so a mid-finalize failure leaves the install
-        # runnable, and re-raise a clear error so the operator knows to re-run —
-        # the DB is already committed but every step is safe to repeat (Codex R5).
+        # Every step is FULL-REPLACE (idempotent), so a transient storage blip is
+        # absorbed by RETRYING the step rather than failing an already-committed
+        # deploy (Codex R5: "there is no queued retry"). Steps run execution-first
+        # (Python source before app dist) so even a mid-finalize hiccup leaves the
+        # install runnable. Only an outage that survives all retries raises
+        # SolutionFinalizeIncomplete — and even then a later deploy/sync heals it.
         async def _finalize_s3() -> None:
-            try:
-                # 1. Python source first — workflows must be executable even if a
-                #    later app upload fails.
-                await self._write_python(sid, bundle.python_files)
-                # 2. App dists.
-                await self._upload_compiled_dists(compiled)
-                # 3. Sweep stale dist last (cosmetic — orphaned bytes, not wrong code).
-                await self._delete_stale_app_dist(stale_app_dist)
-            except Exception as exc:  # noqa: BLE001 - surface + re-raise for retry
-                logger.error(
-                    "Deploy of solution %s committed but S3 finalization failed: "
-                    "%s. The deploy is full-replace + idempotent — re-run it to "
-                    "heal (no data loss; running code is unchanged from before "
-                    "this deploy until finalize completes).",
-                    sid, exc,
-                )
-                raise SolutionFinalizeIncomplete(str(sid)) from exc
+            await _retry_idempotent(
+                "write python source", sid,
+                lambda: self._write_python(sid, bundle.python_files),
+            )
+            await _retry_idempotent(
+                "upload app dists", sid,
+                lambda: self._upload_compiled_dists(compiled),
+            )
+            await _retry_idempotent(
+                "sweep stale dist", sid,
+                lambda: self._delete_stale_app_dist(stale_app_dist),
+            )
 
         return DeployResult(
             workflows_upserted=len(bundle.workflows),

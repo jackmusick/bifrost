@@ -120,12 +120,13 @@ async def deploy_solution(
     try:
         await result.finalize_s3()
     except SolutionFinalizeIncomplete as exc:
-        # DB is committed; the deploy is full-replace + idempotent, so re-running
-        # heals it. Surface 502 so the operator knows to retry (R5).
+        # Reached only when storage failed every retry (a real outage), not a
+        # transient blip. The DB is committed and the deploy is full-replace +
+        # idempotent, so re-running heals it; surface 502 so the operator retries.
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=(
-                "Deploy committed but storage finalization failed partway. "
+                "Deploy committed but storage was unavailable after retries. "
                 "Re-run the deploy to complete it (it is idempotent)."
             ),
         ) from exc

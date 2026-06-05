@@ -523,3 +523,73 @@ class TestDeployTransactionalS3:
         # The build error happened BEFORE any upload, and the caller would not
         # commit — so nothing was uploaded.
         assert uploaded["n"] == 0, "dist uploaded despite a failed build"
+
+    async def test_finalize_retries_a_transient_upload_failure(self, db_session, monkeypatch):
+        """A transient storage blip during post-commit finalize is absorbed by
+        retrying the idempotent step — the deploy completes, no error (Codex R5)."""
+        import src.services.solutions.deploy as deploy_mod
+        from src.services.solutions import app_build
+
+        monkeypatch.setattr(deploy_mod, "_FINALIZE_BACKOFF_S", 0)  # fast test
+
+        attempts = {"n": 0}
+
+        def _compile(self, *a, **k):
+            return {"index.html": b"<html></html>"}
+
+        async def _flaky_upload(self, *a, **k):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise RuntimeError("transient S3 reset")
+            # second attempt succeeds
+
+        async def _noop_delete(self, *a, **k):
+            return None
+
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _compile)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "upload_dist", _flaky_upload, raising=False)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "delete_dist", _noop_delete, raising=False)
+
+        db = db_session
+        sol = Solution(id=uuid.uuid4(), slug=f"fz-{uuid.uuid4().hex[:8]}", name="FZ", organization_id=None)
+        db.add(sol)
+        await db.flush()
+        result = await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol, apps=[_app_entry(str(uuid.uuid4()), f"d-{uuid.uuid4().hex[:6]}")],
+        ))
+        await db.flush()
+        await result.finalize_s3()  # must NOT raise — the retry succeeds
+        assert attempts["n"] == 2, "upload was not retried after a transient failure"
+
+    async def test_finalize_raises_when_storage_stays_down(self, db_session, monkeypatch):
+        """If a finalize step fails every retry (a real outage), finalize raises
+        SolutionFinalizeIncomplete so the caller can surface a retry (Codex R5)."""
+        import src.services.solutions.deploy as deploy_mod
+        from src.services.solutions import app_build
+        from src.services.solutions.deploy import SolutionFinalizeIncomplete
+
+        monkeypatch.setattr(deploy_mod, "_FINALIZE_BACKOFF_S", 0)
+
+        def _compile(self, *a, **k):
+            return {"index.html": b"<html></html>"}
+
+        async def _dead_upload(self, *a, **k):
+            raise RuntimeError("S3 unavailable")
+
+        async def _noop_delete(self, *a, **k):
+            return None
+
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _compile)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "upload_dist", _dead_upload, raising=False)
+        monkeypatch.setattr(app_build.SolutionAppBuilder, "delete_dist", _noop_delete, raising=False)
+
+        db = db_session
+        sol = Solution(id=uuid.uuid4(), slug=f"fz-{uuid.uuid4().hex[:8]}", name="FZ", organization_id=None)
+        db.add(sol)
+        await db.flush()
+        result = await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol, apps=[_app_entry(str(uuid.uuid4()), f"d-{uuid.uuid4().hex[:6]}")],
+        ))
+        await db.flush()
+        with pytest.raises(SolutionFinalizeIncomplete):
+            await result.finalize_s3()
