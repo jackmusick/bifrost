@@ -1,10 +1,15 @@
 /**
- * Live verification AFTER a solution is deployed to the debug stack. Confirms
- * the deployed v2 app + workflow show their solution-managed (read-only)
- * affordance, and the v2 app's dist is served. Self-contained UI login.
+ * MANUAL verification harness — NOT part of CI.
  *
- *   TEST_BASE_URL=http://localhost:<port> npx playwright test \
- *     e2e/solutions-deployed-verify.unauth.spec.ts --project=unauthenticated --no-deps
+ * Lives in `manual-verify/` (outside `testDir: ./e2e`), named `.manual.ts`, so
+ * `./test.sh client e2e` never collects it. Assumes a port-mode debug stack
+ * AND that a Solution has already been deployed to it (the "Live Dash" v2 app,
+ * "hello_live" workflow, "Legacy V1" app, and the hard-coded app UUID below) —
+ * none of which exist on a clean CI test stack. Operator deploys the fixture
+ * via the CLI first, then runs:
+ *   cd client && TEST_BASE_URL=http://localhost:<port> \
+ *     npx playwright test manual-verify/solutions-deployed-verify.manual.ts \
+ *     --project=unauthenticated --no-deps
  */
 import { test, expect } from "@playwright/test";
 

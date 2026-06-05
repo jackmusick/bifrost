@@ -1,13 +1,15 @@
 /**
- * Live verification of the Solutions app experience against a running debug
- * stack (port mode). Self-contained: logs in through the REAL UI (no setup
- * project), then drives the authenticated surfaces and captures screenshots.
+ * MANUAL verification harness — NOT part of CI.
  *
- *   TEST_BASE_URL=http://localhost:<port> npx playwright test \
- *     e2e/solutions-live-verify.unauth.spec.ts --project=unauthenticated
+ * Lives in `manual-verify/` (outside Playwright's `testDir: ./e2e`) and is named
+ * `.manual.ts` (not `.spec.ts`), so `./test.sh client e2e` never collects it.
+ * It logs in with the debug-stack dev credentials and assumes the operator has
+ * a port-mode debug stack running — neither holds on a clean CI test stack.
  *
- * Manual verification harness — not CI. The .unauth project starts with a
- * clean browser (no storageState), which is what we want: we exercise login.
+ * Run it explicitly against a live debug stack:
+ *   cd client && TEST_BASE_URL=http://localhost:<port> \
+ *     npx playwright test manual-verify/solutions-live-verify.manual.ts \
+ *     --project=unauthenticated --no-deps
  */
 import { test, expect } from "@playwright/test";
 

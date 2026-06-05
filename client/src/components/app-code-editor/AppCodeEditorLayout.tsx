@@ -42,6 +42,10 @@ interface AppCodeEditorLayoutProps {
 	appSlug?: string;
 	/** Callback when files are saved */
 	onSave?: (path: string, source: string, compiled: string) => Promise<void>;
+	/** When true, the app is solution-managed: disable all write controls
+	 *  (Save, file create/rename/delete). The API rejects writes regardless;
+	 *  this is the read-only affordance (criterion 6). */
+	readOnly?: boolean;
 }
 
 type ViewMode = "code" | "app";
@@ -57,6 +61,7 @@ export function AppCodeEditorLayout({
 	appName = "App",
 	appSlug,
 	onSave,
+	readOnly = false,
 }: AppCodeEditorLayoutProps) {
 	const location = useLocation();
 
@@ -95,11 +100,25 @@ export function AppCodeEditorLayout({
 		compiled: string | null;
 	} | null>(null);
 
-	// Create app code operations for the file tree
-	const operations = useMemo(
-		() => createAppCodeOperations(appId),
-		[appId],
-	);
+	// Create app code operations for the file tree. For a solution-managed
+	// (read-only) app, wrap the mutating ops so create/rename/delete reject
+	// with the locked message instead of round-tripping to a 409.
+	const operations = useMemo(() => {
+		const ops = createAppCodeOperations(appId);
+		if (!readOnly) return ops;
+		const denied = () => {
+			throw new Error(
+				"Solution-managed entities can only be managed by deployment methods.",
+			);
+		};
+		return {
+			...ops,
+			write: denied,
+			createFolder: denied,
+			delete: denied,
+			rename: denied,
+		};
+	}, [appId, readOnly]);
 
 	// Track file tree refresh counter - increments to trigger refresh
 	const [fileTreeRefresh, setFileTreeRefresh] = useState(0);
@@ -180,6 +199,9 @@ export function AppCodeEditorLayout({
 		initialCompiled: currentFile?.compiled ?? undefined,
 		compileDelay: 300,
 		onSave: async (source, compiled) => {
+			// Solution-managed apps are read-only — never write (the API 409s
+			// regardless; short-circuit so autosave/Cmd+S don't even try).
+			if (readOnly) return;
 			if (!currentFile) return;
 
 			try {
@@ -273,6 +295,12 @@ export function AppCodeEditorLayout({
 
 	// Handle manual save
 	const handleSave = useCallback(async () => {
+		if (readOnly) {
+			toast.error(
+				"This app is managed by a Solution and is read-only here.",
+			);
+			return;
+		}
 		if (!currentFile || editorState.errors.length > 0) {
 			if (editorState.errors.length > 0) {
 				toast.error("Cannot save with errors");
@@ -281,7 +309,7 @@ export function AppCodeEditorLayout({
 		}
 
 		await triggerSave();
-	}, [currentFile, editorState.errors, triggerSave]);
+	}, [readOnly, currentFile, editorState.errors, triggerSave]);
 
 	// Handle run/preview
 	const handleRun = useCallback(() => {
@@ -371,12 +399,13 @@ export function AppCodeEditorLayout({
 						size="sm"
 						onClick={handleSave}
 						disabled={
+							readOnly ||
 							!currentFile ||
 							!editorState.hasUnsavedChanges ||
 							editorState.errors.length > 0
 						}
 						className="gap-1"
-						title="Save (Cmd+S)"
+						title={readOnly ? "Managed by a Solution — read-only" : "Save (Cmd+S)"}
 					>
 						<Save className="h-4 w-4" />
 						Save

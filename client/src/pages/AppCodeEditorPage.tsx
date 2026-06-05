@@ -337,6 +337,7 @@ export function AppCodeEditorPage() {
 						appId={existingApp.id}
 						appName={existingApp.name}
 						appSlug={existingApp.slug}
+						readOnly={isManaged}
 					/>
 				)}
 			</div>
