@@ -100,3 +100,41 @@ async def test_app_slug_open_finds_managed(db_session):
     # With the flag, the managed app resolves.
     found = await repo.can_access(slug=slug, include_solution_managed=True)
     assert found.id == app_id
+
+
+async def test_admin_slug_resolves_cross_org_without_multipleresults(db_session):
+    """The same solution app slug installed for two orgs is legitimate
+    (criterion 9). An admin's get_by_slug_global must disambiguate by the active
+    org instead of raising MultipleResultsFound (Codex R4)."""
+    from src.models.orm.applications import Application
+    from src.models.orm.organizations import Organization
+    from src.repositories.applications import ApplicationRepository
+
+    db = db_session
+    org_a = Organization(id=uuid.uuid4(), name=f"A-{uuid.uuid4().hex[:6]}", created_by="dev@x")
+    org_b = Organization(id=uuid.uuid4(), name=f"B-{uuid.uuid4().hex[:6]}", created_by="dev@x")
+    db.add_all([org_a, org_b])
+    await db.flush()
+    # Two SOLUTION installs (the criterion-9 cross-org case): the global
+    # _repo/ slug index is partial on solution_id IS NULL, so only
+    # solution-managed apps can legitimately share a slug across orgs.
+    sol_a = Solution(id=uuid.uuid4(), slug=f"sa-{uuid.uuid4().hex[:6]}", name="SA", organization_id=org_a.id)
+    sol_b = Solution(id=uuid.uuid4(), slug=f"sb-{uuid.uuid4().hex[:6]}", name="SB", organization_id=org_b.id)
+    db.add_all([sol_a, sol_b])
+    await db.flush()
+    slug = f"dash-{uuid.uuid4().hex[:8]}"
+    app_a = Application(id=uuid.uuid4(), name="A", slug=slug, repo_path=f"apps/{slug}",
+                        organization_id=org_a.id, solution_id=sol_a.id)
+    app_b = Application(id=uuid.uuid4(), name="B", slug=slug, repo_path=f"apps/{slug}",
+                        organization_id=org_b.id, solution_id=sol_b.id)
+    db.add_all([app_a, app_b])
+    await db.flush()
+
+    # Admin scoped to org A resolves A's copy (no MultipleResultsFound 500).
+    repo_a = ApplicationRepository(db, org_id=org_a.id, user_id=None, is_superuser=True)
+    got_a = await repo_a.get_by_slug_global(slug)
+    assert got_a is not None and got_a.id == app_a.id
+    # Admin scoped to org B resolves B's copy.
+    repo_b = ApplicationRepository(db, org_id=org_b.id, user_id=None, is_superuser=True)
+    got_b = await repo_b.get_by_slug_global(slug)
+    assert got_b is not None and got_b.id == app_b.id

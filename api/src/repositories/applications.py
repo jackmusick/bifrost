@@ -115,10 +115,36 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         return list(result.scalars().all())
 
     async def get_by_slug_global(self, slug: str) -> Application | None:
-        """Check if any application exists with this slug (globally unique)."""
-        query = select(self.model).where(self.model.slug == slug)
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        """Resolve an app by slug for an admin, disambiguating by the active org.
+
+        Solution apps share a slug across orgs (criterion 9 — the same solution
+        installed for two orgs), so a bare ``scalar_one_or_none`` over the slug
+        would raise ``MultipleResultsFound`` for a platform admin (Codex R4).
+        Resolve like the user cascade does: prefer the row in the admin's active
+        org, then the global (NULL-org) row. Only genuinely undisambiguable when
+        two rows share BOTH slug and org — which the deploy-time collision guard
+        forbids — so we fall back to a deterministic pick rather than 500.
+        """
+        rows = list(
+            (
+                await self.session.execute(
+                    select(self.model).where(self.model.slug == slug)
+                )
+            ).scalars().all()
+        )
+        if not rows:
+            return None
+        if len(rows) == 1:
+            return rows[0]
+        if self.org_id is not None:
+            for r in rows:
+                if getattr(r, "organization_id", None) == self.org_id:
+                    return r
+        for r in rows:
+            if getattr(r, "organization_id", None) is None:
+                return r
+        # No org match and no global row — pick deterministically (stable order).
+        return sorted(rows, key=lambda r: str(r.id))[0]
 
     async def get_role_ids(self, app_id: UUID) -> list[UUID]:
         """Get list of role IDs assigned to an application."""

@@ -258,6 +258,50 @@ class TestAppSlugRouteCollision:
         ))
         await db.flush()
 
+    async def test_org_install_refused_against_visible_global_app(self, db_session, _stub_app_build):
+        """An ORG install must not stomp a GLOBAL app's slug — that org sees
+        both (global apps are visible to every org). Codex R4."""
+        from src.models.orm.organizations import Organization
+
+        db = db_session
+        org = Organization(id=uuid.uuid4(), name=f"O-{uuid.uuid4().hex[:6]}", created_by="dev@x")
+        db.add(org)
+        await db.flush()
+        slug = f"dash-{uuid.uuid4().hex[:8]}"
+        # Pre-existing GLOBAL app with this slug.
+        db.add(Application(
+            id=uuid.uuid4(), name="G", slug=slug, repo_path=f"apps/{slug}",
+            organization_id=None, solution_id=None,
+        ))
+        await db.flush()
+        sol = await self._install(db, org_id=org.id)  # org-scoped install
+        with pytest.raises(SolutionDeployConflict):
+            await SolutionDeployer(db).deploy(SolutionBundle(
+                solution=sol, apps=[_app_entry(str(uuid.uuid4()), slug)],
+            ))
+
+    async def test_global_install_refused_against_visible_org_app(self, db_session, _stub_app_build):
+        """A GLOBAL install must not take a slug already used by an ORG app —
+        that org would then see two apps at /apps/{slug}. Codex R4."""
+        from src.models.orm.organizations import Organization
+
+        db = db_session
+        org = Organization(id=uuid.uuid4(), name=f"O-{uuid.uuid4().hex[:6]}", created_by="dev@x")
+        db.add(org)
+        await db.flush()
+        slug = f"dash-{uuid.uuid4().hex[:8]}"
+        # Pre-existing ORG-scoped app with this slug.
+        db.add(Application(
+            id=uuid.uuid4(), name="OrgApp", slug=slug, repo_path=f"apps/{slug}",
+            organization_id=org.id, solution_id=None,
+        ))
+        await db.flush()
+        sol = await self._install(db, org_id=None)  # global install
+        with pytest.raises(SolutionDeployConflict):
+            await SolutionDeployer(db).deploy(SolutionBundle(
+                solution=sol, apps=[_app_entry(str(uuid.uuid4()), slug)],
+            ))
+
 
 @pytest.mark.e2e
 class TestAppPublishAndBuildModel:
