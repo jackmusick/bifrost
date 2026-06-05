@@ -149,19 +149,50 @@ def _v2_scaffold_files(slug: str, api_url: str) -> dict[str, str]:
         },
     }
     vite_config = """\
-import { defineConfig, loadEnv } from "vite";
-import react from "@vitejs/plugin-react";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, parse } from "node:path";
 
-// Make the CLI's own login available to `npm run dev` — bifrost login wrote
-// BIFROST_API_URL + BIFROST_ACCESS_TOKEN to .env, so the dev app authenticates
-// with no token pasting. Deployed, window.__BIFROST_APP__ supplies these instead.
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "BIFROST_");
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+// Tokenless local dev: `bifrost login` already wrote BIFROST_API_URL +
+// BIFROST_ACCESS_TOKEN to a .env (in the solution/CLI dir where you logged in).
+// We read it from the environment if the CLI exported it, else walk UP from this
+// app dir to the nearest .env carrying those keys — so `npm run dev`
+// authenticates with NO token pasting. Deployed, window.__BIFROST_APP__ supplies
+// these instead and main.tsx prefers it.
+function readBifrostEnv() {
+  const out = {
+    url: process.env.BIFROST_API_URL || "",
+    token: process.env.BIFROST_ACCESS_TOKEN || "",
+  };
+  let dir = process.cwd();
+  while (!(out.url && out.token)) {
+    const envPath = join(dir, ".env");
+    if (existsSync(envPath)) {
+      for (const line of readFileSync(envPath, "utf8").split("\\n")) {
+        const m = line.match(/^\\s*(BIFROST_API_URL|BIFROST_ACCESS_TOKEN)\\s*=\\s*(.*)\\s*$/);
+        if (m) {
+          const v = m[2].replace(/^["']|["']$/g, "");
+          if (m[1] === "BIFROST_API_URL" && !out.url) out.url = v;
+          if (m[1] === "BIFROST_ACCESS_TOKEN" && !out.token) out.token = v;
+        }
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir || dir === parse(dir).root) break;
+    dir = parent;
+  }
+  return out;
+}
+
+export default defineConfig(() => {
+  const env = readBifrostEnv();
   return {
     plugins: [react()],
     define: {
-      "import.meta.env.VITE_BIFROST_API_URL": JSON.stringify(env.BIFROST_API_URL || ""),
-      "import.meta.env.VITE_BIFROST_TOKEN": JSON.stringify(env.BIFROST_ACCESS_TOKEN || ""),
+      "import.meta.env.VITE_BIFROST_API_URL": JSON.stringify(env.url),
+      "import.meta.env.VITE_BIFROST_TOKEN": JSON.stringify(env.token),
     },
   };
 });
@@ -252,20 +283,30 @@ export default function App() {
 }
 """
     env_example = """\
-# `bifrost login` writes these; copy to .env (or symlink your CLI scratch .env).
-BIFROST_API_URL=http://localhost:8000
-BIFROST_ACCESS_TOKEN=
+# OPTIONAL. You normally DON'T need this file: `npm run dev` auto-discovers the
+# token `bifrost login` wrote (env, or the nearest .env up the tree). Create a
+# .env here only to override the instance URL / token for this app.
+# BIFROST_API_URL=http://localhost:8000
+# BIFROST_ACCESS_TOKEN=
 """
     readme = f"""\
 # {slug} — a Bifrost standalone_v2 app
 
-Local dev (no token pasting — uses your `bifrost login`):
+## Local dev (no token pasting)
 
-    cp .env.example .env      # then paste BIFROST_ACCESS_TOKEN from your CLI .env
-    npm install               # resolves `bifrost` from {api_url}
-    npm run dev               # http://localhost:5173
+You only need to be logged in with the CLI once — `npm run dev` reads the token
+`bifrost login` already wrote (from the environment, or the nearest `.env` up
+the directory tree). So from your logged-in solution workspace:
 
-Deploy (the platform builds + serves it at /apps/{slug}):
+    npm install     # resolves `bifrost` from {api_url}
+    npm run dev     # http://localhost:5173 — already authenticated
+
+(If you run `npm run dev` somewhere the CLI's `.env` isn't reachable, copy
+`.env.example` to `.env` and set the two BIFROST_* values.)
+
+## Deploy
+
+The platform builds the app server-side and serves it at `/apps/{slug}`:
 
     bifrost deploy
 """
@@ -379,6 +420,14 @@ def _collect_agents(workspace: pathlib.Path) -> list[dict]:
 _APP_TEXT_SUFFIXES = (".tsx", ".ts", ".jsx", ".js", ".css", ".html", ".json", ".svg", ".md")
 # Editor/OS cruft that must never reach the build.
 _APP_SKIP_NAMES = {".DS_Store", "Thumbs.db"}
+# Generated / dependency dirs that must NEVER be bundled — after a dev runs
+# `npm install` / `npm run dev` the app dir contains node_modules, dist, etc.;
+# serializing them would upload a huge/broken bundle (Codex R5). Only real source
+# + build inputs ship.
+_APP_SKIP_DIRS = {
+    "node_modules", "dist", "build", ".vite", ".git", ".next", ".turbo",
+    "coverage", ".cache", "out",
+}
 
 
 def _collect_apps(workspace: pathlib.Path) -> list[dict]:
@@ -406,6 +455,11 @@ def _collect_apps(workspace: pathlib.Path) -> list[dict]:
         if app_dir.is_dir():
             for f in app_dir.rglob("*"):
                 if not f.is_file() or f.name in _APP_SKIP_NAMES:
+                    continue
+                rel_parts = f.relative_to(app_dir).parts
+                # Skip anything inside a generated/dependency dir (node_modules,
+                # dist, …) — never bundle build output or deps.
+                if any(p in _APP_SKIP_DIRS for p in rel_parts[:-1]):
                     continue
                 rel = f.relative_to(app_dir).as_posix()
                 if f.suffix in _APP_TEXT_SUFFIXES:

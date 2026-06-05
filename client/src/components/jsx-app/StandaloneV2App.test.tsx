@@ -73,6 +73,25 @@ describe("StandaloneV2App", () => {
 		expect(window.__BIFROST_APP__).toBeUndefined();
 	});
 
+	it("busts the ES module cache so a remount re-runs the entry", async () => {
+		localStorage.setItem("bifrost_access_token", "tok-1");
+		const first = render(<StandaloneV2App {...baseProps} />);
+		const root1 = first.getByTestId("solution-v2-app-root");
+		await waitFor(() => expect(root1.dataset.bifrostEntry).toBeTruthy());
+		const url1 = root1.dataset.bifrostEntry!;
+		expect(url1).toContain("assets/main-abc.js");
+		expect(url1).toMatch(/[?&]m=\d+/); // cache-bust present
+		first.unmount();
+
+		// A fresh mount of the same app must use a DIFFERENT import URL (new
+		// nonce) so the browser re-executes the entry instead of returning the
+		// cached module.
+		const second = render(<StandaloneV2App {...baseProps} />);
+		const root2 = second.getByTestId("solution-v2-app-root");
+		await waitFor(() => expect(root2.dataset.bifrostEntry).toBeTruthy());
+		expect(root2.dataset.bifrostEntry).not.toBe(url1);
+	});
+
 	it("calls the app-registered unmount teardown on cleanup (no leak)", async () => {
 		localStorage.setItem("bifrost_access_token", "tok-1");
 		const { unmount } = render(<StandaloneV2App {...baseProps} />);

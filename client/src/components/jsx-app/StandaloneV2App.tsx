@@ -57,6 +57,14 @@ declare global {
 	}
 }
 
+// Monotonic per-mount nonce. The app entry is a side-effecting ES module (it
+// runs createRoot on import); the browser caches it by URL, so revisiting the
+// same app would return the cached module WITHOUT re-running createRoot —
+// leaving a blank mount after the prior root was torn down (Codex R5-P1). A
+// fresh query per mount forces re-execution. Module-level + monotonic so it's
+// deterministic (no Date.now/random).
+let _mountNonce = 0;
+
 interface StandaloneV2AppProps {
 	appId: string;
 	appSlug: string;
@@ -104,7 +112,10 @@ export function StandaloneV2App({
 			appOrgId ?? (scope.type === "organization" ? scope.orgId : null);
 
 		const mode = isPreview ? "draft" : "live";
-		const entryUrl = `${baseUrl}/${entry}?mode=${mode}`;
+		// `m` busts the ES module cache so a revisit re-runs the entry's
+		// top-level createRoot (R5-P1). CSS has no side effect, so it's left
+		// un-busted (the browser may reuse it).
+		const entryUrl = `${baseUrl}/${entry}?mode=${mode}&m=${++_mountNonce}`;
 		let cssEl: HTMLLinkElement | null = null;
 		if (css) {
 			cssEl = document.createElement("link");
@@ -134,6 +145,8 @@ export function StandaloneV2App({
 		};
 
 		let cancelled = false;
+		// Expose the loaded entry URL for tests/debugging (carries the cache-bust).
+		mountEl.dataset.bifrostEntry = entryUrl;
 		// Side-effecting import: the app's entry runs its own createRoot(mountEl).
 		import(/* @vite-ignore */ entryUrl).catch((e: unknown) => {
 			if (!cancelled) {

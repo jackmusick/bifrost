@@ -95,5 +95,32 @@ def test_collect_apps_carries_binary_assets_as_base64(tmp_path) -> None:
     assert ".DS_Store" not in a["bin_files"]
 
 
+def test_collect_apps_skips_node_modules_and_dist(tmp_path) -> None:
+    """After a dev's `npm install`/`npm run dev`, the app dir holds node_modules/
+    dist/etc; those must NOT be bundled — only real source (Codex R5)."""
+    (tmp_path / ".bifrost").mkdir()
+    app = tmp_path / "apps" / "dash"
+    (app / "src").mkdir(parents=True)
+    (app / "src" / "main.tsx").write_text("export {}\n")
+    # Generated/dependency junk that must be skipped.
+    (app / "node_modules" / "react" / "dist").mkdir(parents=True)
+    (app / "node_modules" / "react" / "dist" / "index.js").write_text("/*react*/")
+    (app / "node_modules" / "logo.png").write_bytes(b"\x89PNGdep")
+    (app / "dist").mkdir()
+    (app / "dist" / "index.html").write_text("<built/>")
+    (tmp_path / ".bifrost" / "apps.yaml").write_text(
+        "apps:\n  44444444-4444-4444-4444-444444444444:\n"
+        "    id: 44444444-4444-4444-4444-444444444444\n"
+        "    slug: dash\n    name: D\n    path: apps/dash\n    app_model: standalone_v2\n"
+    )
+    a = _collect_apps(tmp_path)[0]
+    # Real source collected.
+    assert a["src_files"]["src/main.tsx"] == "export {}\n"
+    # Nothing from node_modules/ or dist/ — neither text nor binary.
+    all_keys = list(a["src_files"]) + list(a["bin_files"])
+    assert not any(k.startswith("node_modules/") for k in all_keys)
+    assert not any(k.startswith("dist/") for k in all_keys)
+
+
 def test_collect_apps_empty_when_no_manifest(tmp_path) -> None:
     assert _collect_apps(tmp_path) == []

@@ -27,11 +27,16 @@ def test_scaffold_files_shape_and_dev_wiring() -> None:
     assert "lucide-react" in pkg["dependencies"]
     assert pkg["scripts"]["dev"] == "vite"
 
-    # vite.config maps the CLI's own env (BIFROST_ACCESS_TOKEN) into the app, so
-    # `npm run dev` authenticates without the developer pasting a token.
+    # vite.config reads the CLI's own token (env OR the nearest .env up the
+    # tree), so `npm run dev` authenticates with NO token pasting.
     vc = files["vite.config.ts"]
     assert "BIFROST_ACCESS_TOKEN" in vc
     assert "VITE_BIFROST_TOKEN" in vc
+    assert "process.env.BIFROST_ACCESS_TOKEN" in vc  # env first
+    assert "dirname" in vc  # walks up to find the .env
+
+    # The README must NOT tell the developer to paste a token.
+    assert "paste" not in files["README.md"].lower()
 
     # main.tsx follows the runtime contract: reads window.__BIFROST_APP__,
     # createRoot, registers unmount, falls back to the dev env.
