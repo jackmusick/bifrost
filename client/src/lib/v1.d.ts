@@ -3705,22 +3705,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6843,6 +6843,9 @@ export interface paths {
         /**
          * Update table
          * @description Update table metadata by ID (platform admin only).
+         *
+         *     Solution-managed tables are read-only here: deploy owns schema + policies.
+         *     Row DATA (documents) stays editable — that's runtime state (criterion 7).
          */
         patch: operations["update_table_api_tables__table_id__patch"];
         trace?: never;
@@ -7066,6 +7069,58 @@ export interface paths {
         head?: never;
         /** Update a custom claim (admin only) */
         patch: operations["update_claim_api_claims__name__patch"];
+        trace?: never;
+    };
+    "/api/solutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Solution installs (admin only) */
+        get: operations["list_solutions_api_solutions_get"];
+        put?: never;
+        /** Create a Solution install (admin only) */
+        post: operations["create_solution_api_solutions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Solution install (admin only) */
+        get: operations["get_solution_api_solutions__solution_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deploy a bundle to an install (full replace, non-interactive, admin only) */
+        post: operations["deploy_solution_api_solutions__solution_id__deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/knowledge-sources": {
@@ -8839,6 +8894,12 @@ export interface components {
             access_level?: components["schemas"]["AgentAccessLevel"] | null;
             /** Organization Id */
             organization_id?: string | null;
+            /**
+             * Is Solution Managed
+             * @description True if managed by a deployed Solution (read-only on platform)
+             * @default false
+             */
+            is_solution_managed: boolean;
             /** Is Active */
             is_active: boolean;
             /** Created By */
@@ -9553,6 +9614,12 @@ export interface components {
              * @default authenticated
              */
             access_level: string;
+            /**
+             * Is Solution Managed
+             * @description True if managed by a deployed Solution (read-only on platform)
+             * @default false
+             */
+            is_solution_managed: boolean;
             /** Role Ids */
             role_ids?: string[];
             /**
@@ -14110,6 +14177,12 @@ export interface components {
              * @default 0
              */
             dependency_count: number;
+            /**
+             * Is Solution Managed
+             * @description True if managed by a deployed Solution (read-only on platform)
+             * @default false
+             */
+            is_solution_managed: boolean;
         };
         /**
          * FormSchema
@@ -19720,6 +19793,123 @@ export interface components {
             compiled?: string | null;
         };
         /**
+         * Solution
+         * @description Read-shape returned by REST.
+         *
+         *     ``scope`` is DERIVED from ``organization_id`` (NULL == global), not stored
+         *     on the ORM row — so it always reflects the install's true scope.
+         */
+        Solution: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Organization Id */
+            organization_id?: string | null;
+            /**
+             * Global Repo Access
+             * @default false
+             */
+            global_repo_access: boolean;
+            /**
+             * Git Connected
+             * @default false
+             */
+            git_connected: boolean;
+            /** Git Repo Url */
+            git_repo_url?: string | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            readonly scope: "org" | "global";
+        };
+        /**
+         * SolutionCreate
+         * @description Create-shape for an install.
+         *
+         *     For ``scope=org`` the install's org is taken from the caller's context (or
+         *     an explicit ``organization_id`` for cross-org admins); ``scope=global``
+         *     means ``organization_id IS NULL``.
+         */
+        SolutionCreate: {
+            /**
+             * Slug
+             * @description Definition identity (shared across installs)
+             */
+            slug: string;
+            /** Name */
+            name: string;
+            /**
+             * Scope
+             * @default org
+             * @enum {string}
+             */
+            scope: "org" | "global";
+            /**
+             * Global Repo Access
+             * @default false
+             */
+            global_repo_access: boolean;
+            /**
+             * Git Connected
+             * @default false
+             */
+            git_connected: boolean;
+            /** Git Repo Url */
+            git_repo_url?: string | null;
+            /** Organization Id */
+            organization_id?: string | null;
+        };
+        /**
+         * SolutionDeployRequest
+         * @description Full-replace deploy bundle for one install.
+         *
+         *     ``python_files`` maps relative paths (e.g. ``workflows/w.py``,
+         *     ``modules/x.py``) to UTF-8 source text, installed verbatim under the
+         *     install's ``_solutions/{id}/`` prefix. ``workflows`` are manifest-shaped
+         *     entity dicts to upsert (apps/forms/agents/tables join in later sub-plans).
+         *     Deploy is non-interactive by contract — it always applies the full bundle.
+         */
+        SolutionDeployRequest: {
+            /** Python Files */
+            python_files?: {
+                [key: string]: string;
+            };
+            /** Workflows */
+            workflows?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** SolutionDeployResponse */
+        SolutionDeployResponse: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Workflows Upserted
+             * @default 0
+             */
+            workflows_upserted: number;
+            /**
+             * Workflows Deleted
+             * @default 0
+             */
+            workflows_deleted: number;
+        };
+        /** SolutionsList */
+        SolutionsList: {
+            /** Solutions */
+            solutions?: components["schemas"]["Solution"][];
+        };
+        /**
          * StuckExecutionsResponse
          * @description Response model for stuck executions query
          */
@@ -19902,6 +20092,12 @@ export interface components {
             updated_at: string | null;
             /** Created By */
             created_by: string | null;
+            /**
+             * Is Solution Managed
+             * @description True if managed by a deployed Solution (read-only on platform)
+             * @default false
+             */
+            is_solution_managed: boolean;
         };
         /**
          * TableUpdate
@@ -21307,6 +21503,12 @@ export interface components {
              * @description Organization ID if org-scoped, None for global
              */
             organization_id?: string | null;
+            /**
+             * Is Solution Managed
+             * @description True if managed by a deployed Solution (read-only on platform)
+             * @default false
+             */
+            is_solution_managed: boolean;
             /**
              * Access Level
              * @description Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required)
@@ -27894,7 +28096,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -27927,7 +28129,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -27960,7 +28162,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -27993,7 +28195,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__put: {
         parameters: {
             query?: never;
             header: {
@@ -34047,6 +34249,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CustomClaim"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_solutions_api_solutions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionsList"];
+                };
+            };
+        };
+    };
+    create_solution_api_solutions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Solution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_solution_api_solutions__solution_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Solution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deploy_solution_api_solutions__solution_id__deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionDeployRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionDeployResponse"];
                 };
             };
             /** @description Validation Error */

@@ -52,6 +52,7 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -119,6 +120,10 @@ export function WorkflowEditDialog({
 	const updateWorkflow = useUpdateWorkflow();
 	const assignRoles = useAssignRolesToWorkflow();
 	const removeRole = useRemoveRoleFromWorkflow();
+
+	// Solution-managed workflows are read-only on the platform (criterion 6):
+	// show the banner and disable Save. The API rejects the mutation regardless.
+	const isSolutionManaged = workflow?.is_solution_managed ?? false;
 
 	// Access control state
 	const [organizationId, setOrganizationId] = useState<string | null | undefined>(undefined);
@@ -382,6 +387,10 @@ export function WorkflowEditDialog({
 						Configure settings for "{workflow?.name}"
 					</DialogDescription>
 				</DialogHeader>
+
+				{isSolutionManaged && (
+					<SolutionManagedBanner entityLabel="workflow" />
+				)}
 
 				<Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
 					<TabsList className="w-full flex-shrink-0">
@@ -906,7 +915,7 @@ export function WorkflowEditDialog({
 					<Button variant="outline" onClick={handleClose} disabled={isSaving}>
 						Cancel
 					</Button>
-					<Button onClick={handleSave} disabled={isSaving}>
+					<Button onClick={handleSave} disabled={isSaving || isSolutionManaged}>
 						{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
 						{isSaving ? "Saving..." : "Save Changes"}
 					</Button>

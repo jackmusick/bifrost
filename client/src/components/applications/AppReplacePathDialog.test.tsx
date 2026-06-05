@@ -56,6 +56,7 @@ function makeApp(overrides: Partial<ApplicationPublic> = {}): ApplicationPublic 
 		is_published: false,
 		has_unpublished_changes: false,
 		access_level: "authenticated",
+		is_solution_managed: false,
 		role_ids: [],
 		repo_path: "apps/my-app",
 		...overrides,
