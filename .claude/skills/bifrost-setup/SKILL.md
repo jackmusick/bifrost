@@ -41,19 +41,29 @@ Based on the environment state:
 
 If `BIFROST_OS=windows` or the shell appears to be native PowerShell/CMD:
 
-1. Ask whether the user wants **local Bifrost development** or **CLI-only use**.
-2. For local platform development, direct them to Ubuntu on WSL2 with Docker
-   Desktop WSL integration enabled. The repo scripts (`./setup.sh`,
-   `./debug.sh`, `./test.sh`) are Bash scripts and should run from Ubuntu WSL,
-   not native PowerShell.
-3. For CLI-only use, continue with native Windows setup below.
-4. Check for a coding tool before MCP setup:
+1. Ask which of three things the user wants: **deploy/run Bifrost** on this
+   Windows box, **develop the platform** (contribute to the Bifrost repo), or
+   **CLI-only use** against an existing instance.
+2. For **deploying/running** Bifrost on Windows, use native PowerShell — no WSL
+   or Bash needed. From the repo root run `.\Initialize-Bifrost.ps1` (the
+   PowerShell counterpart to `setup.sh`): it generates `.env`, runs
+   `docker compose up -d`, and prints the access URL. Docker Desktop must be
+   installed with the **WSL2 backend** enabled. (`-Domain`, `-Force`, and
+   `-NoStart` switches are available; `-Force` regenerates secrets.)
+3. For **platform development** (running `./debug.sh` / `./test.sh` against the
+   source), the recommended environment is Linux or macOS. On Windows these
+   Bash scripts work through **Git Bash** (e.g.
+   `& 'C:\Program Files\Git\bin\bash.exe' -lc './debug.sh up'`) or Ubuntu on
+   WSL2 with Docker Desktop WSL integration — but native PowerShell does not run
+   them. There is intentionally no PowerShell port of `debug.sh`/`test.sh`.
+4. For CLI-only use, continue with native Windows setup below.
+5. Check for a coding tool before MCP setup:
    - `claude --version` for Claude Code
    - `codex --version` for Codex
    - `code --version` for VS Code
    If none are installed, tell the user to install at least one before MCP or
    source-development setup. CLI-only usage can proceed without a coding tool.
-5. If the repo was cloned natively on Windows, inspect `skills/setup`. If it is
+6. If the repo was cloned natively on Windows, inspect `skills/setup`. If it is
    a plain file containing `../.claude/skills/bifrost-setup` instead of a
    directory/symlink, tell the user this is a Git symlink checkout issue:
    enable Developer Mode, set `git config --global core.symlinks true`, reclone,
