@@ -227,7 +227,7 @@ def deploy_cmd(path: str, solution_id: str | None, yes: bool) -> None:
         # the install can reach _repo/ at runtime, so vendoring is skipped.
         bundle_python = python_files
         if not descriptor.global_repo_access:
-            from src.services.solutions.vendoring import vendor_shared_deps
+            from bifrost.solution_vendoring import vendor_shared_deps
 
             async def _repo_read(path: str) -> str | None:
                 resp = await client.post("/api/files/read", json={
