@@ -43,5 +43,25 @@ def test_collect_apps_reads_manifest_and_source(tmp_path) -> None:
     assert a["src_files"]["src/main.tsx"] == "export default 1\n"
 
 
+def test_collect_apps_carries_role_bindings(tmp_path) -> None:
+    """Role refs must reach the bundle so the deployer can sync AppRole (P1-d)."""
+    (tmp_path / ".bifrost").mkdir()
+    (tmp_path / "apps" / "dash").mkdir(parents=True)
+    (tmp_path / ".bifrost" / "apps.yaml").write_text(
+        "apps:\n"
+        "  22222222-2222-2222-2222-222222222222:\n"
+        "    id: 22222222-2222-2222-2222-222222222222\n"
+        "    slug: dash\n"
+        "    name: Dashboard\n"
+        "    path: apps/dash\n"
+        "    app_model: inline_v1\n"
+        "    access_level: role_based\n"
+        "    role_names: [Support]\n"
+    )
+    apps = _collect_apps(tmp_path)
+    assert apps[0]["access_level"] == "role_based"
+    assert apps[0]["role_names"] == ["Support"]
+
+
 def test_collect_apps_empty_when_no_manifest(tmp_path) -> None:
     assert _collect_apps(tmp_path) == []

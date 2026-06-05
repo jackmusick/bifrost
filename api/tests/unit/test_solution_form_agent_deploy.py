@@ -157,3 +157,126 @@ class TestAgentBindingsDeploy:
             _select(AgentTool.workflow_id).where(AgentTool.agent_id == uuid.UUID(aid))
         )).scalars().all()
         assert wf_id in tool_wf_ids, "agent tool binding dropped on deploy"
+
+
+@pytest.mark.e2e
+class TestSolutionRoleBindingsDeploy:
+    """Deploy must sync manifest roles into the FormRole/AgentRole/AppRole/
+    WorkflowRole junctions (Codex P1-d). The role-mutation endpoints are
+    read-only for solution-managed entities, so deploy is the ONLY writer of
+    these bindings — a role_based entity deployed without them is inaccessible
+    and uncorrectable except by another deploy. ``role_names`` resolve against
+    the install's org; a redeploy with changed roles full-replaces the rows.
+    """
+
+    async def _install(self, db) -> Solution:
+        sol = Solution(
+            id=uuid.uuid4(), slug=f"rb-{uuid.uuid4().hex[:8]}", name="RB",
+            organization_id=None,
+        )
+        db.add(sol)
+        await db.flush()
+        return sol
+
+    async def _role(self, db, name: str):
+        from src.models.orm.users import Role
+
+        r = Role(id=uuid.uuid4(), name=name, created_by="dev@x")
+        db.add(r)
+        await db.flush()
+        return r
+
+    async def test_form_role_names_resolve_and_sync(self, db_session):
+        from sqlalchemy import select as _select
+
+        from src.models.orm.forms import FormRole
+
+        db = db_session
+        sol = await self._install(db)
+        role = await self._role(db, f"Support-{uuid.uuid4().hex[:6]}")
+        fid = str(uuid.uuid4())
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol,
+            forms=[{
+                "id": fid, "name": "intake", "access_level": "role_based",
+                "role_names": [role.name],
+                "form_schema": {"fields": []},
+            }],
+        ))
+        await db.flush()
+        role_ids = (await db.execute(
+            _select(FormRole.role_id).where(FormRole.form_id == uuid.UUID(fid))
+        )).scalars().all()
+        assert role.id in role_ids, "form role binding not synced on deploy"
+
+    async def test_agent_app_workflow_roles_sync(self, db_session):
+        from sqlalchemy import select as _select
+
+        from src.models.orm.agents import AgentRole
+        from src.models.orm.app_roles import AppRole
+        from src.models.orm.workflow_roles import WorkflowRole
+
+        db = db_session
+        sol = await self._install(db)
+        role = await self._role(db, f"Ops-{uuid.uuid4().hex[:6]}")
+
+        aid, app_id, wf_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol,
+            agents=[{
+                "id": aid, "name": "a", "system_prompt": "hi",
+                "access_level": "role_based", "role_names": [role.name],
+            }],
+            apps=[{
+                "id": app_id, "slug": "dash", "name": "Dash",
+                "app_model": "inline_v1", "access_level": "role_based",
+                "role_names": [role.name],
+            }],
+            workflows=[{
+                "id": wf_id, "name": "w", "function_name": "run",
+                "path": "workflows/w.py", "type": "workflow",
+                "access_level": "role_based", "role_names": [role.name],
+            }],
+        ))
+        await db.flush()
+
+        agent_roles = (await db.execute(
+            _select(AgentRole.role_id).where(AgentRole.agent_id == uuid.UUID(aid))
+        )).scalars().all()
+        app_roles = (await db.execute(
+            _select(AppRole.role_id).where(AppRole.app_id == uuid.UUID(app_id))
+        )).scalars().all()
+        wf_roles = (await db.execute(
+            _select(WorkflowRole.role_id).where(WorkflowRole.workflow_id == uuid.UUID(wf_id))
+        )).scalars().all()
+        assert role.id in agent_roles, "agent role binding not synced"
+        assert role.id in app_roles, "app role binding not synced"
+        assert role.id in wf_roles, "workflow role binding not synced"
+
+    async def test_redeploy_replaces_role_bindings(self, db_session):
+        from sqlalchemy import select as _select
+
+        from src.models.orm.forms import FormRole
+
+        db = db_session
+        sol = await self._install(db)
+        r1 = await self._role(db, f"R1-{uuid.uuid4().hex[:6]}")
+        r2 = await self._role(db, f"R2-{uuid.uuid4().hex[:6]}")
+        fid = str(uuid.uuid4())
+
+        async def _deploy_with(role_name: str):
+            await SolutionDeployer(db).deploy(SolutionBundle(
+                solution=sol,
+                forms=[{
+                    "id": fid, "name": "intake", "access_level": "role_based",
+                    "role_names": [role_name], "form_schema": {"fields": []},
+                }],
+            ))
+            await db.flush()
+
+        await _deploy_with(r1.name)
+        await _deploy_with(r2.name)  # full-replace: r1 binding must be gone
+        role_ids = set((await db.execute(
+            _select(FormRole.role_id).where(FormRole.form_id == uuid.UUID(fid))
+        )).scalars().all())
+        assert role_ids == {r2.id}, "redeploy did not full-replace role bindings"

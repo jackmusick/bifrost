@@ -33,11 +33,13 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.orm.agents import Agent
+from src.models.orm.agents import Agent, AgentRole
+from src.models.orm.app_roles import AppRole
 from src.models.orm.applications import Application
-from src.models.orm.forms import Form
+from src.models.orm.forms import Form, FormRole
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
+from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.workflows import Workflow
 from src.services.solutions.storage import SolutionStorage
 from src.services.sync_ops import Upsert
@@ -151,6 +153,47 @@ class SolutionDeployer:
             finalize_s3=_finalize_s3,
         )
 
+    # ── Role bindings (full-replace into the entity↔role junction) ───────────
+    async def _resolve_roles(self, entry: dict[str, Any]) -> list[UUID]:
+        """Resolve a manifest entry's role refs to role UUIDs in the target env.
+
+        ``role_names`` (portable, cross-env) wins over ``roles`` (raw UUIDs) when
+        present — deploy is cross-environment, so names are the durable ref. Both
+        are optional; absent → no roles. Unknown names fail loud (the role must
+        exist in the install's env first).
+        """
+        from src.services.manifest_import import _resolve_role_names
+
+        role_names = entry.get("role_names")
+        if role_names:
+            return [UUID(r) for r in await _resolve_role_names(self.db, list(role_names))]
+        return [UUID(str(r)) for r in (entry.get("roles") or [])]
+
+    async def _sync_entity_roles(
+        self,
+        junction: type,
+        fk_col: str,
+        entity_id: UUID,
+        role_ids: list[UUID],
+        assigned_by: str = "solution",
+    ) -> None:
+        """Full-replace the entity's rows in a ``*_roles`` junction.
+
+        Deploy is the only writer of solution-managed role bindings (the REST
+        role-mutation endpoints are read-only for managed entities), so this must
+        delete-all + insert to reflect adds AND removes across redeploys
+        (Codex P1-d). Mirrors the canonical FormRole/AppRole write pattern.
+        """
+        await self.db.execute(
+            delete(junction).where(getattr(junction, fk_col) == entity_id)
+        )
+        now = datetime.now(timezone.utc)
+        for role_id in dict.fromkeys(role_ids):  # dedupe, preserve order
+            self.db.add(
+                junction(**{fk_col: entity_id, "role_id": role_id},
+                         assigned_by=assigned_by, assigned_at=now)
+            )
+
     # ── 1. Python source → SolutionStorage (full replace + cache sync) ───────
     async def _write_python(self, sid: UUID, python_files: dict[str, str]) -> None:
         """Full-replace this install's Python source and keep the module cache
@@ -235,6 +278,9 @@ class SolutionDeployer:
             await Upsert(
                 model=Workflow, id=wf_id, values=values, match_on="id"
             ).execute(self.db)
+            await self._sync_entity_roles(
+                WorkflowRole, "workflow_id", wf_id, await self._resolve_roles(mwf)
+            )
 
     async def _upsert_tables(
         self, solution: Solution, tables: list[dict[str, Any]]
@@ -361,6 +407,9 @@ class SolutionDeployer:
             await Upsert(
                 model=Application, id=app_id, values=values, match_on="id"
             ).execute(self.db)
+            await self._sync_entity_roles(
+                AppRole, "app_id", app_id, await self._resolve_roles(mapp)
+            )
 
             # Only standalone_v2 apps are built to dist/. inline_v1 render via
             # the esbuild path; a Vite build on them would fail.
@@ -443,15 +492,23 @@ class SolutionDeployer:
                     solution_id=sid,
                 )
             )
+            # Sync role bindings — the indexer does NOT handle role rows, and the
+            # REST role endpoints are read-only for managed entities, so deploy is
+            # the only writer of these (Codex P1-d).
+            await self._sync_entity_roles(
+                FormRole, "form_id", form_id, await self._resolve_roles(mform)
+            )
 
     async def _upsert_agents(
         self, solution: Solution, agents: list[dict[str, Any]]
     ) -> None:
-        """Deploy agents by delegating ALL content to the canonical AgentIndexer.
+        """Deploy agents by delegating content to the canonical AgentIndexer.
 
         Mirrors :meth:`_upsert_forms`: the indexer full-replaces the agent row +
-        its tool/delegation/role/MCP junctions + knowledge/system-tools/limits
+        its tool/delegation/MCP junctions + knowledge/system-tools/limits
         (gap-resistant — same code as git-sync); deploy stamps the install scope.
+        Role bindings are NOT handled by the indexer — deploy syncs them itself
+        below (Codex P1-d), since the REST role endpoints are read-only here.
         """
         from sqlalchemy import update
 
@@ -472,6 +529,10 @@ class SolutionDeployer:
                     organization_id=solution.organization_id,
                     solution_id=sid,
                 )
+            )
+            # Sync role bindings (indexer doesn't touch role rows) — Codex P1-d.
+            await self._sync_entity_roles(
+                AgentRole, "agent_id", agent_id, await self._resolve_roles(magent)
             )
 
     async def _guard_owner(self, model: type, entity_id: UUID, sid: UUID) -> None:

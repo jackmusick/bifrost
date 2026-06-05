@@ -196,6 +196,10 @@ def _collect_apps(workspace: pathlib.Path) -> list[dict]:
             "app_model": body.get("app_model", "inline_v1"),
             "dependencies": body.get("dependencies") or {},
             "access_level": body.get("access_level"),
+            # Role bindings the deployer syncs into AppRole (Codex P1-d). Carry
+            # both raw UUIDs and portable names; the deployer prefers names.
+            "roles": body.get("roles") or [],
+            "role_names": body.get("role_names"),
             "src_files": src_files,
         })
     return entries
