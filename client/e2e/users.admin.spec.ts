@@ -218,7 +218,12 @@ test.describe("User Invitation", () => {
 		await guestPage
 			.getByRole("button", { name: /use password instead/i })
 			.click();
-		await guestPage.getByLabel(/password/i).fill("InviteePass123!");
+		await guestPage
+			.getByRole("textbox", { name: "Password", exact: true })
+			.fill("InviteePass123!");
+		await guestPage
+			.getByRole("textbox", { name: "Confirm password" })
+			.fill("InviteePass123!");
 		await guestPage
 			.getByRole("button", { name: /create account/i })
 			.click();

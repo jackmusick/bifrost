@@ -23,6 +23,7 @@ import {
 import { useApplication } from "@/hooks/useApplications";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDocumentChrome } from "@/lib/useDocumentChrome";
+import { term, useTerminology } from "@/lib/terminology";
 import { BundledAppShell } from "@/components/jsx-app/BundledAppShell";
 import { AppLayout } from "@/components/layout/AppLayout";
 
@@ -34,6 +35,7 @@ interface AppRouterProps {
 export function AppRouter({ preview = false }: AppRouterProps) {
 	const { applicationId: slugParam } = useParams();
 	const navigate = useNavigate();
+	const terminology = useTerminology();
 	const { hasRole } = useAuth();
 	const isEmbed = hasRole("EmbedUser");
 
@@ -70,12 +72,14 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 					<CardHeader>
 						<div className="flex items-center gap-2 text-destructive">
 							<AlertTriangle className="h-5 w-5" />
-							<CardTitle>Application Error</CardTitle>
+							<CardTitle>
+								{term(terminology, "app", "formalSingular")} Error
+							</CardTitle>
 						</div>
 						<CardDescription>
 							{error instanceof Error
 								? error.message
-								: "Failed to load application"}
+								: `Failed to load ${term(terminology, "app", "formalSingularLower")}`}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -84,7 +88,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 							onClick={() => navigate("/apps")}
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to Applications
+							Back to {term(terminology, "app", "formalPlural")}
 						</Button>
 					</CardContent>
 				</Card>
@@ -100,11 +104,14 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 					<CardHeader>
 						<div className="flex items-center gap-2 text-muted-foreground">
 							<AlertTriangle className="h-5 w-5" />
-							<CardTitle>Application Not Found</CardTitle>
+							<CardTitle>
+								{term(terminology, "app", "formalSingular")} Not Found
+							</CardTitle>
 						</div>
 						<CardDescription>
-							The requested application does not exist or you
-							don't have access to it.
+							The requested{" "}
+							{term(terminology, "app", "formalSingularLower")} does
+							not exist or you don't have access to it.
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -113,7 +120,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 							onClick={() => navigate("/apps")}
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to Applications
+							Back to {term(terminology, "app", "formalPlural")}
 						</Button>
 					</CardContent>
 				</Card>

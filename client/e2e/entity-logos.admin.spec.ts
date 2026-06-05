@@ -63,23 +63,21 @@ test.describe("Entity logos", () => {
 			await page.keyboard.press("Escape");
 			await page.goto("/apps");
 
-			// EntityLogo renders an <img> pointing at the logo endpoint.
-			// After a successful upload the server returns 200, so the img
-			// stays visible (no onError → no fallback swap).
-			const logo = page.locator(
-				`img[src*="/api/applications/${appId}/logo"]`,
-			);
+			const card = page.getByRole("button", { name: new RegExp(APP_NAME) });
+			const logo = card.getByTestId("entity-logo");
 			await expect(logo).toBeVisible();
+			await expect(logo).toHaveAttribute("src", /^data:image\/png;base64,/);
 		});
 	});
 
 	test.describe("Agent logo", () => {
+		const AGENT_NAME = `E2E Logo Bot ${UNIQUE}`;
 		let agentId: string;
 
 		test.beforeAll(async ({ api }) => {
 			const resp = await api.post("/api/agents", {
 				data: {
-					name: `E2E Logo Bot ${UNIQUE}`,
+					name: AGENT_NAME,
 					system_prompt: "You are an e2e helper.",
 					channels: ["chat"],
 					access_level: "authenticated",
@@ -109,8 +107,10 @@ test.describe("Entity logos", () => {
 
 			await page.goto("/agents");
 
-			const logo = page.locator(`img[src*="/api/agents/${agentId}/logo"]`);
+			const card = page.getByRole("link", { name: new RegExp(AGENT_NAME) });
+			const logo = card.getByTestId("entity-logo");
 			await expect(logo).toBeVisible();
+			await expect(logo).toHaveAttribute("src", /^data:image\/png;base64,/);
 		});
 	});
 });

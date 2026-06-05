@@ -53,12 +53,14 @@ import { useOrganizations } from "@/hooks/useOrganizations";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { term, useTerminology } from "@/lib/terminology";
 import type { components } from "@/lib/v1";
 
 type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Applications() {
 	const navigate = useNavigate();
+	const terminology = useTerminology();
 	const { scope, isGlobalScope } = useOrgScope();
 	const { isPlatformAdmin } = useAuth();
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
@@ -152,7 +154,7 @@ export function Applications() {
 				<div>
 					<div className="flex items-center gap-3">
 						<h1 className="text-4xl font-extrabold tracking-tight">
-							Applications
+							{term(terminology, "app", "formalPlural")}
 						</h1>
 						{isPlatformAdmin && (
 							<Badge
@@ -175,8 +177,8 @@ export function Applications() {
 					</div>
 					<p className="mt-2 text-muted-foreground">
 						{canManageApps
-							? "Build and manage custom applications"
-							: "Access your custom applications"}
+							? `Build and manage custom ${term(terminology, "app", "formalPluralLower")}`
+							: `Access your custom ${term(terminology, "app", "formalPluralLower")}`}
 					</p>
 				</div>
 				<div className="flex gap-2">
@@ -217,7 +219,7 @@ export function Applications() {
 							variant="outline"
 							size="icon"
 							onClick={handleCreate}
-							title="Create Application"
+							title={`Create ${term(terminology, "app", "formalSingular")}`}
 						>
 							<Plus className="h-4 w-4" />
 						</Button>
@@ -230,7 +232,7 @@ export function Applications() {
 				<SearchBox
 					value={searchTerm}
 					onChange={setSearchTerm}
-					placeholder="Search applications by name, description, or slug..."
+					placeholder={`Search ${term(terminology, "app", "formalPluralLower")} by name, description, or slug...`}
 					className="flex-1"
 				/>
 				{isPlatformAdmin && (
@@ -533,7 +535,7 @@ export function Applications() {
 													title={
 														!app.is_published
 															? "No published version"
-															: "Open application"
+															: `Open ${term(terminology, "app", "formalSingularLower")}`
 													}
 												>
 													<PlayCircle className="h-4 w-4" />
@@ -587,7 +589,7 @@ export function Applications() {
 																	app.name,
 																)
 															}
-															title="Delete application"
+															title={`Delete ${term(terminology, "app", "formalSingularLower")}`}
 														>
 															<Trash2 className="h-4 w-4" />
 														</Button>
@@ -607,15 +609,15 @@ export function Applications() {
 						<AppWindow className="h-12 w-12 text-muted-foreground" />
 						<h3 className="mt-4 text-lg font-semibold">
 							{searchTerm
-								? "No applications match your search"
-								: "No applications found"}
+								? `No ${term(terminology, "app", "formalPluralLower")} match your search`
+								: `No ${term(terminology, "app", "formalPluralLower")} found`}
 						</h3>
 						<p className="mt-2 text-sm text-muted-foreground">
 							{searchTerm
 								? "Try adjusting your search term or clear the filter"
 								: canManageApps
-									? "Get started by creating your first application"
-									: "No applications are currently available"}
+									? `Get started by creating your first ${term(terminology, "app", "formalSingularLower")}`
+									: `No ${term(terminology, "app", "formalPluralLower")} are currently available`}
 						</p>
 						{canManageApps && !searchTerm && (
 							<Button
@@ -623,7 +625,7 @@ export function Applications() {
 								size="icon"
 								onClick={handleCreate}
 								className="mt-4"
-								title="Create Application"
+								title={`Create ${term(terminology, "app", "formalSingular")}`}
 							>
 								<Plus className="h-4 w-4" />
 							</Button>
@@ -640,9 +642,12 @@ export function Applications() {
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Application?</AlertDialogTitle>
+						<AlertDialogTitle>
+							Delete {term(terminology, "app", "formalSingular")}?
+						</AlertDialogTitle>
 						<AlertDialogDescription>
-							This will permanently delete the application "
+							This will permanently delete the{" "}
+							{term(terminology, "app", "formalSingularLower")} "
 							{selectedApp?.name}" including all versions and
 							data. This action cannot be undone.
 						</AlertDialogDescription>
@@ -655,19 +660,19 @@ export function Applications() {
 						>
 							{deleteApplication.isPending
 								? "Deleting..."
-								: "Delete Application"}
+								: `Delete ${term(terminology, "app", "formalSingular")}`}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 
-			{/* Create Application Dialog */}
+			{/* Create application dialog */}
 			<CreateAppModal
 				open={isEngineSelectOpen}
 				onOpenChange={setIsEngineSelectOpen}
 			/>
 
-			{/* Application Settings Dialog (opened from card pencil button) */}
+			{/* Application settings dialog (opened from card pencil button) */}
 			<AppInfoDialog
 				appSlug={infoDialogSlug}
 				open={infoDialogSlug !== null}

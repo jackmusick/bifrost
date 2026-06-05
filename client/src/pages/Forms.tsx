@@ -55,6 +55,7 @@ import { useOrganizations } from "@/hooks/useOrganizations";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { term, useTerminology } from "@/lib/terminology";
 import type { components } from "@/lib/v1";
 
 type FormPublic = components["schemas"]["FormPublic"];
@@ -62,6 +63,7 @@ type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Forms() {
 	const navigate = useNavigate();
+	const terminology = useTerminology();
 	const { scope, isGlobalScope } = useOrgScope();
 	const { isPlatformAdmin } = useAuth();
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
@@ -215,7 +217,7 @@ export function Forms() {
 				<div>
 					<div className="flex items-center gap-3">
 						<h1 className="text-4xl font-extrabold tracking-tight">
-							Forms
+							{term(terminology, "form", "plural")}
 						</h1>
 						{isPlatformAdmin && (
 							<Badge
@@ -238,8 +240,8 @@ export function Forms() {
 					</div>
 					<p className="mt-2 text-muted-foreground">
 						{canManageForms
-							? "Launch workflows with guided form interfaces"
-							: "Launch workflows with guided forms"}
+							? `Launch workflows with guided ${term(terminology, "form", "singularLower")} interfaces`
+							: `Launch workflows with guided ${term(terminology, "form", "pluralLower")}`}
 					</p>
 				</div>
 				<div className="flex gap-2">
@@ -280,7 +282,7 @@ export function Forms() {
 							variant="outline"
 							size="icon"
 							onClick={handleCreate}
-							title="Create Form"
+							title={`Create ${term(terminology, "form", "singular")}`}
 						>
 							<Plus className="h-4 w-4" />
 						</Button>
@@ -293,7 +295,7 @@ export function Forms() {
 				<SearchBox
 					value={searchTerm}
 					onChange={setSearchTerm}
-					placeholder="Search forms by name, description, or workflow..."
+					placeholder={`Search ${term(terminology, "form", "pluralLower")} by name, description, or workflow...`}
 					className="flex-1"
 				/>
 				{isPlatformAdmin && (
@@ -429,8 +431,8 @@ export function Forms() {
 													? `Cannot launch: Missing required parameters (${formValidation.get(form.id)?.missingParams.join(", ")})`
 													: !form.is_active &&
 														  !canManageForms
-														? "Form is disabled"
-														: "Launch form"
+														? `${term(terminology, "form", "singular")} is disabled`
+														: `Launch ${term(terminology, "form", "singularLower")}`
 											}
 										>
 											<PlayCircle className="mr-2 h-4 w-4" />
@@ -444,7 +446,7 @@ export function Forms() {
 													onClick={() =>
 														handleEdit(form.id)
 													}
-													title="Edit form"
+													title={`Edit ${term(terminology, "form", "singularLower")}`}
 												>
 													<Pencil className="h-4 w-4" />
 												</Button>
@@ -458,7 +460,7 @@ export function Forms() {
 															form.is_active,
 														)
 													}
-													title="Delete form"
+													title={`Delete ${term(terminology, "form", "singularLower")}`}
 												>
 													<Trash2 className="h-4 w-4" />
 												</Button>
@@ -584,8 +586,8 @@ export function Forms() {
 														}
 													>
 														{form.is_active
-															? "Enabled"
-															: "Inactive"}
+																	? "Enabled"
+																	: "Inactive"}
 													</Badge>
 												)}
 											</DataTableCell>
@@ -608,8 +610,8 @@ export function Forms() {
 																? `Cannot launch: Missing ${validation?.missingParams.join(", ")}`
 																: !form.is_active &&
 																	  !canManageForms
-																	? "Form is disabled"
-																	: "Launch form"
+																	? `${term(terminology, "form", "singular")} is disabled`
+																	: `Launch ${term(terminology, "form", "singularLower")}`
 														}
 													>
 														<PlayCircle className="h-4 w-4" />
@@ -624,7 +626,7 @@ export function Forms() {
 																		form.id,
 																	)
 																}
-																title="Edit form"
+																title={`Edit ${term(terminology, "form", "singularLower")}`}
 															>
 																<Pencil className="h-4 w-4" />
 															</Button>
@@ -638,7 +640,7 @@ export function Forms() {
 																		form.is_active,
 																	)
 																}
-																title="Delete form"
+																title={`Delete ${term(terminology, "form", "singularLower")}`}
 															>
 																<Trash2 className="h-4 w-4" />
 															</Button>
@@ -659,15 +661,15 @@ export function Forms() {
 						<FileCode className="h-12 w-12 text-muted-foreground" />
 						<h3 className="mt-4 text-lg font-semibold">
 							{searchTerm
-								? "No forms match your search"
-								: "No forms found"}
+								? `No ${term(terminology, "form", "pluralLower")} match your search`
+								: `No ${term(terminology, "form", "pluralLower")} found`}
 						</h3>
 						<p className="mt-2 text-sm text-muted-foreground">
 							{searchTerm
 								? "Try adjusting your search term or clear the filter"
 								: canManageForms
-									? "Get started by creating your first form"
-									: "No forms are currently available"}
+									? `Get started by creating your first ${term(terminology, "form", "singularLower")}`
+									: `No ${term(terminology, "form", "pluralLower")} are currently available`}
 						</p>
 						{canManageForms && !searchTerm && (
 							<Button
@@ -675,7 +677,7 @@ export function Forms() {
 								size="icon"
 								onClick={handleCreate}
 								className="mt-4"
-								title="Create Form"
+								title={`Create ${term(terminology, "form", "singular")}`}
 							>
 								<Plus className="h-4 w-4" />
 							</Button>

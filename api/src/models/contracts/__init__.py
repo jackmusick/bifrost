@@ -301,6 +301,8 @@ from src.models.contracts.files import (
 # Common models
 from src.models.contracts.common import (
     BrandingSettings,
+    BrandingTerm,
+    BrandingTerminology,
     BrandingUpdateRequest,
     ErrorResponse,
     FileUploadRequest,
@@ -762,6 +764,8 @@ __all__ = [
     "CronValidationRequest",
     "CronValidationResponse",
     "BrandingSettings",
+    "BrandingTerm",
+    "BrandingTerminology",
     "BrandingUpdateRequest",
     "FileType",
     "FileMetadata",

@@ -19,8 +19,38 @@ import {
 	getBranding,
 } from "@/hooks/useBranding";
 import { applyBrandingTheme, type BrandingSettings } from "@/lib/branding";
+import {
+	DEFAULT_TERMINOLOGY,
+	mergeTerminology,
+	serializeTerminology,
+	type BrandingTerminologyInput,
+	type ProductTermKey,
+	type Terminology,
+} from "@/lib/terminology";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import type { components } from "@/lib/v1";
+
+const TERMINOLOGY_ROWS: Array<{
+	key: ProductTermKey;
+	label: string;
+	description: string;
+}> = [
+	{
+		key: "app",
+		label: "Apps / Applications",
+		description: "Main built experiences, e.g. Games",
+	},
+	{
+		key: "agent",
+		label: "Agents",
+		description: "AI workers or personas, e.g. Characters",
+	},
+	{
+		key: "form",
+		label: "Forms",
+		description: "Guided workflow launch interfaces",
+	},
+];
 
 export function Branding() {
 	const { refreshBranding } = useOrgScope();
@@ -29,6 +59,7 @@ export function Branding() {
 	>(null);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
+	const [savingTerminology, setSavingTerminology] = useState(false);
 	const [uploading, setUploading] = useState<"square" | "rectangle" | null>(
 		null,
 	);
@@ -36,6 +67,8 @@ export function Branding() {
 		"square" | "rectangle" | "color" | null
 	>(null);
 	const [primaryColor, setPrimaryColor] = useState("#0066CC");
+	const [terminology, setTerminology] =
+		useState<Terminology>(DEFAULT_TERMINOLOGY);
 
 	// Drag states
 	const [dragActiveSquare, setDragActiveSquare] = useState(false);
@@ -51,6 +84,11 @@ export function Branding() {
 					if (data.primary_color) {
 						setPrimaryColor(data.primary_color);
 					}
+					setTerminology(
+						mergeTerminology(
+							data.terminology as BrandingTerminologyInput,
+						),
+					);
 				}
 			} catch {
 				toast.error("Failed to load branding settings");
@@ -68,6 +106,7 @@ export function Branding() {
 		try {
 			const updated = await updateBranding({
 				primary_color: primaryColor,
+				terminology: serializeTerminology(terminology),
 			});
 			setBranding(updated);
 			applyBrandingTheme(updated as BrandingSettings);
@@ -86,6 +125,66 @@ export function Branding() {
 		} finally {
 			setSaving(false);
 		}
+	};
+
+	const handleTerminologyUpdate = async () => {
+		setSavingTerminology(true);
+		try {
+			const updated = await updateBranding({
+				primary_color: primaryColor,
+				terminology: serializeTerminology(terminology),
+			});
+			setBranding(updated);
+			setTerminology(
+				mergeTerminology(updated.terminology as BrandingTerminologyInput),
+			);
+			applyBrandingTheme(updated as BrandingSettings);
+			refreshBranding();
+
+			toast.success("Terminology updated", {
+				description: "Product labels have been updated successfully",
+			});
+		} catch (err) {
+			toast.error("Error", {
+				description:
+					err instanceof Error
+						? err.message
+						: "Failed to update terminology",
+			});
+		} finally {
+			setSavingTerminology(false);
+		}
+	};
+
+	const updateTerm = (
+		key: ProductTermKey,
+		field: "singular" | "plural",
+		value: string,
+	) => {
+		setTerminology((current) =>
+			mergeTerminology({
+				app: {
+					singular: current.app.singular,
+					plural: current.app.plural,
+				},
+				agent: {
+					singular: current.agent.singular,
+					plural: current.agent.plural,
+				},
+				form: {
+					singular: current.form.singular,
+					plural: current.form.plural,
+				},
+				[key]: {
+					singular:
+						field === "singular"
+							? value
+							: current[key].singular,
+					plural:
+						field === "plural" ? value : current[key].plural,
+				},
+			}),
+		);
 	};
 
 	// Handle file upload
@@ -302,6 +401,75 @@ export function Branding() {
 							) : (
 								<RotateCcw className="h-4 w-4" />
 							)}
+						</Button>
+					</div>
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Product Terminology</CardTitle>
+					<CardDescription>
+						Rename fixed platform nouns before the UI renders
+					</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-5">
+					<div className="space-y-4">
+						{TERMINOLOGY_ROWS.map((row) => (
+							<div
+								key={row.key}
+								className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px]"
+							>
+								<div>
+									<Label>{row.label}</Label>
+									<p className="text-sm text-muted-foreground">
+										{row.description}
+									</p>
+								</div>
+								<div>
+									<Label htmlFor={`${row.key}-singular`}>
+										Singular
+									</Label>
+									<Input
+										id={`${row.key}-singular`}
+										value={terminology[row.key].singular}
+										onChange={(e) =>
+											updateTerm(
+												row.key,
+												"singular",
+												e.target.value,
+											)
+										}
+									/>
+								</div>
+								<div>
+									<Label htmlFor={`${row.key}-plural`}>
+										Plural
+									</Label>
+									<Input
+										id={`${row.key}-plural`}
+										value={terminology[row.key].plural}
+										onChange={(e) =>
+											updateTerm(
+												row.key,
+												"plural",
+												e.target.value,
+											)
+										}
+									/>
+								</div>
+							</div>
+						))}
+					</div>
+					<div className="flex gap-2">
+						<Button
+							onClick={handleTerminologyUpdate}
+							disabled={savingTerminology}
+						>
+							{savingTerminology ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : null}
+							Update Terminology
 						</Button>
 					</div>
 				</CardContent>

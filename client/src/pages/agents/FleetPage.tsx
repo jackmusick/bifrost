@@ -48,6 +48,7 @@ import { StatCard } from "@/components/agents/StatCard";
 import { SummaryBackfillButton } from "@/components/agents/SummaryBackfillButton";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { useAuth } from "@/contexts/AuthContext";
+import { term, useTerminology } from "@/lib/terminology";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import type { components } from "@/lib/v1";
 import {
@@ -86,6 +87,7 @@ export function FleetPage() {
 		undefined,
 	);
 	const { isPlatformAdmin } = useAuth();
+	const terminology = useTerminology();
 
 	// Fleet view shows paused agents too (they need to be visible to un-pause).
 	const { data: agents, isLoading: agentsLoading } = useAgents(
@@ -125,7 +127,9 @@ export function FleetPage() {
 			{/* Header */}
 			<div className="flex items-start justify-between gap-4">
 				<div>
-					<h1 className={TYPE_PAGE_TITLE}>Agents</h1>
+					<h1 className={TYPE_PAGE_TITLE}>
+						{term(terminology, "agent", "plural")}
+					</h1>
 					<p className={cn("mt-1", TYPE_BODY, TONE_MUTED)}>
 						{totalAgents} total · {activeCount} active · last 7 days
 					</p>
@@ -139,7 +143,8 @@ export function FleetPage() {
 					{isPlatformAdmin ? <SummaryBackfillButton /> : null}
 					<Button asChild size="sm">
 						<Link to="/agents/new">
-							<Plus className="h-3.5 w-3.5" /> New agent
+							<Plus className="h-3.5 w-3.5" /> New{" "}
+							{term(terminology, "agent", "singularLower")}
 						</Link>
 					</Button>
 				</div>
@@ -178,14 +183,14 @@ export function FleetPage() {
 						value={formatNumber(fleetStats.total_runs)}
 						delta={
 							fleetStats.total_runs > 0
-								? "Across active agents"
+								? `Across active ${term(terminology, "agent", "pluralLower")}`
 								: "No runs yet"
 						}
 					/>
 					<StatCard
 						label="Success rate"
 						value={`${Math.round((fleetStats.avg_success_rate ?? 0) * 100)}%`}
-						delta="Across active agents"
+						delta={`Across active ${term(terminology, "agent", "pluralLower")}`}
 					/>
 					<StatCard
 						label="Spend (7d)"
@@ -199,7 +204,7 @@ export function FleetPage() {
 						}
 					/>
 					<StatCard
-						label="Active agents"
+						label={`Active ${term(terminology, "agent", "pluralLower")}`}
 						value={formatNumber(fleetStats.active_agents)}
 						delta={`of ${totalAgents} total`}
 					/>
@@ -228,8 +233,8 @@ export function FleetPage() {
 					<div className="relative max-w-md flex-1">
 						<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
 						<Input
-							aria-label="Search agents"
-							placeholder="Search agents…"
+							aria-label={`Search ${term(terminology, "agent", "pluralLower")}`}
+							placeholder={`Search ${term(terminology, "agent", "pluralLower")}...`}
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
 							className="h-8 pl-8 text-[13px]"
@@ -321,21 +326,26 @@ export function FleetPage() {
 }
 
 function EmptyState({ hasQuery }: { hasQuery: boolean }) {
+	const terminology = useTerminology();
+
 	return (
 		<div className={cn(CARD_SURFACE, "py-12 text-center")}>
 			<Bot className="mx-auto h-10 w-10 text-muted-foreground" />
 			<h3 className="mt-3 text-[15px] font-semibold">
-				{hasQuery ? "No agents match your search" : "No agents yet"}
+				{hasQuery
+					? `No ${term(terminology, "agent", "pluralLower")} match your search`
+					: `No ${term(terminology, "agent", "pluralLower")} yet`}
 			</h3>
 			<p className={cn("mt-1", TYPE_MUTED)}>
 				{hasQuery
 					? "Try adjusting your search."
-					: "Get started by creating your first AI agent."}
+					: `Get started by creating your first AI ${term(terminology, "agent", "singularLower")}.`}
 			</p>
 			{!hasQuery ? (
 				<Button asChild variant="outline" size="sm" className="mt-4">
 					<Link to="/agents/new">
-						<Plus className="h-3.5 w-3.5" /> New agent
+						<Plus className="h-3.5 w-3.5" /> New{" "}
+						{term(terminology, "agent", "singularLower")}
 					</Link>
 				</Button>
 			) : null}

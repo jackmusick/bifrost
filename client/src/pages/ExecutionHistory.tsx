@@ -862,6 +862,10 @@ export function ExecutionHistory() {
 									return (
 										<DataTableRow
 											key={execution.execution_id}
+											data-testid="execution-row"
+											data-execution-id={
+												execution.execution_id
+											}
 											clickable
 											href={`/history/${execution.execution_id}`}
 											onClick={(e) => {
@@ -894,7 +898,10 @@ export function ExecutionHistory() {
 													)}
 												</DataTableCell>
 											)}
-											<DataTableCell className="font-mono text-sm">
+											<DataTableCell
+												className="font-mono text-sm"
+												data-testid="execution-workflow-cell"
+											>
 												<div className="flex items-center gap-2">
 													{execution.workflow_name}
 													{execution.session_id && (

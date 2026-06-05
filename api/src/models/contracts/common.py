@@ -28,6 +28,10 @@ class BrandingSettings(BaseModel):
     square_logo_url: str | None = Field(default=None, description="Square logo URL (for icons, 1:1 ratio)")
     rectangle_logo_url: str | None = Field(default=None, description="Rectangle logo URL (for headers, 16:9 ratio)")
     primary_color: str | None = Field(default=None, description="Primary brand color (hex format, e.g., #FF5733)")
+    terminology: "BrandingTerminology" = Field(
+        default_factory=lambda: BrandingTerminology(),
+        description="Fixed product terminology overrides for the platform UI",
+    )
 
     @field_validator('primary_color')
     @classmethod
@@ -44,9 +48,40 @@ class BrandingSettings(BaseModel):
         return v
 
 
+class BrandingTerm(BaseModel):
+    """Singular and plural labels for a fixed product noun."""
+    singular: str | None = Field(default=None, min_length=1, max_length=40)
+    plural: str | None = Field(default=None, min_length=1, max_length=40)
+
+
+class BrandingTerminology(BaseModel):
+    """Fixed platform nouns that can be renamed by branding."""
+    app: BrandingTerm = Field(default_factory=BrandingTerm)
+    agent: BrandingTerm = Field(default_factory=BrandingTerm)
+    form: BrandingTerm = Field(default_factory=BrandingTerm)
+
+
 class BrandingUpdateRequest(BaseModel):
-    """Request model for updating primary color only - logos use POST /logo/{type}"""
+    """Request model for updating branding settings - logos use POST /logo/{type}"""
     primary_color: str | None = Field(default=None, description="Primary color (hex code, e.g., #0066CC)")
+    terminology: BrandingTerminology | None = Field(
+        default=None,
+        description="Fixed product terminology overrides for the platform UI",
+    )
+
+    @field_validator('primary_color')
+    @classmethod
+    def validate_hex_color(cls, v):
+        """Validate hex color format"""
+        if v is None:
+            return v
+        if not v.startswith('#') or len(v) not in [4, 7]:
+            raise ValueError("Primary color must be a valid hex color (e.g., #FFF or #FF5733)")
+        try:
+            int(v[1:], 16)
+        except ValueError:
+            raise ValueError("Primary color must be a valid hex color")
+        return v
 
 
 # ==================== FILE UPLOAD MODELS ====================

@@ -28,9 +28,15 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Logo } from "@/components/branding/Logo";
 import { Button } from "@/components/ui/button";
+import {
+	term,
+	useTerminology,
+	type ProductTermKey,
+} from "@/lib/terminology";
 
 interface NavItem {
 	title: string;
+	termKey?: ProductTermKey;
 	href: string;
 	icon: React.ElementType;
 	requiresPlatformAdmin?: boolean;
@@ -66,11 +72,13 @@ const navSections: NavSection[] = [
 			},
 			{
 				title: "Apps",
+				termKey: "app",
 				href: "/apps",
 				icon: AppWindow,
 			},
 			{
 				title: "Forms",
+				termKey: "form",
 				href: "/forms",
 				icon: FileCode,
 			},
@@ -86,6 +94,7 @@ const navSections: NavSection[] = [
 		items: [
 			{
 				title: "Agents",
+				termKey: "agent",
 				href: "/agents",
 				icon: Bot,
 			},
@@ -219,6 +228,7 @@ export function Sidebar({
 	isCollapsed,
 }: SidebarProps) {
 	const { isPlatformAdmin } = useAuth();
+	const terminology = useTerminology();
 
 	// Filter sections and items based on user permissions
 	const visibleSections = navSections
@@ -272,6 +282,9 @@ export function Sidebar({
 							)}
 							{section.items.map((item) => {
 								const Icon = item.icon;
+								const itemTitle = item.termKey
+									? term(terminology, item.termKey, "plural")
+									: item.title;
 								return (
 									<div key={item.href}>
 										{item.dividerBefore && !isCollapsed && (
@@ -284,7 +297,7 @@ export function Sidebar({
 											to={item.href}
 											title={
 												isCollapsed
-													? item.title
+													? itemTitle
 													: undefined
 											}
 											className={({ isActive }) =>
@@ -307,7 +320,7 @@ export function Sidebar({
 														: "h-4 w-4",
 												)}
 											/>
-											{!isCollapsed && item.title}
+											{!isCollapsed && itemTitle}
 										</NavLink>
 									</div>
 								);
@@ -348,6 +361,13 @@ export function Sidebar({
 									</h3>
 									{section.items.map((item) => {
 										const Icon = item.icon;
+										const itemTitle = item.termKey
+											? term(
+													terminology,
+													item.termKey,
+													"plural",
+												)
+											: item.title;
 										return (
 											<div key={item.href}>
 												{item.dividerBefore && (
@@ -371,7 +391,7 @@ export function Sidebar({
 													}
 												>
 													<Icon className="h-4 w-4" />
-													{item.title}
+													{itemTitle}
 												</NavLink>
 											</div>
 										);

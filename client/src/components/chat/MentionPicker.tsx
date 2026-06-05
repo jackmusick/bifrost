@@ -21,6 +21,7 @@ import {
 	PopoverAnchor,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { term, useTerminology } from "@/lib/terminology";
 import { useAgents } from "@/hooks/useAgents";
 import type { components } from "@/lib/v1";
 
@@ -41,6 +42,7 @@ export function MentionPicker({
 	searchTerm,
 	position,
 }: MentionPickerProps) {
+	const terminology = useTerminology();
 	const { data: agents } = useAgents();
 	const [selectedIndex, setSelectedIndex] = useState(0);
 	const listRef = useRef<HTMLDivElement>(null);
@@ -123,13 +125,17 @@ export function MentionPicker({
 			>
 				<Command>
 					<CommandInput
-						placeholder="Search agents..."
+						placeholder={`Search ${term(terminology, "agent", "pluralLower")}...`}
 						value={searchTerm}
 						className="h-9"
 					/>
 					<CommandList ref={listRef}>
-						<CommandEmpty>No agents found.</CommandEmpty>
-						<CommandGroup heading="Agents">
+						<CommandEmpty>
+							No {term(terminology, "agent", "pluralLower")} found.
+						</CommandEmpty>
+						<CommandGroup
+							heading={term(terminology, "agent", "plural")}
+						>
 							{filteredAgents.map((agent, index) => (
 								<CommandItem
 									key={agent.id}

@@ -10146,10 +10146,31 @@ export interface components {
              * @description Primary brand color (hex format, e.g., #FF5733)
              */
             primary_color?: string | null;
+            /** @description Fixed product terminology overrides for the platform UI */
+            terminology?: components["schemas"]["BrandingTerminology"];
+        };
+        /**
+         * BrandingTerm
+         * @description Singular and plural labels for a fixed product noun.
+         */
+        BrandingTerm: {
+            /** Singular */
+            singular?: string | null;
+            /** Plural */
+            plural?: string | null;
+        };
+        /**
+         * BrandingTerminology
+         * @description Fixed platform nouns that can be renamed by branding.
+         */
+        BrandingTerminology: {
+            app?: components["schemas"]["BrandingTerm"];
+            agent?: components["schemas"]["BrandingTerm"];
+            form?: components["schemas"]["BrandingTerm"];
         };
         /**
          * BrandingUpdateRequest
-         * @description Request model for updating primary color only - logos use POST /logo/{type}
+         * @description Request model for updating branding settings - logos use POST /logo/{type}
          */
         BrandingUpdateRequest: {
             /**
@@ -10157,6 +10178,8 @@ export interface components {
              * @description Primary color (hex code, e.g., #0066CC)
              */
             primary_color?: string | null;
+            /** @description Fixed product terminology overrides for the platform UI */
+            terminology?: components["schemas"]["BrandingTerminology"] | null;
         };
         /** BulkExportRequest */
         BulkExportRequest: {

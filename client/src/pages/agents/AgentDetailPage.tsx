@@ -56,6 +56,7 @@ import {
 	TYPE_PAGE_TITLE,
 } from "@/components/agents/design-tokens";
 import { cn } from "@/lib/utils";
+import { term, useTerminology } from "@/lib/terminology";
 import { useAgent, useDeleteAgent, useUpdateAgent } from "@/hooks/useAgents";
 import { useAgentRuns } from "@/services/agentRuns";
 import { useCreateConversation } from "@/hooks/useChat";
@@ -66,6 +67,7 @@ type Tab = "overview" | "runs" | "settings";
 export function AgentDetailPage() {
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
+	const terminology = useTerminology();
 
 	const isCreate = !id || id === "new";
 	const agentId = isCreate ? undefined : id;
@@ -141,7 +143,8 @@ export function AgentDetailPage() {
 					to="/agents"
 					className="inline-flex items-center gap-1 hover:text-foreground"
 				>
-					<ArrowLeft className="h-3 w-3" /> Agents
+					<ArrowLeft className="h-3 w-3" />{" "}
+					{term(terminology, "agent", "plural")}
 				</Link>
 				{!isCreate && agent ? (
 					<>
@@ -220,8 +223,8 @@ export function AgentDetailPage() {
 									</TooltipTrigger>
 									<TooltipContent>
 										{isActive
-											? "Open a chat session with this agent"
-											: "Agent is paused"}
+											? `Open a chat session with this ${term(terminology, "agent", "singularLower")}`
+											: `${term(terminology, "agent", "singular")} is paused`}
 									</TooltipContent>
 								</Tooltip>
 							</TooltipProvider>
