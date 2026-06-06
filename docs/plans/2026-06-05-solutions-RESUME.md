@@ -28,9 +28,30 @@ of reviews #7–#13 are triaged + fixed + green.
 | #11 | 2 P2 | ✗ → BOTH FIXED (session 4) |
 | #12 | 2 P2 | ✗ → BOTH FIXED (session 4) |
 | #13 | 4 P2 + 1 P3 | ✗ → ALL FIXED (session 4) |
-| #14 | 2 P2 (both NORMAL-USE) | ✗ → **BOTH FIXED (session 4)** |
-| #15 | running | needed: 1st of 2 clean ← **current** |
-| #16 | — | needed: 2nd of 2 clean (if #15 clean) |
+| #14 | 2 P2 (NORMAL-USE) | ✗ → BOTH FIXED (session 4) |
+| #15 | 3 P2 + 1 P3 (all NORMAL-USE) | ✗ → **ALL FIXED (session 4)** |
+| #16 | running | needed: 1st of 2 clean ← **current** |
+| #17 | — | needed: 2nd of 2 clean (if #16 clean) |
+
+### SESSION 4 cont. — review #15 closed (4 NORMAL-USE findings; 1 was a regression I introduced)
+Commit 6650adfb. The broad sweep again found NORMAL-USE issues, incl a real regression:
+- **[P2 REGRESSION] v2 app useTable("name") 404'd**: the table analogue of the #8
+  useWorkflow fix that I never extended to tables. The name cascade excludes
+  solution-managed tables and the table SDK sent no install id, so an app couldn't
+  use the table it deployed. Fix: v2 provider sends `X-Bifrost-App`;
+  get_execution_context → ExecutionContext.app_id; get_table_or_404 resolves the
+  app's solution_id and finds the install's table by name.
+- **[P2] Incomplete #14 workspace scoping**: #14 scoped only delete_workflows_for_file;
+  reindex/deactivation/rename/register/replace still mutated by Workflow.path alone.
+  All now filter solution_id IS NULL (reindex.py, deactivation.py, file_ops.py,
+  workflow_orphan.py, mcp_server/tools/workflow.py).
+- **[P2] Agent deploy dropped max_iterations/max_token_budget/mcp_connection_ids**:
+  now stamped + the MCP-grant junction full-replaced on deploy.
+- **[P3] Bad manifest access_level → 500**: validated against the enum → 409.
+PATTERN NOTE: two of these (#14-incomplete, table-not-extended-from-#8) were MY
+incomplete prior fixes — the "fix one tier, miss the parallel tier" trap. When
+fixing a tier-scoping or identity issue, sweep ALL parallel surfaces (workflow AND
+table AND form AND agent; lookup AND delete AND rename AND register).
 
 ### SESSION 4 cont. — review #14 closed (2 NORMAL-USE P2s; severity tagging added)
 The #14 prompt asked Codex to tag findings NORMAL-USE vs HOSTILE-LOAD; both were
