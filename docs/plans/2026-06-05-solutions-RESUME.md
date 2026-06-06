@@ -9,10 +9,37 @@ Spec: `docs/plans/2026-06-04-solutions-success-criteria.md` (18 criteria) + v2 a
 
 # ▶ STATUS DASHBOARD — "how close are we?" (read this first)
 
-**Short answer: feature-complete; core correctness SOLID (zero P1 for 6 rounds); now
-chasing increasingly-marginal P2 hardening.** The done-bar is **two CONSECUTIVE Codex
-reviews with ZERO P1/P2** (session-3 user directive). As of session 4 (2026-06-06) all
-of reviews #7–#13 are triaged + fixed + green.
+**STATUS (end of session 4, 2026-06-06): cleanup complete; branch is GREEN and ready
+for HUMAN review. The Codex two-clean gate was ABANDONED (see "DECISION" below) —
+ignore the round-by-round table; it's history.**
+
+## ▶▶ WHAT TO DO NEXT (read this, not the gate table)
+1. **Human review** the new auth/concurrency code (highest risk): the
+   `X-Bifrost-App` table gate (`api/src/routers/tables.py` `_resolve_solution_table_by_name`),
+   the per-install `write_lock.py`, install-scoped resolution
+   (`WorkflowRepository._resolve_by_path_ref`), the uuid5 remap (`deploy.py
+   solution_entity_id` / `_remapped_bundle`), and the v2 mount races
+   (`StandaloneV2App.tsx`, `BundledAppShell.tsx`).
+2. **Build the configs-ownership + per-install management view** — the one
+   owned-entity type NOT yet built. Full spec:
+   `docs/plans/2026-06-06-solutions-own-configs-and-install-view.md`.
+3. **Small non-blocker:** add the `is_solution_managed` read-only badge/affordance to
+   the Forms / Workflows / agents-Fleet LIST pages (only `Applications.tsx` has it).
+
+## WHAT'S LEFT vs DONE
+- **DONE + verified green** (173 solution unit + 106 e2e + 116 client vitest;
+  ruff/pyright/tsc clean): the whole owns-its-entity model for workflows/apps/forms/
+  agents/tables (uuid5 identity, solution-scoped uniqueness, solution-first
+  resolution, deploy of all metadata incl access_level/agent-limits/MCP-grants,
+  read-only enforcement, write-lock, v2 app model), merged with main, audited,
+  dead-code removed.
+- **NOT built:** configs as a solution-owned entity + the install management view
+  (item 2 above). Everything else is review + the small UI gap.
+
+## (history) The Codex gate, round by round — ABANDONED after #16
+Kept for context only. The bar was "two consecutive clean Codex reviews"; it never
+converged (a broad reviewer always finds one more P2, and my own fixes spawned the
+next round's). Of ~20 findings, ~5 were NORMAL-USE and all are fixed. See DECISION.
 
 ### The gate, round by round
 | Review | Findings | Clean? |
@@ -31,7 +58,7 @@ of reviews #7–#13 are triaged + fixed + green.
 | #14 | 2 P2 (NORMAL-USE) | ✗ → BOTH FIXED (session 4) |
 | #15 | 3 P2 + 1 P3 (all NORMAL-USE) | ✗ → ALL FIXED (session 4) |
 | #16 | 1 P1 + 1 P2 + 1 P3 | ✗ → **ALL FIXED (session 4)** |
-| #17 | running | verification-only; reassess stopping rule after ← **current** |
+| #17 | (killed) | gate abandoned — replaced by whole-branch audit + human review |
 
 ### ✅ SESSION 4 FINAL STATE (2026-06-06) — branch ready for HUMAN review
 Done this session after abandoning the Codex gate:
