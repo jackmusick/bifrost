@@ -246,10 +246,14 @@ class ManifestSolutionConfigSchema(BaseModel):
     """A solution-owned config DECLARATION (portable; never a value)."""
     id: str = Field(description="Config schema UUID")
     key: str = Field(description="Config key name")
+    # Intentionally named ``type`` (not ``config_type`` like ManifestConfig) to
+    # match the SolutionConfigSchema ORM column and the collector's body.get("type").
     type: str = Field(default="string", description="string | int | bool | json | secret")
     required: bool = Field(default=False, description="Whether a value must be supplied at install time")
     description: str | None = Field(default=None, description="Human-readable description")
-    default: str | None = Field(default=None, description="Default value used when none is supplied")
+    # ``object`` not ``str``: a non-string declared type (int/bool/json) needs a
+    # matching default (mirrors ManifestConfig.value being typed ``object | None``).
+    default: object | None = Field(default=None, description="Default value used when none is supplied")
     position: int = Field(default=0, description="Display ordering within the solution")
 
 
