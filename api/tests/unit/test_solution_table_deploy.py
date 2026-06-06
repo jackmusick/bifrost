@@ -17,6 +17,7 @@ from src.models.orm.solutions import Solution
 from src.models.orm.tables import Document, Table
 from src.services.solutions.deploy import (
     SolutionBundle,
+    SolutionDeployConflict,
     SolutionDeployer,
     solution_entity_id,
 )
@@ -60,6 +61,44 @@ class TestSolutionTableDeploy:
         assert tbl.solution_id == sol.id
         assert tbl.organization_id == sol.organization_id
         assert tbl.schema == {"columns": [{"name": "email"}]}
+
+    async def test_two_solutions_can_deploy_same_table_name(self, db_session) -> None:
+        """The owns-its-table model: a developer must NOT have to reason about the
+        global namespace — two DIFFERENT solutions can each deploy a 'users' table
+        without colliding (uniqueness is solution-scoped, not org/global)."""
+        db = db_session
+        sol_a = await self._install(db)
+        sol_b = await self._install(db)
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol_a, tables=[_table_entry(str(uuid.uuid4()), "users", {"columns": []})],
+        ))
+        await db.flush()
+        # Same table name in a second install — must NOT collide.
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol_b, tables=[_table_entry(str(uuid.uuid4()), "users", {"columns": []})],
+        ))
+        await db.flush()
+        names_a = (await db.execute(
+            select(Table.name).where(Table.solution_id == sol_a.id)
+        )).scalars().all()
+        names_b = (await db.execute(
+            select(Table.name).where(Table.solution_id == sol_b.id)
+        )).scalars().all()
+        assert names_a == ["users"] and names_b == ["users"]
+
+    async def test_duplicate_table_name_in_one_bundle_is_409(self, db_session) -> None:
+        """Two tables sharing a name WITHIN one install is a bundle authoring
+        error → SolutionDeployConflict (→ 409), not an unhandled IntegrityError/500."""
+        db = db_session
+        sol = await self._install(db)
+        with pytest.raises(SolutionDeployConflict, match="unique within an install"):
+            await SolutionDeployer(db).deploy(SolutionBundle(
+                solution=sol,
+                tables=[
+                    _table_entry(str(uuid.uuid4()), "dup", {"columns": []}),
+                    _table_entry(str(uuid.uuid4()), "dup", {"columns": []}),
+                ],
+            ))
 
     async def test_redeploy_changed_schema_preserves_rows(self, db_session) -> None:
         db = db_session

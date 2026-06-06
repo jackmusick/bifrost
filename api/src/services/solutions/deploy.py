@@ -556,6 +556,23 @@ class SolutionDeployer:
         from src.models.contracts.policies import TablePolicies
 
         sid = solution.id
+
+        # Table NAME is unique per install (ix_tables_solution_name_unique). Two
+        # tables in THIS bundle sharing a name would hit that index as an
+        # IntegrityError → an unhandled 500. Catch it deterministically up front
+        # as a 409 SolutionDeployConflict naming the offending table. (A name
+        # shared with a _repo/ or OTHER install's table is fine — uniqueness is
+        # solution-scoped, so the developer never reasons about that namespace.)
+        seen_names: set[str] = set()
+        for mtbl in tables:
+            nm = str(mtbl.get("name"))
+            if nm in seen_names:
+                raise SolutionDeployConflict(
+                    f"two tables named '{nm}' in this Solution bundle; table names "
+                    f"must be unique within an install"
+                )
+            seen_names.add(nm)
+
         for mtbl in tables:
             tbl_id = UUID(mtbl["id"])
 
