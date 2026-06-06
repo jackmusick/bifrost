@@ -984,6 +984,25 @@ Examples:
         if not creds or not creds.get("access_token"):
             print("Not authenticated. Run `bifrost login` first.", file=sys.stderr)
             return 1
+        # The token feeds a long-running `npm run dev` session; if it's expired
+        # (or near it), refresh first so the dev server isn't handed a stale token
+        # that 401s with no recovery. Best-effort: if refresh fails, warn but still
+        # emit what we have so the dev gets a clear "re-login" signal, not silence.
+        if credentials.is_token_expired(api_url=url_override):
+            import asyncio
+
+            from bifrost.client import refresh_tokens
+            try:
+                if asyncio.run(refresh_tokens()):
+                    creds = credentials.get_credentials(url_override) or creds
+            except Exception:  # noqa: BLE001 - refresh is best-effort here
+                pass
+            if credentials.is_token_expired(api_url=url_override):
+                print(
+                    "Warning: access token is expired and refresh failed; run "
+                    "`bifrost login` to re-authenticate.",
+                    file=sys.stderr,
+                )
         print(json.dumps({
             "api_url": creds.get("api_url"),
             "access_token": creds["access_token"],
