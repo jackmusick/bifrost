@@ -33,7 +33,28 @@ of reviews #7–#13 are triaged + fixed + green.
 | #16 | 1 P1 + 1 P2 + 1 P3 | ✗ → **ALL FIXED (session 4)** |
 | #17 | running | verification-only; reassess stopping rule after ← **current** |
 
-### ▶▶ DECISION (session 4, end): TWO-CLEAN BAR ABANDONED → WHOLE-BRANCH AUDIT
+### ✅ SESSION 4 FINAL STATE (2026-06-06) — branch ready for HUMAN review
+Done this session after abandoning the Codex gate:
+1. **Merged main** (was 7 behind; resolved v1.d.ts + a multiple-alembic-heads merge
+   migration `20260606_merge_sol_brand`). Now 127 ahead, working tree clean.
+2. **Whole-branch multi-agent audit** (7 reviewers / 149 prod files): every slice
+   "Solid" or "Acceptable", ZERO complexity findings — core is not slop. Found
+   3 bugs + 9 dead-code + 4 inconsistency + 18 nits.
+3. **Fixed the real ones:** table-name solution-scoped uniqueness (the owns-its-table
+   bug; migration `20260606_table_name_sol_scope` + in-bundle-dup→409), `bifrost auth
+   token` expiry-refresh, removed 8 dead-code items + the dead simple_worker eviction
+   block (and fixed its test to verify the REAL hash-check isolation, not the fiction).
+   The audit's 9th dead-code item (client index.v2.ts) was a FALSE positive (it's the
+   baked SDK source) — left it.
+4. **Wrote the configs/install-view design note** (`2026-06-06-solutions-own-configs-
+   and-install-view.md`) — the evolved "Solutions OWN their entities" model for a fresh
+   session to build (configs schema-owned + value-supplied-in-an-install-view).
+**Verified green:** 173 solution unit + 106 e2e + 116 client vitest; ruff/pyright/tsc
+clean. **NEXT: human review of the new auth/concurrency code; then the configs feature
+per the design note. Known non-blocker:** read-only-UI gap on Forms/Workflows/agents
+list pages (badge present on Applications only) — noted in the design note.
+
+### ▶▶ DECISION (session 4, mid): TWO-CLEAN BAR ABANDONED → WHOLE-BRANCH AUDIT
 The Codex two-clean loop was stopped after #16. Rationale the user and I agreed on:
 the loop was grinding on **production-fine edges** (sub-second nav races, same-install
 concurrent-deploy, lock fencing) and — worse — my OWN fixes kept spawning the next
