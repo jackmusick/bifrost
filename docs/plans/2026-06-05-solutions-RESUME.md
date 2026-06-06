@@ -9,11 +9,10 @@ Spec: `docs/plans/2026-06-04-solutions-success-criteria.md` (18 criteria) + v2 a
 
 # ▶ STATUS DASHBOARD — "how close are we?" (read this first)
 
-**Short answer: feature-complete; the identity cluster is now BUILT; awaiting Codex #8 verdict.**
-The done-bar is **two CONSECUTIVE Codex reviews with ZERO P1/P2**. As of session 4 (2026-06-05),
-ALL of review #7 (3 P1 + 3 P2) is fixed + committed + green, INCLUDING the per-install identity
-model (uuid5 remap + scope-aware path-ref) that kept regenerating findings. Codex review #8 is the
-first chance at clean #1.
+**Short answer: feature-complete; core correctness SOLID (zero P1 for 6 rounds); now
+chasing increasingly-marginal P2 hardening.** The done-bar is **two CONSECUTIVE Codex
+reviews with ZERO P1/P2** (session-3 user directive). As of session 4 (2026-06-06) all
+of reviews #7–#13 are triaged + fixed + green.
 
 ### The gate, round by round
 | Review | Findings | Clean? |
@@ -27,9 +26,47 @@ first chance at clean #1.
 | #9 | 2 P2 | ✗ → BOTH FIXED (session 4) |
 | #10 | 1 P2 | ✗ → FIXED (session 4) |
 | #11 | 2 P2 | ✗ → BOTH FIXED (session 4) |
-| #12 | 2 P2 | ✗ → **BOTH FIXED (session 4)** |
-| #13 | running | needed: 1st of 2 clean ← **current** |
-| #14 | — | needed: 2nd of 2 clean (if #13 clean) |
+| #12 | 2 P2 | ✗ → BOTH FIXED (session 4) |
+| #13 | 4 P2 + 1 P3 | ✗ → **ALL FIXED (session 4)** |
+| #14 | — | needed: 1st of 2 clean ← **NEXT** |
+| #15 | — | needed: 2nd of 2 clean (if #14 clean) |
+
+### ⚠️ HONEST READ ON THE TREND (session 4, 2026-06-06) — read before more rounds
+**Zero P1 for SIX rounds (#8 was the last).** The core design (identity remap, install-scoped
+resolution, isolation, read-only) is solid; every round since is peripheral hardening.
+**But the bar may be the wrong stopping rule for a surface this broad.** A capable adversarial
+reviewer told "find P1/P2" will almost always surface *a* defensible P2 — and this feature is
+genuinely race-prone (per-install deploy + dynamic ES imports + a shared global + Redis locks +
+a reused React component). #13 even ticked UP (4 P2), mostly because the #12 concurrency-lock fix
+introduced its own edges (fencing token, watchdog resilience, lost-trigger) — i.e. fixes can spawn
+next-round findings.
+**Honest severity recount of the ~15 findings:** only ~3–4 would bite NORMAL use —
+#8-P1 (two solution apps → wrong workflow; scaffold default makes it common), #11 (inline_v1 →
+broken app; reachable by omission), #13 (MCP bulk-delete read-only bypass). The rest are
+**correct-under-hostile-concurrency/timing** (v2 A→B sub-second nav races; concurrent deploys to
+the SAME install — rare for an occasional operator action). All real *as code defects*; most
+low-probability in practice.
+**OPEN DECISION for the user:** keep the strict 2-clean bar (may chase marginal P2s a few more
+rounds) vs. switch to **"zero findings that hit normal use + remaining documented"** (functionally
+reached ~#11). User leaning: hold the bar for now, but flag each round whether new findings are
+normal-use or hostile-load. Don't lower the bar unilaterally — it's the recorded team criterion.
+
+### SESSION 4 cont. — review #13 closed (4 P2 + 1 P3 — concurrency-code edges + 1 pre-existing)
+Commit 52c9d2b5. 3 of 4 P2s were edges in the #12 lock code (reviewer scrutinizes NEW code hardest):
+- **write_lock fencing**: constant lock value → a stale holder's watchdog/release could touch a
+  SUCCESSOR's lock. Now per-holder UUID token + compare-by-token Lua (register_script) for
+  renew/release.
+- **write_lock renewal resilience**: watchdog exited on the first transient redis error → renewal
+  silently stopped. Now logs + keeps retrying.
+- **git-sync lost newer commits**: a trigger arriving while the lock was held was dropped. Now sets a
+  pending-rerun flag; the holder re-checks after finalize and re-syncs. Extracted `_run_sync_once`.
+- **MCP bulk-delete read-only gap** (PRE-EXISTING on main, in-scope because the branch creates managed
+  agents/forms): `update_agent`/`update_form` issue Core bulk deletes that bypass the ORM-flush
+  backstop, and the agent executor commits even after an error_result. Added `is_solution_managed`
+  guard returning the locked message BEFORE any mutation.
+- **[P3] deploy conflict → 409**: router caught only lock+finalize errors; `SolutionDeployConflict`
+  surfaced as 500. Now mapped to 409.
+Files: write_lock.py, git_sync.py, solutions.py (router), mcp_server/tools/{agents,forms}.py.
 
 ### SESSION 4 cont. — review #12 closed (deploy concurrency, 2 P2s, both real)
 Broad sweep found two one-writer/atomicity gaps (commits 6f8fce99 + the clone-to-thread follow-up):
