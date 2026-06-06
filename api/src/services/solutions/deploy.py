@@ -950,8 +950,8 @@ class SolutionDeployer:
         """Upsert this install's config DECLARATIONS (key/type/required/desc/
         default/position). Config VALUES are NEVER written here — they are
         instance-owned Config rows set by the operator. Mirrors
-        :meth:`_upsert_tables`: solution-scoped key uniqueness, ownership guard,
-        full-replace.
+        :meth:`_upsert_tables`: solution-scoped key uniqueness, ownership guard
+        (via ``_guard_owner``), full-replace.
         """
         sid = solution.id
 
@@ -1011,7 +1011,9 @@ class SolutionDeployer:
         only the Table row is swept — Document (row) data is never deleted here;
         a removed table's rows go via the Table FK cascade, which only fires when
         the table itself is genuinely absent from the bundle. For apps, the
-        ``_apps/{id}/dist/`` artifact is deleted alongside the row. Returns
+        ``_apps/{id}/dist/`` artifact is deleted alongside the row. Config
+        DECLARATIONS (SolutionConfigSchema) are also reconciled here, though
+        their deleted count is intentionally not surfaced. Returns
         (workflows, tables, apps, forms, agents) deleted counts.
         """
         wf_deleted = await self._reconcile_one(
