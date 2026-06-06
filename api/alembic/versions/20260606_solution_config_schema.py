@@ -28,8 +28,8 @@ def upgrade() -> None:
         sa.Column("description", sa.String(length=500), nullable=True),
         sa.Column("default", sa.Text(), nullable=True),
         sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("NOW()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
     )
     op.create_index("ix_solution_config_schema_solution_id", "solution_config_schema", ["solution_id"])
     op.create_index(
@@ -37,7 +37,6 @@ def upgrade() -> None:
         "solution_config_schema",
         ["solution_id", "key"],
         unique=True,
-        postgresql_where=sa.text("solution_id IS NOT NULL"),
     )
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.orm.base import Base
@@ -21,7 +21,7 @@ class SolutionConfigSchema(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     solution_id: Mapped[UUID] = mapped_column(
-        ForeignKey("solutions.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("solutions.id", ondelete="CASCADE"), nullable=False
     )
     key: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -39,4 +39,14 @@ class SolutionConfigSchema(Base):
         default=lambda: datetime.now(timezone.utc),
         server_default=text("NOW()"),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_solution_config_schema_solution_id", "solution_id"),
+        Index(
+            "ix_solution_config_schema_sol_key_unique",
+            "solution_id",
+            "key",
+            unique=True,
+        ),
     )
