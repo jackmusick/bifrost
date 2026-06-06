@@ -80,6 +80,40 @@ class TestBranding:
         )
         assert response.status_code in [200, 201], f"Update branding failed: {response.text}"
 
+    def test_update_branding_terminology_superuser(self, e2e_client, platform_admin):
+        """Superuser can update fixed product terminology as part of branding."""
+        response = e2e_client.put(
+            "/api/branding",
+            headers=platform_admin.headers,
+            json={
+                "primary_color": "#1a73e8",
+                "terminology": {
+                    "app": {"singular": "Game", "plural": "Games"},
+                    "agent": {"singular": "Character", "plural": "Characters"},
+                    "form": {"singular": "Quest", "plural": "Quests"},
+                },
+            },
+        )
+
+        assert response.status_code in [200, 201], f"Update branding failed: {response.text}"
+        data = response.json()
+        assert data["terminology"]["app"] == {
+            "singular": "Game",
+            "plural": "Games",
+        }
+        assert data["terminology"]["agent"] == {
+            "singular": "Character",
+            "plural": "Characters",
+        }
+        assert data["terminology"]["form"] == {
+            "singular": "Quest",
+            "plural": "Quests",
+        }
+
+        public_response = e2e_client.get("/api/branding")
+        assert public_response.status_code == 200
+        assert public_response.json()["terminology"]["form"]["plural"] == "Quests"
+
     def test_update_branding_org_user_denied(self, e2e_client, org1_user):
         """Org user cannot update branding (403)."""
         response = e2e_client.put(

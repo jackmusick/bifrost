@@ -25,6 +25,18 @@ import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
 import * as ReactRouterDOM from "react-router-dom";
 import * as LucideReact from "lucide-react";
 import { $ as platformScope } from "./app-code-runtime";
+import { Link, NavLink, Navigate } from "./app-code-platform/navigation";
+import { useLocation } from "./app-code-platform/useLocation";
+import { useNavigate } from "./app-code-platform/navigate";
+
+const appReactRouterDOM = {
+	...ReactRouterDOM,
+	Link,
+	NavLink,
+	Navigate,
+	useLocation,
+	useNavigate,
+} as unknown as typeof ReactRouterDOM;
 
 declare global {
 	interface Window {
@@ -33,7 +45,7 @@ declare global {
 		__bifrost_react_dom_client: typeof ReactDOMClient;
 		__bifrost_react_jsx_runtime: typeof ReactJSXRuntime;
 		__bifrost_react_jsx_dev_runtime: typeof ReactJSXDevRuntime;
-		__bifrost_react_router_dom: typeof ReactRouterDOM;
+		__bifrost_react_router_dom: typeof appReactRouterDOM;
 		__bifrost_lucide_react: typeof LucideReact;
 		__bifrost_platform: typeof platformScope;
 	}
@@ -51,7 +63,7 @@ export function initReactShim(): void {
 	g.__bifrost_react_dom_client = ReactDOMClient;
 	g.__bifrost_react_jsx_runtime = ReactJSXRuntime;
 	g.__bifrost_react_jsx_dev_runtime = ReactJSXDevRuntime;
-	g.__bifrost_react_router_dom = ReactRouterDOM;
+	g.__bifrost_react_router_dom = appReactRouterDOM;
 	g.__bifrost_lucide_react = LucideReact;
 	g.__bifrost_platform = platformScope;
 }

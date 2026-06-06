@@ -64,6 +64,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
+import { term, useTerminology } from "@/lib/terminology";
 import { useRoles } from "@/hooks/useRoles";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
@@ -138,6 +139,7 @@ export function AppInfoDialog({
 	onCreated,
 }: AppInfoDialogProps) {
 	const isEditing = !!appSlug;
+	const terminology = useTerminology();
 	const { isPlatformAdmin, user } = useAuth();
 
 	const { data: existingApp, isLoading: isLoadingApp } = useApplication(
@@ -369,7 +371,7 @@ export function AppInfoDialog({
 										<FormLabel>Name</FormLabel>
 										<FormControl>
 											<Input
-												placeholder="My Application"
+												placeholder={`My ${term(terminology, "app", "formalSingular")}`}
 												{...field}
 												onChange={(e) =>
 													handleNameChange(e.target.value)
@@ -646,7 +648,7 @@ export function AppInfoDialog({
 											? "Saving..."
 											: isEditing
 												? "Save Changes"
-												: "Create Application"}
+												: `Create ${term(terminology, "app", "formalSingular")}`}
 									</Button>
 								</div>
 							</DialogFooter>
@@ -668,7 +670,9 @@ export function AppInfoDialog({
 				>
 					<AlertDialogContent>
 						<AlertDialogHeader>
-							<AlertDialogTitle>Delete Application?</AlertDialogTitle>
+							<AlertDialogTitle>
+								Delete {term(terminology, "app", "formalSingular")}?
+							</AlertDialogTitle>
 							<AlertDialogDescription>
 								This will permanently delete{" "}
 								<strong>{existingApp.name}</strong> and all of

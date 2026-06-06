@@ -3705,22 +3705,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4316,26 +4316,6 @@ export interface paths {
          * @description Get a document by key from the knowledge store.
          */
         get: operations["cli_knowledge_get_api_sdk_knowledge_get_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sdk/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Download the bifrost web SDK package
-         * @description Serve the `bifrost` web SDK as an npm-installable tarball. A standalone_v2 app declares `"bifrost": "<instance>/api/sdk/download"` and resolves it identically on a dev laptop (`npm run dev`) and in the platform's server-side build.
-         */
-        get: operations["download_sdk_api_sdk_download_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6863,9 +6843,6 @@ export interface paths {
         /**
          * Update table
          * @description Update table metadata by ID (platform admin only).
-         *
-         *     Solution-managed tables are read-only here: deploy owns schema + policies.
-         *     Row DATA (documents) stays editable — that's runtime state (criterion 7).
          */
         patch: operations["update_table_api_tables__table_id__patch"];
         trace?: never;
@@ -7089,82 +7066,6 @@ export interface paths {
         head?: never;
         /** Update a custom claim (admin only) */
         patch: operations["update_claim_api_claims__name__patch"];
-        trace?: never;
-    };
-    "/api/solutions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Solution installs (admin only) */
-        get: operations["list_solutions_api_solutions_get"];
-        put?: never;
-        /** Create a Solution install (admin only) */
-        post: operations["create_solution_api_solutions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/solutions/{solution_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a Solution install (admin only) */
-        get: operations["get_solution_api_solutions__solution_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/solutions/{solution_id}/deploy": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Deploy a bundle to an install (full replace, non-interactive, admin only) */
-        post: operations["deploy_solution_api_solutions__solution_id__deploy_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/solutions/{solution_id}/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Auto-pull a git-connected install from its repo (admin only)
-         * @description Pull the connected install's repo ``main`` and deploy it (criterion 13).
-         *
-         *     This is the auto-pull entry point (webhook/poll/manual). It is the ONLY
-         *     writer for a connected install — the deploy endpoint is refused for it. For a
-         *     disconnected install there is nothing to pull, so this is refused in turn.
-         */
-        post: operations["sync_solution_api_solutions__solution_id__sync_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/knowledge-sources": {
@@ -7749,30 +7650,6 @@ export interface paths {
          *     correct MIME types matter.
          */
         get: operations["get_bundle_asset_api_applications__app_id__bundle_asset__filename__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/applications/{app_id}/dist/{path}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Serve a standalone_v2 app's built dist/ file from _apps/{id}/dist/
-         * @description Stream a built dist/ file for a standalone_v2 app.
-         *
-         *     BundledAppShell mounts a v2 app SAME-DOCUMENT (not an iframe): it reads the
-         *     hashed entry/css from the bundle-manifest and loads them from this dist/
-         *     prefix; the app's own bundle pulls any further chunks from here too.
-         */
-        get: operations["get_v2_dist_asset_api_applications__app_id__dist__path__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8962,12 +8839,6 @@ export interface components {
             access_level?: components["schemas"]["AgentAccessLevel"] | null;
             /** Organization Id */
             organization_id?: string | null;
-            /**
-             * Is Solution Managed
-             * @description True if managed by a deployed Solution (read-only on platform)
-             * @default false
-             */
-            is_solution_managed: boolean;
             /** Is Active */
             is_active: boolean;
             /** Created By */
@@ -9578,12 +9449,6 @@ export interface components {
              */
             access_level: string;
             /**
-             * App Model
-             * @description Render model: 'inline_v1' (legacy inline render) or 'standalone_v2' (own createRoot + router + real SDK)
-             * @default inline_v1
-             */
-            app_model: string;
-            /**
              * Role Ids
              * @description Role IDs for role_based access (ignored if access_level is 'authenticated')
              */
@@ -9688,18 +9553,6 @@ export interface components {
              * @default authenticated
              */
             access_level: string;
-            /**
-             * App Model
-             * @description Render model: inline_v1 (legacy inline) | standalone_v2
-             * @default inline_v1
-             */
-            app_model: string;
-            /**
-             * Is Solution Managed
-             * @description True if managed by a deployed Solution (read-only on platform)
-             * @default false
-             */
-            is_solution_managed: boolean;
             /** Role Ids */
             role_ids?: string[];
             /**
@@ -10293,10 +10146,31 @@ export interface components {
              * @description Primary brand color (hex format, e.g., #FF5733)
              */
             primary_color?: string | null;
+            /** @description Fixed product terminology overrides for the platform UI */
+            terminology?: components["schemas"]["BrandingTerminology"];
+        };
+        /**
+         * BrandingTerm
+         * @description Singular and plural labels for a fixed product noun.
+         */
+        BrandingTerm: {
+            /** Singular */
+            singular?: string | null;
+            /** Plural */
+            plural?: string | null;
+        };
+        /**
+         * BrandingTerminology
+         * @description Fixed platform nouns that can be renamed by branding.
+         */
+        BrandingTerminology: {
+            app?: components["schemas"]["BrandingTerm"];
+            agent?: components["schemas"]["BrandingTerm"];
+            form?: components["schemas"]["BrandingTerm"];
         };
         /**
          * BrandingUpdateRequest
-         * @description Request model for updating primary color only - logos use POST /logo/{type}
+         * @description Request model for updating branding settings - logos use POST /logo/{type}
          */
         BrandingUpdateRequest: {
             /**
@@ -10304,6 +10178,8 @@ export interface components {
              * @description Primary color (hex code, e.g., #0066CC)
              */
             primary_color?: string | null;
+            /** @description Fixed product terminology overrides for the platform UI */
+            terminology?: components["schemas"]["BrandingTerminology"] | null;
         };
         /** BulkExportRequest */
         BulkExportRequest: {
@@ -14257,12 +14133,6 @@ export interface components {
              * @default 0
              */
             dependency_count: number;
-            /**
-             * Is Solution Managed
-             * @description True if managed by a deployed Solution (read-only on platform)
-             * @default false
-             */
-            is_solution_managed: boolean;
         };
         /**
          * FormSchema
@@ -18707,7 +18577,7 @@ export interface components {
             id: string;
             /**
              * Name
-             * @description Workflow name (from decorator or function name)
+             * @description MCP tool name, defaulted from function_name on registration
              */
             name: string;
             /**
@@ -19873,179 +19743,6 @@ export interface components {
             compiled?: string | null;
         };
         /**
-         * Solution
-         * @description Read-shape returned by REST.
-         *
-         *     ``scope`` is DERIVED from ``organization_id`` (NULL == global), not stored
-         *     on the ORM row — so it always reflects the install's true scope.
-         */
-        Solution: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Slug */
-            slug: string;
-            /** Name */
-            name: string;
-            /** Organization Id */
-            organization_id?: string | null;
-            /**
-             * Global Repo Access
-             * @default false
-             */
-            global_repo_access: boolean;
-            /**
-             * Git Connected
-             * @default false
-             */
-            git_connected: boolean;
-            /** Git Repo Url */
-            git_repo_url?: string | null;
-            /**
-             * Scope
-             * @enum {string}
-             */
-            readonly scope: "org" | "global";
-        };
-        /**
-         * SolutionCreate
-         * @description Create-shape for an install.
-         *
-         *     For ``scope=org`` the install's org is taken from the caller's context (or
-         *     an explicit ``organization_id`` for cross-org admins); ``scope=global``
-         *     means ``organization_id IS NULL``.
-         */
-        SolutionCreate: {
-            /**
-             * Slug
-             * @description Definition identity (shared across installs)
-             */
-            slug: string;
-            /** Name */
-            name: string;
-            /**
-             * Scope
-             * @default org
-             * @enum {string}
-             */
-            scope: "org" | "global";
-            /**
-             * Global Repo Access
-             * @default false
-             */
-            global_repo_access: boolean;
-            /**
-             * Git Connected
-             * @default false
-             */
-            git_connected: boolean;
-            /** Git Repo Url */
-            git_repo_url?: string | null;
-            /** Organization Id */
-            organization_id?: string | null;
-        };
-        /**
-         * SolutionDeployRequest
-         * @description Full-replace deploy bundle for one install.
-         *
-         *     ``python_files`` maps relative paths (e.g. ``workflows/w.py``,
-         *     ``modules/x.py``) to UTF-8 source text, installed verbatim under the
-         *     install's ``_solutions/{id}/`` prefix. ``workflows`` are manifest-shaped
-         *     entity dicts to upsert (apps/forms/agents/tables join in later sub-plans).
-         *     Deploy is non-interactive by contract — it always applies the full bundle.
-         */
-        SolutionDeployRequest: {
-            /** Python Files */
-            python_files?: {
-                [key: string]: string;
-            };
-            /** Workflows */
-            workflows?: {
-                [key: string]: unknown;
-            }[];
-            /** Tables */
-            tables?: {
-                [key: string]: unknown;
-            }[];
-            /** Apps */
-            apps?: {
-                [key: string]: unknown;
-            }[];
-            /** Forms */
-            forms?: {
-                [key: string]: unknown;
-            }[];
-            /** Agents */
-            agents?: {
-                [key: string]: unknown;
-            }[];
-        };
-        /** SolutionDeployResponse */
-        SolutionDeployResponse: {
-            /**
-             * Solution Id
-             * Format: uuid
-             */
-            solution_id: string;
-            /**
-             * Workflows Upserted
-             * @default 0
-             */
-            workflows_upserted: number;
-            /**
-             * Workflows Deleted
-             * @default 0
-             */
-            workflows_deleted: number;
-            /**
-             * Tables Upserted
-             * @default 0
-             */
-            tables_upserted: number;
-            /**
-             * Tables Deleted
-             * @default 0
-             */
-            tables_deleted: number;
-            /**
-             * Apps Upserted
-             * @default 0
-             */
-            apps_upserted: number;
-            /**
-             * Apps Deleted
-             * @default 0
-             */
-            apps_deleted: number;
-            /**
-             * Forms Upserted
-             * @default 0
-             */
-            forms_upserted: number;
-            /**
-             * Forms Deleted
-             * @default 0
-             */
-            forms_deleted: number;
-            /**
-             * Agents Upserted
-             * @default 0
-             */
-            agents_upserted: number;
-            /**
-             * Agents Deleted
-             * @default 0
-             */
-            agents_deleted: number;
-        };
-        /** SolutionsList */
-        SolutionsList: {
-            /** Solutions */
-            solutions?: components["schemas"]["Solution"][];
-        };
-        /**
          * StuckExecutionsResponse
          * @description Response model for stuck executions query
          */
@@ -20228,12 +19925,6 @@ export interface components {
             updated_at: string | null;
             /** Created By */
             created_by: string | null;
-            /**
-             * Is Solution Managed
-             * @description True if managed by a deployed Solution (read-only on platform)
-             * @default false
-             */
-            is_solution_managed: boolean;
         };
         /**
          * TableUpdate
@@ -21366,11 +21057,6 @@ export interface components {
              */
             form_id?: string | null;
             /**
-             * App Id
-             * @description Optional app ID of the calling Solution app. Used to scope a path::function workflow ref to the app's own install (so it resolves the install's own workflow, not a sibling install's that shares the path).
-             */
-            app_id?: string | null;
-            /**
              * Transient
              * @description If true, skip database persistence (for code editor debugging)
              * @default false
@@ -21616,7 +21302,7 @@ export interface components {
             id: string;
             /**
              * Name
-             * @description Human-readable workflow name
+             * @description MCP tool name for this workflow. Defaults to the Python function name on registration.
              */
             name: string;
             /**
@@ -21626,7 +21312,7 @@ export interface components {
             function_name?: string | null;
             /**
              * Display Name
-             * @description Optional display name for UI (falls back to name if not set)
+             * @description Optional UI display name (falls back to the tool name if not set)
              */
             display_name?: string | null;
             /**
@@ -21644,12 +21330,6 @@ export interface components {
              * @description Organization ID if org-scoped, None for global
              */
             organization_id?: string | null;
-            /**
-             * Is Solution Managed
-             * @description True if managed by a deployed Solution (read-only on platform)
-             * @default false
-             */
-            is_solution_managed: boolean;
             /**
              * Access Level
              * @description Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required)
@@ -21911,8 +21591,13 @@ export interface components {
              */
             role_ids?: string[] | null;
             /**
+             * Name
+             * @description MCP tool name for this workflow. Defaults to the Python function name on registration.
+             */
+            name?: string | null;
+            /**
              * Display Name
-             * @description User-facing display name (defaults to code name if not set)
+             * @description Optional UI display name (falls back to the tool name if not set)
              */
             display_name?: string | null;
             /**
@@ -28237,7 +27922,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28270,7 +27955,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28303,7 +27988,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28336,7 +28021,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -29339,26 +29024,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    download_sdk_api_sdk_download_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };
@@ -34423,158 +34088,6 @@ export interface operations {
             };
         };
     };
-    list_solutions_api_solutions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SolutionsList"];
-                };
-            };
-        };
-    };
-    create_solution_api_solutions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SolutionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Solution"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_solution_api_solutions__solution_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                solution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Solution"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    deploy_solution_api_solutions__solution_id__deploy_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                solution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SolutionDeployRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SolutionDeployResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    sync_solution_api_solutions__solution_id__sync_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                solution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_namespaces_api_knowledge_sources_get: {
         parameters: {
             query?: {
@@ -35819,40 +35332,6 @@ export interface operations {
                 app_id: string;
                 /** @description Bundle asset filename */
                 filename: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_v2_dist_asset_api_applications__app_id__dist__path__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Application UUID */
-                app_id: string;
-                /** @description Path within the app's dist/ (e.g. index.html) */
-                path: string;
             };
             cookie?: never;
         };

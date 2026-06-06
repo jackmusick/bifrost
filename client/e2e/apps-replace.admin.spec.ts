@@ -78,7 +78,7 @@ test.describe("Apps Replace", () => {
 		// Validation phase: either "No issues found" (clean app) or an Errors/Warnings
 		// panel. Either way, we should see the post-replace footer.
 		await expect(
-			page.getByRole("button", { name: /close/i }),
+			page.getByRole("button", { name: "Close", exact: true }),
 		).toBeVisible({ timeout: 15000 });
 		await expect(
 			page.getByRole("button", { name: /open app/i }),
