@@ -519,6 +519,10 @@ def _collect_apps(workspace: pathlib.Path) -> list[dict]:
             "id": body.get("id", key),
             "slug": body.get("slug") or key,
             "name": body.get("name") or key,
+            # description is deploy-owned: _upsert_apps full-replaces it, so
+            # dropping it here would CLEAR the deployed app's description on every
+            # deploy (non-round-tripping — Codex #16).
+            "description": body.get("description"),
             "app_model": body.get("app_model", "inline_v1"),
             "dependencies": body.get("dependencies") or {},
             "access_level": body.get("access_level"),

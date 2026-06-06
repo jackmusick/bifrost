@@ -459,8 +459,15 @@ async def generate_manifest(
     the legacy full-dump behavior is unchanged.
     """
     def _scope(stmt, model):
-        # Restrict to one install when exporting a Solution; otherwise unchanged.
-        return stmt.where(model.solution_id == solution_id) if solution_id is not None else stmt
+        # Exporting ONE Solution → restrict to that install. Otherwise this is a
+        # WORKSPACE (_repo/) manifest regen — exclude solution-managed rows so a
+        # normal `.bifrost/` regen never serializes deploy-owned entities into the
+        # workspace git/import flow (Codex #16). All no-solution_id callers
+        # (files router, github_sync, repo_sync_writer, manifest_import) are
+        # workspace-tier and want _repo/ only.
+        if solution_id is not None:
+            return stmt.where(model.solution_id == solution_id)
+        return stmt.where(model.solution_id.is_(None))
 
     # Fetch all active workflows (sorted by name for deterministic manifest output)
     wf_result = await db.execute(

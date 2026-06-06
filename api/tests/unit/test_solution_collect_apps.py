@@ -43,6 +43,25 @@ def test_collect_apps_reads_manifest_and_source(tmp_path) -> None:
     assert a["src_files"]["src/main.tsx"] == "export default 1\n"
 
 
+def test_collect_apps_carries_description(tmp_path) -> None:
+    """Codex #16: description is deploy-owned (full-replaced), so the collector
+    must carry it — else every deploy clears the app's description."""
+    (tmp_path / ".bifrost").mkdir()
+    (tmp_path / "apps" / "dash").mkdir(parents=True)
+    (tmp_path / ".bifrost" / "apps.yaml").write_text(
+        "apps:\n"
+        "  33333333-3333-3333-3333-333333333333:\n"
+        "    id: 33333333-3333-3333-3333-333333333333\n"
+        "    slug: dash\n"
+        "    name: Dashboard\n"
+        "    description: The ops dashboard\n"
+        "    path: apps/dash\n"
+        "    app_model: standalone_v2\n"
+    )
+    a = _collect_apps(tmp_path)[0]
+    assert a["description"] == "The ops dashboard"
+
+
 def test_collect_apps_carries_role_bindings(tmp_path) -> None:
     """Role refs must reach the bundle so the deployer can sync AppRole (P1-d)."""
     (tmp_path / ".bifrost").mkdir()

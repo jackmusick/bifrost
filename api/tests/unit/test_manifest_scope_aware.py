@@ -43,16 +43,30 @@ class TestScopeAwareManifest:
         wf_ids = {w.id for w in manifest.workflows.values()}
         assert wf_ids == {str(mine)}
 
-    async def test_no_filter_keeps_legacy_all_orgs_behavior(self, db_session) -> None:
-        """generate_manifest(db) with no solution_id is unchanged — includes
-        _repo/ workflows (legacy full-dump behavior)."""
+    async def test_no_solution_id_is_repo_scoped(self, db_session) -> None:
+        """generate_manifest(db) with no solution_id is a WORKSPACE (_repo/)
+        regen: it includes _repo/ workflows but EXCLUDES solution-managed rows,
+        so a normal .bifrost/ regen never serializes deploy-owned entities into
+        the workspace git/import flow (Codex #16)."""
         db = db_session
-        repo_id = uuid.uuid4()
-        db.add(Workflow(
-            id=repo_id, name=f"legacy_{repo_id.hex[:6]}", function_name="run",
-            path=f"workflows/legacy_{repo_id.hex[:6]}.py", type="workflow",
-            organization_id=None, solution_id=None,
-        ))
+        sol = Solution(id=uuid.uuid4(), slug=f"man-{uuid.uuid4().hex[:8]}", name="M", organization_id=None)
+        db.add(sol)
+        await db.flush()
+
+        repo_id, sol_wf_id = uuid.uuid4(), uuid.uuid4()
+        db.add_all([
+            Workflow(
+                id=repo_id, name=f"legacy_{repo_id.hex[:6]}", function_name="run",
+                path=f"workflows/legacy_{repo_id.hex[:6]}.py", type="workflow",
+                organization_id=None, solution_id=None,
+            ),
+            Workflow(
+                id=sol_wf_id, name=f"sol_{sol_wf_id.hex[:6]}", function_name="run",
+                path=f"workflows/sol_{sol_wf_id.hex[:6]}.py", type="workflow",
+                organization_id=None, solution_id=sol.id,
+            ),
+        ])
         await db.flush()
         manifest = await generate_manifest(db)
-        assert str(repo_id) in manifest.workflows
+        assert str(repo_id) in manifest.workflows          # _repo/ included
+        assert str(sol_wf_id) not in manifest.workflows    # solution-managed excluded

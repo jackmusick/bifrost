@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -600,7 +600,12 @@ async def get_table_or_404(
         # can't know the per-install remapped id — resolve its OWN install's
         # table. Without this, the name cascade excludes solution-managed rows
         # and every row op 404s even though the app deployed the table (Codex #15).
-        install_table = await _resolve_solution_table_by_name(ctx, name_or_id)
+        # The lookup is GATED to the caller's org scope (Codex #16): the
+        # X-Bifrost-App header is client-supplied, so it must NOT let a caller
+        # reach a table in an org they can't see by passing a foreign app id.
+        install_table = await _resolve_solution_table_by_name(
+            ctx, name_or_id, target_org_id
+        )
         table = install_table or await repo.get_by_name(name_or_id)
 
     if not table:
@@ -612,10 +617,19 @@ async def get_table_or_404(
     return table
 
 
-async def _resolve_solution_table_by_name(ctx: Context, name: str) -> Table | None:
+async def _resolve_solution_table_by_name(
+    ctx: Context, name: str, target_org_id: UUID | None
+) -> Table | None:
     """If the caller is a Solution app, resolve a table by name within that
-    app's OWN install (solution_id), preferring it over a _repo/ table. Returns
-    None for non-app callers or when the install has no such table."""
+    app's OWN install (solution_id), preferring it over a _repo/ table.
+
+    GATED to the caller's org scope. The ``X-Bifrost-App`` header is
+    client-supplied, so a caller passing a FOREIGN org's app id must not reach
+    that org's install table (Codex #16): a non-superuser only resolves a table
+    whose org is its own (``target_org_id``) or global (NULL); a superuser is
+    unrestricted (mirrors the OrgScopedRepository ID-lookup gate). Returns None
+    for non-app callers or when no in-scope install table matches.
+    """
     if not ctx.app_id:
         return None
     try:
@@ -629,15 +643,18 @@ async def _resolve_solution_table_by_name(ctx: Context, name: str) -> Table | No
     ).scalar_one_or_none()
     if solution_id is None:
         return None
-    row = (
-        await ctx.db.execute(
-            select(Table).where(
-                Table.name == name,
-                Table.solution_id == solution_id,
-            )
+    stmt = select(Table).where(
+        Table.name == name,
+        Table.solution_id == solution_id,
+    )
+    # Org gate: non-superusers see only their-org-or-global tables. (A solution's
+    # entities inherit the install's org, so gating the Table's org is sufficient
+    # and matches how repo.get(id=...) gates a UUID lookup.)
+    if not ctx.user.is_superuser:
+        stmt = stmt.where(
+            or_(Table.organization_id == target_org_id, Table.organization_id.is_(None))
         )
-    ).scalar_one_or_none()
-    return row
+    return (await ctx.db.execute(stmt)).scalar_one_or_none()
 
 
 # =============================================================================
