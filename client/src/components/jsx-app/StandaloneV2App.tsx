@@ -59,7 +59,16 @@ export interface BifrostAppBootstrap {
 
 declare global {
 	interface Window {
+		/**
+		 * Legacy single-object bootstrap (last mount wins). Kept for back-compat:
+		 * an older scaffold reads this directly. Newer scaffolds prefer the
+		 * per-mount registry below, keyed by the entry URL's `m` nonce, so a
+		 * fast A→B navigation can't let app A's still-loading entry read app B's
+		 * bootstrap and mount into B's node (Codex #9).
+		 */
 		__BIFROST_APP__?: BifrostAppBootstrap;
+		/** Per-mount bootstrap registry, keyed by the entry URL's `m` nonce. */
+		__BIFROST_APPS__?: Record<string, BifrostAppBootstrap>;
 	}
 }
 
@@ -119,9 +128,11 @@ export function StandaloneV2App({
 
 		const mode = isPreview ? "draft" : "live";
 		// `m` busts the ES module cache so a revisit re-runs the entry's
-		// top-level createRoot (R5-P1). CSS has no side effect, so it's left
-		// un-busted (the browser may reuse it).
-		const entryUrl = `${baseUrl}/${entry}?mode=${mode}&m=${++_mountNonce}`;
+		// top-level createRoot (R5-P1) AND keys this mount's bootstrap in the
+		// registry so concurrent mounts never read each other's. CSS has no side
+		// effect, so it's left un-busted (the browser may reuse it).
+		const nonce = String(++_mountNonce);
+		const entryUrl = `${baseUrl}/${entry}?mode=${mode}&m=${nonce}`;
 		let cssEl: HTMLLinkElement | null = null;
 		if (css) {
 			cssEl = document.createElement("link");
@@ -135,7 +146,7 @@ export function StandaloneV2App({
 		// actually torn down, not just detached from the DOM.
 		let appTeardown: (() => void) | null = null;
 
-		window.__BIFROST_APP__ = {
+		const bootstrap: BifrostAppBootstrap = {
 			mountEl,
 			basename,
 			baseUrl: window.location.origin,
@@ -150,6 +161,11 @@ export function StandaloneV2App({
 				appTeardown = teardown;
 			},
 		};
+		// Per-mount registry entry (this mount's nonce) — the authoritative slot a
+		// newer mount can't clobber. Plus the legacy single object for older
+		// scaffolds that read it directly.
+		(window.__BIFROST_APPS__ ??= {})[nonce] = bootstrap;
+		window.__BIFROST_APP__ = bootstrap;
 
 		let cancelled = false;
 		// Expose the loaded entry URL for tests/debugging (carries the cache-bust).
@@ -175,19 +191,16 @@ export function StandaloneV2App({
 			}
 			// Don't `delete` the bootstrap: an entry chunk whose dynamic import
 			// was still in flight when we tore down will run its top-level code
-			// *after* this cleanup, read `window.__BIFROST_APP__`, find it gone,
-			// and fall back to `document.getElementById("root")` — mounting a
-			// stale app into the PLATFORM root after the shell unmounted
-			// (Codex R7-P2-e). We can't change every scaffolded entry, so we
-			// leave a disabled tombstone instead: `mountEl` is a throwaway
-			// detached node (so a late mount goes nowhere visible) and
-			// `registerUnmount` invokes the teardown immediately (so the late
-			// root is torn down the instant it registers). Only replace OUR
-			// bootstrap — a newer mount may have already installed its own.
-			if (window.__BIFROST_APP__?.mountEl === mountEl) {
-				const tombstone = window.__BIFROST_APP__;
-				tombstone.mountEl = document.createElement("div");
-				tombstone.registerUnmount = (teardown: () => void) => {
+			// *after* this cleanup, read its bootstrap, find it gone, and fall
+			// back to `document.getElementById("root")` — mounting a stale app
+			// into the PLATFORM root after the shell unmounted (R7-P2-e). We
+			// can't change every scaffolded entry, so we leave a DISABLED
+			// TOMBSTONE: `mountEl` is a throwaway detached node (so a late mount
+			// goes nowhere visible) and `registerUnmount` tears the late root
+			// down the instant it registers.
+			const disable = (b: BifrostAppBootstrap) => {
+				b.mountEl = document.createElement("div");
+				b.registerUnmount = (teardown: () => void) => {
 					try {
 						teardown();
 					} catch {
@@ -195,7 +208,14 @@ export function StandaloneV2App({
 						// detached node; nothing else to do.
 					}
 				};
-			}
+			};
+			// Tombstone THIS mount's registry slot (keyed by our nonce, always
+			// ours — a newer mount uses a different nonce, so we never clobber it).
+			const ownEntry = window.__BIFROST_APPS__?.[nonce];
+			if (ownEntry) disable(ownEntry);
+			// Tombstone the legacy single object ONLY if it's still ours (a newer
+			// mount may have replaced it; we must not disable the live newer app).
+			if (window.__BIFROST_APP__ === bootstrap) disable(window.__BIFROST_APP__);
 			if (mountEl) mountEl.replaceChildren();
 		};
 		// appId is stable per mount; re-run only if the served entry changes.

@@ -245,9 +245,16 @@ import { BifrostProvider } from "bifrost";
 
 import App from "./App";
 
-// Deployed: the platform injects window.__BIFROST_APP__ (mount node, basename,
-// per-viewer token, org). Local dev: fall back to the CLI's .env (via vite).
-const boot = window.__BIFROST_APP__;
+// Deployed: the platform injects this app's bootstrap (mount node, basename,
+// per-viewer token, org). It keys the bootstrap by THIS entry's `m` nonce in a
+// registry, so a fast navigation between two apps can't make our still-loading
+// entry read the OTHER app's bootstrap (Codex #9). Read our own nonce from this
+// module's URL and prefer the registry; fall back to the legacy single object
+// (older hosts) and finally to a local #root for `npm run dev`.
+const __m = new URL(import.meta.url).searchParams.get("m");
+const boot =
+  (__m && window.__BIFROST_APPS__ && window.__BIFROST_APPS__[__m]) ||
+  window.__BIFROST_APP__;
 const mountEl = boot?.mountEl ?? document.getElementById("root")!;
 const basename = boot?.basename ?? "/";
 const baseUrl = boot?.baseUrl ?? import.meta.env.VITE_BIFROST_API_URL ?? window.location.origin;

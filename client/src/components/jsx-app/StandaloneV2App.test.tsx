@@ -99,6 +99,32 @@ describe("StandaloneV2App", () => {
 		expect(root2.dataset.bifrostEntry).not.toBe(url1);
 	});
 
+	it("isolates each mount's bootstrap by nonce so a fast A→B nav can't mix them (Codex #9)", async () => {
+		localStorage.setItem("bifrost_access_token", "tok-1");
+		// App A mounts; its entry import is still in flight.
+		const a = render(<StandaloneV2App {...baseProps} appId="app-A" appSlug="aaa" />);
+		const rootA = a.getByTestId("solution-v2-app-root");
+		await waitFor(() => expect(rootA.dataset.bifrostEntry).toBeTruthy());
+		const nonceA = new URL(rootA.dataset.bifrostEntry!, "http://x").searchParams.get("m")!;
+
+		// Before A's import resolves, the user navigates to app B (a fresh mount).
+		a.unmount();
+		const b = render(<StandaloneV2App {...baseProps} appId="app-B" appSlug="bbb" />);
+		const rootB = b.getByTestId("solution-v2-app-root");
+		await waitFor(() => expect(rootB.dataset.bifrostEntry).toBeTruthy());
+		const nonceB = new URL(rootB.dataset.bifrostEntry!, "http://x").searchParams.get("m")!;
+		expect(nonceA).not.toBe(nonceB);
+
+		// A's still-loading entry reads ITS OWN nonce's bootstrap — never B's.
+		const registry = window.__BIFROST_APPS__!;
+		// A's entry: disabled tombstone (unmounted), appId A, NOT B's live mount.
+		expect(registry[nonceA]?.appId).toBe("app-A");
+		expect(registry[nonceA]?.mountEl).not.toBe(rootB);
+		// B's entry: the live mount with B's identity.
+		expect(registry[nonceB]?.appId).toBe("app-B");
+		expect(registry[nonceB]?.mountEl).toBe(rootB);
+	});
+
 	it("calls the app-registered unmount teardown on cleanup (no leak)", async () => {
 		localStorage.setItem("bifrost_access_token", "tok-1");
 		const { unmount } = render(<StandaloneV2App {...baseProps} />);

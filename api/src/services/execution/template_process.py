@@ -327,14 +327,11 @@ def _run_forked_child(
 
             logger.info(f"Worker {worker_id} processing execution: {execution_id[:8]}...")
 
-            # Clear workspace modules for persistent workers (on-demand don't need this)
-            if persistent:
-                try:
-                    from src.services.execution.simple_worker import _clear_workspace_modules
-                    _clear_workspace_modules()
-                except ImportError as e:
-                    # simple_worker is optional in some test contexts — skip module clearing
-                    logger.debug(f"_clear_workspace_modules unavailable: {e}")
+            # NOTE: workspace-module eviction is done INSIDE _execute_sync /
+            # _execute_async, AFTER the execution's Solution context is read from
+            # Redis and activated. Clearing here (before the context exists) ran
+            # the cross-solution eviction blind and could let a prior install's
+            # same-name module survive, breaking multi-install isolation (Codex #9).
 
             # Execute
             try:
