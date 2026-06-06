@@ -53,6 +53,7 @@ from src.models.contracts.tables import (
     TableUpdate,
 )
 from src.models.orm.custom_claims import CustomClaim as CustomClaimORM
+from src.models.orm.applications import Application
 from src.models.orm.tables import Document, Table
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.repositories.tables import TableRepository
@@ -593,9 +594,14 @@ async def get_table_or_404(
             "falling back to name lookup"
         )
 
-    # Fall back to name lookup (cascade scoping: org-specific then global)
+    # Fall back to name lookup (cascade scoping: org-specific then global).
     if not table:
-        table = await repo.get_by_name(name_or_id)
+        # A Solution app (X-Bifrost-App header) references a table by NAME but
+        # can't know the per-install remapped id — resolve its OWN install's
+        # table. Without this, the name cascade excludes solution-managed rows
+        # and every row op 404s even though the app deployed the table (Codex #15).
+        install_table = await _resolve_solution_table_by_name(ctx, name_or_id)
+        table = install_table or await repo.get_by_name(name_or_id)
 
     if not table:
         raise HTTPException(
@@ -604,6 +610,34 @@ async def get_table_or_404(
         )
 
     return table
+
+
+async def _resolve_solution_table_by_name(ctx: Context, name: str) -> Table | None:
+    """If the caller is a Solution app, resolve a table by name within that
+    app's OWN install (solution_id), preferring it over a _repo/ table. Returns
+    None for non-app callers or when the install has no such table."""
+    if not ctx.app_id:
+        return None
+    try:
+        app_uuid = UUID(ctx.app_id)
+    except ValueError:
+        return None
+    solution_id = (
+        await ctx.db.execute(
+            select(Application.solution_id).where(Application.id == app_uuid)
+        )
+    ).scalar_one_or_none()
+    if solution_id is None:
+        return None
+    row = (
+        await ctx.db.execute(
+            select(Table).where(
+                Table.name == name,
+                Table.solution_id == solution_id,
+            )
+        )
+    ).scalar_one_or_none()
+    return row
 
 
 # =============================================================================

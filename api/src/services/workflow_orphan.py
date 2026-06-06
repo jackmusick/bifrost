@@ -266,11 +266,16 @@ class WorkflowOrphanService:
                 f"(must have a @workflow, @tool, or @data_provider decorator)"
             )
 
-        # Guard against (path, function_name) already claimed by an active row.
+        # Guard against (path, function_name) already claimed by an active _repo/
+        # row. Scope to solution_id IS NULL: an orphan repoint is a WORKSPACE op
+        # (the orphan being replaced is a _repo/ row), and a solution-managed
+        # workflow at the same (path, function_name) is deploy-owned — it lives in
+        # a different uniqueness scope and must not block the replace (Codex #14).
         stmt = select(Workflow).where(
             Workflow.path == source_path,
             Workflow.function_name == function_name,
             Workflow.is_active.is_(True),
+            Workflow.solution_id.is_(None),
         )
         result = await self.db.execute(stmt)
         conflict = result.scalar_one_or_none()

@@ -27,6 +27,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 from uuid import UUID, uuid5
 
@@ -392,6 +393,63 @@ class SolutionDeployer:
             self.db.add(
                 junction(**{fk_col: entity_id, "role_id": role_id},
                          assigned_by=assigned_by, assigned_at=now)
+            )
+
+    @staticmethod
+    def _validate_access_level(
+        value: Any, enum_cls: type[Enum], entity: str
+    ) -> str:
+        """Coerce a manifest access_level against its enum BEFORE the DB write.
+
+        Writing an unknown value straight into the enum-backed column raises a raw
+        asyncpg ``InvalidTextRepresentationError`` that escapes as a 500. Validate
+        here so a bad bundle fails loud as a SolutionDeployConflict (→ 409) with a
+        clear message naming the offending value (Codex P3).
+        """
+        valid = {e.value for e in enum_cls}
+        if value not in valid:
+            raise SolutionDeployConflict(
+                f"{entity} has invalid access_level '{value}'; "
+                f"must be one of {sorted(valid)}"
+            )
+        return value
+
+    @staticmethod
+    def _parse_uuids(values: Any) -> list[UUID]:
+        """Coerce a manifest list of id strings to UUIDs (None/empty → [])."""
+        if not isinstance(values, list):
+            return []
+        return [UUID(str(v)) for v in values]
+
+    async def _sync_agent_mcp_connections(
+        self, agent_id: UUID, connection_ids: list[UUID]
+    ) -> None:
+        """Full-replace the agent's grants in the ``agent_mcp_connections``
+        junction.
+
+        Deploy is the only writer of solution-managed MCP grants — the AgentIndexer
+        ignores the junction and the REST grant endpoints are read-only here — so
+        this delete-all + insert reflects both adds AND removes across redeploys.
+        ``connection_id`` refers to an env-scoped MCPConnection (not a solution
+        entity), so the ids are used verbatim (no remap). ``granted_by`` is NULL
+        for deploy-managed grants.
+        """
+        from src.models.orm.external_mcp import AgentMCPConnection
+
+        await self.db.execute(
+            delete(AgentMCPConnection).where(
+                AgentMCPConnection.agent_id == agent_id
+            )
+        )
+        now = datetime.now(timezone.utc)
+        for connection_id in dict.fromkeys(connection_ids):  # dedupe, preserve order
+            self.db.add(
+                AgentMCPConnection(
+                    agent_id=agent_id,
+                    connection_id=connection_id,
+                    granted_at=now,
+                    granted_by=None,
+                )
             )
 
     # ── 1. Python source → SolutionStorage (full replace + cache sync) ───────
@@ -785,7 +843,11 @@ class SolutionDeployer:
                 "solution_id": sid,
             }
             if mform.get("access_level") is not None:
-                form_values["access_level"] = mform["access_level"]
+                from src.models.enums import FormAccessLevel
+
+                form_values["access_level"] = self._validate_access_level(
+                    mform["access_level"], FormAccessLevel, f"form {form_id}"
+                )
             await self.db.execute(
                 update(Form).where(Form.id == form_id).values(**form_values)
             )
@@ -824,18 +886,40 @@ class SolutionDeployer:
             # access_level is deploy-owned (manifest-declared); apply it here —
             # the indexer preserves it and the entity is read-only outside deploy
             # (Codex #14). org/solution scope is stamped alongside.
+            #
+            # max_iterations / max_token_budget are likewise deploy-owned: the
+            # AgentIndexer does NOT persist them (it handles tool_ids/delegations
+            # only), so without stamping them here a redeploy silently drops the
+            # manifest's values back to the column defaults. Apply when present.
             agent_values: dict[str, Any] = {
                 "organization_id": solution.organization_id,
                 "solution_id": sid,
             }
             if magent.get("access_level") is not None:
-                agent_values["access_level"] = magent["access_level"]
+                from src.models.enums import AgentAccessLevel
+
+                agent_values["access_level"] = self._validate_access_level(
+                    magent["access_level"], AgentAccessLevel, f"agent {agent_id}"
+                )
+            if magent.get("max_iterations") is not None:
+                agent_values["max_iterations"] = magent["max_iterations"]
+            if magent.get("max_token_budget") is not None:
+                agent_values["max_token_budget"] = magent["max_token_budget"]
             await self.db.execute(
                 update(Agent).where(Agent.id == agent_id).values(**agent_values)
             )
             # Sync role bindings (indexer doesn't touch role rows) — Codex P1-d.
             await self._sync_entity_roles(
                 AgentRole, "agent_id", agent_id, await self._resolve_roles(magent)
+            )
+            # Sync MCP-connection grants. Like role bindings, the AgentIndexer does
+            # NOT touch the agent_mcp_connections junction and the REST grant
+            # endpoints are read-only for managed entities, so deploy is the only
+            # writer — full-replace from the manifest so a redeploy reflects both
+            # adds and removes. connection_ids reference env-scoped MCPConnection
+            # rows (NOT solution entities), so they are NOT id-remapped.
+            await self._sync_agent_mcp_connections(
+                agent_id, self._parse_uuids(magent.get("mcp_connection_ids"))
             )
 
     async def _guard_owner(self, model: type, entity_id: UUID, sid: UUID) -> None:

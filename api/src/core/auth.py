@@ -95,6 +95,11 @@ class ExecutionContext:
     user: UserPrincipal
     org_id: UUID | None  # Execution scope (None only for system user + global workflow)
     db: "AsyncSession"
+    # The calling Solution app's id (from the X-Bifrost-App header set by the v2
+    # SDK provider). Lets name-based table resolution scope to the app's OWN
+    # install so a `useTable("name")` reaches its deployed table, not a sibling
+    # install's at the same name (Codex #15). None for non-app callers.
+    app_id: str | None = None
 
     @property
     def scope(self) -> str:
@@ -316,6 +321,7 @@ RequirePlatformAdmin = Depends(get_current_superuser)
 
 
 async def get_execution_context(
+    request: Request,
     user: Annotated[UserPrincipal, Depends(get_current_active_user)],
     db: DbSession,
 ) -> ExecutionContext:
@@ -352,6 +358,8 @@ async def get_execution_context(
         user=user,
         org_id=user.organization_id,
         db=db,
+        # Set by the v2 SDK provider for Solution apps; harmless/None otherwise.
+        app_id=request.headers.get("X-Bifrost-App"),
     )
 
 

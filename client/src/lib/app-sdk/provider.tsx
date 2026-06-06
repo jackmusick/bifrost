@@ -112,14 +112,21 @@ export function BifrostProvider({
     const restore = setBifrostTransport({
       baseUrl: baseUrl.replace(/\/$/, ""),
       fetchImpl,
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // Identify the calling app so the server resolves a `useTable("name")`
+        // call to THIS install's own deployed table, not a sibling install's
+        // (the table equivalent of the useWorkflow app_id, Codex #15).
+        ...(appId ? { "X-Bifrost-App": appId } : {}),
+      },
     });
     const restoreScope = setDefaultAppScope(orgScope);
     return () => {
       restore();
       restoreScope();
     };
-  }, [baseUrl, token, orgScope, fetchImpl]);
+    // appId is part of the transport headers above.
+  }, [baseUrl, token, orgScope, appId, fetchImpl]);
 
   return (
     <BifrostContext.Provider value={value}>{children}</BifrostContext.Provider>

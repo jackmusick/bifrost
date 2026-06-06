@@ -139,6 +139,30 @@ class TestSolutionFormAgentDeploy:
         assert await db.get(Form, expected_id) is None
         assert result.forms_deleted == 1
 
+    async def test_invalid_form_access_level_raises_conflict_not_db_error(self, db_session):
+        """Codex P3: a bad manifest access_level must be rejected BEFORE the DB
+        write with a SolutionDeployConflict (→ 409), not escape as a raw enum DB
+        error (→ 500)."""
+        db = db_session
+        sol = await self._install(db)
+        with pytest.raises(SolutionDeployConflict, match="access_level"):
+            await SolutionDeployer(db).deploy(SolutionBundle(
+                solution=sol,
+                forms=[{"id": str(uuid.uuid4()), "name": "f",
+                        "access_level": "authenticatedd",
+                        "form_schema": {"fields": []}}],
+            ))
+
+    async def test_invalid_agent_access_level_raises_conflict_not_db_error(self, db_session):
+        db = db_session
+        sol = await self._install(db)
+        with pytest.raises(SolutionDeployConflict, match="access_level"):
+            await SolutionDeployer(db).deploy(SolutionBundle(
+                solution=sol,
+                agents=[{"id": str(uuid.uuid4()), "name": "a",
+                         "system_prompt": "hi", "access_level": "bogus"}],
+            ))
+
     async def test_repo_form_id_collision_raises_conflict(self, db_session):
         db = db_session
         sol = await self._install(db)
@@ -201,6 +225,99 @@ class TestAgentBindingsDeploy:
             _select(AgentTool.workflow_id).where(AgentTool.agent_id == agent_id)
         )).scalars().all()
         assert wf_id in tool_wf_ids, "agent tool binding dropped on deploy"
+
+
+@pytest.mark.e2e
+class TestAgentScalarAndMCPDeploy:
+    """Codex: deploy must persist the agent's manifest scalars (max_iterations,
+    max_token_budget) AND sync its mcp_connection_ids junction. The AgentIndexer
+    omits all three, so without deploy stamping them a redeploy silently drops
+    them — they are deploy-owned for a solution-managed agent (read-only outside
+    deploy)."""
+
+    async def _install(self, db) -> Solution:
+        sol = Solution(
+            id=uuid.uuid4(), slug=f"sc-{uuid.uuid4().hex[:8]}", name="SC",
+            organization_id=None,
+        )
+        db.add(sol)
+        await db.flush()
+        return sol
+
+    async def _mcp_connection(self, db):
+        """Create an org + MCP server + connection so an agent can be granted it."""
+        from src.models.orm.external_mcp import MCPConnection, MCPServer
+        from src.models.orm.organizations import Organization
+
+        org = Organization(
+            id=uuid.uuid4(), name=f"Org-{uuid.uuid4().hex[:6]}", created_by="dev@x"
+        )
+        db.add(org)
+        server = MCPServer(
+            id=uuid.uuid4(), name=f"srv-{uuid.uuid4().hex[:6]}",
+            server_url="https://example.test/mcp",
+        )
+        db.add(server)
+        await db.flush()
+        conn = MCPConnection(
+            id=uuid.uuid4(), server_id=server.id, organization_id=org.id,
+            client_id="cid", encrypted_client_secret="x",
+        )
+        db.add(conn)
+        await db.flush()
+        return conn
+
+    async def test_deploy_persists_scalars_and_mcp_and_redeploy_updates(self, db_session):
+        from sqlalchemy import select as _select
+
+        from src.models.orm.external_mcp import AgentMCPConnection
+
+        db = db_session
+        sol = await self._install(db)
+        conn_a = await self._mcp_connection(db)
+        conn_b = await self._mcp_connection(db)
+        aid = str(uuid.uuid4())
+
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol,
+            agents=[{
+                "id": aid, "name": "a", "system_prompt": "hi",
+                "max_iterations": 7, "max_token_budget": 12345,
+                "mcp_connection_ids": [str(conn_a.id)],
+            }],
+        ))
+        await db.flush()
+        agent_id = solution_entity_id(sol.id, uuid.UUID(aid))
+        agent = await db.get(Agent, agent_id)
+        assert agent.max_iterations == 7
+        assert agent.max_token_budget == 12345
+        granted = set((await db.execute(
+            _select(AgentMCPConnection.connection_id).where(
+                AgentMCPConnection.agent_id == agent_id
+            )
+        )).scalars().all())
+        assert granted == {conn_a.id}, "mcp_connection grant not synced on deploy"
+
+        # Redeploy with CHANGED scalars + a DIFFERENT connection → full-replace,
+        # not stuck/dropped.
+        await SolutionDeployer(db).deploy(SolutionBundle(
+            solution=sol,
+            agents=[{
+                "id": aid, "name": "a", "system_prompt": "hi",
+                "max_iterations": 3, "max_token_budget": 999,
+                "mcp_connection_ids": [str(conn_b.id)],
+            }],
+        ))
+        await db.flush()
+        await db.refresh(agent)
+        assert agent.max_iterations == 3
+        assert agent.max_token_budget == 999
+        granted2 = set((await db.execute(
+            _select(AgentMCPConnection.connection_id).where(
+                AgentMCPConnection.agent_id == agent_id
+            )
+        )).scalars().all())
+        assert granted2 == {conn_b.id}, "redeploy did not full-replace mcp grants"
 
 
 @pytest.mark.e2e
