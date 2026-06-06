@@ -127,6 +127,7 @@ async def deploy_solution(
                     apps=body.apps,
                     forms=body.forms,
                     agents=body.agents,
+                    config_schemas=body.config_schemas,
                 )
             )
             await ctx.db.commit()

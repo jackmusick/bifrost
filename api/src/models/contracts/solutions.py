@@ -87,6 +87,9 @@ class SolutionDeployRequest(BaseModel):
     forms: list[dict[str, Any]] = Field(default_factory=list)
     # Each agent: {id, name, system_prompt, description?, channels?, llm_model?}.
     agents: list[dict[str, Any]] = Field(default_factory=list)
+    # Each config schema: {id, key, type, required, description?, default?, position}.
+    # DECLARATIONS only — never a value (values are instance-owned Config rows).
+    config_schemas: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SolutionDeployResponse(BaseModel):
