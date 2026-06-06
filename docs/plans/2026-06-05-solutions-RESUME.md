@@ -26,9 +26,25 @@ first chance at clean #1.
 | #8 | 1 P1 + 1 P2 | ✗ → BOTH FIXED (session 4) |
 | #9 | 2 P2 | ✗ → BOTH FIXED (session 4) |
 | #10 | 1 P2 | ✗ → FIXED (session 4) |
-| #11 | 2 P2 | ✗ → **BOTH FIXED (session 4)** |
-| #12 | running | needed: 1st of 2 clean ← **current** |
-| #13 | — | needed: 2nd of 2 clean (if #12 clean) |
+| #11 | 2 P2 | ✗ → BOTH FIXED (session 4) |
+| #12 | 2 P2 | ✗ → **BOTH FIXED (session 4)** |
+| #13 | running | needed: 1st of 2 clean ← **current** |
+| #14 | — | needed: 2nd of 2 clean (if #13 clean) |
+
+### SESSION 4 cont. — review #12 closed (deploy concurrency, 2 P2s, both real)
+Broad sweep found two one-writer/atomicity gaps (commits 6f8fce99 + the clone-to-thread follow-up):
+- **#12 P2 manual-deploy lock**: the deploy router held NO per-install lock across
+  DB commit + S3 finalize (the app-slug pg advisory lock is txn-scoped, releases
+  at commit). Two concurrent deploys could interleave finalize → DB from B,
+  artifacts from A.
+- **#12 P2 git-sync lock TTL**: fixed 300s, no renewal; a long clone+build+finalize
+  could outlast it, letting a 2nd sync interleave.
+Fix: new `solution_write_lock` (write_lock.py) — Redis SET-NX with a watchdog that
+RENEWS the TTL while held; crashed holder self-heals in one TTL. Manual deploy
+wraps deploy+commit+finalize (concurrent → 409); git_sync uses the SAME lock
+(shared namespace, manual+connected can't race). Follow-up: `GitRepo.clone_from`
+now runs via `asyncio.to_thread` so a slow clone can't block the loop and starve
+the watchdog (the vite build already ran off-loop). Solution unit + e2e green.
 
 ### SESSION 4 cont. — review #11 closed (BROAD sweep, 2 backend P2s, both real)
 The #11 prompt was widened to a full-surface sweep (not just v2 lifecycle); it
