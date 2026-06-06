@@ -38,6 +38,7 @@ from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.app_roles import AppRole
 from src.models.orm.applications import Application
 from src.models.orm.forms import Form, FormRole
+from src.models.orm.solution_config_schema import SolutionConfigSchema
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
 from src.models.orm.workflow_roles import WorkflowRole
@@ -185,6 +186,7 @@ class SolutionBundle:
     apps: list[dict[str, Any]] = field(default_factory=list)
     forms: list[dict[str, Any]] = field(default_factory=list)
     agents: list[dict[str, Any]] = field(default_factory=list)
+    config_schemas: list[dict[str, Any]] = field(default_factory=list)
 
 
 class SolutionDeployer:
@@ -229,6 +231,7 @@ class SolutionDeployer:
         builds = await self._upsert_apps(solution, rb.apps)
         await self._upsert_forms(solution, rb.forms)
         await self._upsert_agents(solution, rb.agents)
+        await self._upsert_config_schemas(solution, rb.config_schemas)
         (
             wf_deleted, tbl_deleted, app_deleted, form_deleted, agent_deleted,
             stale_app_dist,
@@ -309,9 +312,10 @@ class SolutionDeployer:
         apps = [copy.deepcopy(e) for e in bundle.apps]
         forms = [copy.deepcopy(e) for e in bundle.forms]
         agents = [copy.deepcopy(e) for e in bundle.agents]
+        config_schemas = [copy.deepcopy(e) for e in bundle.config_schemas]
 
         # Pass 1: remap each entity's own id.
-        for entry in workflows + tables + apps + forms + agents:
+        for entry in workflows + tables + apps + forms + agents + config_schemas:
             original = UUID(str(entry["id"]))
             remapped = solution_entity_id(sid, original)
             id_map[original] = remapped
@@ -337,6 +341,7 @@ class SolutionDeployer:
             apps=apps,
             forms=forms,
             agents=agents,
+            config_schemas=config_schemas,
         )
 
     @staticmethod
@@ -939,6 +944,46 @@ class SolutionDeployer:
                 agent_id, self._parse_uuids(magent.get("mcp_connection_ids"))
             )
 
+    async def _upsert_config_schemas(
+        self, solution: Solution, config_schemas: list[dict[str, Any]]
+    ) -> None:
+        """Upsert this install's config DECLARATIONS (key/type/required/desc/
+        default/position). Config VALUES are NEVER written here — they are
+        instance-owned Config rows set by the operator. Mirrors
+        :meth:`_upsert_tables`: solution-scoped key uniqueness, ownership guard,
+        full-replace.
+        """
+        sid = solution.id
+
+        # Key is unique per install (ix_solution_config_schema_sol_key_unique).
+        # Two declarations sharing a key in THIS bundle would hit the index as an
+        # IntegrityError → 500. Catch deterministically up front as a 409.
+        seen: set[str] = set()
+        for entry in config_schemas:
+            k = str(entry.get("key"))
+            if k in seen:
+                raise SolutionDeployConflict(
+                    f"two config declarations named '{k}' in this Solution bundle; "
+                    f"config keys must be unique within an install"
+                )
+            seen.add(k)
+
+        for entry in config_schemas:
+            cid = UUID(entry["id"])
+            await self._guard_owner(SolutionConfigSchema, cid, sid)
+            values: dict[str, Any] = {
+                "solution_id": sid,
+                "key": entry["key"],
+                "type": entry["type"],
+                "required": bool(entry.get("required", False)),
+                "description": entry.get("description"),
+                "default": entry.get("default"),
+                "position": int(entry.get("position", 0)),
+            }
+            await Upsert(
+                model=SolutionConfigSchema, id=cid, values=values, match_on="id"
+            ).execute(self.db)
+
     async def _guard_owner(self, model: type, entity_id: UUID, sid: UUID) -> None:
         """Raise SolutionDeployConflict if ``entity_id`` exists and is owned by
         _repo/ (NULL) or a different install — a bundle may not hijack it."""
@@ -983,6 +1028,12 @@ class SolutionDeployer:
         )
         agent_deleted = await self._reconcile_one(
             Agent, sid, {UUID(a["id"]) for a in bundle.agents}
+        )
+        # Config declarations reconcile alongside the rest; deploy is the single
+        # writer for solution-owned schema rows. The count is not surfaced — no
+        # consumer needs a config-deleted tally — so the return value is dropped.
+        _ = await self._reconcile_one(
+            SolutionConfigSchema, sid, {UUID(c["id"]) for c in bundle.config_schemas}
         )
         return (
             wf_deleted, tbl_deleted, app_deleted, form_deleted, agent_deleted,
