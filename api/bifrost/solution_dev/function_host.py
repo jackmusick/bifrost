@@ -10,12 +10,15 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Callable
 
 logger = logging.getLogger("bifrost.solution_dev")
 
-# Folders that never hold solution source — skip for speed and to avoid importing
-# build output / deps (mirrors the deploy collector's skip set).
+# Folders that never hold solution source — skip for speed and to avoid
+# importing build output / deps. (Discovery is intentionally layout-agnostic:
+# a @workflow anywhere is resolvable by its path::fn, exactly as the platform
+# resolves it — we don't restrict source to particular dirs.)
 _SKIP_DIRS = {"node_modules", "dist", ".venv", "venv", "__pycache__", ".git", ".bifrost"}
 
 
@@ -47,7 +50,7 @@ def discover_functions(workspace: Path) -> dict[str, Callable[..., Any]]:
     return out
 
 
-def _load_module(py: Path, rel: str):
+def _load_module(py: Path, rel: str) -> ModuleType | None:
     # A stable, unique module name per file so re-import on reload replaces it.
     mod_name = "bifrost_devhost_" + rel.replace("/", "_").removesuffix(".py")
     try:
