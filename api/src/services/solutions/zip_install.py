@@ -22,6 +22,7 @@ git-sync module already imports these collectors). Reuse, not replication.
 from __future__ import annotations
 
 import io
+import logging
 import os
 import tempfile
 import zipfile
@@ -37,6 +38,16 @@ from src.models.enums import ConfigType
 from src.models.orm.solution_config_schema import SolutionConfigSchema
 from src.models.orm.solutions import Solution
 from src.services.solutions.deploy import SolutionBundle, SolutionDeployer
+
+logger = logging.getLogger(__name__)
+
+
+class GitConnectedInstallError(Exception):
+    """Zip-install targeted an install whose only writer is git auto-pull.
+
+    A git-connected install has exactly one writer (auto-pull from its repo); a
+    zip install would full-replace it out of band and violate that invariant.
+    Mapped to 409 by the endpoint, mirroring ``deploy_solution``'s refusal."""
 
 
 @dataclass
@@ -193,6 +204,16 @@ async def install_zip(
             db, slug=preview.slug, name=preview.name, organization_id=organization_id
         )
 
+        # One-writer invariant: a git-connected install is written ONLY by
+        # auto-pull (sync). Refuse a zip install into it, exactly as
+        # deploy_solution refuses a manual deploy — otherwise the zip would
+        # full-replace the connected install out of band.
+        if solution.git_connected:
+            raise GitConnectedInstallError(
+                "This install is git-connected; zip install is disabled "
+                "(auto-pull is the only writer)."
+            )
+
         # Build the bundle while the temp dir still exists (it reads Python +
         # app source fully into memory, so finalize_s3 is safe after teardown).
         bundle = _build_bundle(solution, preview, workspace)
@@ -241,7 +262,7 @@ async def _apply_config_values(
             )
         )
     ).all()
-    type_by_key = {key: _config_type(type_) for key, type_ in decls}
+    type_by_key = {key: _config_type(type_, key=key) for key, type_ in decls}
 
     repo = ConfigRepository(db, org_id=solution.organization_id, is_superuser=True)
     for key, value in config_values.items():
@@ -256,9 +277,21 @@ async def _apply_config_values(
         )
 
 
-def _config_type(raw: str | None) -> ConfigType:
-    """Map a declaration's stored type string to a :class:`ConfigType`."""
+def _config_type(raw: str | None, *, key: str) -> ConfigType:
+    """Map a declaration's stored type string to a :class:`ConfigType`.
+
+    An absent type defaults to STRING silently. An UNRECOGNIZED non-empty type
+    is also downgraded to STRING — but logged, because a mistyped ``secret``
+    would otherwise store its value as PLAINTEXT with no signal."""
+    if not raw:
+        return ConfigType.STRING
     try:
-        return ConfigType((raw or "string").lower())
+        return ConfigType(raw.lower())
     except ValueError:
+        logger.warning(
+            "Config declaration %r has unrecognized type %r; storing its value "
+            "as STRING (a mistyped 'secret' would NOT be encrypted).",
+            key,
+            raw,
+        )
         return ConfigType.STRING

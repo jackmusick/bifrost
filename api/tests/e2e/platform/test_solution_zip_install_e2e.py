@@ -97,3 +97,33 @@ async def test_zip_install_atomic_deploy_and_values(e2e_client, platform_admin):
     assert "API_KEY" not in entities["required_configs_unset"], (
         "a provided required value must not be reported as unset"
     )
+
+
+async def test_zip_install_refused_into_git_connected_install(e2e_client, platform_admin):
+    """A zip POSTed for a slug+scope that already has a git-connected install
+    must be refused with 409 — auto-pull is that install's only writer."""
+    headers = platform_admin.headers
+    upload_headers = {
+        k: v for k, v in headers.items() if k.lower() != "content-type"
+    }
+    slug = f"zip-gc-{uuid.uuid4().hex[:8]}"
+
+    # Create a git-connected global install for this slug first.
+    create = e2e_client.post("/api/solutions", headers=headers, json={
+        "slug": slug,
+        "name": slug.upper(),
+        "scope": "global",
+        "git_connected": True,
+        "git_repo_url": "https://example.com/repo.git",
+    })
+    assert create.status_code in (200, 201), create.text
+
+    # A zip for the same slug+scope resolves to that connected install → refused.
+    inst = e2e_client.post(
+        "/api/solutions/install",
+        headers=upload_headers,
+        files={"file": (f"{slug}.zip", _make_zip(slug), "application/zip")},
+        data={"config_values": "{}"},
+    )
+    assert inst.status_code == 409, inst.text
+    assert "git-connected" in inst.json()["detail"]

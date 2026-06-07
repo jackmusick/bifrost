@@ -358,7 +358,10 @@ async def install_solution(
         SolutionFinalizeIncomplete,
     )
     from src.services.solutions.write_lock import SolutionWriteLockHeld
-    from src.services.solutions.zip_install import install_zip
+    from src.services.solutions.zip_install import (
+        GitConnectedInstallError,
+        install_zip,
+    )
 
     org_id: UUID | None = None
     if organization_id:
@@ -392,6 +395,8 @@ async def install_solution(
             config_values=values,
             deployer_email=user.email,
         )
+    except GitConnectedInstallError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (ValueError, zipfile.BadZipFile) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

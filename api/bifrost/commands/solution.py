@@ -712,7 +712,7 @@ def deploy_cmd(path: str, solution_id: str | None) -> None:
     name="install",
     help="Install a Solution from a workspace zip (drag-and-drop equivalent).",
 )
-@click.argument("zipfile", type=click.Path(exists=True, dir_okay=False))
+@click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--org", "org_id", default=None, help="Target org id (omit for a global install).")
 @click.option(
     "--set",
@@ -720,7 +720,7 @@ def deploy_cmd(path: str, solution_id: str | None) -> None:
     multiple=True,
     help="Config value KEY=VALUE (repeatable). Applied atomically with the deploy.",
 )
-def install_cmd(zipfile: str, org_id: str | None, set_values: tuple[str, ...]) -> None:
+def install_cmd(zip_path: str, org_id: str | None, set_values: tuple[str, ...]) -> None:
     """POST a Solution workspace zip to ``/api/solutions/install``.
 
     The server unzips it, resolves-or-creates the install, deploys the bundle,
@@ -733,7 +733,7 @@ def install_cmd(zipfile: str, org_id: str | None, set_values: tuple[str, ...]) -
         key, _, value = pair.partition("=")
         config_values[key] = value
 
-    zip_bytes = pathlib.Path(zipfile).read_bytes()
+    zip_bytes = pathlib.Path(zip_path).read_bytes()
 
     async def _run() -> int:
         client = BifrostClient.get_instance(require_auth=True)
@@ -742,7 +742,7 @@ def install_cmd(zipfile: str, org_id: str | None, set_values: tuple[str, ...]) -
             form["organization_id"] = org_id
         resp = await client.post(
             "/api/solutions/install",
-            files={"file": (pathlib.Path(zipfile).name, zip_bytes, "application/zip")},
+            files={"file": (pathlib.Path(zip_path).name, zip_bytes, "application/zip")},
             data=form,
         )
         if resp.status_code not in (200, 201):
