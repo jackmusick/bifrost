@@ -11242,6 +11242,16 @@ export interface components {
             updated_at?: string | null;
             /** Updated By */
             updated_by?: string | null;
+            /**
+             * Orphaned At
+             * @description When this config was orphaned by a Solution uninstall (null if not orphaned)
+             */
+            orphaned_at?: string | null;
+            /**
+             * Origin Solution Slug
+             * @description Slug of the Solution this config was orphaned from (null if not orphaned)
+             */
+            origin_solution_slug?: string | null;
         };
         /**
          * ConfigSchemaItem
@@ -20340,6 +20350,16 @@ export interface components {
              * @description UUID of the owning Solution install (null if not solution-managed)
              */
             solution_id?: string | null;
+            /**
+             * Orphaned At
+             * @description When this table was orphaned by a Solution uninstall (null if not orphaned)
+             */
+            orphaned_at?: string | null;
+            /**
+             * Origin Solution Slug
+             * @description Slug of the Solution this table was orphaned from (null if not orphaned)
+             */
+            origin_solution_slug?: string | null;
         };
         /**
          * TableUpdate
@@ -26141,6 +26161,8 @@ export interface operations {
             query?: {
                 /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org. */
                 scope?: string | null;
+                /** @description Include orphaned configs (former-install data left by an uninstalled Solution). */
+                include_orphaned?: boolean;
             };
             header?: never;
             path?: never;
@@ -33880,6 +33902,8 @@ export interface operations {
             query?: {
                 /** @description Filter scope: 'global' for global only, org UUID for specific org. */
                 scope?: string | null;
+                /** @description Include orphaned tables (former-install data left by an uninstalled Solution). */
+                include_orphaned?: boolean;
             };
             header?: never;
             path?: never;

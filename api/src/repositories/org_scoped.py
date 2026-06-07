@@ -279,7 +279,9 @@ class OrgScopedRepository(Generic[ModelT]):
             raise AccessDeniedError()
         return entity
 
-    async def list(self, **filters: Any) -> list[ModelT]:
+    async def list(
+        self, *, include_orphaned: bool = False, **filters: Any
+    ) -> list[ModelT]:
         """
         List entities with cascade scoping and role check.
 
@@ -288,6 +290,11 @@ class OrgScopedRepository(Generic[ModelT]):
         2. Pass role-based access check (for entities with role tables)
 
         Args:
+            include_orphaned: When False (default), orphaned rows (former-install
+                data whose Solution was uninstalled — solution_id NULL'd to
+                survive, orphaned_at stamped) are hidden from the list. Set True
+                for the "show orphaned" path. No-op for models without an
+                orphaned_at column.
             **filters: Additional filter conditions
 
         Returns:
@@ -303,6 +310,12 @@ class OrgScopedRepository(Generic[ModelT]):
         # Build base query with cascade scoping
         query = select(self.model)
         query = self._apply_cascade_scope(query)
+
+        # Orphaned rows (former-install data, solution_id NULL'd to survive
+        # uninstall) are hidden from the normal list unless explicitly requested
+        # via the "show orphaned" path. Mirrors the name-cascade exclusion.
+        if _model_has_orphaned_at(self.model) and not include_orphaned:
+            query = query.where(self.model.orphaned_at.is_(None))  # type: ignore[attr-defined]
 
         # Apply additional filters
         for key, value in filters.items():

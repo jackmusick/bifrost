@@ -716,6 +716,10 @@ async def list_tables(
         default=None,
         description="Filter scope: 'global' for global only, org UUID for specific org.",
     ),
+    include_orphaned: bool = Query(
+        default=False,
+        description="Include orphaned tables (former-install data left by an uninstalled Solution).",
+    ),
 ) -> TableListResponse:
     """List all tables in the current scope (platform admin only)."""
     try:
@@ -727,7 +731,7 @@ async def list_tables(
         )
 
     repo = TableRepository(ctx.db, filter_org, is_superuser=True)
-    tables = await repo.list_tables(filter_type)
+    tables = await repo.list_tables(filter_type, include_orphaned=include_orphaned)
 
     return TableListResponse(
         tables=[TablePublic.model_validate(t) for t in tables],

@@ -33,8 +33,13 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
     async def list_configs(
         self,
         filter_type: OrgFilterType = OrgFilterType.ORG_PLUS_GLOBAL,
+        include_orphaned: bool = False,
     ) -> list[ConfigResponse]:
-        """List configs with specified filter type."""
+        """List configs with specified filter type.
+
+        Orphaned configs (former-install data; orphaned_at stamped) are hidden by
+        default and only surfaced when ``include_orphaned`` is True.
+        """
         query = select(self.model, Integration.name.label("integration_name")).outerjoin(
             Integration,
             and_(
@@ -59,6 +64,9 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
                 )
             else:
                 query = query.where(self.model.organization_id.is_(None))
+
+        if not include_orphaned:
+            query = query.where(self.model.orphaned_at.is_(None))
 
         query = query.order_by(self.model.key)
 
@@ -100,6 +108,8 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
                     description=config.description,
                     updated_at=config.updated_at,
                     updated_by=config.updated_by,
+                    orphaned_at=config.orphaned_at,
+                    origin_solution_slug=config.origin_solution_slug,
                 )
             )
         return schemas
