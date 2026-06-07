@@ -68,14 +68,48 @@ table declaration and each config declaration:
   `(solution_id, name)`), so it slots into the existing deploy upsert: before creating a
   table, check for a reattachable orphan and adopt it.
 
-### Orphans view + cleanup
+### Orphan VISIBILITY rule (CRITICAL — corrects a leak in the detach design)
 
-- `GET /api/solutions/orphans` (admin): list orphaned tables + config values, grouped by
-  `origin_solution_slug`, with name/key, orphaned_at, document counts (tables).
-- `DELETE /api/solutions/orphans/{kind}/{id}` (admin): explicitly delete an orphan the
-  operator doesn't want (this IS a real delete — for tables it cascades documents, with a
-  type-to-confirm in the UI).
-- Surfaced in the Solutions UI (an "Orphaned data" section/page).
+The org-scoping cascade (`OrgScopedRepository`) resolves **non-solution** entities by
+name and explicitly excludes **solution stuff** via `WHERE solution_id IS NULL`
+(`org_scoped.py:216-217`). But orphaning a table sets `solution_id = NULL` so it
+survives — which means a freshly-orphaned table would **pass that filter and leak into a
+normal workflow's `useTable("name")` org cascade**, exposing the former install's data to
+unrelated workflows in the org.
+
+**Rule:** "solution stuff" the cascade must NOT resolve = *has a `solution_id`* **OR**
+*is orphaned from one* (`orphaned_at IS NOT NULL`). Only genuinely non-solution rows
+(`solution_id IS NULL AND orphaned_at IS NULL`) resolve through the org cascade. So the
+name-cascade exclusion becomes:
+
+```python
+# org_scoped.py name-cascade path (~216), for models that have the columns:
+#   exclude solution_id IS NOT NULL  (owned)  OR  orphaned_at IS NOT NULL  (orphaned)
+query = query.where(self.model.solution_id.is_(None))
+if _model_has_orphaned_at(self.model):
+    query = query.where(self.model.orphaned_at.is_(None))
+```
+`orphaned_at` exists only on Table & Config — guard on the column (mirror
+`_model_has_solution_id`). Orphaned rows remain reachable ONLY via the explicit
+"show orphaned" path (below) and the reattach lookup (which queries orphans directly),
+never via the implicit org cascade. This keeps the invariant: an orphan is invisible to
+normal resolution until its Solution is reinstalled (reattach) or it's explicitly managed.
+
+### Orphans view + cleanup — a "Show orphaned" toggle on the EXISTING pages
+
+NOT a separate page/section. The existing **Tables** and **Configs** list pages gain a
+**"Show orphaned"** toggle. Default off (orphans hidden). When on, the list endpoint
+includes rows with `orphaned_at IS NOT NULL`, badged with their `origin_solution_slug`
+("orphaned from acme-crm"). Deleting an orphan from there is a real delete (for tables it
+cascades documents — type-to-confirm).
+
+- The existing tables/configs LIST endpoints gain an `include_orphaned: bool = False`
+  query param. When false (default), they exclude orphaned rows (so orphans don't clutter
+  the normal list either). When true, they include them with the origin badge.
+- No new `/api/solutions/orphans` endpoint — reuse the existing list endpoints + filter.
+- Delete-orphan reuses the existing table/config delete endpoints (an orphan is just a row
+  with no `solution_id`; deleting it is an ordinary delete — but the UI confirms because
+  it carries data + provenance).
 
 ## Delete confirmation (UI)
 
@@ -92,9 +126,12 @@ This **replaces Task 14** (plain cascade + S3 sweep was wrong for tables/configs
 - T14b: DELETE reworked — detach tables + stamp config values, then delete Solution; S3
   sweep unchanged (source/app dist still swept — those are code, not data).
 - T14c: reattach-on-reinstall in the deploy/install path (tables + config values).
-- T14d: orphans list + delete-orphan endpoints.
-- UI (folds into the Solutions detail/list tasks): an Orphaned-data view + the updated
-  delete-confirm copy.
+- T14d (REVISED): the orphan VISIBILITY fix in `OrgScopedRepository` (exclude
+  `orphaned_at IS NOT NULL` from the name cascade) + `include_orphaned` param on the
+  existing tables/configs LIST endpoints. NO separate orphans endpoint.
+- UI (folds into the existing Tables/Configs pages, NOT the Solutions area): a "Show
+  orphaned" toggle + origin badge; and the updated delete-confirm copy on the Solutions
+  uninstall dialog.
 
 S3 artifact sweep (`_solutions/{id}/`, `_apps/{id}/dist`) is unchanged — those are built
 code, not customer data, and a reinstall rebuilds them.
