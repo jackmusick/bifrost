@@ -77,6 +77,29 @@ export async function updateSolution(
 	return data;
 }
 
+/**
+ * Set a config VALUE for a Solution install's org scope. Config values are
+ * instance-owned `Config` rows (never part of the portable declaration), so we
+ * write them through the existing `/api/config` endpoint scoped to the install's
+ * organization. `organizationId` is the install's org (`null` for a global install).
+ */
+export async function setSolutionConfig(
+	params: {
+		key: string;
+		value: string;
+		type: components["schemas"]["ConfigType"];
+		organizationId: string | null;
+	},
+	options: RequestOptions = {},
+): Promise<void> {
+	const { key, value, type, organizationId } = params;
+	const { error } = await apiClient.POST("/api/config", {
+		body: { key, value, type, organization_id: organizationId },
+		signal: options.signal,
+	});
+	if (error) throw new Error(errorMessage(error, "Failed to save config value"));
+}
+
 export async function deleteSolution(
 	solutionId: string,
 	options: RequestOptions = {},

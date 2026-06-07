@@ -1,13 +1,17 @@
 /**
- * Solution Detail Page (basic)
+ * Solution Detail Page
  *
- * Resolves the /solutions/:solutionId route end-to-end: fetches the install's
- * owned entities + config status and renders them as simple lists. Task 19
- * replaces the body with the polished tabbed view.
+ * RoleDetail-style tabbed view for a single Solution install: breadcrumb,
+ * header with scope/source chips + Edit/Delete actions, a required-config
+ * warning banner, and per-entity tabs (Workflows / Apps / Forms / Agents /
+ * Tables / Configs). The Configs tab doubles as the config-value entry
+ * surface — required inputs an install needs before it can run.
  */
 
-import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
 	ChevronLeft,
 	Globe,
@@ -19,62 +23,394 @@ import {
 	FileCode,
 	Bot,
 	Database,
+	SlidersHorizontal,
 	CheckCircle2,
 	Circle,
+	AlertTriangle,
+	Pencil,
+	Trash2,
+	Loader2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import {
 	getSolutionEntities,
-	type SolutionEntities,
+	updateSolution,
+	deleteSolution,
+	setSolutionConfig,
+	type Solution,
+	type SolutionUpdate,
 } from "@/services/solutions";
+import type { components } from "@/lib/v1";
 
-type EntitySummary = NonNullable<SolutionEntities["workflows"]>;
+type EntitySummary = components["schemas"]["SolutionEntitySummary"];
+type ConfigStatus = components["schemas"]["SolutionConfigStatus"];
+type ConfigType = components["schemas"]["ConfigType"];
 
-function EntityList({
-	icon: Icon,
-	title,
+type TabKey = "workflows" | "apps" | "forms" | "agents" | "tables" | "configs";
+
+const ENTITY_TABS: {
+	key: Exclude<TabKey, "configs">;
+	label: string;
+	Icon: typeof Workflow;
+}[] = [
+	{ key: "workflows", label: "Workflows", Icon: Workflow },
+	{ key: "apps", label: "Apps", Icon: AppWindow },
+	{ key: "forms", label: "Forms", Icon: FileCode },
+	{ key: "agents", label: "Agents", Icon: Bot },
+	{ key: "tables", label: "Tables", Icon: Database },
+];
+
+/** Per-entity-page link target, carrying the `?from` so the entity page can
+ * offer a "back to this Solution" affordance (consumed in Task 19b). */
+function entityHref(
+	kind: Exclude<TabKey, "configs">,
+	entity: EntitySummary,
+	solutionId: string,
+): string {
+	const from = `?from=solution:${solutionId}`;
+	switch (kind) {
+		case "tables":
+			return `/tables/${entity.id}${from}`;
+		case "agents":
+			return `/agents/${entity.id}${from}`;
+		case "forms":
+			return `/forms/${entity.id}/edit${from}`;
+		case "apps":
+			return `/apps/${entity.id}/edit${from}`;
+		case "workflows":
+			// The execute route is keyed by workflow NAME, not id.
+			return `/workflows/${encodeURIComponent(entity.name)}/execute${from}`;
+	}
+}
+
+function isSecretType(type: string): boolean {
+	const t = type.toLowerCase();
+	return t === "secret" || t === "password";
+}
+
+/** Coerce a declared config type string into the API's ConfigType enum. */
+function asConfigType(type: string): ConfigType {
+	const t = type.toLowerCase();
+	if (t === "int" || t === "bool" || t === "json" || t === "secret") return t;
+	if (t === "password") return "secret";
+	return "string";
+}
+
+function EntityTabContent({
+	kind,
 	items,
+	solutionId,
 }: {
-	icon: typeof Workflow;
-	title: string;
-	items: EntitySummary | undefined;
+	kind: Exclude<TabKey, "configs">;
+	items: EntitySummary[];
+	solutionId: string;
 }) {
+	if (items.length === 0) {
+		return (
+			<div className="rounded-lg border py-12 text-center text-sm text-muted-foreground">
+				None
+			</div>
+		);
+	}
 	return (
-		<Card>
-			<CardHeader className="pb-2">
-				<CardTitle className="flex items-center gap-2 text-sm font-semibold">
-					<Icon className="h-4 w-4 text-muted-foreground" />
-					{title}
-					<span className="text-muted-foreground">
-						({items?.length ?? 0})
+		<div className="divide-y rounded-lg border">
+			{items.map((entity) => (
+				<Link
+					key={entity.id}
+					to={entityHref(kind, entity, solutionId)}
+					className="flex items-center justify-between px-4 py-3 text-sm transition-colors hover:bg-accent/50"
+				>
+					<span className="truncate font-medium">{entity.name}</span>
+					<ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+				</Link>
+			))}
+		</div>
+	);
+}
+
+function ConfigRow({
+	config,
+	orgId,
+	onSaved,
+}: {
+	config: ConfigStatus;
+	orgId: string | null;
+	onSaved: () => void;
+}) {
+	const [value, setValue] = useState("");
+	const secret = isSecretType(config.type);
+
+	const saveMut = useMutation({
+		mutationFn: () =>
+			setSolutionConfig({
+				key: config.key,
+				value,
+				type: asConfigType(config.type),
+				organizationId: orgId,
+			}),
+		onSuccess: () => {
+			toast.success(`Saved "${config.key}"`);
+			setValue("");
+			onSaved();
+		},
+		onError: (err: unknown) => {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to save config value",
+			);
+		},
+	});
+
+	const requiredUnset = config.required && !config.value_set;
+
+	return (
+		<div
+			className={
+				"rounded-lg border p-4 " +
+				(requiredUnset ? "border-yellow-500/60 bg-yellow-500/5" : "")
+			}
+		>
+			<div className="flex items-center justify-between gap-3">
+				<div className="flex min-w-0 items-center gap-2">
+					<span className="truncate font-mono text-sm font-medium">
+						{config.key}
 					</span>
-				</CardTitle>
-			</CardHeader>
-			<CardContent>
-				{items && items.length > 0 ? (
-					<ul className="space-y-1 text-sm">
-						{items.map((item) => (
-							<li key={item.id} className="truncate">
-								{item.name}
-							</li>
-						))}
-					</ul>
-				) : (
-					<p className="text-sm italic text-muted-foreground/60">
-						None
-					</p>
-				)}
-			</CardContent>
-		</Card>
+					<Badge variant="outline" className="shrink-0 text-[10px]">
+						{config.type}
+					</Badge>
+					{config.required && (
+						<span className="shrink-0 text-xs text-destructive">
+							required
+						</span>
+					)}
+				</div>
+				<span
+					data-testid={`config-status-${config.key}`}
+					className={
+						"flex shrink-0 items-center gap-1 text-xs font-medium " +
+						(config.value_set
+							? "text-green-600 dark:text-green-500"
+							: "text-muted-foreground")
+					}
+				>
+					{config.value_set ? (
+						<CheckCircle2 className="h-3.5 w-3.5" />
+					) : (
+						<Circle className="h-3.5 w-3.5" />
+					)}
+					{config.value_set ? "Set" : "Not set"}
+				</span>
+			</div>
+			{config.description && (
+				<p className="mt-1 text-xs text-muted-foreground">
+					{config.description}
+				</p>
+			)}
+			<div className="mt-3 flex items-center gap-2">
+				<Input
+					data-testid={`config-value-input-${config.key}`}
+					type={secret ? "password" : "text"}
+					value={value}
+					placeholder={
+						config.value_set ? "Enter a new value…" : "Enter a value…"
+					}
+					onChange={(e) => setValue(e.target.value)}
+				/>
+				<Button
+					data-testid={`save-config-${config.key}`}
+					disabled={value.trim() === "" || saveMut.isPending}
+					onClick={() => saveMut.mutate()}
+				>
+					{saveMut.isPending && (
+						<Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+					)}
+					Save
+				</Button>
+			</div>
+		</div>
+	);
+}
+
+function EditSolutionDialog({
+	solution,
+	open,
+	onClose,
+	onSaved,
+}: {
+	solution: Solution;
+	open: boolean;
+	onClose: () => void;
+	onSaved: () => void;
+}) {
+	const { data: organizations } = useOrganizations();
+	const [name, setName] = useState(solution.name);
+	const [scope, setScope] = useState<string>(
+		solution.organization_id ?? "__global__",
+	);
+	const [globalRepoAccess, setGlobalRepoAccess] = useState(
+		solution.global_repo_access,
+	);
+	const [gitConnected, setGitConnected] = useState(solution.git_connected);
+	const [gitRepoUrl, setGitRepoUrl] = useState(solution.git_repo_url ?? "");
+
+	const saveMut = useMutation({
+		mutationFn: () => {
+			const update: SolutionUpdate = {};
+			if (name !== solution.name) update.name = name;
+			const nextOrg = scope === "__global__" ? null : scope;
+			if (nextOrg !== (solution.organization_id ?? null))
+				update.organization_id = nextOrg;
+			if (globalRepoAccess !== solution.global_repo_access)
+				update.global_repo_access = globalRepoAccess;
+			if (gitConnected !== solution.git_connected)
+				update.git_connected = gitConnected;
+			const nextUrl = gitRepoUrl.trim() === "" ? null : gitRepoUrl;
+			if (nextUrl !== (solution.git_repo_url ?? null))
+				update.git_repo_url = nextUrl;
+			return updateSolution(solution.id, update);
+		},
+		onSuccess: () => {
+			toast.success("Solution updated");
+			onSaved();
+			onClose();
+		},
+		onError: (err: unknown) => {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to update Solution",
+			);
+		},
+	});
+
+	return (
+		<Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+			<DialogContent data-testid="solution-edit-dialog">
+				<DialogHeader>
+					<DialogTitle>Edit Solution</DialogTitle>
+					<DialogDescription>
+						Update install-local settings. Portable content (workflows,
+						apps, forms, etc.) is owned by the bundle and is read-only.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-4">
+					<div className="space-y-1.5">
+						<Label htmlFor="edit-name">Name</Label>
+						<Input
+							id="edit-name"
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+						/>
+					</div>
+
+					<div className="space-y-1.5">
+						<Label htmlFor="edit-scope">Scope</Label>
+						<Select value={scope} onValueChange={setScope}>
+							<SelectTrigger id="edit-scope">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="__global__">Global</SelectItem>
+								{(organizations ?? []).map((org) => (
+									<SelectItem key={org.id} value={org.id}>
+										{org.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+
+					<div className="flex items-center justify-between rounded-lg border p-3">
+						<div className="space-y-0.5">
+							<Label htmlFor="edit-global-repo">
+								Global repo access
+							</Label>
+							<p className="text-xs text-muted-foreground">
+								Allow this install to read the global repository.
+							</p>
+						</div>
+						<Switch
+							id="edit-global-repo"
+							checked={globalRepoAccess}
+							onCheckedChange={setGlobalRepoAccess}
+						/>
+					</div>
+
+					<div className="flex items-center justify-between rounded-lg border p-3">
+						<div className="space-y-0.5">
+							<Label htmlFor="edit-git-connected">Git connected</Label>
+							<p className="text-xs text-muted-foreground">
+								This install is backed by a git repository.
+							</p>
+						</div>
+						<Switch
+							id="edit-git-connected"
+							checked={gitConnected}
+							onCheckedChange={setGitConnected}
+						/>
+					</div>
+
+					<div className="space-y-1.5">
+						<Label htmlFor="edit-git-url">Git repository URL</Label>
+						<Input
+							id="edit-git-url"
+							value={gitRepoUrl}
+							placeholder="https://github.com/org/repo"
+							onChange={(e) => setGitRepoUrl(e.target.value)}
+						/>
+					</div>
+				</div>
+
+				<DialogFooter>
+					<Button variant="outline" onClick={onClose}>
+						Cancel
+					</Button>
+					<Button
+						disabled={saveMut.isPending}
+						onClick={() => saveMut.mutate()}
+					>
+						{saveMut.isPending && (
+							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						)}
+						Save changes
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
 export function SolutionDetail() {
 	const { solutionId } = useParams<{ solutionId: string }>();
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const { data: organizations } = useOrganizations();
+
+	const [tab, setTab] = useState<TabKey>("workflows");
+	const [editOpen, setEditOpen] = useState(false);
+	const [deleteOpen, setDeleteOpen] = useState(false);
+	const [deleteConfirm, setDeleteConfirm] = useState("");
 
 	const { data, isLoading, error } = useQuery({
 		queryKey: ["solutions", solutionId, "entities"],
@@ -82,32 +418,80 @@ export function SolutionDetail() {
 		enabled: !!solutionId,
 	});
 
+	const invalidate = () =>
+		queryClient.invalidateQueries({
+			queryKey: ["solutions", solutionId, "entities"],
+		});
+
 	const sol = data?.solution;
-	const orgName = sol?.organization_id
-		? (organizations?.find((o) => o.id === sol.organization_id)?.name ??
-			sol.organization_id)
-		: "Global";
+
+	const deleteMut = useMutation({
+		mutationFn: () => deleteSolution(solutionId!),
+		onSuccess: (summary) => {
+			queryClient.invalidateQueries({ queryKey: ["solutions"] });
+			toast.success("Solution uninstalled", {
+				description: `Removed ${summary.workflows_deleted} workflows, ${summary.apps_deleted} apps, ${summary.forms_deleted} forms, ${summary.agents_deleted} agents. Kept ${summary.tables_orphaned} tables and ${summary.config_values_orphaned} config values as orphaned data.`,
+			});
+			navigate("/solutions");
+		},
+		onError: (err: unknown) => {
+			toast.error("Failed to uninstall", {
+				description: err instanceof Error ? err.message : "Unknown error",
+			});
+		},
+	});
+
+	const orgName = useMemo(() => {
+		if (!sol?.organization_id) return "Global";
+		return (
+			organizations?.find((o) => o.id === sol.organization_id)?.name ??
+			sol.organization_id
+		);
+	}, [sol, organizations]);
+
+	const counts = useMemo(() => {
+		return {
+			workflows: data?.workflows?.length ?? 0,
+			apps: data?.apps?.length ?? 0,
+			forms: data?.forms?.length ?? 0,
+			agents: data?.agents?.length ?? 0,
+			tables: data?.tables?.length ?? 0,
+			configs: data?.configs?.length ?? 0,
+		} satisfies Record<TabKey, number>;
+	}, [data]);
+
+	const itemsFor = (key: Exclude<TabKey, "configs">): EntitySummary[] =>
+		(data?.[key] as EntitySummary[] | undefined) ?? [];
+
+	const requiredUnset = data?.required_configs_unset ?? [];
 
 	return (
-		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
-			<div>
+		<div
+			data-testid="solution-detail"
+			className="h-full flex flex-col space-y-6 max-w-7xl mx-auto"
+		>
+			{/* Breadcrumb */}
+			<div className="text-sm">
 				<Link
 					to="/solutions"
-					className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+					className="inline-flex items-center text-muted-foreground hover:text-foreground"
 				>
-					<ChevronLeft className="h-4 w-4" />
+					<ChevronLeft className="mr-1 h-4 w-4" />
 					Solutions
 				</Link>
+				{sol && (
+					<>
+						<span className="mx-2 text-muted-foreground">/</span>
+						<span className="font-medium">{sol.name}</span>
+					</>
+				)}
 			</div>
 
 			{isLoading ? (
 				<div className="space-y-4">
 					<Skeleton className="h-10 w-64" />
-					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-						{[...Array(3)].map((_, i) => (
-							<Skeleton key={i} className="h-32 w-full" />
-						))}
-					</div>
+					<Skeleton className="h-9 w-full max-w-xl" />
+					<Skeleton className="h-64 w-full" />
 				</div>
 			) : error ? (
 				<Card>
@@ -119,109 +503,232 @@ export function SolutionDetail() {
 				</Card>
 			) : data && sol ? (
 				<>
-					<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-						<div>
+					{/* Header */}
+					<div className="flex items-start justify-between gap-4">
+						<div className="min-w-0 flex-1">
 							<h1 className="text-3xl font-extrabold tracking-tight">
 								{sol.name}
 							</h1>
 							<p className="mt-1 text-sm text-muted-foreground">
 								{sol.slug}
 							</p>
+							<div className="mt-3 flex flex-wrap items-center gap-2">
+								<Badge
+									variant={sol.organization_id ? "outline" : "default"}
+									className="gap-1"
+								>
+									{sol.organization_id ? (
+										<Building2 className="h-3 w-3" />
+									) : (
+										<Globe className="h-3 w-3" />
+									)}
+									{orgName}
+								</Badge>
+								<Badge variant="secondary" className="gap-1">
+									{sol.git_connected ? (
+										<GitBranch className="h-3 w-3" />
+									) : (
+										<HardDriveUpload className="h-3 w-3" />
+									)}
+									{sol.git_connected ? "Git-connected" : "Manual"}
+								</Badge>
+							</div>
 						</div>
-						<div className="flex flex-wrap items-center gap-2">
-							<Badge
-								variant={
-									sol.organization_id ? "outline" : "default"
-								}
-								className="gap-1"
+						<div className="flex shrink-0 gap-2">
+							<Button
+								variant="outline"
+								data-testid="edit-solution"
+								onClick={() => setEditOpen(true)}
 							>
-								{sol.organization_id ? (
-									<Building2 className="h-3 w-3" />
-								) : (
-									<Globe className="h-3 w-3" />
-								)}
-								{orgName}
-							</Badge>
-							<Badge variant="secondary" className="gap-1">
-								{sol.git_connected ? (
-									<GitBranch className="h-3 w-3" />
-								) : (
-									<HardDriveUpload className="h-3 w-3" />
-								)}
-								{sol.git_connected ? "Git" : "Manual"}
-							</Badge>
+								<Pencil className="mr-1.5 h-4 w-4" />
+								Edit
+							</Button>
+							<Button
+								variant="outline"
+								data-testid="delete-solution"
+								className="text-destructive hover:text-destructive"
+								onClick={() => {
+									setDeleteConfirm("");
+									setDeleteOpen(true);
+								}}
+							>
+								<Trash2 className="mr-1.5 h-4 w-4" />
+								Delete
+							</Button>
 						</div>
 					</div>
 
-					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-						<EntityList
-							icon={Workflow}
-							title="Workflows"
-							items={data.workflows}
-						/>
-						<EntityList
-							icon={AppWindow}
-							title="Apps"
-							items={data.apps}
-						/>
-						<EntityList
-							icon={FileCode}
-							title="Forms"
-							items={data.forms}
-						/>
-						<EntityList
-							icon={Bot}
-							title="Agents"
-							items={data.agents}
-						/>
-						<EntityList
-							icon={Database}
-							title="Tables"
-							items={data.tables}
-						/>
-						<Card>
-							<CardHeader className="pb-2">
-								<CardTitle className="flex items-center gap-2 text-sm font-semibold">
-									<Database className="h-4 w-4 text-muted-foreground" />
-									Configs
-									<span className="text-muted-foreground">
-										({data.configs?.length ?? 0})
+					{/* Required-config warning banner */}
+					{requiredUnset.length > 0 && (
+						<div
+							data-testid="required-config-warning"
+							className="flex items-center justify-between gap-3 rounded-lg border border-yellow-500/60 bg-yellow-500/10 px-4 py-3"
+						>
+							<div className="flex items-center gap-2 text-sm">
+								<AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
+								<span>
+									{requiredUnset.length} required config
+									{requiredUnset.length === 1 ? "" : "s"} need
+									{requiredUnset.length === 1 ? "s" : ""} a value
+									before this Solution can run.
+								</span>
+							</div>
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => setTab("configs")}
+							>
+								Set values
+							</Button>
+						</div>
+					)}
+
+					{/* Tabs */}
+					<Tabs
+						value={tab}
+						onValueChange={(v) => setTab(v as TabKey)}
+						className="flex-1 min-h-0 flex flex-col"
+					>
+						<TabsList className="self-start">
+							{ENTITY_TABS.map(({ key, label, Icon }) => (
+								<TabsTrigger
+									key={key}
+									value={key}
+									data-testid={`tab-${key}`}
+									className="gap-1.5"
+								>
+									<Icon className="h-4 w-4" />
+									{label}
+									<span className="ml-1 text-xs text-muted-foreground">
+										{counts[key]}
 									</span>
-								</CardTitle>
-							</CardHeader>
-							<CardContent>
-								{data.configs && data.configs.length > 0 ? (
-									<ul className="space-y-1 text-sm">
-										{data.configs.map((cfg) => (
-											<li
-												key={cfg.id}
-												className="flex items-center gap-2"
-											>
-												{cfg.value_set ? (
-													<CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-												) : (
-													<Circle className="h-3.5 w-3.5 text-muted-foreground" />
-												)}
-												<span className="truncate font-mono text-xs">
-													{cfg.key}
-												</span>
-												{cfg.required &&
-													!cfg.value_set && (
-														<span className="text-xs text-yellow-600">
-															required
-														</span>
-													)}
-											</li>
-										))}
-									</ul>
-								) : (
-									<p className="text-sm italic text-muted-foreground/60">
-										None
-									</p>
-								)}
-							</CardContent>
-						</Card>
-					</div>
+								</TabsTrigger>
+							))}
+							<TabsTrigger
+								value="configs"
+								data-testid="tab-configs"
+								className="gap-1.5"
+							>
+								<SlidersHorizontal className="h-4 w-4" />
+								Configs
+								<span className="ml-1 text-xs text-muted-foreground">
+									{counts.configs}
+								</span>
+							</TabsTrigger>
+						</TabsList>
+
+						{ENTITY_TABS.map(({ key }) => (
+							<TabsContent key={key} value={key} className="flex-1 min-h-0">
+								<EntityTabContent
+									kind={key}
+									items={itemsFor(key)}
+									solutionId={sol.id}
+								/>
+							</TabsContent>
+						))}
+
+						<TabsContent value="configs" className="flex-1 min-h-0">
+							{data.configs && data.configs.length > 0 ? (
+								<div className="space-y-3">
+									{data.configs.map((cfg) => (
+										<ConfigRow
+											key={cfg.id}
+											config={cfg}
+											orgId={sol.organization_id ?? null}
+											onSaved={invalidate}
+										/>
+									))}
+								</div>
+							) : (
+								<div className="rounded-lg border py-12 text-center text-sm text-muted-foreground">
+									This Solution declares no configuration.
+								</div>
+							)}
+						</TabsContent>
+					</Tabs>
+
+					<EditSolutionDialog
+						solution={sol}
+						open={editOpen}
+						onClose={() => setEditOpen(false)}
+						onSaved={invalidate}
+					/>
+
+					{/* Delete / uninstall dialog (type-to-confirm) */}
+					<Dialog
+						open={deleteOpen}
+						onOpenChange={(o) => {
+							if (!o) {
+								setDeleteOpen(false);
+								setDeleteConfirm("");
+							}
+						}}
+					>
+						<DialogContent data-testid="delete-dialog">
+							<DialogHeader>
+								<DialogTitle>Uninstall {sol.name}?</DialogTitle>
+								<DialogDescription asChild>
+									<div className="space-y-2 text-sm text-muted-foreground">
+										<p>
+											Workflows, apps, forms, and agents will be
+											removed.
+										</p>
+										<p>
+											<span className="font-medium text-foreground">
+												Tables (and their data) and config values
+												are kept as orphaned data
+											</span>{" "}
+											— they will be reattached if you reinstall this
+											Solution.
+										</p>
+										<p>The git repository is not touched.</p>
+									</div>
+								</DialogDescription>
+							</DialogHeader>
+
+							<div className="space-y-2">
+								<Label htmlFor="delete-confirm">
+									Type{" "}
+									<span className="font-mono font-semibold text-foreground">
+										{sol.name}
+									</span>{" "}
+									to confirm
+								</Label>
+								<Input
+									id="delete-confirm"
+									data-testid="delete-confirm-input"
+									value={deleteConfirm}
+									onChange={(e) => setDeleteConfirm(e.target.value)}
+									autoComplete="off"
+								/>
+							</div>
+
+							<DialogFooter>
+								<Button
+									variant="outline"
+									onClick={() => {
+										setDeleteOpen(false);
+										setDeleteConfirm("");
+									}}
+								>
+									Cancel
+								</Button>
+								<Button
+									variant="destructive"
+									data-testid="confirm-delete"
+									disabled={
+										deleteConfirm !== sol.name || deleteMut.isPending
+									}
+									onClick={() => deleteMut.mutate()}
+								>
+									{deleteMut.isPending && (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									)}
+									Uninstall
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 				</>
 			) : null}
 		</div>
