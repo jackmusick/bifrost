@@ -187,6 +187,12 @@ async def update_solution(
     ``organization_id`` (scope) re-stamps every owned entity's org to match —
     owned entities inherit the install's org from the deployer — done under the
     per-install write-lock so it can't race a concurrent deploy.
+
+    DELIBERATELY NOT re-homed on scope change: config VALUES. Config values are
+    instance-owned, scope-local data keyed by (org, key) — not FK-tied to the
+    install — so a scope change does NOT migrate them to the new org. The
+    operator re-enters the values in the new scope. (The 5 entity tables above
+    ARE re-homed because they carry ``solution_id`` and are owned by the bundle.)
     """
     sol = await ctx.db.get(SolutionORM, solution_id)
     if sol is None:
@@ -336,8 +342,43 @@ async def delete_solution(
             # solution_id FK, so "detach" is just the tattoo — the row already
             # survives the Solution delete). Match the install's declared keys in
             # the install's org scope.
+            #
+            # KNOWN LIMITATION of the keyed-not-FK'd model: a Config VALUE is
+            # shared by key, so if another LIVE install in the same org declares
+            # the same key, that value backs both installs. We guard the common
+            # case by NOT orphaning keys still declared by another live install
+            # in this org (leaving the shared value live). The residual edge —
+            # two installs declaring the same key where only this one is being
+            # removed — is handled; a value mis-stamped despite the guard (e.g.
+            # an install added after a partial-failure) would need a manual
+            # un-orphan or a re-set in scope (which heals it).
             config_values_orphaned = 0
+            still_declared_keys: set[str] = set()
             if decl_keys:
+                org_match = (
+                    SolutionORM.organization_id == sol.organization_id
+                    if sol.organization_id is not None
+                    else SolutionORM.organization_id.is_(None)
+                )
+                still_declared_keys = set(
+                    (
+                        await ctx.db.execute(
+                            select(SolutionConfigSchema.key)
+                            .join(
+                                SolutionORM,
+                                SolutionConfigSchema.solution_id == SolutionORM.id,
+                            )
+                            .where(
+                                SolutionConfigSchema.solution_id != solution_id,
+                                SolutionConfigSchema.key.in_(decl_keys),
+                                org_match,
+                            )
+                        )
+                    ).scalars().all()
+                )
+
+            keys_to_orphan = decl_keys - still_declared_keys
+            if keys_to_orphan:
                 org_pred = (
                     Config.organization_id == sol.organization_id
                     if sol.organization_id is not None
@@ -345,7 +386,7 @@ async def delete_solution(
                 )
                 result = await ctx.db.execute(
                     update(Config)
-                    .where(org_pred, Config.key.in_(decl_keys))
+                    .where(org_pred, Config.key.in_(keys_to_orphan))
                     .values(
                         origin_solution_slug=sol.slug,
                         origin_solution_id=sol.id,
@@ -365,11 +406,27 @@ async def delete_solution(
                 config_values_orphaned=config_values_orphaned,
             )
 
+            # Capture the org before the delete — accessing attributes on a
+            # deleted+committed instance would trip an expired-attribute refresh.
+            sol_org_id = sol.organization_id
+
             # Solution delete: cascades workflows/apps/forms/agents + the config
             # DECLARATIONS. Tables already have solution_id=NULL, so they are NOT
             # cascaded; config values were never FK-tied to the Solution.
             await ctx.db.delete(sol)
             await ctx.db.commit()
+
+            # The orphan stamp is a Core UPDATE that does NOT go through
+            # set_config/upsert_config, so it never bumped the config cache.
+            # Without this, merged_for_sdk could keep serving the now-orphaned
+            # value (incl. a leftover SECRET) from Redis until TTL. Invalidate
+            # the install's org scope so runtime reads re-resolve against the DB.
+            if config_values_orphaned:
+                from src.core.cache import invalidate_all_config
+
+                await invalidate_all_config(
+                    str(sol_org_id) if sol_org_id is not None else None
+                )
 
             # S3 sweep only after the DB is durable (mirrors deploy's DB-then-S3).
             storage = SolutionStorage(solution_id)
