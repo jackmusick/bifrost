@@ -26,6 +26,7 @@ from src.models.contracts.solutions import (
     Solution as SolutionDTO,
     SolutionConfigStatus,
     SolutionCreate,
+    SolutionDeleteSummary,
     SolutionDeployRequest,
     SolutionDeployResponse,
     SolutionEntities,
@@ -227,6 +228,83 @@ async def update_solution(
         ) from exc
     await ctx.db.refresh(sol)
     return SolutionDTO.model_validate(sol)
+
+
+@router.delete(
+    "/{solution_id}",
+    response_model=SolutionDeleteSummary,
+    summary="Delete an install and everything it owns (admin only)",
+)
+async def delete_solution(
+    solution_id: UUID, ctx: Context, user: CurrentSuperuser
+) -> SolutionDeleteSummary:
+    """Delete an install: the Solution row + every owned entity (removed by the
+    ``solution_id`` FK ``ondelete=CASCADE``) + the install's S3 artifacts. The git
+    repo is NEVER touched — a git-connected install is deletable; only the install
+    and its local artifacts go, the upstream repo is left alone.
+    """
+    sol = await ctx.db.get(SolutionORM, solution_id)
+    if sol is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solution not found")
+
+    from src.services.solutions.app_build import SolutionAppBuilder
+    from src.services.solutions.storage import SolutionStorage
+    from src.services.solutions.write_lock import (
+        SolutionWriteLockHeld,
+        solution_write_lock,
+    )
+
+    try:
+        # One writer per install: hold the per-install lock across the DB delete
+        # AND the S3 sweep so deletion can't interleave with a concurrent deploy.
+        async with solution_write_lock(solution_id):
+            # Count + collect app ids BEFORE the cascade delete — for the summary
+            # and the S3 app-dist sweep (the rows are gone after the delete).
+            async def _count(model: type) -> int:
+                return len(
+                    (
+                        await ctx.db.execute(
+                            select(model.id).where(model.solution_id == solution_id)
+                        )
+                    ).scalars().all()
+                )
+
+            app_ids = set(
+                (
+                    await ctx.db.execute(
+                        select(Application.id).where(
+                            Application.solution_id == solution_id
+                        )
+                    )
+                ).scalars().all()
+            )
+            summary = SolutionDeleteSummary(
+                solution_id=solution_id,
+                workflows_deleted=await _count(Workflow),
+                apps_deleted=len(app_ids),
+                forms_deleted=await _count(Form),
+                agents_deleted=await _count(Agent),
+                tables_deleted=await _count(Table),
+                configs_deleted=await _count(SolutionConfigSchema),
+            )
+
+            # DB delete first (FK ondelete=CASCADE removes owned rows).
+            await ctx.db.delete(sol)
+            await ctx.db.commit()
+
+            # S3 sweep only after the DB is durable (mirrors deploy's DB-then-S3).
+            storage = SolutionStorage(solution_id)
+            for rel in await storage.list(""):
+                await storage.delete(rel)
+            builder = SolutionAppBuilder()
+            for app_id in app_ids:
+                await builder.delete_dist(app_id)
+    except SolutionWriteLockHeld as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A write is already in progress for this install; retry shortly.",
+        ) from exc
+    return summary
 
 
 @router.post(

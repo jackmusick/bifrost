@@ -151,6 +151,19 @@ class SolutionDeployRequest(BaseModel):
     config_schemas: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class SolutionDeleteSummary(BaseModel):
+    """Counts of what a DELETE removed — the install plus its owned entities
+    (removed by DB cascade). The UI echoes these back to the operator."""
+
+    solution_id: UUID
+    workflows_deleted: int = 0
+    apps_deleted: int = 0
+    forms_deleted: int = 0
+    agents_deleted: int = 0
+    tables_deleted: int = 0
+    configs_deleted: int = 0
+
+
 class SolutionDeployResponse(BaseModel):
     solution_id: UUID
     workflows_upserted: int = 0
