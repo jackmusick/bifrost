@@ -172,3 +172,38 @@ Relates to F2 (resolution not centralized) — the fallback-if-enabled path
   the same own-first-then-(org→global, if global_repo_access) cascade the deployed
   resolver uses, exercisable locally under a chosen org. (Ties directly to F2: the
   centralized resolver should be what both deployed AND local-dev paths call.)
+
+## D2 BUILT + DRIVEN (2026-06-07) — `bifrost solution start`
+
+Design: `docs/superpowers/specs/2026-06-07-solution-start-local-dev-design.md`.
+Plan: `docs/superpowers/plans/2026-06-07-solution-start-local-dev.md`.
+
+`bifrost solution start [<app-slug>] [--org <ref>] [--port N]` — the firebase/swa-style
+local dev command. Runs the app's Vite dev server + the workspace's local `@workflow`
+functions in-process behind ONE origin; proxies the rest of the data-plane (incl.
+WebSockets) to the dev API; injects the app id + `--org` so local dev exercises the same
+install-scoped resolution as deployed. Deploys NOTHING (the platform is only mutated by
+`deploy`). Functions reload on `.py` change. Closes **F8** (scaffold ships a runnable
+`functions/hello.py` at the solution root; first-run button works) and **F10/D4** (appId +
+org wired locally). **D1/F4** (`watch` refusing in a solution workspace) and **F2** (centralize
+the resolver) remain as separate items.
+
+**Driven end-to-end on the live stack (port-mode debug @ :37791).** The drive caught **5 real
+bugs that all unit tests missed** — the "drive it, don't just test it" payoff:
+1. **Sample workflow placement** — scaffold wrote `functions/hello.py` INSIDE the app dir, but
+   workflow refs are workspace-root-relative, so the app's `functions/hello.py::main` never
+   matched discovery. F8 wasn't actually fixed until the sample moved to the solution root.
+2. **`aiohttp` missing from CLI deps** — the proxy imports it, but it wasn't in
+   `api/bifrost/pyproject.toml`; a real CLI install crashed with ModuleNotFoundError. Added it.
+3. **Orphaned Vite on Ctrl-C** — `terminate()` killed `npm` but the `vite` grandchild kept the
+   port. Fixed with a process-group spawn + group-signal teardown.
+4. **Tracebacks instead of clean errors** — `handle_solution`/`handle_deploy` dispatch with
+   `standalone_mode=False`, which suppressed click's ClickException rendering; a handled error
+   (ambiguous app, and any deploy/install error) escaped as a raw traceback. Pre-existing;
+   fixed for all three commands.
+5. (UX) F1 — `solution` was absent from `bifrost --help` and `docs/llm.txt`; both now document it.
+
+Verified live: `GET /` → app (200); `POST /api/workflows/execute` with `functions/hello.py::main`
+→ ran LOCALLY, returned the sample payload (no deploy); edit-the-fn → new output without restart;
+non-local `/api/*` → proxied; bare `start` with 2 apps → clean "name one" error; `start admin` →
+selects the second app; Ctrl-C → app + vite reaped, ports released, nothing left on the platform.
