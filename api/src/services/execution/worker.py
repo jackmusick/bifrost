@@ -281,6 +281,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             is_platform_admin=context_data.get("is_platform_admin", False),
             broadcaster=None,  # Logs go to Redis Stream directly
             event=event_ctx,
+            solution_id=context_data.get("solution_id"),  # install scope for SDK
         )
 
         # Execute

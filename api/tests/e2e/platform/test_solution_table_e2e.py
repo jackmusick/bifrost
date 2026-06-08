@@ -157,3 +157,43 @@ def test_solution_app_resolves_its_table_by_name(e2e_client, platform_admin):
     )
     assert got.status_code == 200, got.text
     assert got.json()["data"]["email"] == "a@x.com"
+
+
+def test_solution_workflow_resolves_its_table_by_name(e2e_client, platform_admin):
+    """F2: a solution WORKFLOW's sdk.tables call must resolve its OWN install's
+    table by name — the workflow analog of the app path. The SDK appends
+    ?solution=<install_id> (from the ExecutionContext); the table router resolves
+    own-first off ctx.solution_id. Without it, the name cascade excludes the
+    solution table → 404 (insert) / empty (query). The install id IS the solution
+    id (a workflow knows its install directly, no app→solution lookup)."""
+    headers = platform_admin.headers
+    slug = f"wftbl-{uuid.uuid4().hex[:8]}"
+    sid = _create_solution(e2e_client, headers, slug)
+    tid = str(uuid.uuid4())
+    table_name = f"widgets_{slug}"
+
+    dep = e2e_client.post(f"/api/solutions/{sid}/deploy", headers=headers, json={
+        "tables": [{"id": tid, "name": table_name,
+                    "schema": {"columns": [{"name": "label"}]}, "policies": None}],
+    })
+    assert dep.status_code in (200, 201), dep.text
+
+    # WITHOUT the solution scope: name cascade excludes the solution table → 404.
+    no_scope = e2e_client.post(
+        f"/api/tables/{table_name}/documents", headers=headers,
+        json={"id": "r1", "data": {"label": "alpha"}},
+    )
+    assert no_scope.status_code == 404, f"expected 404 w/o solution scope, got {no_scope.text}"
+
+    # WITH ?solution=<install_id> (what the SDK appends for a solution workflow):
+    # resolves the install's own table by name → row op works.
+    with_scope = e2e_client.post(
+        f"/api/tables/{table_name}/documents?solution={sid}", headers=headers,
+        json={"id": "r1", "data": {"label": "alpha"}},
+    )
+    assert with_scope.status_code in (200, 201), f"workflow-scoped row op failed: {with_scope.text}"
+    got = e2e_client.get(
+        f"/api/tables/{table_name}/documents/r1?solution={sid}", headers=headers
+    )
+    assert got.status_code == 200, got.text
+    assert got.json()["data"]["label"] == "alpha"

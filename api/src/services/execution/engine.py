@@ -113,6 +113,12 @@ class ExecutionRequest:
     # Event context (set when triggered by an event subscription)
     event: Any = None                    # EventContext | None
 
+    # The install this execution belongs to, when the workflow is solution-managed
+    # (from the resolved workflow row's solution_id). Carried onto ExecutionContext
+    # so the SDK can scope name lookups (tables/configs) to the install's OWN
+    # entity — own-first, then _repo/. None for plain _repo/ executions.
+    solution_id: str | None = None
+
 
 @dataclass
 class ExecutionResult:
@@ -291,6 +297,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         startup=request.startup,  # Launch workflow results (from form execution)
         roi=roi,
         event=request.event,
+        solution_id=request.solution_id,  # install scope for SDK name lookups
     )
 
     # Set bifrost SDK context if available

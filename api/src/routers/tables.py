@@ -575,6 +575,11 @@ async def get_table_or_404(
     which already enforces the org gate (its ID-lookup branch returns None
     for non-superusers reaching outside their own-or-global scope). Avoids
     bypassing the gate with raw SELECT.
+
+    Install-scoped name resolution (a Solution app via ``X-Bifrost-App`` OR a
+    solution workflow via ``ctx.solution_id``) is handled in
+    ``_resolve_solution_table_by_name`` below — own-first, then the org/_repo/
+    cascade. Gated by the org check.
     """
     target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(
@@ -620,27 +625,38 @@ async def get_table_or_404(
 async def _resolve_solution_table_by_name(
     ctx: Context, name: str, target_org_id: UUID | None
 ) -> Table | None:
-    """If the caller is a Solution app, resolve a table by name within that
-    app's OWN install (solution_id), preferring it over a _repo/ table.
+    """Resolve a table by name within a calling INSTALL (solution_id), preferring
+    it over a _repo/ table. The install scope comes from EITHER source on ``ctx``:
 
-    GATED to the caller's org scope. The ``X-Bifrost-App`` header is
-    client-supplied, so a caller passing a FOREIGN org's app id must not reach
-    that org's install table (Codex #16): a non-superuser only resolves a table
-    whose org is its own (``target_org_id``) or global (NULL); a superuser is
-    unrestricted (mirrors the OrgScopedRepository ID-lookup gate). Returns None
-    for non-app callers or when no in-scope install table matches.
+    - A Solution **app** — ``ctx.app_id`` (``X-Bifrost-App``) → ``Application.solution_id``.
+    - A Solution **workflow** — ``ctx.solution_id`` (the SDK appends ``?solution=``
+      from the ExecutionContext when a solution workflow is executing).
+
+    One own-first resolver, two callers. GATED to the caller's org scope: both are
+    client-supplied, so a caller naming a FOREIGN org's install must not reach
+    that org's table (Codex #16) — a non-superuser only resolves a table whose org
+    is its own (``target_org_id``) or global (NULL); a superuser is unrestricted
+    (mirrors the OrgScopedRepository ID-lookup gate). Returns None for non-install
+    callers or when no in-scope install table matches.
     """
-    if not ctx.app_id:
-        return None
-    try:
-        app_uuid = UUID(ctx.app_id)
-    except ValueError:
-        return None
-    solution_id = (
-        await ctx.db.execute(
-            select(Application.solution_id).where(Application.id == app_uuid)
-        )
-    ).scalar_one_or_none()
+    solution_id: UUID | None = None
+    if ctx.solution_id:
+        # A solution workflow: the install id is on the execution context (the SDK
+        # appended ?solution=); no app lookup needed.
+        try:
+            solution_id = UUID(ctx.solution_id)
+        except ValueError:
+            return None
+    elif ctx.app_id:
+        try:
+            app_uuid = UUID(ctx.app_id)
+        except ValueError:
+            return None
+        solution_id = (
+            await ctx.db.execute(
+                select(Application.solution_id).where(Application.id == app_uuid)
+            )
+        ).scalar_one_or_none()
     if solution_id is None:
         return None
     stmt = select(Table).where(

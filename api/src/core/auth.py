@@ -100,6 +100,11 @@ class ExecutionContext:
     # install so a `useTable("name")` reaches its deployed table, not a sibling
     # install's at the same name (Codex #15). None for non-app callers.
     app_id: str | None = None
+    # The calling INSTALL's id, when a SOLUTION WORKFLOW is executing (the SDK
+    # appends ?solution=<id> from the ExecutionContext). The workflow analog of
+    # app_id: lets a workflow's `sdk.tables.get("name")` resolve its OWN install's
+    # table first. None outside a solution execution.
+    solution_id: str | None = None
 
     @property
     def scope(self) -> str:
@@ -360,6 +365,9 @@ async def get_execution_context(
         db=db,
         # Set by the v2 SDK provider for Solution apps; harmless/None otherwise.
         app_id=request.headers.get("X-Bifrost-App"),
+        # Appended by the SDK (?solution=) when a solution workflow is executing;
+        # None otherwise. Lets a workflow resolve its own install's table by name.
+        solution_id=request.query_params.get("solution"),
     )
 
 

@@ -107,6 +107,10 @@ class ExecutionContext:
     execution_id: str
     workflow_name: str = field(default="")  # Name of the executing workflow
     is_agent: bool = False  # True when triggered by an autonomous agent
+    # The install this execution belongs to, when the workflow is solution-managed.
+    # The SDK appends it to name lookups (tables/configs) so they resolve the
+    # install's OWN entity first, then _repo/. None for plain _repo/ executions.
+    solution_id: str | None = field(default=None)
 
     # ==================== PLATFORM ====================
     # Public URL for constructing external links (e.g., workflow URLs, execution URLs)
