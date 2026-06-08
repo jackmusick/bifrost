@@ -772,6 +772,113 @@ def install_cmd(zip_path: str, org_id: str | None, set_values: tuple[str, ...]) 
         raise SystemExit(rc)
 
 
+@solution_group.command(name="start", help="Run the app's dev server + local workflows (one origin).")
+@click.argument("app_slug", required=False)
+@click.option("--org", "org_ref", default=None, help="Org ref (UUID or name) to run under (superuser).")
+@click.option("--port", default=3000, show_default=True, type=int, help="Local origin port.")
+def start_cmd(app_slug: str | None, org_ref: str | None, port: int) -> None:
+    import shutil
+    import subprocess
+
+    from bifrost.client import BifrostClient
+    from bifrost.solution_dev.app_select import AppSelectionError, select_app
+    from bifrost.solution_dev.function_host import FunctionHost, set_dev_execution_context
+    from bifrost.solution_dev.scaffold_check import PATCH_HINT, main_tsx_needs_dev_fallback
+
+    workspace = pathlib.Path(".").resolve()
+    if not is_solution_workspace(workspace):
+        raise click.ClickException(
+            f"Not a Solution workspace (no {DESCRIPTOR_FILENAME}). Run `bifrost solution init` first."
+        )
+
+    client = BifrostClient.get_instance(require_auth=True)
+
+    org_info = client.organization
+    if org_ref:
+        from bifrost.refs import RefResolver
+        resolver = RefResolver(client)
+        org_id = asyncio.run(resolver.resolve("org", org_ref))
+        resp = client._sync_http.get("/api/sdk/context", params={"org_id": org_id})
+        if resp.status_code == 403:
+            raise click.ClickException("--org requires superuser privileges.")
+        if resp.status_code >= 400:
+            raise click.ClickException(f"Could not resolve org '{org_ref}': HTTP {resp.status_code}")
+        org_info = resp.json().get("organization", org_info)
+
+    try:
+        chosen = select_app(workspace, slug=app_slug)
+    except AppSelectionError as exc:
+        raise click.ClickException(str(exc))
+
+    main_tsx = chosen.app_dir / "src" / "main.tsx"
+    if main_tsx_needs_dev_fallback(main_tsx):
+        click.echo(PATCH_HINT, err=True)
+
+    set_dev_execution_context(user=client.user, org=org_info)
+
+    host = FunctionHost(workspace)
+    host.reload()
+    click.echo(f"Discovered {len(host.refs())} local function(s).")
+
+    if shutil.which("npm") is None:
+        raise click.ClickException("npm not found on PATH — install Node.js to run the dev server.")
+    if not (chosen.app_dir / "node_modules").is_dir():
+        click.echo("Installing app dependencies (npm install)…")
+        subprocess.run(["npm", "install"], cwd=chosen.app_dir, check=True)
+
+    vite_env = dict(os.environ)
+    vite_env["VITE_BIFROST_APP_ID"] = chosen.app_id
+    vite_env["VITE_BIFROST_ORG_ID"] = (org_info or {}).get("id", "")
+    vite_env["BIFROST_API_URL"] = client.api_url
+    vite_env["BIFROST_ACCESS_TOKEN"] = client._access_token
+
+    vite_port = port + 1
+    vite_proc = subprocess.Popen(
+        ["npm", "run", "dev", "--", "--port", str(vite_port), "--strictPort"],
+        cwd=chosen.app_dir, env=vite_env,
+    )
+
+    try:
+        asyncio.run(_serve(client, chosen, org_info, host, port, vite_port, workspace))
+    finally:
+        vite_proc.terminate()
+        try:
+            vite_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            vite_proc.kill()
+
+
+async def _serve(client, chosen, org_info, host, port, vite_port, workspace):
+    from aiohttp import web
+
+    from bifrost.solution_dev.proxy import DevProxyConfig, build_dev_app
+    from bifrost.solution_dev.reload import start_function_watch
+
+    cfg = DevProxyConfig(
+        upstream_url=client.api_url.rstrip("/"),
+        token=client._access_token,
+        app_id=chosen.app_id,
+        org_id=(org_info or {}).get("id"),
+    )
+    app = build_dev_app(cfg, host, vite_url=f"http://127.0.0.1:{vite_port}")
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", port)
+    await site.start()
+    observer = start_function_watch(workspace, host)
+    click.echo(f"\n  Bifrost solution dev server → http://localhost:{port}\n")
+    click.echo("  Press Ctrl-C to stop.\n")
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        observer.stop()
+        observer.join(timeout=2)
+        await runner.cleanup()
+
+
 def handle_solution(args: list[str]) -> int:
     """Dispatch ``bifrost solution ...`` from :func:`bifrost.cli.main`."""
     try:

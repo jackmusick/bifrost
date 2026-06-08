@@ -69,6 +69,41 @@ def _load_module(py: Path, rel: str) -> ModuleType | None:
         return None
 
 
+def set_dev_execution_context(*, user: dict, org: dict | None) -> None:
+    """Configure the in-process execution context the local host runs under.
+
+    Mirrors `bifrost run`'s context setup so locally-run functions see
+    context.org_id/user_id and the data-plane runs under the chosen org.
+    """
+    import uuid as _uuid
+
+    from bifrost._context import set_execution_context as _set_execution_context
+    from bifrost._execution_context import ExecutionContext, Organization
+
+    organization = (
+        Organization(
+            id=org["id"],
+            name=org.get("name", ""),
+            is_active=org.get("is_active", True),
+            is_provider=org.get("is_provider", False),
+        )
+        if org
+        else None
+    )
+    ctx = ExecutionContext(
+        user_id=user.get("id", "cli-user"),
+        email=user.get("email", ""),
+        name=user.get("name", "CLI User"),
+        scope=org["id"] if org else "GLOBAL",
+        organization=organization,
+        is_platform_admin=user.get("is_superuser", False),
+        is_function_key=False,
+        execution_id=f"solution-start-{_uuid.uuid4()}",
+        workflow_name="solution-start",
+    )
+    _set_execution_context(ctx)
+
+
 class FunctionHost:
     """Holds the discovered function map; runs one by ``path::fn`` ref.
 
