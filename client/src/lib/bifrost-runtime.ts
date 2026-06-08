@@ -35,10 +35,9 @@ export {
 	useTransition,
 } from "react";
 
-// React Router primitives EXCEPT Link / NavLink / Navigate / useNavigate — those
-// are re-exported from the platform module below so app basename handling stays
-// consistent during the transition. Phase 5 drops the wrappers entirely and uses
-// raw react-router-dom.
+// React Router primitives EXCEPT Link / NavLink / Navigate / useNavigate /
+// useLocation — those are re-exported from the platform module below so app
+// basename handling stays consistent during the transition.
 export {
 	BrowserRouter,
 	HashRouter,
@@ -51,7 +50,6 @@ export {
 	useHref,
 	useLinkClickHandler,
 	useInRouterContext,
-	useLocation,
 	useMatch,
 	useNavigationType,
 	useOutlet,
@@ -108,6 +106,7 @@ export * from "lucide-react";
 // Platform hooks & components
 export { useWorkflowQuery } from "./app-code-platform/useWorkflowQuery";
 export { useWorkflowMutation } from "./app-code-platform/useWorkflowMutation";
+export { useLocation } from "./app-code-platform/useLocation";
 export { useParams } from "./app-code-platform/useParams";
 export { useSearchParams } from "./app-code-platform/useSearchParams";
 export { navigate, useNavigate } from "./app-code-platform/navigate";

@@ -15,7 +15,9 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import type { ComponentProps } from "react";
 import { renderWithProviders, screen } from "@/test-utils";
+import { ExecutionSidebar } from "./ExecutionSidebar";
 
 vi.mock("./PrettyInputDisplay", () => ({
 	PrettyInputDisplay: ({
@@ -45,12 +47,9 @@ vi.mock("./ExecutionStatusBadge", async (orig) => {
 	};
 });
 
-async function render(
-	props: Partial<
-		Parameters<typeof import("./ExecutionSidebar")["ExecutionSidebar"]>[0]
-	> = {},
+function render(
+	props: Partial<ComponentProps<typeof ExecutionSidebar>> = {},
 ) {
-	const { ExecutionSidebar } = await import("./ExecutionSidebar");
 	const baseProps = {
 		status: "Success" as const,
 		workflowName: "my_wf",
@@ -92,7 +91,6 @@ describe("ExecutionSidebar — default layout", () => {
 		const { rerender } = await render({ completedAt: null });
 		expect(screen.queryByText(/completed at/i)).not.toBeInTheDocument();
 
-		const { ExecutionSidebar } = await import("./ExecutionSidebar");
 		rerender(
 			<ExecutionSidebar
 				status="Success"

@@ -713,6 +713,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/register-from-invite/passkey/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register From Invite Passkey Options
+         * @description Start passkey registration for a user holding a valid invite token.
+         */
+        post: operations["register_from_invite_passkey_options_auth_register_from_invite_passkey_options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register-from-invite/passkey/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register From Invite Passkey Verify
+         * @description Complete invite registration by verifying a passkey and logging the user in.
+         */
+        post: operations["register_from_invite_passkey_verify_auth_register_from_invite_passkey_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/mfa/status": {
         parameters: {
             query?: never;
@@ -1335,6 +1375,26 @@ export interface paths {
          * @description Generate a fresh invite token and email it to the user.
          */
         post: operations["resend_invite_api_users__user_id__invite_resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/invite/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send invite
+         * @description Emit invite automation for an existing registration link without rotating the token.
+         */
+        post: operations["send_invite_api_users__user_id__invite_send_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2437,7 +2497,7 @@ export interface paths {
         put?: never;
         /**
          * Read File
-         * @description Read a file from workspace, temp, or uploads.
+         * @description Read a file from a managed or custom location.
          */
         post: operations["read_file_api_files_read_post"];
         delete?: never;
@@ -2457,7 +2517,7 @@ export interface paths {
         put?: never;
         /**
          * Write File
-         * @description Write a file to workspace, temp, or uploads.
+         * @description Write a file to a managed or custom location.
          */
         post: operations["write_file_api_files_write_post"];
         delete?: never;
@@ -2477,7 +2537,7 @@ export interface paths {
         put?: never;
         /**
          * Delete File
-         * @description Delete a file from workspace, temp, or uploads.
+         * @description Delete a file from a managed or custom location.
          */
         post: operations["delete_file_api_files_delete_post"];
         delete?: never;
@@ -3645,22 +3705,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -10086,10 +10146,31 @@ export interface components {
              * @description Primary brand color (hex format, e.g., #FF5733)
              */
             primary_color?: string | null;
+            /** @description Fixed product terminology overrides for the platform UI */
+            terminology?: components["schemas"]["BrandingTerminology"];
+        };
+        /**
+         * BrandingTerm
+         * @description Singular and plural labels for a fixed product noun.
+         */
+        BrandingTerm: {
+            /** Singular */
+            singular?: string | null;
+            /** Plural */
+            plural?: string | null;
+        };
+        /**
+         * BrandingTerminology
+         * @description Fixed platform nouns that can be renamed by branding.
+         */
+        BrandingTerminology: {
+            app?: components["schemas"]["BrandingTerm"];
+            agent?: components["schemas"]["BrandingTerm"];
+            form?: components["schemas"]["BrandingTerm"];
         };
         /**
          * BrandingUpdateRequest
-         * @description Request model for updating primary color only - logos use POST /logo/{type}
+         * @description Request model for updating branding settings - logos use POST /logo/{type}
          */
         BrandingUpdateRequest: {
             /**
@@ -10097,6 +10178,8 @@ export interface components {
              * @description Primary color (hex code, e.g., #0066CC)
              */
             primary_color?: string | null;
+            /** @description Fixed product terminology overrides for the platform UI */
+            terminology?: components["schemas"]["BrandingTerminology"] | null;
         };
         /** BulkExportRequest */
         BulkExportRequest: {
@@ -13395,7 +13478,7 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location: reserved (workspace, temp, uploads) or freeform
+             * @description Storage location. Special values: workspace (default), temp, uploads. Custom names like reports are accepted; internal prefixes _repo, _tmp, and _apps are blocked.
              * @default workspace
              */
             location: string;
@@ -13460,7 +13543,7 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location: reserved (workspace, temp, uploads) or freeform
+             * @description Storage location. Special values: workspace (default), temp, uploads. Custom names like reports are accepted; internal prefixes _repo, _tmp, and _apps are blocked.
              * @default workspace
              */
             location: string;
@@ -13515,7 +13598,7 @@ export interface components {
             directory: string;
             /**
              * Location
-             * @description Storage location: reserved (workspace, temp, uploads) or freeform
+             * @description Storage location. Special values: workspace (default), temp, uploads. Custom names like reports are accepted; internal prefixes _repo, _tmp, and _apps are blocked.
              * @default workspace
              */
             location: string;
@@ -13663,7 +13746,7 @@ export interface components {
             path: string;
             /**
              * Location
-             * @description Storage location: reserved (workspace, temp, uploads) or freeform
+             * @description Storage location. Special values: workspace (default), temp, uploads. Custom names like reports are accepted; internal prefixes _repo, _tmp, and _apps are blocked.
              * @default workspace
              */
             location: string;
@@ -13775,7 +13858,7 @@ export interface components {
             content: string;
             /**
              * Location
-             * @description Storage location: reserved (workspace, temp, uploads) or freeform
+             * @description Storage location. Special values: workspace (default), temp, uploads. Custom names like reports are accepted; internal prefixes _repo, _tmp, and _apps are blocked.
              * @default workspace
              */
             location: string;
@@ -15168,6 +15251,40 @@ export interface components {
              * @description Default value for entity_id in URL templates (e.g., 'common' for Azure multi-tenant)
              */
             default_entity_id?: string | null;
+        };
+        /**
+         * InvitePasskeyOptionsRequest
+         * @description Request to start passkey registration from an invite token.
+         */
+        InvitePasskeyOptionsRequest: {
+            /**
+             * Token
+             * @description Invite token from the registration URL
+             */
+            token: string;
+        };
+        /**
+         * InvitePasskeyVerifyRequest
+         * @description Request to complete invite registration with a passkey.
+         */
+        InvitePasskeyVerifyRequest: {
+            /**
+             * Token
+             * @description Invite token from the registration URL
+             */
+            token: string;
+            /**
+             * Credential
+             * @description WebAuthn credential from navigator.credentials.create()
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+            /**
+             * Device Name
+             * @description Friendly name for the passkey
+             */
+            device_name?: string | null;
         };
         /**
          * JobStatusResponse
@@ -18460,7 +18577,7 @@ export interface components {
             id: string;
             /**
              * Name
-             * @description Workflow name (from decorator or function name)
+             * @description MCP tool name, defaulted from function_name on registration
              */
             name: string;
             /**
@@ -18973,7 +19090,7 @@ export interface components {
             name: string;
             /**
              * Scope
-             * @description Optional org scope. Omit / pass null to list only the caller's own org mapping. Platform admins and provider-org members may pass 'global' (no filter, all orgs) or a specific org UUID.
+             * @description Optional org scope. Omit / pass null to list only the caller's own org mapping, unless the resolved org is a provider org, which lists all mappings. Platform admins and provider-org members may pass 'global' (no filter, all orgs) or a specific org UUID.
              */
             scope?: string | null;
         };
@@ -19410,6 +19527,14 @@ export interface components {
         SendFlagMessageRequest: {
             /** Content */
             content: string;
+        };
+        /**
+         * SendInviteRequest
+         * @description Request to emit invite automation for an existing raw registration link.
+         */
+        SendInviteRequest: {
+            /** Registration Url */
+            registration_url: string;
         };
         /**
          * SetConfigRequest
@@ -19938,6 +20063,23 @@ export interface components {
             topic: string;
             /** Description */
             description: string;
+            /**
+             * Category
+             * @description Grouping for this built-in topic.
+             */
+            category: string;
+            /**
+             * Emitted By
+             * @description Platform surface that emits this topic.
+             */
+            emitted_by: string;
+            /**
+             * Example Body
+             * @description Representative context.event.data body for this topic.
+             */
+            example_body?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * TopicsRegistryResponse
@@ -20431,6 +20573,8 @@ export interface components {
              * @default active
              */
             invite_status: string;
+            /** Registration Url */
+            registration_url?: string | null;
         };
         /**
          * UserResponse
@@ -21158,7 +21302,7 @@ export interface components {
             id: string;
             /**
              * Name
-             * @description Human-readable workflow name
+             * @description MCP tool name for this workflow. Defaults to the Python function name on registration.
              */
             name: string;
             /**
@@ -21168,7 +21312,7 @@ export interface components {
             function_name?: string | null;
             /**
              * Display Name
-             * @description Optional display name for UI (falls back to name if not set)
+             * @description Optional UI display name (falls back to the tool name if not set)
              */
             display_name?: string | null;
             /**
@@ -21447,8 +21591,13 @@ export interface components {
              */
             role_ids?: string[] | null;
             /**
+             * Name
+             * @description MCP tool name for this workflow. Defaults to the Python function name on registration.
+             */
+            name?: string | null;
+            /**
              * Display Name
-             * @description User-facing display name (defaults to code name if not set)
+             * @description Optional UI display name (falls back to the tool name if not set)
              */
             display_name?: string | null;
             /**
@@ -22392,6 +22541,72 @@ export interface operations {
             };
         };
     };
+    register_from_invite_passkey_options_auth_register_from_invite_passkey_options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitePasskeyOptionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupPasskeyOptionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_from_invite_passkey_verify_auth_register_from_invite_passkey_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitePasskeyVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupPasskeyVerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_mfa_status_auth_mfa_status_get: {
         parameters: {
             query?: never;
@@ -23211,6 +23426,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateInviteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_invite_api_users__user_id__invite_send_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendInviteRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -27672,7 +27922,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -27705,7 +27955,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -27738,7 +27988,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -27771,7 +28021,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {

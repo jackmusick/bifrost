@@ -27,10 +27,13 @@ export default function Layout() {
 `;
 
 const indexTsx = (heading: string) => `import { Link } from "bifrost";
+import { useLocation } from "react-router-dom";
 export default function Home() {
+	const location = useLocation();
 	return (
 		<div>
 			<h1 data-testid="demo-heading">${heading}</h1>
+			<div data-testid="location-path">{location.pathname}</div>
 			<Link to="/other" data-testid="to-other">Go to Other</Link>
 		</div>
 	);
@@ -38,10 +41,13 @@ export default function Home() {
 `;
 
 const OTHER_TSX = `import { Link } from "bifrost";
+import { useLocation } from "react-router-dom";
 export default function Other() {
+	const location = useLocation();
 	return (
 		<div>
 			<h1 data-testid="other-heading">OTHER PAGE</h1>
+			<div data-testid="location-path">{location.pathname}</div>
 			<Link to="/" data-testid="to-home">Back to Home</Link>
 		</div>
 	);
@@ -121,6 +127,7 @@ test.describe("Apps Preview", () => {
 		await expect(page.getByTestId("demo-heading")).toHaveText("HELLO V1", {
 			timeout: 15_000,
 		});
+		await expect(page.getByTestId("location-path")).toHaveText("/");
 
 		// --- Step 2: push V2, preview updates WITHOUT reload ---
 		const writeResp = await api.post("/api/files/write", {
@@ -134,6 +141,7 @@ test.describe("Apps Preview", () => {
 		await expect(page.getByTestId("demo-heading")).toHaveText("HELLO V2", {
 			timeout: 15_000,
 		});
+		await expect(page.getByTestId("location-path")).toHaveText("/");
 
 		// --- Step 3: navigate to /other via in-app Link, then back ---
 		await page.getByTestId("to-other").click();
@@ -143,12 +151,14 @@ test.describe("Apps Preview", () => {
 		await expect(page.getByTestId("other-heading")).toHaveText(
 			"OTHER PAGE",
 		);
+		await expect(page.getByTestId("location-path")).toHaveText("/other");
 
 		await page.getByTestId("to-home").click();
 		await expect(page).toHaveURL(
 			new RegExp(`/apps/${APP_SLUG}/preview/?$`),
 		);
 		await expect(page.getByTestId("demo-heading")).toHaveText("HELLO V2");
+		await expect(page.getByTestId("location-path")).toHaveText("/");
 
 		// No console errors / pageerrors during the hot-reload + navigation
 		// flow. This also catches "provider context missing" regressions, which
@@ -167,6 +177,7 @@ test.describe("Apps Preview", () => {
 		await expect(page.getByTestId("demo-heading")).toHaveText("HELLO V2", {
 			timeout: 15_000,
 		});
+		await expect(page.getByTestId("location-path")).toHaveText("/");
 
 		// Also verify navigation works in live mode.
 		await page.getByTestId("to-other").click();
@@ -176,6 +187,7 @@ test.describe("Apps Preview", () => {
 		await expect(page.getByTestId("other-heading")).toHaveText(
 			"OTHER PAGE",
 		);
+		await expect(page.getByTestId("location-path")).toHaveText("/other");
 
 		expect(tracker.errors, tracker.errors.join("\n")).toEqual([]);
 	});

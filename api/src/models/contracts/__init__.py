@@ -301,6 +301,8 @@ from src.models.contracts.files import (
 # Common models
 from src.models.contracts.common import (
     BrandingSettings,
+    BrandingTerm,
+    BrandingTerminology,
     BrandingUpdateRequest,
     ErrorResponse,
     FileUploadRequest,
@@ -353,6 +355,8 @@ from src.models.contracts.github import (
     PreflightIssue,
     PreflightResult,
     RecreateFileResponse,
+    RemapWorkflowRequest,
+    RemapWorkflowResponse,
     ReplaceWorkflowRequest,
     ReplaceWorkflowResponse,
     ValidateTokenRequest,
@@ -762,6 +766,8 @@ __all__ = [
     "CronValidationRequest",
     "CronValidationResponse",
     "BrandingSettings",
+    "BrandingTerm",
+    "BrandingTerminology",
     "BrandingUpdateRequest",
     "FileType",
     "FileMetadata",
@@ -820,6 +826,8 @@ __all__ = [
     "CompatibleReplacementsResponse",
     "ReplaceWorkflowRequest",
     "ReplaceWorkflowResponse",
+    "RemapWorkflowRequest",
+    "RemapWorkflowResponse",
     "RecreateFileResponse",
     "DeactivateWorkflowResponse",
     # Desktop-style git sync models

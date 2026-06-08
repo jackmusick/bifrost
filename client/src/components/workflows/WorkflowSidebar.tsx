@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { term, useTerminology } from "@/lib/terminology";
 import { $api } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
 
@@ -277,6 +278,7 @@ export function WorkflowSidebar({
 	onClose,
 	className,
 }: WorkflowSidebarProps) {
+	const terminology = useTerminology();
 	const { data, isLoading } = $api.useQuery(
 		"get",
 		"/api/workflows/usage-stats",
@@ -440,7 +442,7 @@ export function WorkflowSidebar({
 					</span>
 				</div>
 				<EntitySection
-					title="Forms"
+					title={term(terminology, "form", "plural")}
 					icon={<FileText className="h-4 w-4 text-muted-foreground" />}
 					entities={data?.forms ?? []}
 					selectedId={selectedFormId}
@@ -454,7 +456,7 @@ export function WorkflowSidebar({
 					isLoading={isLoading}
 				/>
 				<EntitySection
-					title="Apps"
+					title={term(terminology, "app", "plural")}
 					icon={
 						<AppWindow className="h-4 w-4 text-muted-foreground" />
 					}
@@ -470,7 +472,7 @@ export function WorkflowSidebar({
 					isLoading={isLoading}
 				/>
 				<EntitySection
-					title="Agents"
+					title={term(terminology, "agent", "plural")}
 					icon={<Bot className="h-4 w-4 text-muted-foreground" />}
 					entities={data?.agents ?? []}
 					selectedId={selectedAgentId}

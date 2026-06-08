@@ -40,6 +40,8 @@ from src.models import (
     RecreateFileResponse,
     RegisterWorkflowRequest,
     RegisterWorkflowResponse,
+    RemapWorkflowRequest,
+    RemapWorkflowResponse,
     ReplaceWorkflowRequest,
     ReplaceWorkflowResponse,
     WorkflowExecutionRequest,
@@ -1327,7 +1329,8 @@ async def update_workflow(
     - organization_id: Set to null for global scope, or an org UUID for org-scoped
     - access_level: 'authenticated' or 'role_based'
     - clear_roles: If true, clear all role assignments
-    - display_name: User-facing display name (can be set to null to use code name)
+    - name: MCP tool name (defaults to the Python function name on registration)
+    - display_name: User-facing display name (can be set to null to fall back to name)
     - timeout_seconds: Max execution time (0-86400 seconds, where 0 disables the timeout)
     - execution_mode: 'sync' or 'async'
     - time_saved: Minutes saved per execution (for ROI reporting)
@@ -1430,6 +1433,22 @@ async def update_workflow(
             # Also set to role_based access level (effectively no access)
             workflow.access_level = "role_based"
             logger.info(f"Cleared all role assignments for workflow '{log_safe(workflow.name)}'")
+
+        # Update MCP tool name if provided. ``function_name`` remains the
+        # source-code identity used for path::function references.
+        if "name" in request.model_fields_set:
+            if request.name is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="name cannot be null",
+                )
+            new_name = request.name.strip()
+            if not new_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="name cannot be empty",
+                )
+            workflow.name = new_name
 
         # Update display_name if provided
         if "display_name" in request.model_fields_set:
@@ -1727,6 +1746,50 @@ async def replace_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to replace workflow",
+        )
+
+
+@router.post(
+    "/{workflow_id}/remap",
+    response_model=RemapWorkflowResponse,
+    summary="Remap workflow references",
+    description="Move references from one workflow ID to another active workflow ID",
+)
+async def remap_workflow_references(
+    workflow_id: UUID,
+    request: RemapWorkflowRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> RemapWorkflowResponse:
+    """Move references from ``workflow_id`` to ``target_workflow_id``."""
+    from src.services.workflow_orphan import WorkflowOrphanService
+
+    try:
+        target_workflow_id = UUID(request.target_workflow_id)
+        orphan_service = WorkflowOrphanService(db)
+        result = await orphan_service.remap_workflow_references(
+            source_workflow_id=workflow_id,
+            target_workflow_id=target_workflow_id,
+        )
+
+        return RemapWorkflowResponse(
+            success=True,
+            source_workflow_id=result.source_workflow_id,
+            target_workflow_id=result.target_workflow_id,
+            updated=result.updated,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Error remapping workflow references: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to remap workflow references",
         )
 
 

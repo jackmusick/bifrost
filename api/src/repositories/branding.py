@@ -44,6 +44,7 @@ class BrandingRepository:
         rectangle_logo_data: bytes | None = None,
         rectangle_logo_content_type: str | None = None,
         primary_color: str | None = None,
+        terminology: dict | None = None,
     ) -> GlobalBranding:
         """
         Create or update global branding configuration (upsert).
@@ -54,6 +55,7 @@ class BrandingRepository:
             rectangle_logo_data: Rectangle logo image bytes
             rectangle_logo_content_type: Rectangle logo MIME type (e.g., 'image/png')
             primary_color: Hex color code (e.g., '#0066CC')
+            terminology: Fixed product terminology overrides
 
         Returns:
             Created or updated GlobalBranding record
@@ -72,6 +74,8 @@ class BrandingRepository:
                 existing.rectangle_logo_content_type = rectangle_logo_content_type
             if primary_color is not None:
                 existing.primary_color = primary_color
+            if terminology is not None:
+                existing.terminology = terminology
 
             await self.session.flush()
             await self.session.refresh(existing)
@@ -85,6 +89,7 @@ class BrandingRepository:
                 rectangle_logo_data=rectangle_logo_data,
                 rectangle_logo_content_type=rectangle_logo_content_type,
                 primary_color=primary_color,
+                terminology=terminology,
             )
             self.session.add(branding)
             await self.session.flush()

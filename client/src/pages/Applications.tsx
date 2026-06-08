@@ -47,19 +47,19 @@ import {
 	DataTableRow,
 } from "@/components/ui/data-table";
 import { useApplications, useDeleteApplication } from "@/hooks/useApplications";
-import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { term, useTerminology } from "@/lib/terminology";
 import type { components } from "@/lib/v1";
 
 type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Applications() {
 	const navigate = useNavigate();
-	const { scope, isGlobalScope } = useOrgScope();
+	const terminology = useTerminology();
 	const { isPlatformAdmin } = useAuth();
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
@@ -148,38 +148,18 @@ export function Applications() {
 
 	return (
 		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
-			<div className="flex items-center justify-between">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div>
-					<div className="flex items-center gap-3">
-						<h1 className="text-4xl font-extrabold tracking-tight">
-							Applications
-						</h1>
-						{isPlatformAdmin && (
-							<Badge
-								variant={isGlobalScope ? "default" : "outline"}
-								className="text-sm"
-							>
-								{isGlobalScope ? (
-									<>
-										<Globe className="mr-1 h-3 w-3" />
-										Global
-									</>
-								) : (
-									<>
-										<Building2 className="mr-1 h-3 w-3" />
-										{scope.orgName}
-									</>
-								)}
-							</Badge>
-						)}
-					</div>
+					<h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+						{term(terminology, "app", "formalPlural")}
+					</h1>
 					<p className="mt-2 text-muted-foreground">
 						{canManageApps
-							? "Build and manage custom applications"
-							: "Access your custom applications"}
+							? `Build and manage custom ${term(terminology, "app", "formalPluralLower")}`
+							: `Access your custom ${term(terminology, "app", "formalPluralLower")}`}
 					</p>
 				</div>
-				<div className="flex gap-2">
+				<div className="flex flex-wrap gap-2">
 					{canManageApps && (
 						<ToggleGroup
 							type="single"
@@ -217,7 +197,7 @@ export function Applications() {
 							variant="outline"
 							size="icon"
 							onClick={handleCreate}
-							title="Create Application"
+							title={`Create ${term(terminology, "app", "formalSingular")}`}
 						>
 							<Plus className="h-4 w-4" />
 						</Button>
@@ -226,15 +206,15 @@ export function Applications() {
 			</div>
 
 			{/* Search and Filters */}
-			<div className="flex items-center gap-4">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
 				<SearchBox
 					value={searchTerm}
 					onChange={setSearchTerm}
-					placeholder="Search applications by name, description, or slug..."
+					placeholder={`Search ${term(terminology, "app", "formalPluralLower")} by name, description, or slug...`}
 					className="flex-1"
 				/>
 				{isPlatformAdmin && (
-					<div className="w-64">
+					<div className="w-full sm:w-64">
 						<OrganizationSelect
 							value={filterOrgId}
 							onChange={setFilterOrgId}
@@ -249,7 +229,7 @@ export function Applications() {
 			<div className="flex-1 min-h-0 overflow-auto">
 			{isLoading ? (
 				viewMode === "grid" || !canManageApps ? (
-					<div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]">
+					<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
 						{[...Array(6)].map((_, i) => (
 							<Skeleton key={i} className="h-48 w-full" />
 						))}
@@ -263,7 +243,7 @@ export function Applications() {
 				)
 			) : filteredApps && filteredApps.length > 0 ? (
 				viewMode === "grid" || !canManageApps ? (
-					<div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+					<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
 						{filteredApps.map((app) => {
 							const defaultTarget = app.is_published
 								? () => handleLaunch(app.slug)
@@ -533,7 +513,7 @@ export function Applications() {
 													title={
 														!app.is_published
 															? "No published version"
-															: "Open application"
+															: `Open ${term(terminology, "app", "formalSingularLower")}`
 													}
 												>
 													<PlayCircle className="h-4 w-4" />
@@ -587,7 +567,7 @@ export function Applications() {
 																	app.name,
 																)
 															}
-															title="Delete application"
+															title={`Delete ${term(terminology, "app", "formalSingularLower")}`}
 														>
 															<Trash2 className="h-4 w-4" />
 														</Button>
@@ -607,15 +587,15 @@ export function Applications() {
 						<AppWindow className="h-12 w-12 text-muted-foreground" />
 						<h3 className="mt-4 text-lg font-semibold">
 							{searchTerm
-								? "No applications match your search"
-								: "No applications found"}
+								? `No ${term(terminology, "app", "formalPluralLower")} match your search`
+								: `No ${term(terminology, "app", "formalPluralLower")} found`}
 						</h3>
 						<p className="mt-2 text-sm text-muted-foreground">
 							{searchTerm
 								? "Try adjusting your search term or clear the filter"
 								: canManageApps
-									? "Get started by creating your first application"
-									: "No applications are currently available"}
+									? `Get started by creating your first ${term(terminology, "app", "formalSingularLower")}`
+									: `No ${term(terminology, "app", "formalPluralLower")} are currently available`}
 						</p>
 						{canManageApps && !searchTerm && (
 							<Button
@@ -623,7 +603,7 @@ export function Applications() {
 								size="icon"
 								onClick={handleCreate}
 								className="mt-4"
-								title="Create Application"
+								title={`Create ${term(terminology, "app", "formalSingular")}`}
 							>
 								<Plus className="h-4 w-4" />
 							</Button>
@@ -640,9 +620,12 @@ export function Applications() {
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Application?</AlertDialogTitle>
+						<AlertDialogTitle>
+							Delete {term(terminology, "app", "formalSingular")}?
+						</AlertDialogTitle>
 						<AlertDialogDescription>
-							This will permanently delete the application "
+							This will permanently delete the{" "}
+							{term(terminology, "app", "formalSingularLower")} "
 							{selectedApp?.name}" including all versions and
 							data. This action cannot be undone.
 						</AlertDialogDescription>
@@ -655,19 +638,19 @@ export function Applications() {
 						>
 							{deleteApplication.isPending
 								? "Deleting..."
-								: "Delete Application"}
+								: `Delete ${term(terminology, "app", "formalSingular")}`}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 
-			{/* Create Application Dialog */}
+			{/* Create application dialog */}
 			<CreateAppModal
 				open={isEngineSelectOpen}
 				onOpenChange={setIsEngineSelectOpen}
 			/>
 
-			{/* Application Settings Dialog (opened from card pencil button) */}
+			{/* Application settings dialog (opened from card pencil button) */}
 			<AppInfoDialog
 				appSlug={infoDialogSlug}
 				open={infoDialogSlug !== null}

@@ -25,6 +25,7 @@ import { NotificationCenter } from "@/components/layout/NotificationCenter";
 import { VersionUpdateBanner } from "@/components/layout/VersionUpdateBanner";
 import { useAuth } from "@/contexts/AuthContext";
 import { APP_VERSION } from "@/lib/version";
+import { term, useTerminology } from "@/lib/terminology";
 import { useProfile } from "@/hooks/useProfile";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { profileService } from "@/services/profile";
@@ -39,6 +40,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ appName, isPreview = false }: AppHeaderProps) {
 	const navigate = useNavigate();
+	const terminology = useTerminology();
 	const { user, logout } = useAuth();
 	const openQuickAccess = useQuickAccessStore((state) => state.openQuickAccess);
 
@@ -84,7 +86,11 @@ export function AppHeader({ appName, isPreview = false }: AppHeaderProps) {
 						variant="ghost"
 						size="icon"
 						onClick={handleBack}
-						title={isPreview ? "Back to Editor" : "Back to Apps"}
+						title={
+							isPreview
+								? "Back to Editor"
+								: `Back to ${term(terminology, "app", "plural")}`
+						}
 					>
 						<ArrowLeft className="h-5 w-5" />
 					</Button>

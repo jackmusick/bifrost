@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import {
 	CheckCircle,
 	XCircle,
@@ -13,7 +13,6 @@ import {
 	AlertCircle,
 	Info,
 	Eye,
-	Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -111,7 +110,6 @@ interface StuckExecution {
 }
 
 export function ExecutionHistory() {
-	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const { isPlatformAdmin, user } = useAuth();
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
@@ -862,6 +860,10 @@ export function ExecutionHistory() {
 									return (
 										<DataTableRow
 											key={execution.execution_id}
+											data-testid="execution-row"
+											data-execution-id={
+												execution.execution_id
+											}
 											clickable
 											href={`/history/${execution.execution_id}`}
 											onClick={(e) => {
@@ -894,42 +896,12 @@ export function ExecutionHistory() {
 													)}
 												</DataTableCell>
 											)}
-											<DataTableCell className="font-mono text-sm">
+											<DataTableCell
+												className="font-mono text-sm"
+												data-testid="execution-workflow-cell"
+											>
 												<div className="flex items-center gap-2">
 													{execution.workflow_name}
-													{execution.session_id && (
-														<TooltipProvider>
-															<Tooltip>
-																<TooltipTrigger
-																	asChild
-																>
-																	<Button
-																		variant="ghost"
-																		size="icon"
-																		className="h-6 w-6 text-muted-foreground hover:text-primary"
-																		onClick={(
-																			e,
-																		) => {
-																			e.stopPropagation();
-																			navigate(
-																				`/cli/${execution.session_id}`,
-																			);
-																		}}
-																	>
-																		<Terminal className="h-4 w-4" />
-																	</Button>
-																</TooltipTrigger>
-																<TooltipContent side="right">
-																	<p className="text-sm">
-																		Dev run
-																		- Click
-																		to view
-																		session
-																	</p>
-																</TooltipContent>
-															</Tooltip>
-														</TooltipProvider>
-													)}
 												</div>
 											</DataTableCell>
 											<DataTableCell>
