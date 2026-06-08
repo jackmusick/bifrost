@@ -446,19 +446,30 @@ class WorkflowOrphanService:
         source_str = str(source_workflow_id)
         target_str = str(target_workflow_id)
 
+        # Solution-managed entities are read-only outside deploy (criterion 6).
+        # remap rewrites Form.workflow_id via a Core update() — which BYPASSES the
+        # ORM before_flush backstop — so managed rows must be excluded explicitly
+        # here, in BOTH the WHERE (don't write them) and the reported count (don't
+        # over-report). A legit remap of ad-hoc _repo/ forms still proceeds.
         forms_result = await self.db.execute(
             update(Form)
-            .where(Form.workflow_id == source_str)
+            .where(Form.workflow_id == source_str, Form.solution_id.is_(None))
             .values(workflow_id=target_str)
         )
         launch_forms_result = await self.db.execute(
             update(Form)
-            .where(Form.launch_workflow_id == source_str)
+            .where(Form.launch_workflow_id == source_str, Form.solution_id.is_(None))
             .values(launch_workflow_id=target_str)
         )
+        # FormField has no solution_id; its lifecycle follows its parent Form, so
+        # exclude fields belonging to a managed form.
+        managed_form_ids = select(Form.id).where(Form.solution_id.is_not(None))
         form_fields_result = await self.db.execute(
             update(FormField)
-            .where(FormField.data_provider_id == source_workflow_id)
+            .where(
+                FormField.data_provider_id == source_workflow_id,
+                FormField.form_id.not_in(managed_form_ids),
+            )
             .values(data_provider_id=target_workflow_id)
         )
 
@@ -492,9 +503,19 @@ class WorkflowOrphanService:
         source_workflow_id: UUID,
         target_workflow_id: UUID,
     ) -> int:
-        """Move agent_tools rows while avoiding duplicate composite keys."""
+        """Move agent_tools rows while avoiding duplicate composite keys.
+
+        AgentTool carries no ``solution_id``; managed-ness lives on the parent
+        Agent. Tool rows of a solution-managed agent are read-only outside deploy
+        (criterion 6), so they are excluded from the remap and from the count.
+        """
         result = await self.db.execute(
-            select(AgentTool).where(AgentTool.workflow_id == source_workflow_id)
+            select(AgentTool)
+            .join(Agent, Agent.id == AgentTool.agent_id)
+            .where(
+                AgentTool.workflow_id == source_workflow_id,
+                Agent.solution_id.is_(None),
+            )
         )
         source_rows = list(result.scalars().all())
         updated = 0

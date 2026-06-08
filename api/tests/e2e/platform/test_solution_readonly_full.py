@@ -112,6 +112,73 @@ def test_role_endpoints_locked_for_managed_workflow(e2e_client, platform_admin):
     assert resp.json()["detail"] == _MSG
 
 
+def test_remap_skips_managed_form_and_agent_tool(e2e_client, platform_admin):
+    """POST /api/workflows/{id}/remap repoints workflow references. It uses a Core
+    update() for Form.workflow_id (bypassing the ORM before_flush backstop) and
+    junction-ORM for AgentTool.workflow_id. Neither path may rewrite a
+    solution-managed Form/Agent's binding outside deploy (criterion 6). The remap
+    must SKIP managed rows and NOT over-report them as 'updated'.
+    """
+    from tests.e2e.conftest import write_and_register
+
+    headers = platform_admin.headers
+    sid = _solution(e2e_client, headers, f"remap-{uuid.uuid4().hex[:8]}")
+
+    # Deploy a managed workflow + a managed form bound to it + a managed agent
+    # whose tool is bound to it.
+    wf_id = str(uuid.uuid4())
+    form_id = str(uuid.uuid4())
+    agent_id = str(uuid.uuid4())
+    slug = uuid.uuid4().hex[:8]
+    dep = e2e_client.post(f"/api/solutions/{sid}/deploy", headers=headers, json={
+        "python_files": {"workflows/w.py": "from bifrost import workflow\n@workflow\nasync def w():\n    return {}\n"},
+        "workflows": [{
+            "id": wf_id, "name": f"w_{slug}", "function_name": "w",
+            "path": "workflows/w.py", "type": "workflow",
+        }],
+        "forms": [{
+            "id": form_id, "name": f"f_{slug}", "path": f"forms/{form_id}.form.yaml",
+            "workflow_id": wf_id, "form_schema": {"fields": []},
+        }],
+        "agents": [{
+            "id": agent_id, "name": f"a_{slug}",
+            "system_prompt": "x", "tool_ids": [wf_id],
+        }],
+    })
+    assert dep.status_code in (200, 201), dep.text
+
+    real_wf = str(solution_entity_id(UUID(sid), UUID(wf_id)))
+    real_form = str(solution_entity_id(UUID(sid), UUID(form_id)))
+    real_agent = str(solution_entity_id(UUID(sid), UUID(agent_id)))
+
+    # A legit, mutable _repo/ target of the same type to remap onto.
+    tfn = f"remap_target_{uuid.uuid4().hex[:8]}"
+    target = write_and_register(
+        e2e_client, headers,
+        path=f"workflows/{tfn}.py",
+        content=f"from bifrost import workflow\n\n@workflow\nasync def {tfn}() -> dict:\n    return {{}}\n",
+        function_name=tfn,
+    )
+
+    resp = e2e_client.post(f"/api/workflows/{real_wf}/remap", headers=headers,
+                           json={"target_workflow_id": target["id"]})
+    assert resp.status_code == 200, resp.text
+    updated = resp.json()["updated"]
+    # The managed form + managed agent tool must NOT be counted as updated.
+    assert updated["forms"] == 0, updated
+    assert updated["agents"] == 0, updated
+
+    # The managed form's workflow_id is UNCHANGED (still points at the managed wf).
+    fresp = e2e_client.get(f"/api/forms/{real_form}", headers=headers)
+    assert fresp.status_code == 200, fresp.text
+    assert fresp.json()["workflow_id"] == real_wf, fresp.json()
+
+    # The managed agent still has its tool bound to the managed workflow.
+    aresp = e2e_client.get(f"/api/agents/{real_agent}", headers=headers)
+    assert aresp.status_code == 200, aresp.text
+    assert real_wf in aresp.json().get("tool_ids", []), aresp.json()
+
+
 def test_delete_role_bound_to_managed_entity_is_refused(e2e_client, platform_admin):
     """DELETE /api/roles/{id} cascades through the *_roles junctions; deleting a
     role assigned to a solution-managed entity would strip deploy-owned bindings
