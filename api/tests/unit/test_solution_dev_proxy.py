@@ -1,5 +1,6 @@
 import socket
 
+import aiohttp
 import httpx
 from aiohttp import web
 
@@ -37,8 +38,20 @@ def _make_upstream(record):
         record["other_org"] = request.headers.get("X-Bifrost-Org")
         return web.json_response({"upstream_other": True})
 
+    async def ws_echo(request):
+        record["ws_query"] = request.rel_url.query_string
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for msg in ws:
+            if msg.type == web.WSMsgType.TEXT:
+                await ws.send_str(f"echo:{msg.data}")
+                break
+        await ws.close()
+        return ws
+
     app = web.Application()
     app.router.add_post("/api/workflows/execute", execute)
+    app.router.add_get("/ws/echo", ws_echo)
     app.router.add_route("*", "/api/{tail:.*}", other)
     return app
 
@@ -104,6 +117,29 @@ async def test_other_api_path_proxies_with_org_header():
         assert r.json()["upstream_other"] is True
         assert record["other_path"] == "/api/tables/foo"
         assert record["other_org"] == "O"
+    finally:
+        await dev_runner.cleanup()
+        await up_runner.cleanup()
+
+
+async def test_ws_upgrade_bridges_to_upstream():
+    record = {}
+    up_port, dev_port = _free_port(), _free_port()
+    up_runner = await _serve(_make_upstream(record), up_port)
+    host = _StubHost(set())
+    cfg = DevProxyConfig(upstream_url=f"http://127.0.0.1:{up_port}", token="t", app_id="A", org_id="O")
+    dev_runner = await _serve(build_dev_app(cfg, host, vite_url="http://127.0.0.1:1"), dev_port)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(
+                f"http://127.0.0.1:{dev_port}/ws/echo?channels=x&token=tok"
+            ) as ws:
+                await ws.send_str("ping")
+                msg = await ws.receive()
+                assert msg.type == aiohttp.WSMsgType.TEXT
+                assert msg.data == "echo:ping"
+        # rel_url (channels + token) is forwarded verbatim to the dev API.
+        assert record["ws_query"] == "channels=x&token=tok"
     finally:
         await dev_runner.cleanup()
         await up_runner.cleanup()
