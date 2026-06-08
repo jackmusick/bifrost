@@ -5,6 +5,7 @@ from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.api import BaseObserver
 
 _SKIP_DIRS = {"node_modules", "dist", ".venv", "venv", "__pycache__", ".git"}
 
@@ -28,7 +29,7 @@ class _PyChangeHandler(FileSystemEventHandler):
     on_moved = _maybe_reload
 
 
-def start_function_watch(workspace: Path, host) -> Observer:
+def start_function_watch(workspace: Path, host) -> BaseObserver:
     observer = Observer()
     observer.schedule(_PyChangeHandler(host), str(workspace), recursive=True)
     observer.start()
