@@ -259,6 +259,7 @@ export function AppInfoDialog({
 						slug: values.slug,
 						description: values.description || null,
 						access_level: values.access_level,
+						app_model: "inline_v1",
 						role_ids: values.role_ids,
 						organization_id: values.organization_id || null,
 					},

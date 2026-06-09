@@ -63,7 +63,7 @@ interface PreviewConfigSchema {
 	key: string;
 	type: string;
 	required: boolean;
-	description?: string | null;
+	description: string | null;
 }
 
 function asConfigSchemas(
