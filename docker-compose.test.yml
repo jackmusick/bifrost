@@ -157,6 +157,8 @@ services:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
       - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/alembic:/app/alembic:ro
@@ -213,6 +215,8 @@ services:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
       - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
     depends_on:
@@ -257,6 +261,8 @@ services:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
       - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - test-mounts:/mounts
@@ -319,6 +325,8 @@ services:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
       - /app/src/services/app_bundler/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
+      - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/scripts:/app/scripts:ro  # Scripts for migration utilities

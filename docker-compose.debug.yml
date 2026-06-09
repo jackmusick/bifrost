@@ -111,6 +111,8 @@ services:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules
       - /app/src/services/app_bundler/node_modules
+      - /app/src/services/sdk_package/node_modules
+      - /app/src/services/sdk_package/sdk_src
       - ./api/shared:/app/shared:ro
       - ./api/scripts:/app/scripts:ro
       - ./api/alembic:/app/alembic:ro
@@ -151,6 +153,8 @@ services:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules
       - /app/src/services/app_bundler/node_modules
+      - /app/src/services/sdk_package/node_modules
+      - /app/src/services/sdk_package/sdk_src
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/alembic:/app/alembic:ro
@@ -199,6 +203,8 @@ services:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules
       - /app/src/services/app_bundler/node_modules
+      - /app/src/services/sdk_package/node_modules
+      - /app/src/services/sdk_package/sdk_src
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
     depends_on:
@@ -240,6 +246,8 @@ services:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules
       - /app/src/services/app_bundler/node_modules
+      - /app/src/services/sdk_package/node_modules
+      - /app/src/services/sdk_package/sdk_src
       - ./api/shared:/app/shared:ro
       - ./api/bifrost:/app/bifrost:ro
     depends_on:

@@ -1,1 +1,14 @@
-sdk_src/
+# sdk_src/ and node_modules/ are regenerated/installed at image build time
+# (see api/Dockerfile.dev). Their CONTENTS are not tracked, but the empty
+# directories ARE tracked (via .gitkeep) so they exist on a fresh `git worktree
+# add` as bind-mount mountpoints — the dev/test compose mounts the image-baked
+# copies back over the read-only ./api/src bind-mount via anonymous volumes, and
+# Docker cannot mkdir a mountpoint under a :ro parent. Without these dirs present
+# on the host, the api container fails to start ("read-only file system") on a
+# fresh worktree, and /api/sdk/download 500s.
+sdk_src/*
+!sdk_src/.gitkeep
+# Re-include the node_modules dir (excluded by the root .gitignore) and its keep.
+!node_modules/
+node_modules/*
+!node_modules/.gitkeep
