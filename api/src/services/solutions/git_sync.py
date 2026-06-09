@@ -79,10 +79,11 @@ def read_workspace_bundle(solution: Solution, workspace: Path) -> SolutionBundle
     agents = _collect_entities(workspace, "agents.yaml", "agents")
     for a in agents:
         a.setdefault("name", a["id"])
-    # Apps need their source dir read (mirror the CLI collector). Reusing the
-    # CLI helper keeps the connected-mode bundle identical to a disconnected
-    # `bifrost deploy` — without apps, reconcile would delete a connected
-    # install's app (criteria 12/13).
+    # Apps and config schemas reuse the CLI collectors so the connected-mode
+    # bundle stays identical to a disconnected `bifrost deploy` — any entity
+    # type missing from the bundle gets DELETED by deploy's reconcile sweep
+    # (apps: criteria 12/13; config schemas were wiped on every sync until
+    # this collected them).
     from bifrost.commands.solution import _collect_apps, _collect_config_schemas
 
     apps = _collect_apps(workspace)
