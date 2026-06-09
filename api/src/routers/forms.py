@@ -25,6 +25,7 @@ from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter
 from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
+from src.repositories.workflows import WorkflowRepository
 from src.models import Execution as ExecutionORM
 from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
 from src.services.solutions.guard import assert_not_solution_managed
@@ -802,6 +803,26 @@ async def execute_form(
             detail="Form has no workflow configured",
         )
 
+    # Resolve the form's workflow ref to a concrete workflow. form.workflow_id
+    # may be a portable path::function ref (solution-managed forms) or a UUID.
+    # Scope resolution to the form's install (form.solution_id) so a solution
+    # form reaches its OWN workflow, not a sibling install's or the bare _repo/
+    # one. resolve() handles both UUID and path::fn, own-first then _repo/.
+    #
+    # Resolve on the FORM's behalf: the form's access_level gate (checked above)
+    # is authoritative — forms intentionally let users run workflows they don't
+    # directly have a role on, so we must NOT apply the workflow's RBAC filter
+    # here (that's what the old bare-id select did). is_superuser=True bypasses
+    # the role filter; org_id scopes cascade resolution.
+    _wf_repo = WorkflowRepository(db, org_id=ctx.org_id, is_superuser=True)
+    _resolved_wf = await _wf_repo.resolve(form.workflow_id, solution_scope=form.solution_id)
+    if _resolved_wf is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workflow not found: {form.workflow_id}",
+        )
+    resolved_workflow_id = str(_resolved_wf.id)
+
     # Merge: defaults < verified HMAC params < user form input
     verified_params = ctx.user.verified_params or {}
     merged_params = {**(form.default_launch_params or {}), **verified_params, **request.form_data}
@@ -816,15 +837,7 @@ async def execute_form(
     if scheduled_at is not None:
         from src.routers.workflows import _insert_scheduled_execution
 
-        workflow_result = await db.execute(
-            select(WorkflowORM).where(WorkflowORM.id == UUID(form.workflow_id))
-        )
-        workflow = workflow_result.scalar_one_or_none()
-        if not workflow:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workflow not found: {form.workflow_id}",
-            )
+        workflow = _resolved_wf
 
         exec_id = await _insert_scheduled_execution(
             db=db,
@@ -874,7 +887,7 @@ async def execute_form(
         # Execute workflow by ID
         response = await run_workflow(
             context=shared_ctx,
-            workflow_id=form.workflow_id,
+            workflow_id=resolved_workflow_id,
             input_data=merged_params,
             form_id=str(form.id),
         )
@@ -977,6 +990,25 @@ async def execute_startup_workflow(
     if not form.launch_workflow_id:
         return FormStartupResponse(result=None)
 
+    # Resolve the launch workflow ref with the form's install scope. Like the
+    # main workflow, launch_workflow_id may be a portable path::function ref for
+    # solution-managed forms; scope to form.solution_id so the install reaches
+    # its own launch workflow (own-first, then bare _repo/).
+    #
+    # Resolve on the FORM's behalf (is_superuser=True): the form access gate
+    # above is authoritative, so we must not apply the workflow's RBAC filter
+    # here — a form user with no role on the launch workflow must still reach it.
+    _launch_repo = WorkflowRepository(db, org_id=ctx.org_id, is_superuser=True)
+    _resolved_launch = await _launch_repo.resolve(
+        form.launch_workflow_id, solution_scope=form.solution_id
+    )
+    if _resolved_launch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Launch workflow not found: {form.launch_workflow_id}",
+        )
+    resolved_launch_workflow_id = str(_resolved_launch.id)
+
     # Merge: defaults < verified HMAC params < user input
     verified_params = ctx.user.verified_params or {}
     merged_params = {**(form.default_launch_params or {}), **verified_params, **input_data}
@@ -1002,7 +1034,7 @@ async def execute_startup_workflow(
         # Execute launch workflow by ID
         response = await run_workflow(
             context=shared_ctx,
-            workflow_id=form.launch_workflow_id,
+            workflow_id=resolved_launch_workflow_id,
             input_data=merged_params,
             form_id=str(form.id),
         )
