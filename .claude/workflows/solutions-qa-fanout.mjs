@@ -47,3 +47,42 @@ const VERDICT_SCHEMA = {
   },
   required: ['title', 'confirmed', 'note'],
 }
+
+// Injected into every axis agent. Each agent provisions its OWN isolated,
+// port-mode debug stack (Chrome/Playwright cannot drive netbird stacks), drives
+// it, and tears it down. Per-worktree Compose project name = automatic isolation.
+const REPO = '/home/jack/GitHub/bifrost'
+const BASE_WORKTREE = `${REPO}/.claude/worktrees/solutions-success-criteria`
+
+const BOOTSTRAP = `
+YOU PROVISION YOUR OWN STACK. Do this before any testing, and tear it down at the end.
+
+1. Create an isolated worktree off the branch under test:
+   AXIS=<your-axis-key>
+   WT=/tmp/qa-$AXIS
+   git -C ${BASE_WORKTREE} worktree add "$WT" HEAD
+   cd "$WT"
+
+2. Boot a PORT-MODE stack (MANDATORY — netbird stacks can't be driven by a browser):
+   env -u NETBIRD_SETUP_KEY ./debug.sh up
+   ./debug.sh status        # capture the http://localhost:<port> URL — call it $URL
+   If the api container is not healthy within ~90s, retry \`env -u NETBIRD_SETUP_KEY ./debug.sh down && env -u NETBIRD_SETUP_KEY ./debug.sh up\` ONCE. If still unhealthy, set blocked=true in your output and STOP (do not invent findings).
+
+3. Install the API-matched CLI in a scratch dir OUTSIDE the repo:
+   mkdir -p /tmp/qa-cli-$AXIS && cd /tmp/qa-cli-$AXIS
+   python3 -m venv .venv && .venv/bin/pip install --quiet --upgrade pip
+   .venv/bin/pip install --quiet "$URL/api/cli/download"
+   .venv/bin/bifrost login --url "$URL" --email dev@gobifrost.com --password password
+   Run the CLI FROM /tmp/qa-cli-$AXIS (its .env carries the tokens). Default creds: dev@gobifrost.com / password (superuser, MFA off).
+
+4. Drive the UI with Playwright against $URL (headless is fine). Capture screenshots
+   to /tmp/qa-$AXIS/shots/ for any UI finding and put the path in observed.
+
+5. TEARDOWN (always, even on failure): cd "$WT" && env -u NETBIRD_SETUP_KEY ./debug.sh down ; git -C ${BASE_WORKTREE} worktree remove --force "$WT"
+
+RULES OF ENGAGEMENT:
+- VERIFY EMPIRICALLY. Reading code forms hypotheses; driving the running stack concludes. A finding is REAL only if you reproduced it on your stack — include exact commands/URLs/clicks and observed-vs-expected.
+- You MAY create solutions/workflows/tables/configs/forms/apps and install them to orgs to set up tests. Correctness findings matter more than tidiness.
+- Do NOT modify product source. This is a drive/audit pass. Throwaway fixtures via CLI/API/UI are fine.
+- If you could not boot a healthy stack, return blocked=true with an empty findings array — never fabricate.
+`
