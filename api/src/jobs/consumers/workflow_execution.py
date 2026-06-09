@@ -568,13 +568,12 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     # the install's global_repo_access here so the worker can set
                     # the per-execution import root. See module_cache_sync.
                     solution_id = workflow_data.get("solution_id")
-                    if solution_id:
-                        from src.repositories.solutions import SolutionRepository
-
-                        async with get_db_context() as db:
-                            solution = await SolutionRepository(db).get_by_id(solution_id)
-                        if solution is not None:
-                            solution_global_repo_access = solution.global_repo_access
+                    # global_repo_access now rides on workflow_data from the same
+                    # DB grab as the metadata (get_workflow_for_execution). The
+                    # engine subprocess has no DB; this is the last enrichment.
+                    solution_global_repo_access = workflow_data.get(
+                        "can_access_global_repo", False
+                    )
 
                     # Scope resolution: org-scoped workflows use workflow's org,
                     # global workflows use caller's org
