@@ -13,3 +13,13 @@ or cosmetic changes do NOT bump it. The tripwire in
 
 #: Breaking-change counter for the CLI <-> server contract. See module docstring.
 CONTRACT_VERSION: int = 1
+
+
+def get_contract_version() -> int:
+    """Return the server's CLI contract version.
+
+    Prefer this accessor over importing the bare constant: it gives the value a
+    single resolved read site (callers go through a function, not a module
+    global) and keeps this module symmetric with the rest of ``shared/``.
+    """
+    return CONTRACT_VERSION
