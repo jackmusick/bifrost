@@ -1,6 +1,28 @@
 # Solutions Adversarial UI/CLI QA Fan-out Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> ## ✅ STATUS: COMPLETE (2026-06-09) — read this before the plan body
+>
+> All 7 tasks built, committed, and the workflow was run live (smoke + full 6-axis). The rest of the plan below is the original implementation spec, kept for reference; checkboxes are ticked. What a fresh session needs to know:
+>
+> **Deliverable shipped:** `.claude/workflows/solutions-qa-fanout.mjs` exists and works. Invoke by path (`Workflow({ scriptPath: ".claude/workflows/solutions-qa-fanout.mjs" })`) — the named-workflow registry does NOT pick up `.claude/workflows/` from this worktree, so `Workflow({ name: "solutions-qa-fanout" })` fails with "not found". Use the path form.
+>
+> **Two plan instructions turned out WRONG and were corrected during execution:**
+> 1. **`env -u NETBIRD_SETUP_KEY ./debug.sh up` does NOT force port mode** — `debug.sh load_env_files` re-sources `~/.config/bifrost/debug.env` under `set -a`, re-introducing the key. The fix (committed): a `BIFROST_FORCE_PORT=1` opt-out in `debug.sh`. The workflow BOOTSTRAP + CLAUDE.md now use `BIFROST_FORCE_PORT=1`, not `env -u`. Anywhere the plan body still says `env -u NETBIRD_SETUP_KEY`, it is superseded by `BIFROST_FORCE_PORT=1`.
+> 2. **`node --check` is the wrong validator** for the finished file — the workflow body has a top-level `return`, which `node --check` rejects (the known-good `solutions-scope-shakeout.mjs` fails it identically). Validate by wrapping the body in an async function instead (see Task 5 note). Steps 1–4's `node --check` calls were fine (no `return` yet).
+>
+> **Bugs the run surfaced + their disposition (all resolved):**
+> - **C1 (CRITICAL, FIXED):** `/api/sdk/download` 500'd on fresh dev/test stacks — the `:ro` `./api/src` bind-mount masks the image-baked `sdk_package/node_modules` (esbuild) + `sdk_src`. Fix (commits `5411f13f`): anonymous-volume preservation in both `docker-compose.debug.yml` + `docker-compose.test.yml` across all 4 service blocks, plus tracked `.gitkeep` mountpoint dirs (Docker can't mkdir a mountpoint under a `:ro` parent → must pre-exist on a fresh worktree). Verified: fresh worktree → valid 6KB npm tarball.
+> - **Bootstrap port-mode (FIXED):** the `BIFROST_FORCE_PORT=1` fix above (commit `54cd95d3`).
+> - **Original H1 "sealed install reads decrypted global secrets" (RETRACTED — not a bug):** it's the intended org→global config cascade. `merged_for_sdk()` unions only the caller's own org + the global (NULL-org) tier, never another org's data; a NULL-org config is a deliberately-global operator value; the consumer is the server-side workflow (engine sentinel), not a user. `global_repo_access` seals `_repo/` CODE imports, not data. Verify a flagged security finding against the actual resolver scope before believing it.
+> - **Original H2 → export-scrub finding (RESOLVED by REMOVAL):** `bifrost export --portable` didn't actually scrub org IDs. Rather than fix it, `bifrost export` / `import` were REMOVED outright (commit `2502e8ac`, `BREAKING CHANGE`) — they predated Solutions, which supersedes them. `portable.py` + their tests deleted too.
+>
+> **Net findings outcome:** 0 critical / 0 high open. Confirmed backlog = 1 medium + 6 low, in `docs/plans/2026-06-09-solutions-qa-fanout-findings.md` (the run's output doc). Also confirmed FIXED by the run: C1 and D3 (BifrostHeader standalone renders styled).
+>
+> **Commit trail:** `ed262430`→`bd3397c6` (build), `9969a8ce` (throttle), `30280191`/`2d34e751` (findings), plus the four fix/triage/removal commits named above. Memory: `project_solutions_qa_fanout_findings.md`.
+>
+> **If re-running the workflow:** it's idempotent-ish (its own cleanup phase prunes stray stacks + merged `worktree-agent-*`; it protects named worktrees and this worktree's stacks). Each axis now boots a clean fresh stack with the C1 + port-mode fixes baked into HEAD, so all 6 axes get real coverage (the smoke, pre-fix, had 4 axes starved by C1).
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **(All tasks below are DONE — see the STATUS block above. Checkboxes ticked.)**
 
 **Goal:** Build a Workflow script that runs an adversarial QA fan-out on Solutions — 6 axis agents each in their own worktree + port-mode debug stack driving real UI/CLI, with an independent verify pass and a synthesized ranked findings backlog.
 
@@ -41,7 +63,7 @@ One file. It is large but cohesive (it's a single orchestration script); splitti
 **Files:**
 - Create: `.claude/workflows/solutions-qa-fanout.mjs`
 
-- [ ] **Step 1: Write the meta block and the two schemas**
+- [x] **Step 1: Write the meta block and the two schemas**
 
 Create `.claude/workflows/solutions-qa-fanout.mjs` with exactly this opening (the `meta` must be a pure literal):
 
@@ -97,13 +119,13 @@ const VERDICT_SCHEMA = {
 }
 ```
 
-- [ ] **Step 2: Verify the file parses as a workflow**
+- [x] **Step 2: Verify the file parses as a workflow**
 
 Run: `Workflow({ scriptPath: ".claude/workflows/solutions-qa-fanout.mjs" })` is NOT run yet (no body). Instead syntax-check with node:
 `node --check .claude/workflows/solutions-qa-fanout.mjs`
 Expected: no output (exit 0) — valid JS. (The file has no executable body yet; `node --check` only validates syntax, which is what we want here.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd /home/jack/GitHub/bifrost/.claude/worktrees/solutions-success-criteria
@@ -120,7 +142,7 @@ Every axis agent needs identical instructions for provisioning+tearing-down its 
 **Files:**
 - Modify: `.claude/workflows/solutions-qa-fanout.mjs`
 
-- [ ] **Step 1: Append the BOOTSTRAP constant**
+- [x] **Step 1: Append the BOOTSTRAP constant**
 
 After the schemas, add:
 
@@ -165,12 +187,12 @@ RULES OF ENGAGEMENT:
 `
 ```
 
-- [ ] **Step 2: Syntax check**
+- [x] **Step 2: Syntax check**
 
 Run: `node --check .claude/workflows/solutions-qa-fanout.mjs`
 Expected: exit 0, no output.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .claude/workflows/solutions-qa-fanout.mjs
@@ -184,7 +206,7 @@ git commit -m "feat(qa): per-agent port-mode stack bootstrap text"
 **Files:**
 - Modify: `.claude/workflows/solutions-qa-fanout.mjs`
 
-- [ ] **Step 1: Append the AXES array**
+- [x] **Step 1: Append the AXES array**
 
 After `BOOTSTRAP`, add the 6 axes. Each prompt = `${BOOTSTRAP}` + the axis mission. Write them exactly:
 
@@ -269,12 +291,12 @@ Return structured findings, axis="cli-docs-literalism".`,
 ]
 ```
 
-- [ ] **Step 2: Syntax check**
+- [x] **Step 2: Syntax check**
 
 Run: `node --check .claude/workflows/solutions-qa-fanout.mjs`
 Expected: exit 0.
 
-- [ ] **Step 3: Assert there are exactly 6 axes with unique keys**
+- [x] **Step 3: Assert there are exactly 6 axes with unique keys**
 
 Run:
 ```bash
@@ -282,7 +304,7 @@ node -e "import('./.claude/workflows/solutions-qa-fanout.mjs').catch(()=>{}); co
 ```
 Expected: prints the 6 keys; exit 0. (Plain text check — the file uses ESM `export` so a direct require would fail; we only grep the source for the 6 `key:` literals.)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .claude/workflows/solutions-qa-fanout.mjs
@@ -298,7 +320,7 @@ git commit -m "feat(qa): 6 adversarial axis prompts (scope/lifecycle/readonly/gl
 
 The cleanup is deterministic orchestration. The Workflow script can't run Bash directly, so it delegates to a single `agent()` whose ONLY job is the cleanup (it has Bash). This keeps the script's intent explicit and the destructive ops auditable.
 
-- [ ] **Step 1: Append the cleanup phase + agent**
+- [x] **Step 1: Append the cleanup phase + agent**
 
 After `AXES`, add:
 
@@ -327,12 +349,12 @@ const cleanupReport = await agent(CLEANUP_PROMPT, { label: 'cleanup', phase: 'Cl
 log('Cleanup done.')
 ```
 
-- [ ] **Step 2: Syntax check**
+- [x] **Step 2: Syntax check**
 
 Run: `node --check .claude/workflows/solutions-qa-fanout.mjs`
 Expected: exit 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .claude/workflows/solutions-qa-fanout.mjs
@@ -346,7 +368,7 @@ git commit -m "feat(qa): pre-flight cleanup phase (stray stacks + merged agent w
 **Files:**
 - Modify: `.claude/workflows/solutions-qa-fanout.mjs`
 
-- [ ] **Step 1: Append the fan-out + verify + synthesis + return**
+- [x] **Step 1: Append the fan-out + verify + synthesis + return**
 
 After the cleanup phase, add:
 
@@ -430,12 +452,12 @@ return {
 }
 ```
 
-- [ ] **Step 2: Syntax check the complete file**
+- [x] **Step 2: Syntax check the complete file**
 
 Run: `node --check .claude/workflows/solutions-qa-fanout.mjs`
 Expected: exit 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .claude/workflows/solutions-qa-fanout.mjs
@@ -451,7 +473,7 @@ No code — a focused read-through to catch logic errors before a live run (a li
 **Files:**
 - Read: `.claude/workflows/solutions-qa-fanout.mjs`, the spec
 
-- [ ] **Step 1: Verify each spec requirement maps to code**
+- [x] **Step 1: Verify each spec requirement maps to code**
 
 Read the spec and confirm in the script:
 - Pre-flight cleanup kills stray stacks + prunes ONLY merged `worktree-agent-*` (Task 4 prompt). ✓ keeps named worktrees.
@@ -472,12 +494,12 @@ async function throttle(thunks, limit) {
 ```
 Replace the `await parallel(AXES.map(...))` find call with `await throttle(AXES.map((a)=>()=>agent(...)), 6)` (keep the same agent call inside). Apply the SAME `throttle(..., 6)` to the verify pipeline if `toVerify.length > 6` — wrap the per-item thunks. (The base matrix is 6 so the find phase is one wave; verify may exceed 6.)
 
-- [ ] **Step 2: Apply the throttle guard, re-syntax-check**
+- [x] **Step 2: Apply the throttle guard, re-syntax-check**
 
 Run: `node --check .claude/workflows/solutions-qa-fanout.mjs`
 Expected: exit 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .claude/workflows/solutions-qa-fanout.mjs
@@ -492,7 +514,7 @@ Validate the workflow end-to-end on ONE axis before committing 6 stacks. This is
 
 **Files:** none (operational)
 
-- [ ] **Step 1: Temporary 1-axis smoke**
+- [x] **Step 1: Temporary 1-axis smoke**
 
 Make a throwaway copy limited to one cheap axis to validate the full pipeline (cleanup → 1 find → verify → synth) without 6 stacks:
 ```bash
@@ -502,23 +524,23 @@ cp .claude/workflows/solutions-qa-fanout.mjs /tmp/qa-smoke.mjs
 Run it: `Workflow({ scriptPath: "/tmp/qa-smoke.mjs" })`
 Expected: cleanup runs; 1 axis agent boots a port-mode stack, produces findings (or blocked=true); verify runs on any reproduced finding; synthesis writes the findings doc. Watch `/workflows` for live progress.
 
-- [ ] **Step 2: Triage the smoke result**
+- [x] **Step 2: Triage the smoke result**
 
 Confirm: the findings doc was written, the agent actually booted a stack (not blocked), and the structured return has the expected shape. If the agent reported BLOCKED on stack boot, debug the bootstrap (port-mode flag, CLI install URL) before the full run — do NOT proceed to 6 stacks with a broken bootstrap.
 
-- [ ] **Step 3: Full run**
+- [x] **Step 3: Full run**
 
 Run: `Workflow({ name: "solutions-qa-fanout" })`
 Expected: all 4 phases complete; `docs/plans/2026-06-09-solutions-qa-fanout-findings.md` written with confirmed/refuted/data-fallback-verdict/gaps sections. Monitor `/workflows`.
 
-- [ ] **Step 4: Commit the findings doc**
+- [x] **Step 4: Commit the findings doc**
 
 ```bash
 git add docs/plans/2026-06-09-solutions-qa-fanout-findings.md
 git commit -m "docs(qa): Solutions adversarial QA fan-out findings"
 ```
 
-- [ ] **Step 5: Clean up the smoke file**
+- [x] **Step 5: Clean up the smoke file**
 
 ```bash
 rm -f /tmp/qa-smoke.mjs
