@@ -3725,22 +3725,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__put"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7172,6 +7172,12 @@ export interface paths {
          *     ``organization_id`` (scope) re-stamps every owned entity's org to match —
          *     owned entities inherit the install's org from the deployer — done under the
          *     per-install write-lock so it can't race a concurrent deploy.
+         *
+         *     DELIBERATELY NOT re-homed on scope change: config VALUES. Config values are
+         *     instance-owned, scope-local data keyed by (org, key) — not FK-tied to the
+         *     install — so a scope change does NOT migrate them to the new org. The
+         *     operator re-enters the values in the new scope. (The 5 entity tables above
+         *     ARE re-homed because they carry ``solution_id`` and are owned by the bundle.)
          */
         patch: operations["update_solution_api_solutions__solution_id__patch"];
         trace?: never;
@@ -21802,6 +21808,11 @@ export interface components {
              */
             app_id?: string | null;
             /**
+             * Solution Id
+             * @description Optional install id of the calling Solution form/agent. Used to scope a path::function workflow ref to that install (so it resolves the install's own workflow, not a sibling install's or the bare _repo/ one). Takes precedence over form_id/app_id derivation.
+             */
+            solution_id?: string | null;
+            /**
              * Transient
              * @description If true, skip database persistence (for code editor debugging)
              * @default false
@@ -28715,7 +28726,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28748,7 +28759,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28781,7 +28792,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28814,7 +28825,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__put: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
