@@ -23,7 +23,13 @@ from pathlib import Path
 
 
 def _marker_path(api_url: str) -> Path:
-    key = hashlib.sha256(api_url.rstrip("/").encode()).hexdigest()[:16]
+    # Not security-sensitive: this hashes a plain API URL into a stable, filesystem-
+    # safe dedupe key for the notice marker filename. `usedforsecurity=False` says so
+    # explicitly (and silences CodeQL py/weak-sensitive-data-hashing, which mislabels
+    # the URL as a password via taint from credentials._resolve_url).
+    key = hashlib.sha256(
+        api_url.rstrip("/").encode(), usedforsecurity=False
+    ).hexdigest()[:16]
     return Path(tempfile.gettempdir()) / f"bifrost-vnotice-{key}"
 
 
