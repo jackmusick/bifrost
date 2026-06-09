@@ -165,3 +165,26 @@ Be the user who copies the published docs VERBATIM and a user copying STALE patt
 Return structured findings, axis="cli-docs-literalism".`,
   },
 ]
+
+const CLEANUP_PROMPT = `
+You are the PRE-FLIGHT CLEANUP for a QA fan-out. Do EXACTLY these, then report what you freed. Be careful and conservative — when unsure, KEEP.
+
+1. KILL STRAY STACKS. List running bifrost stacks:
+   docker ps --format '{{.Names}}' | grep -E 'bifrost-(debug|test)' | sed -E 's/-(api|client|worker|scheduler|postgres|redis|rabbitmq|seaweedfs|pgbouncer|init)-[0-9]+$//' | sort -u
+   For every project EXCEPT the one for ${BASE_WORKTREE} (its debug stack — KEEP it), tear it down with: \`docker compose -p <project> down\` (or stop its containers). Do NOT remove volumes you are unsure about; stopping is enough to free RAM.
+
+2. PRUNE MERGED AGENT WORKTREES. For each branch matching 'worktree-agent-*' that is MERGED into main:
+   git -C ${REPO} branch --merged main | grep -E 'worktree-agent-' | while read b; do
+     wt=$(git -C ${REPO} worktree list | grep "\\[$b\\]" | awk '{print $1}')
+     [ -n "$wt" ] && git -C ${REPO} worktree remove --force "$wt"
+     git -C ${REPO} branch -d "$b"
+   done
+   NEVER touch named feature worktrees (entity-access, bridge-cse, pr-288-review, bifrost-plugin-testing, solutions-success-criteria, etc.). ONLY worktree-agent-* that are merged.
+
+3. REPORT: RAM freed (free -m before/after), worktrees removed, branches deleted, what you KEPT and why. Return this as your text.
+`
+
+phase('Cleanup')
+log('Pre-flight: killing stray stacks + pruning merged agent worktrees...')
+const cleanupReport = await agent(CLEANUP_PROMPT, { label: 'cleanup', phase: 'Cleanup' })
+log('Cleanup done.')
