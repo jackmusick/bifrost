@@ -240,14 +240,13 @@ run_pytest() {
     # changed migrations they should run `./test.sh stack reset` once.
     require_stack_up
     reset_state
-    # JUnit results land in the host-mounted /tmp/bifrost (per-project via LOG_DIR).
-    # Clear any stale results file first: a prior run of THIS branch (e.g. CI's
-    # duplicate same-SHA pull_request runs) leaves a file owned by the container
-    # uid, and a fresh `run --rm` container cannot overwrite it -> pytest dies at
-    # exit with PermissionError and the whole session is reported as ERROR. The
-    # rm runs inside a throwaway container so it has the right uid to delete it.
-    docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps test-runner \
-        rm -f /tmp/bifrost/test-results.xml 2>/dev/null || true
+    # LOG_DIR is mkdir'd on the host as the runner/host user, then bind-mounted
+    # into the test-runner container at /tmp/bifrost. The container runs as
+    # uid 1000 (non-root, hardened), so it cannot write pytest's --junitxml file
+    # into a dir it doesn't own -> PermissionError [Errno 13] at pytest exit, and
+    # the whole session is reported as ERROR even though every test ran. Make the
+    # mount dir world-writable so the uid-1000 container can write results into it.
+    chmod 777 "$LOG_DIR" 2>/dev/null || true
     docker compose -f "$COMPOSE_FILE" --profile test run --rm test-runner \
         pytest "$@" --junitxml="/tmp/bifrost/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
     return "${PIPESTATUS[0]}"
