@@ -89,8 +89,10 @@ describe("BifrostProvider", () => {
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).toBe("https://dev.example/api/tables/notes/documents/r");
 
-    // After unmount the transport is restored (same-origin default).
+    // After unmount the transport is restored (same-origin default). The
+    // restore is deferred by a microtask (StrictMode cancellation window).
     unmount();
+    await Promise.resolve();
     const globalFetch = vi
       .fn()
       .mockResolvedValue(
@@ -124,18 +126,34 @@ describe("BifrostProvider", () => {
     expect(seen[0]).toBe("https://remote.example");
   });
 
-  it("keeps the transport installed under StrictMode and restores on unmount", () => {
-    // StrictMode runs mount → cleanup → mount; the cleanup must not leave the
-    // transport reset to the default while the provider is still mounted.
+  it("keeps the transport installed under StrictMode and restores on unmount", async () => {
+    // StrictMode runs ALL passive cleanups, then re-runs effects CHILD-FIRST.
+    // A synchronous restore in the provider's cleanup would expose the
+    // default transport to the child's re-run mount effect — every recorded
+    // value must be the provider's baseUrl, not just the post-render one.
+    const seen: string[] = [];
+    function TransportProbe() {
+      useEffect(() => {
+        seen.push(getBifrostTransport().baseUrl);
+      }, []);
+      return null;
+    }
     const { unmount } = render(
       <StrictMode>
         <BifrostProvider baseUrl="https://strict.example" token="tok-sm">
-          <span>ok</span>
+          <TransportProbe />
         </BifrostProvider>
       </StrictMode>,
     );
+    // StrictMode double-invokes the probe's mount effect (mount → cleanup →
+    // mount). Both runs must see the provider transport.
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(seen).toEqual(seen.map(() => "https://strict.example"));
     expect(getBifrostTransport().baseUrl).toBe("https://strict.example");
     unmount();
+    // The restore is deferred by a microtask so StrictMode's synthetic
+    // cleanup→re-setup can cancel it; flush it before asserting.
+    await Promise.resolve();
     expect(getBifrostTransport().baseUrl).toBe("");
   });
 

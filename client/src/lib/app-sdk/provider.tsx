@@ -128,7 +128,13 @@ export function BifrostProvider({
     restoreTransport: () => void;
     restoreScope: () => void;
   } | null>(null);
+  // Restore scheduled by the effect cleanup, pending in a microtask. A
+  // re-install (render-time or effect re-run) cancels it by replacing the
+  // marker, so StrictMode's synthetic cleanup→re-setup never actually
+  // releases the transport while the tree stays mounted.
+  const pendingRestoreRef = useRef<object | null>(null);
   const install = () => {
+    pendingRestoreRef.current = null;
     const restoreTransport = setBifrostTransport({
       baseUrl: baseUrl.replace(/\/$/, ""),
       // Raw token for the ws client (query-param auth — WebSocket can't send
@@ -165,17 +171,31 @@ export function BifrostProvider({
   }
   /* eslint-enable react-hooks/refs */
 
-  // Unmount-only cleanup. Under StrictMode the mount→cleanup→mount cycle runs
-  // this cleanup while the tree stays mounted, so the effect body re-installs
-  // when the cleanup tore the transport down (children are already mounted at
-  // that point — a render-time install can't cover it).
+  // Unmount cleanup with a DEFERRED release. StrictMode runs ALL passive
+  // cleanups (this one included) and then re-runs effects CHILD-FIRST, so a
+  // synchronous restore here would expose the default transport to a child's
+  // re-run mount effect (e.g. useTable's first query) — the same first-paint
+  // bug the render-time install fixes, one effect cycle later. Instead the
+  // restore is scheduled in a microtask; the effect re-setup (or any
+  // re-install) cancels it before the microtask drains. On a REAL unmount
+  // nothing cancels it and the restore lands.
   useEffect(() => {
+    // Cancel a restore scheduled by a StrictMode synthetic cleanup — the
+    // tree is still mounted and the transport must stay installed.
+    pendingRestoreRef.current = null;
     if (installedRef.current === null) installRef.current();
     return () => {
       const installed = installedRef.current;
-      installedRef.current = null;
-      installed?.restoreTransport();
-      installed?.restoreScope();
+      if (installed === null) return;
+      const pending = {};
+      pendingRestoreRef.current = pending;
+      queueMicrotask(() => {
+        if (pendingRestoreRef.current !== pending) return;
+        pendingRestoreRef.current = null;
+        installedRef.current = null;
+        installed.restoreTransport();
+        installed.restoreScope();
+      });
     };
   }, []);
 
