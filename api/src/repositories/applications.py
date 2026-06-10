@@ -166,7 +166,6 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             text("SELECT pg_advisory_xact_lock(hashtext('bifrost:appslug:' || :s))"),
             {"s": data.slug},
         )
-        # Check if application already exists in this scope
         existing = await self.get_by_slug_global(data.slug)
         if existing:
             raise ValueError(f"Application with slug '{data.slug}' already exists")

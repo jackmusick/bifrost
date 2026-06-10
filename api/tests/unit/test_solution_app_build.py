@@ -7,11 +7,15 @@ written under _solutions/.
 """
 from __future__ import annotations
 
+import subprocess
 import uuid
 
 import pytest
 
+import src.services.sdk_package as sdkpkg
+from src.services.solutions import app_build as ab
 from src.services.solutions.app_build import SolutionAppBuilder
+from src.services.solutions.deploy import SolutionDeployConflict
 
 
 @pytest.mark.e2e
@@ -119,9 +123,6 @@ def test_build_subprocesses_have_timeouts(monkeypatch, tmp_path):
     """Both npm install and vite build run under the self-renewing per-install
     write lock — without a timeout, a hanging npm postinstall wedges the install
     until process restart (every deploy 409s). Both calls must carry one."""
-    import subprocess
-
-    from src.services.solutions import app_build as ab
 
     calls: list[dict] = []
 
@@ -145,11 +146,6 @@ def test_build_subprocesses_have_timeouts(monkeypatch, tmp_path):
 def test_build_timeout_translated_to_deploy_failure(monkeypatch):
     """A TimeoutExpired from the npm/vite step surfaces as the deploy's
     build-failure exception (409 with the reason), not a raw TimeoutExpired."""
-    import subprocess
-
-    import src.services.sdk_package as sdkpkg
-    from src.services.solutions import app_build as ab
-    from src.services.solutions.deploy import SolutionDeployConflict
 
     monkeypatch.setattr(sdkpkg, "build_sdk_tarball", lambda v: b"FAKE_TGZ")
     app_id = uuid.uuid4()
