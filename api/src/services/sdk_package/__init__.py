@@ -14,6 +14,7 @@ the consuming app provides them so React stays a singleton).
 """
 from __future__ import annotations
 
+import functools
 import io
 import json
 import subprocess
@@ -63,6 +64,9 @@ def _bundle(workdir: Path) -> bytes:
     return out.read_bytes()
 
 
+# Caching is safe: the tarball is a pure function of version + the SDK source
+# baked into the image. maxsize=2 covers a rolling-upgrade window.
+@functools.lru_cache(maxsize=2)
 def build_sdk_tarball(version: str) -> bytes:
     """Produce an npm-installable ``bifrost`` package tarball (gzip), version
     stamped. Layout: ``package/package.json`` (name ``bifrost``, ESM ``module``

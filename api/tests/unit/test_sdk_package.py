@@ -54,6 +54,32 @@ def _ensure_sdk_src() -> bool:
 
 
 @pytest.mark.e2e
+def test_build_sdk_tarball_cached_per_version(monkeypatch):
+    """The tarball is a pure function of version + baked-in SDK source, and
+    /api/sdk/download + every app deploy call it — so the esbuild subprocess
+    must run ONCE per version, not per request."""
+    import src.services.sdk_package as sdkpkg
+
+    sdkpkg.build_sdk_tarball.cache_clear()
+    calls: list[Path] = []
+
+    def _fake_bundle(workdir: Path) -> bytes:
+        calls.append(workdir)
+        return b"//bundle"
+
+    monkeypatch.setattr(sdkpkg, "_bundle", _fake_bundle)
+    try:
+        first = sdkpkg.build_sdk_tarball("v9.9.9")
+        second = sdkpkg.build_sdk_tarball("v9.9.9")
+    finally:
+        # Don't leak the fake-bundle tarball into other tests via the cache.
+        sdkpkg.build_sdk_tarball.cache_clear()
+
+    assert first == second
+    assert len(calls) == 1, "builder ran more than once for the same version"
+
+
+@pytest.mark.e2e
 def test_build_sdk_tarball_shape_and_exports():
     if not _ensure_sdk_src():
         pytest.skip("SDK source not available (no image copy, no client tree)")
@@ -63,6 +89,7 @@ def test_build_sdk_tarball_shape_and_exports():
 
     from src.services.sdk_package import build_sdk_tarball
 
+    build_sdk_tarball.cache_clear()  # never serve another test's stubbed bundle
     data = build_sdk_tarball("v1.2-3-gabc1234")
     assert data[:2] == b"\x1f\x8b", "not a gzip tarball"
 
