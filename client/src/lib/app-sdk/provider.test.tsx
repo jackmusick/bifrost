@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
+import { StrictMode, useEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { BifrostProvider, useBifrostContext } from "./provider";
+import { getBifrostTransport } from "./tables";
 
 function Probe() {
   const c = useBifrostContext();
@@ -100,6 +102,41 @@ describe("BifrostProvider", () => {
     vi.stubGlobal("fetch", globalFetch);
     await tables.get("notes", "r");
     expect(globalFetch.mock.calls[0][0]).toBe("/api/tables/notes/documents/r");
+  });
+
+  it("installs the transport before child mount effects run", () => {
+    // A child's mount effect (e.g. useTable's first snapshot query) runs
+    // BEFORE the provider's own useEffect. The transport must already be the
+    // provider's by then, or the first query goes out same-origin unauthed.
+    const seen: string[] = [];
+    function TransportProbe() {
+      useEffect(() => {
+        seen.push(getBifrostTransport().baseUrl);
+      }, []);
+      return null;
+    }
+    render(
+      <BifrostProvider baseUrl="https://remote.example" token="tok-eff">
+        <TransportProbe />
+      </BifrostProvider>,
+    );
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]).toBe("https://remote.example");
+  });
+
+  it("keeps the transport installed under StrictMode and restores on unmount", () => {
+    // StrictMode runs mount → cleanup → mount; the cleanup must not leave the
+    // transport reset to the default while the provider is still mounted.
+    const { unmount } = render(
+      <StrictMode>
+        <BifrostProvider baseUrl="https://strict.example" token="tok-sm">
+          <span>ok</span>
+        </BifrostProvider>
+      </StrictMode>,
+    );
+    expect(getBifrostTransport().baseUrl).toBe("https://strict.example");
+    unmount();
+    expect(getBifrostTransport().baseUrl).toBe("");
   });
 
   it("throws a clear error when used outside a provider", () => {

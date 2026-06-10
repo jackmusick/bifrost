@@ -22,6 +22,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 
@@ -108,8 +109,27 @@ export function BifrostProvider({
   // in `npm run dev` (different origin) reaches the configured Bifrost API with
   // the bearer token + org scope, instead of its own dev server unauthed. v1
   // inline apps never mount a provider and keep the same-origin cookie default.
-  useEffect(() => {
-    const restore = setBifrostTransport({
+  //
+  // Install SYNCHRONOUSLY during render: child mount effects (e.g. useTable's
+  // first snapshot query) run BEFORE this component's own useEffect, so an
+  // effect-time install loses the race on first paint — the first query would
+  // go out on the default same-origin transport with no token / app header.
+  // Render-time assignment is idempotent (same-inputs skip), so StrictMode's
+  // double render installs once.
+  /* eslint-disable react-hooks/refs -- deliberate render-phase install: the
+     transport is a module-global external store that child MOUNT EFFECTS read
+     synchronously, so it must be written during render (guarded by a same-key
+     skip for idempotence under StrictMode/re-renders). An effect-time install
+     is too late by definition here. */
+  const installKey = `${baseUrl}|${token}|${orgScope ?? ""}|${appId ?? ""}`;
+  const installedRef = useRef<{
+    key: string;
+    fetchImpl: typeof fetch | undefined;
+    restoreTransport: () => void;
+    restoreScope: () => void;
+  } | null>(null);
+  const install = () => {
+    const restoreTransport = setBifrostTransport({
       baseUrl: baseUrl.replace(/\/$/, ""),
       fetchImpl,
       headers: {
@@ -121,12 +141,40 @@ export function BifrostProvider({
       },
     });
     const restoreScope = setDefaultAppScope(orgScope);
-    return () => {
-      restore();
-      restoreScope();
+    const prev = installedRef.current;
+    installedRef.current = {
+      key: installKey,
+      fetchImpl,
+      // Keep the FIRST install's restores: unmount must return to the
+      // pre-mount transport/scope, not to one of our own intermediates.
+      restoreTransport: prev?.restoreTransport ?? restoreTransport,
+      restoreScope: prev?.restoreScope ?? restoreScope,
     };
-    // appId is part of the transport headers above.
-  }, [baseUrl, token, orgScope, appId, fetchImpl]);
+  };
+  const installRef = useRef(install);
+  installRef.current = install;
+  if (
+    installedRef.current === null ||
+    installedRef.current.key !== installKey ||
+    installedRef.current.fetchImpl !== fetchImpl
+  ) {
+    install();
+  }
+  /* eslint-enable react-hooks/refs */
+
+  // Unmount-only cleanup. Under StrictMode the mount→cleanup→mount cycle runs
+  // this cleanup while the tree stays mounted, so the effect body re-installs
+  // when the cleanup tore the transport down (children are already mounted at
+  // that point — a render-time install can't cover it).
+  useEffect(() => {
+    if (installedRef.current === null) installRef.current();
+    return () => {
+      const installed = installedRef.current;
+      installedRef.current = null;
+      installed?.restoreTransport();
+      installed?.restoreScope();
+    };
+  }, []);
 
   return (
     <BifrostContext.Provider value={value}>{children}</BifrostContext.Provider>

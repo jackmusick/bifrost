@@ -46,6 +46,11 @@ export function setBifrostTransport(next: BifrostTransport): () => void {
   };
 }
 
+/** Read the currently installed transport (default: same-origin, no headers). */
+export function getBifrostTransport(): BifrostTransport {
+  return transport;
+}
+
 /**
  * Append `?scope=<encoded>` (or `&scope=<encoded>` if a query string already
  * exists) to a path when scope is provided. Mirrors the Python SDK's
