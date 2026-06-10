@@ -1,13 +1,14 @@
 """Re-discover local functions when a workspace .py file changes."""
 from __future__ import annotations
 
+import pathlib
 from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 
-_SKIP_DIRS = {"node_modules", "dist", ".venv", "venv", "__pycache__", ".git"}
+_SKIP_DIRS = {"node_modules", "dist", ".venv", "venv", "__pycache__", ".git", ".bifrost"}
 
 
 class _PyChangeHandler(FileSystemEventHandler):
@@ -20,7 +21,9 @@ class _PyChangeHandler(FileSystemEventHandler):
         path = str(getattr(event, "src_path", ""))
         if not path.endswith(".py"):
             return
-        if any(f"/{d}/" in path for d in _SKIP_DIRS):
+        # watchdog emits native paths; PureWindowsPath parses BOTH separators,
+        # so this skip check works for / and \ regardless of host platform.
+        if any(part in _SKIP_DIRS for part in pathlib.PureWindowsPath(path).parts):
             return
         self._host.reload()
 
