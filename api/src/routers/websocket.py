@@ -87,6 +87,11 @@ async def _resolve_table_id(name_or_id: str, user: UserPrincipal) -> str | None:
         except ValueError:
             stmt = select(TableOrm.id, TableOrm.organization_id).where(
                 TableOrm.name == name_or_id,
+                # By-name resolution is the live _repo/ namespace — mirror
+                # OrgScopedRepository.get(): solution-managed rows resolve by
+                # id (or ?solution=), orphaned rows don't resolve by name.
+                TableOrm.solution_id.is_(None),
+                TableOrm.orphaned_at.is_(None),
             )
             # Non-superusers' name lookups are restricted to their own org
             # (cascade with global) — superusers see all orgs.
@@ -164,7 +169,14 @@ async def _load_policies_for_table(table_id: str) -> TablePolicies | None:
         if is_uuid:
             stmt = select(TableOrm.access).where(TableOrm.id == UUID(table_id))
         else:
-            stmt = select(TableOrm.access).where(TableOrm.name == table_id)
+            stmt = select(TableOrm.access).where(
+                TableOrm.name == table_id,
+                # By-name resolution is the live _repo/ namespace — mirror
+                # OrgScopedRepository.get(): solution-managed rows resolve by
+                # id (or ?solution=), orphaned rows don't resolve by name.
+                TableOrm.solution_id.is_(None),
+                TableOrm.orphaned_at.is_(None),
+            )
         result = await db.execute(stmt)
         row = result.one_or_none()
 
