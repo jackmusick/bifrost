@@ -80,6 +80,16 @@ class Solution(Base):
         Boolean, default=False, server_default=text("false")
     )
 
+    # Version bookkeeping (Task 20). ``version`` is the deployed bundle's
+    # declared version (bifrost.solution.yaml ``version:``), recorded by deploy;
+    # ``upgraded_from_version`` is what the last version-changing deploy
+    # replaced. Free-form strings — PEP 440 ordering is attempted only by the
+    # downgrade gate; unordered versions are never blocked.
+    version: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    upgraded_from_version: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, default=None
+    )
+
     # Source mode (§3.9). Disconnected (default): deploy is the only writer.
     # Connected: auto-pull from git_repo_url is the only writer; deploy refused.
     git_connected: Mapped[bool] = mapped_column(

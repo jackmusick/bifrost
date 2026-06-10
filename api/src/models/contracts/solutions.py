@@ -66,6 +66,11 @@ class Solution(BaseModel):
     global_repo_access: bool = False
     git_connected: bool = False
     git_repo_url: str | None = None
+    # Version bookkeeping (Task 20): the deployed bundle's declared version and
+    # what the last version-changing deploy replaced. Deploy-recorded, not
+    # caller-settable — version rides in the BUNDLE (descriptor), not a request.
+    version: str | None = None
+    upgraded_from_version: str | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -117,6 +122,7 @@ class SolutionInstallPreview(BaseModel):
     slug: str | None = None
     name: str | None = None
     scope: SolutionScope | None = None
+    version: str | None = None
     workflows: list[dict[str, Any]] = Field(default_factory=list)
     tables: list[dict[str, Any]] = Field(default_factory=list)
     apps: list[dict[str, Any]] = Field(default_factory=list)
@@ -149,6 +155,11 @@ class SolutionDeployRequest(BaseModel):
     # Each config schema: {id, key, type, required, description?, default?, position}.
     # DECLARATIONS only — never a value (values are instance-owned Config rows).
     config_schemas: list[dict[str, Any]] = Field(default_factory=list)
+    # The bundle's declared version (bifrost.solution.yaml ``version:``).
+    # Recorded on the install; an older version than installed is refused
+    # unless ``force`` is set (Task 20 downgrade gate).
+    version: str | None = None
+    force: bool = False
 
 
 class SolutionDeleteSummary(BaseModel):

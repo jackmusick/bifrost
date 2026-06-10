@@ -48,6 +48,7 @@ from src.services.solutions.deploy import (
     SolutionBundle,
     SolutionDeployer,
     SolutionDeployConflict,
+    SolutionDowngradeBlocked,
     SolutionFinalizeIncomplete,
 )
 
@@ -487,7 +488,9 @@ async def deploy_solution(
                     forms=body.forms,
                     agents=body.agents,
                     config_schemas=body.config_schemas,
-                )
+                    version=body.version,
+                ),
+                force=body.force,
             )
             await ctx.db.commit()
             # S3 only after the DB is durable — a failed commit changes no running
@@ -498,6 +501,10 @@ async def deploy_solution(
             status_code=status.HTTP_409_CONFLICT,
             detail="A deploy is already in progress for this install; retry shortly.",
         ) from exc
+    except SolutionDowngradeBlocked as exc:
+        # The bundle's version is older than installed (Task 20). The caller can
+        # re-run with force=true to apply the downgrade deliberately.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except SolutionDeployConflict as exc:
         # The bundle is invalid for this install: a foreign/owned entity id, an
         # app-slug collision with a visible app, or a non-standalone_v2 app. These
@@ -598,6 +605,7 @@ async def install_preview(
         slug=result.slug,
         name=result.name,
         scope=result.scope,  # type: ignore[arg-type]
+        version=result.version,
         workflows=result.workflows,
         tables=result.tables,
         apps=result.apps,
@@ -618,6 +626,7 @@ async def install_solution(
     user: CurrentSuperuser,
     organization_id: Annotated[str | None, FastapiForm()] = None,
     config_values: Annotated[str, FastapiForm()] = "{}",
+    force: bool = False,
 ) -> SolutionDTO:
     """Atomically install a Solution from a workspace zip.
 
@@ -626,9 +635,13 @@ async def install_solution(
     per-install write lock, and — in the same locked section after the S3 finalize
     — applies the provided ``config_values`` (a JSON object of key→value). A
     missing required config does NOT block the install (warn-not-block).
+
+    A zip whose descriptor ``version`` is OLDER than the installed version is
+    refused with 409 (downgrade gate, Task 20) unless ``?force=true``.
     """
     from src.services.solutions.deploy import (
         SolutionDeployConflict,
+        SolutionDowngradeBlocked,
         SolutionFinalizeIncomplete,
     )
     from src.services.solutions.write_lock import SolutionWriteLockHeld
@@ -668,8 +681,12 @@ async def install_solution(
             organization_id=org_id,
             config_values=values,
             deployer_email=user.email,
+            force=force,
         )
     except GitConnectedInstallError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except SolutionDowngradeBlocked as exc:
+        # Older descriptor version than installed (Task 20); ?force=true overrides.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (ValueError, zipfile.BadZipFile) as exc:
         raise HTTPException(

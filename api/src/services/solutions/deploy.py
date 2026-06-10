@@ -95,6 +95,27 @@ class SolutionDeployConflict(Exception):
     """A bundle references an entity id owned by _repo/ or another install."""
 
 
+class SolutionDowngradeBlocked(Exception):
+    """The bundle's version is older (PEP 440) than the installed version.
+
+    Refused by default (Task 20) — re-run with ``force`` to downgrade. Only
+    raised when BOTH versions parse as PEP 440; unordered versions never block.
+    """
+
+
+def _is_downgrade(new: str | None, current: str | None) -> bool:
+    """True only when both versions parse as PEP 440 and new < current.
+    Unparseable or absent versions are unordered — never block on them."""
+    if not new or not current:
+        return False
+    try:
+        from packaging.version import InvalidVersion, Version
+
+        return Version(new) < Version(current)
+    except InvalidVersion:
+        return False
+
+
 class SolutionFinalizeIncomplete(Exception):
     """Deploy committed but a post-commit S3 finalize step failed even after
     retries (a real storage outage). The deploy is full-replace + idempotent, so
@@ -187,6 +208,9 @@ class SolutionBundle:
     forms: list[dict[str, Any]] = field(default_factory=list)
     agents: list[dict[str, Any]] = field(default_factory=list)
     config_schemas: list[dict[str, Any]] = field(default_factory=list)
+    # The bundle's declared version (bifrost.solution.yaml ``version:``).
+    # Recorded on the install by deploy; gates downgrades (Task 20).
+    version: str | None = None
 
 
 class SolutionDeployer:
@@ -195,7 +219,7 @@ class SolutionDeployer:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def deploy(self, bundle: SolutionBundle) -> DeployResult:
+    async def deploy(self, bundle: SolutionBundle, force: bool = False) -> DeployResult:
         """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
         Everything that can fail on bad input runs BEFORE the caller's commit, so
@@ -212,6 +236,15 @@ class SolutionDeployer:
         """
         solution = bundle.solution
         sid = solution.id
+
+        # ── Downgrade gate (Task 20) — before ANY writes ─────────────────────
+        # An older bundle (both versions PEP 440-ordered) is refused unless
+        # forced. Unparseable/absent versions are unordered and never block.
+        if not force and _is_downgrade(bundle.version, solution.version):
+            raise SolutionDowngradeBlocked(
+                f"bundle version {bundle.version} is older than installed "
+                f"{solution.version}; re-run with force to downgrade"
+            )
 
         # ── Per-install identity remap (criteria 9/10) ───────────────────────
         # Rewrite every entity id to uuid5(install, manifest_id) and translate
@@ -241,6 +274,14 @@ class SolutionDeployer:
             wf_deleted, tbl_deleted, app_deleted, form_deleted, agent_deleted,
             stale_app_dist,
         ) = await self._reconcile_deletions(sid, rb, adopted_table_ids)
+
+        # ── Version bookkeeping (Task 20) — part of the DB phase, so it commits
+        # (or rolls back) atomically with the reconcile. A version-carrying
+        # bundle that CHANGES the version records the replaced one (None on
+        # first set); a versionless bundle leaves both fields untouched.
+        if bundle.version is not None and bundle.version != solution.version:
+            solution.upgraded_from_version = solution.version
+            solution.version = bundle.version
 
         # ── COMPILE app dists to memory NOW (pre-commit) — a vite/npm failure
         #    raises here and rolls back the whole deploy, no S3 touched. ───────
@@ -347,6 +388,7 @@ class SolutionDeployer:
             forms=forms,
             agents=agents,
             config_schemas=config_schemas,
+            version=bundle.version,
         )
 
     @staticmethod

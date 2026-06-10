@@ -85,8 +85,14 @@ def read_workspace_bundle(solution: Solution, workspace: Path) -> SolutionBundle
     # (apps: criteria 12/13; config schemas were wiped on every sync until
     # this collected them).
     from bifrost.commands.solution import _collect_apps, _collect_config_schemas
+    from bifrost.solution_descriptor import is_solution_workspace, load_descriptor
 
     apps = _collect_apps(workspace)
+    # The descriptor carries the bundle's declared version (Task 20) — read it
+    # the same way zip_install does, so a connected sync records versions too.
+    version: str | None = None
+    if is_solution_workspace(workspace):
+        version = load_descriptor(workspace).version
     return SolutionBundle(
         solution=solution,
         python_files=_collect_python_files(workspace),
@@ -96,6 +102,7 @@ def read_workspace_bundle(solution: Solution, workspace: Path) -> SolutionBundle
         forms=forms,
         agents=agents,
         config_schemas=_collect_config_schemas(workspace),
+        version=version,
     )
 
 
@@ -120,7 +127,12 @@ async def deploy_from_workspace(
             f"refusing to full-replace install {solution.id} from a non-Solution repo"
         )
     bundle = read_workspace_bundle(solution, workspace)
-    return await SolutionDeployer(db).deploy(bundle)
+    # force=True: for a connected install the repo's main IS the single writer
+    # (one-writer invariant) and auto-pull has no operator in the loop to pass
+    # --force — a revert on main (older descriptor version) must still apply,
+    # not strand the install behind the downgrade gate. Versions are recorded
+    # either way.
+    return await SolutionDeployer(db).deploy(bundle, force=True)
 
 
 async def sync(db: AsyncSession, solution: Solution) -> None:

@@ -35,6 +35,10 @@ class SolutionDescriptor(BaseModel):
     slug: str
     name: str
     scope: Literal["org", "global"] = "org"
+    # Declared bundle version, recorded on the install at deploy time. Optional
+    # and free-form; PEP 440 ordering is only attempted by the server's
+    # downgrade gate (unordered versions never block).
+    version: str | None = None
     global_repo_access: bool = False
     git_connected: bool = False
     git_repo_url: str | None = None

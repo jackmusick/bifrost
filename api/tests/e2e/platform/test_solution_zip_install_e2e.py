@@ -19,12 +19,20 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 
-def _make_zip(slug: str) -> bytes:
+def _make_zip(slug: str, version: str | None = None) -> bytes:
     """A minimal Solution workspace zip: descriptor + a workflow (manifest +
-    source) + a required secret config declaration."""
-    wf_id = str(uuid.uuid4())
+    source) + a required secret config declaration.
+
+    Entity ids are STABLE per slug (uuid5), mirroring a real workspace: the
+    ``.bifrost/*.yaml`` manifests keep their ids across versions, so a v2 zip
+    of the same Solution carries the same manifest UUIDs as v1."""
+    wf_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{slug}/workflows/main"))
+    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{slug}/configs/API_KEY"))
+    descriptor = f"slug: {slug}\nname: {slug.upper()}\nscope: global\n"
+    if version is not None:
+        descriptor += f"version: '{version}'\n"
     files = {
-        "bifrost.solution.yaml": f"slug: {slug}\nname: {slug.upper()}\nscope: global\n",
+        "bifrost.solution.yaml": descriptor,
         ".bifrost/workflows.yaml": (
             "workflows:\n"
             f"  {wf_id}:\n"
@@ -36,7 +44,7 @@ def _make_zip(slug: str) -> bytes:
         ".bifrost/configs.yaml": (
             "configs:\n"
             "  API_KEY:\n"
-            f"    id: {uuid.uuid4()}\n"
+            f"    id: {cfg_id}\n"
             "    key: API_KEY\n"
             "    type: secret\n"
             "    required: true\n"
@@ -127,3 +135,53 @@ async def test_zip_install_refused_into_git_connected_install(e2e_client, platfo
     )
     assert inst.status_code == 409, inst.text
     assert "git-connected" in inst.json()["detail"]
+
+
+async def test_zip_install_upgrade_and_downgrade_gate(e2e_client, platform_admin):
+    """Versioned zip install (Task 20):
+
+    * install v1 → install v2 (same slug+scope) is an UPGRADE of the SAME
+      install (no second install row); version + upgraded_from_version recorded.
+    * an older zip (v0.9) → 409 with the downgrade detail.
+    * the same older zip with ?force=true → succeeds and records the downgrade.
+    """
+    headers = platform_admin.headers
+    upload_headers = {
+        k: v for k, v in headers.items() if k.lower() != "content-type"
+    }
+    slug = f"zip-ver-{uuid.uuid4().hex[:8]}"
+
+    def _install(version: str, force: bool = False):
+        url = "/api/solutions/install" + ("?force=true" if force else "")
+        return e2e_client.post(
+            url,
+            headers=upload_headers,
+            files={"file": (f"{slug}.zip", _make_zip(slug, version), "application/zip")},
+            data={"config_values": "{}"},
+        )
+
+    # Install v1.0.0.
+    v1 = _install("1.0.0")
+    assert v1.status_code in (200, 201), v1.text
+    sid = v1.json()["id"]
+    assert v1.json()["version"] == "1.0.0"
+
+    # Install v1.1.0 for the same slug+scope → SAME install id, version updated.
+    v2 = _install("1.1.0")
+    assert v2.status_code in (200, 201), v2.text
+    assert v2.json()["id"] == sid, "upgrade must not create a second install"
+    assert v2.json()["version"] == "1.1.0"
+    assert v2.json()["upgraded_from_version"] == "1.0.0"
+
+    # An older zip is refused with the downgrade detail.
+    down = _install("0.9.0")
+    assert down.status_code == 409, down.text
+    detail = down.json()["detail"]
+    assert "0.9.0" in detail and "1.1.0" in detail and "force" in detail
+
+    # Same zip, ?force=true → succeeds and records the downgrade.
+    forced = _install("0.9.0", force=True)
+    assert forced.status_code in (200, 201), forced.text
+    assert forced.json()["id"] == sid
+    assert forced.json()["version"] == "0.9.0"
+    assert forced.json()["upgraded_from_version"] == "1.1.0"

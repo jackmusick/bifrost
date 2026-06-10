@@ -57,6 +57,7 @@ class PreviewResult:
     slug: str | None = None
     name: str | None = None
     scope: str | None = None
+    version: str | None = None
     workflows: list[dict[str, Any]] = field(default_factory=list)
     tables: list[dict[str, Any]] = field(default_factory=list)
     apps: list[dict[str, Any]] = field(default_factory=list)
@@ -97,14 +98,17 @@ def _parse_workspace(workspace: Path) -> PreviewResult:
     slug: str | None = None
     name: str | None = None
     scope: str | None = None
+    version: str | None = None
     if is_solution_workspace(workspace):
         descriptor = load_descriptor(workspace)
         slug, name, scope = descriptor.slug, descriptor.name, descriptor.scope
+        version = descriptor.version
 
     return PreviewResult(
         slug=slug,
         name=name,
         scope=scope,
+        version=version,
         workflows=_collect_workflows(workspace),
         tables=_collect_tables(workspace),
         apps=_collect_apps(workspace),
@@ -141,6 +145,7 @@ def _build_bundle(solution: Solution, preview: PreviewResult, workspace: Path) -
         forms=preview.forms,
         agents=preview.agents,
         config_schemas=preview.config_schemas,
+        version=preview.version,
     )
 
 
@@ -179,6 +184,7 @@ async def install_zip(
     organization_id: UUID | None,
     config_values: dict[str, Any],
     deployer_email: str,
+    force: bool = False,
 ) -> Solution:
     """Atomically install a Solution zip: deploy the bundle, then apply config
     VALUES — all under the per-install write lock.
@@ -220,7 +226,7 @@ async def install_zip(
 
         async with solution_write_lock(solution.id):
             deployer = SolutionDeployer(db)
-            result = await deployer.deploy(bundle)
+            result = await deployer.deploy(bundle, force=force)
             await db.commit()
             # S3 only after the DB is durable; still inside the lock so finalize
             # can't race another writer.
