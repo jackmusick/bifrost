@@ -86,6 +86,7 @@ COPY api/src/services/sdk_package/build_sdk.js /app/src/services/sdk_package/
 RUN cd /app/src/services/sdk_package && npm install --production
 COPY client/src/lib/app-sdk/provider.tsx \
      client/src/lib/app-sdk/tables.ts \
+     client/src/lib/app-sdk/transport.ts \
      client/src/lib/app-sdk/use-table.ts \
      client/src/lib/app-sdk/use-infinite-table.ts \
      client/src/lib/app-sdk/ws-client.ts \

@@ -41,8 +41,10 @@ async def _install_with_app_and_table(db, org_id, table_name):
 
 def _ctx(db, *, app_id, is_superuser) -> Any:
     # Duck-typed Context (matches what _resolve_solution_table_by_name reads).
+    # solution_id=None: these tests drive the APP-id arm of the resolver; the
+    # ?solution= arm (F2 chokepoint) reads ctx.solution_id first.
     return cast(Any, SimpleNamespace(
-        db=db, app_id=str(app_id),
+        db=db, app_id=str(app_id), solution_id=None,
         user=SimpleNamespace(is_superuser=is_superuser),
     ))
 

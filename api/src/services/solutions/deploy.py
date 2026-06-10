@@ -267,8 +267,13 @@ class SolutionDeployer:
         await self._upsert_config_schemas(solution, rb.config_schemas)
         # Un-orphan this install's config VALUES that match the re-declared keys
         # (Task 14c) so the operator doesn't re-enter them on reinstall.
-        await self._reattach_orphan_configs(
+        reattached_configs = await self._reattach_orphan_configs(
             solution, {c["key"] for c in rb.config_schemas}
+        )
+        # Captured pre-commit: the finalize closure runs after the caller's
+        # commit, when lazy-loading off the ORM row is no longer safe.
+        install_org_id_str = (
+            str(solution.organization_id) if solution.organization_id is not None else None
         )
         (
             wf_deleted, tbl_deleted, app_deleted, form_deleted, agent_deleted,
@@ -295,6 +300,16 @@ class SolutionDeployer:
         # install runnable. Only an outage that survives all retries raises
         # SolutionFinalizeIncomplete — and even then a later deploy/sync heals it.
         async def _finalize_s3() -> None:
+            if reattached_configs:
+                # The reattach is a Core UPDATE that never bumped the config
+                # cache (mirror of the uninstall router's invalidation).
+                # Without this, merged_for_sdk keeps serving the orphan-era
+                # cache and the reattached value stays invisible until TTL.
+                # Post-commit on purpose: invalidating pre-commit would let a
+                # concurrent reader re-cache the OLD state before we commit.
+                from src.core.cache import invalidate_all_config
+
+                await invalidate_all_config(install_org_id_str)
             await _retry_idempotent(
                 "write python source", sid,
                 lambda: self._write_python(sid, rb.python_files),
@@ -1097,7 +1112,7 @@ class SolutionDeployer:
 
     async def _reattach_orphan_configs(
         self, solution: Solution, declared_keys: set[str]
-    ) -> None:
+    ) -> int:
         """Un-orphan config VALUES from a prior install of this Solution so the
         operator doesn't re-enter them (Task 14c).
 
@@ -1112,7 +1127,7 @@ class SolutionDeployer:
         different live install owns.
         """
         if not declared_keys:
-            return
+            return 0
         from src.models.orm.config import Config
 
         org_pred = (
@@ -1120,7 +1135,7 @@ class SolutionDeployer:
             if solution.organization_id is not None
             else Config.organization_id.is_(None)
         )
-        await self.db.execute(
+        result = await self.db.execute(
             update(Config)
             .where(
                 org_pred,
@@ -1130,6 +1145,7 @@ class SolutionDeployer:
             )
             .values(orphaned_at=None, origin_solution_slug=None, origin_solution_id=None)
         )
+        return result.rowcount or 0
 
     async def _guard_owner(self, model: type, entity_id: UUID, sid: UUID) -> None:
         """Raise SolutionDeployConflict if ``entity_id`` exists and is owned by

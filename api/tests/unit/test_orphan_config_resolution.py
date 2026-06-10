@@ -135,7 +135,14 @@ async def test_get_config_cascade_skips_orphaned(db_session) -> None:
 
 @pytest.mark.e2e
 async def test_reattach_makes_config_resolvable_again(db_session) -> None:
-    """Clearing orphaned_at (reattach) makes the value visible to the SDK again."""
+    """Reattach = clear orphaned_at AND invalidate the org config cache.
+
+    Both real reattach paths do exactly this pair (deploy's post-commit
+    finalize and the uninstall router). The stamp-clear alone is NOT enough:
+    merged_for_sdk is cache-backed, and the post-orphan read below caches the
+    orphan-era state — without the invalidation the reattached value stays
+    invisible until the cache version moves (the bug this test caught).
+    """
     from sqlalchemy import select
 
     db = db_session
@@ -147,7 +154,7 @@ async def test_reattach_makes_config_resolvable_again(db_session) -> None:
     reader = ConfigRepository(db, org_id=org.id, is_superuser=True)
     assert "REGION" not in await reader.merged_for_sdk()
 
-    # Simulate reattach: clear the orphan stamp.
+    # Simulate reattach exactly as the real paths do: stamp-clear + invalidate.
     row = (
         await db.execute(
             select(Config).where(
@@ -158,6 +165,10 @@ async def test_reattach_makes_config_resolvable_again(db_session) -> None:
     row.orphaned_at = None
     row.origin_solution_slug = None
     await db.flush()
+
+    from src.core.cache import invalidate_all_config
+
+    await invalidate_all_config(str(org.id))
 
     reader2 = ConfigRepository(db, org_id=org.id, is_superuser=True)
     assert (await reader2.merged_for_sdk())["REGION"]["value"] == "us-west"

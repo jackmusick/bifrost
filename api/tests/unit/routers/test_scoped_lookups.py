@@ -1155,8 +1155,10 @@ class TestApplicationCrossOrgSlugLookup:
         """get_by_slug_global finds app regardless of which org it belongs to."""
         from src.routers.applications import ApplicationRepository
 
+        # get_by_slug_global fetches all slug matches (scalars().all()) and
+        # disambiguates in Python — slug uniqueness is per-install now.
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = org_b_app
+        mock_result.scalars.return_value.all.return_value = [org_b_app]
         mock_session.execute.return_value = mock_result
 
         # Repo is scoped to org A, but get_by_slug_global has no org filter
@@ -1176,7 +1178,7 @@ class TestApplicationCrossOrgSlugLookup:
         from src.routers.applications import ApplicationRepository
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.all.return_value = []
         mock_session.execute.return_value = mock_result
 
         repo = ApplicationRepository(
