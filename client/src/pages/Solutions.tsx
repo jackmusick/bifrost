@@ -304,6 +304,10 @@ export function Solutions() {
 			setPreviewError(null);
 		} catch (err: unknown) {
 			if (seq !== previewSeq.current) return;
+			// Disarm the previous scope's preview: leaving it set would enable
+			// Install into a scope that was never successfully previewed — the
+			// exact silent-replace path the upgrade flow exists to prevent.
+			setPreview(null);
 			setPreviewError(
 				err instanceof Error ? err.message : "Failed to read package",
 			);

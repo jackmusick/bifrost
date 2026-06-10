@@ -399,6 +399,44 @@ describe("Solutions — upgrade flow", () => {
 		);
 	});
 
+	it("disarms the stale preview when a scope re-preview fails", async () => {
+		// A failed re-preview must NOT leave the previous scope's preview armed:
+		// Install would then fire into a scope that was never previewed — the
+		// silent-replace path the upgrade flow exists to prevent.
+		mockPreviewInstall.mockResolvedValueOnce({
+			slug: "my-solution",
+			name: "My Solution",
+			scope: "org",
+			version: "2.0.0",
+			workflows: [{ name: "w1" }],
+			apps: [],
+			forms: [],
+			agents: [],
+			tables: [],
+			config_schemas: [],
+		});
+		mockPreviewInstall.mockRejectedValueOnce(new Error("network blip"));
+		const { user } = await renderPage();
+		await screen.findByText(/no solutions installed yet/i);
+
+		const file = new File(["zip"], "my-solution.zip", {
+			type: "application/zip",
+		});
+		await user.upload(
+			screen.getByTestId("install-file-input") as HTMLInputElement,
+			file,
+		);
+		const dialog = await screen.findByTestId("preview-dialog");
+		await within(dialog).findByTestId("scope-select");
+
+		await user.click(within(dialog).getByTestId("scope-select"));
+		await user.click(screen.getByRole("option", { name: "Acme Corp" }));
+
+		await within(dialog).findByText(/network blip/);
+		expect(within(dialog).getByTestId("confirm-install")).toBeDisabled();
+		expect(mockInstallSolution).not.toHaveBeenCalled();
+	});
+
 	it("surfaces non-downgrade install errors inline as before", async () => {
 		mockPreviewInstall.mockResolvedValue(makeUpgradePreview());
 		mockInstallSolution.mockRejectedValue(
