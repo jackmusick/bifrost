@@ -28,6 +28,7 @@ import yaml
 from bifrost.client import BifrostClient
 from bifrost.solution_descriptor import (
     DESCRIPTOR_FILENAME,
+    find_solution_root,
     is_solution_workspace,
     load_descriptor,
 )
@@ -97,7 +98,27 @@ def scaffold_app_cmd(slug: str, path: str | None, api_url: str | None) -> None:
     import uuid as _uuid
 
     url = api_url or os.getenv("BIFROST_API_URL") or "http://localhost:8000"
-    app_dir = pathlib.Path(path) if path else pathlib.Path("apps") / slug
+
+    # Anchor everything at the SOLUTION ROOT (the dir holding the descriptor),
+    # found by walking up from cwd. Guessing the root from the app dir
+    # (app_dir.parent.parent) wrote the .bifrost/ manifests OUTSIDE the real
+    # root for nested --path values — deploy never saw them.
+    root = find_solution_root(pathlib.Path.cwd())
+    if root is None:
+        raise click.ClickException(
+            "Not inside a solution workspace (no solution descriptor found). "
+            "Run this from your solution root (created by `bifrost solution init`)."
+        )
+
+    app_dir = (pathlib.Path(path) if path else root / "apps" / slug).resolve()
+    try:
+        # POSIX root-relative: _app_source_dirs compares manifest paths with
+        # POSIX separators, so an OS-separator or cwd-relative path here makes
+        # the app's .py files double-collect as workflow source on Windows.
+        rel_path = app_dir.relative_to(root).as_posix()
+    except ValueError:
+        raise click.ClickException(f"--path must point inside the solution workspace ({root})")
+
     if app_dir.exists() and any(app_dir.iterdir()):
         raise click.ClickException(f"{app_dir} already exists and is not empty")
     for rel, content in _v2_scaffold_files(slug, url).items():
@@ -108,7 +129,7 @@ def scaffold_app_cmd(slug: str, path: str | None, api_url: str | None) -> None:
     # Register the app in .bifrost/apps.yaml so `bifrost deploy` finds it (the
     # deployer reads this manifest). Without this the scaffold would be source
     # with no way to deploy — a papercut. Keyed by a fresh UUID (app identity).
-    bifrost_dir = app_dir.parent.parent if path else pathlib.Path(".")
+    bifrost_dir = root
 
     # Write the sample workflow at the SOLUTION ROOT (not under the app dir), so
     # its ``path::fn`` ref (``functions/hello.py::main``) resolves the same way
@@ -141,7 +162,6 @@ def scaffold_app_cmd(slug: str, path: str | None, api_url: str | None) -> None:
     data = yaml.safe_load(manifest.read_text()) if manifest.is_file() else None
     data = data or {"apps": {}}
     app_id = str(_uuid.uuid4())
-    rel_path = app_dir.relative_to(bifrost_dir).as_posix() if not path else str(app_dir)
     data.setdefault("apps", {})[app_id] = {
         "id": app_id,
         "slug": slug,

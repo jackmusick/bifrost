@@ -8,7 +8,14 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from bifrost.commands.solution import _v2_scaffold_files  # noqa: E402
+import yaml  # noqa: E402
+from click.testing import CliRunner  # noqa: E402
+
+from bifrost.commands.solution import _v2_scaffold_files, solution_group  # noqa: E402
+
+
+def _init_workspace(root: pathlib.Path) -> None:
+    (root / "bifrost.solution.yaml").write_text("slug: s\nname: S\nscope: org\n")
 
 
 def test_scaffold_files_shape_and_dev_wiring() -> None:
@@ -66,3 +73,57 @@ def test_scaffold_files_shape_and_dev_wiring() -> None:
     app = files["src/App.tsx"]
     assert "BifrostHeader" in app
     assert "useWorkflow" in app
+
+
+def test_scaffold_app_nested_path_anchors_manifests_at_root(tmp_path, monkeypatch) -> None:
+    # With a nested --path, the .bifrost/ manifests must land at the DESCRIPTOR
+    # root (not app_dir.parent.parent), and the manifest path entry must be a
+    # POSIX root-relative path (so _app_source_dirs' POSIX comparisons match).
+    _init_workspace(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(
+        solution_group,
+        ["scaffold-app", "dash", "--path", "src/apps/dash", "--api-url", "http://localhost:8000"],
+    )
+    assert result.exit_code == 0, result.output
+
+    # Manifests at the root — and no stray src/.bifrost.
+    assert (tmp_path / ".bifrost" / "apps.yaml").is_file()
+    assert (tmp_path / ".bifrost" / "workflows.yaml").is_file()
+    assert not (tmp_path / "src" / ".bifrost").exists()
+    # Sample workflow at the root, app files at the nested path.
+    assert (tmp_path / "functions" / "hello.py").is_file()
+    assert (tmp_path / "src" / "apps" / "dash" / "package.json").is_file()
+
+    data = yaml.safe_load((tmp_path / ".bifrost" / "apps.yaml").read_text())
+    (entry,) = data["apps"].values()
+    assert entry["path"] == "src/apps/dash"
+
+
+def test_scaffold_app_path_outside_workspace_refuses(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "ws"
+    root.mkdir()
+    _init_workspace(root)
+    monkeypatch.chdir(root)
+
+    result = CliRunner().invoke(
+        solution_group,
+        ["scaffold-app", "dash", "--path", "../elsewhere/dash", "--api-url", "http://localhost:8000"],
+    )
+    assert result.exit_code != 0
+    assert "inside the solution workspace" in result.output
+    # Nothing written — not the escape dir, not manifests.
+    assert not (tmp_path / "elsewhere").exists()
+    assert not (root / ".bifrost").exists()
+    assert not (root / "functions").exists()
+
+
+def test_scaffold_app_refuses_outside_solution_workspace(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)  # no bifrost.solution.yaml anywhere up the tree
+    result = CliRunner().invoke(
+        solution_group, ["scaffold-app", "dash", "--api-url", "http://localhost:8000"]
+    )
+    assert result.exit_code != 0
+    assert "solution init" in result.output
+    assert not (tmp_path / ".bifrost").exists()

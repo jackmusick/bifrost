@@ -48,6 +48,8 @@ def test_scaffold_app_writes_sample_at_solution_root(tmp_path, monkeypatch):
     from bifrost.commands.solution import solution_group
 
     monkeypatch.chdir(tmp_path)
+    # scaffold-app anchors at the descriptor root, so the workspace must exist.
+    (tmp_path / "bifrost.solution.yaml").write_text("slug: s\nname: S\nscope: org\n")
     result = CliRunner().invoke(
         solution_group, ["scaffold-app", "dashboard", "--api-url", "http://localhost:8000"]
     )
