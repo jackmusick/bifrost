@@ -54,19 +54,24 @@ def _get_sync_redis() -> Any:
     )
 
 
-def _get_engine_token() -> str | None:
+def _get_engine_credentials() -> tuple[str, str] | None:
     """
-    Read the engine bearer token from the credentials file.
+    Read the engine bearer token and API URL from the credentials file.
 
     The file is written by save_credentials() (either from the handed-down
     context_data["engine_token"] path or the legacy authenticate_engine()
-    path).  Returns None if the file is absent or unreadable.
+    path) and carries both the access token and the API URL.  Returning the
+    URL from here means the API module-fetch fallback works even when
+    BIFROST_API_URL is not set in the child env (it is not, in either the
+    test stack or the k8s worker manifests).
+
+    Returns (api_url, access_token) or None if unavailable.
     """
     try:
-        from bifrost.credentials import load_credentials
-        creds = load_credentials()
-        if creds:
-            return creds.get("access_token")
+        from bifrost.credentials import get_credentials
+        creds = get_credentials()
+        if creds and creds.get("access_token") and creds.get("api_url"):
+            return creds["api_url"].rstrip("/"), creds["access_token"]
     except Exception:
         pass
     return None
@@ -76,18 +81,22 @@ def _fetch_module_from_api(path: str) -> CachedModule | None:
     """
     Fetch a module via GET /api/sdk/modules/<path> (synchronous, httpx).
 
-    Uses the engine bearer token from the credentials file.  Returns a
-    CachedModule dict on success, None on any error (404, auth failure, etc.).
+    Uses the engine bearer token and API URL from the credentials file,
+    falling back to the BIFROST_API_URL env var only if the creds file has
+    no URL.  Returns a CachedModule dict on success, None on any error
+    (404, auth failure, etc.).
 
     This is the primary cold-cache fallback when BIFROST_S3_* are absent
     from the child environment (Phase 2 hardening).
     """
-    api_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
-    if not api_url:
+    creds = _get_engine_credentials()
+    if not creds:
         return None
+    creds_url, token = creds
 
-    token = _get_engine_token()
-    if not token:
+    # Creds-file URL is the source of truth; env var is a secondary source.
+    api_url = creds_url or os.environ.get("BIFROST_API_URL", "").rstrip("/")
+    if not api_url:
         return None
 
     try:
@@ -121,12 +130,12 @@ def _fetch_module_index_from_api() -> set[str]:
     Returns the set of known workspace module paths from the API server,
     used when the Redis index is cold.  Returns empty set on any error.
     """
-    api_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
-    if not api_url:
+    creds = _get_engine_credentials()
+    if not creds:
         return set()
-
-    token = _get_engine_token()
-    if not token:
+    creds_url, token = creds
+    api_url = creds_url or os.environ.get("BIFROST_API_URL", "").rstrip("/")
+    if not api_url:
         return set()
 
     try:
@@ -153,12 +162,12 @@ def _fetch_requirements_from_api() -> str | None:
     Used as the primary cold-cache fallback in get_requirements_sync() when
     BIFROST_S3_* are absent from the child environment (Phase 2 hardening).
     """
-    api_url = os.environ.get("BIFROST_API_URL", "").rstrip("/")
-    if not api_url:
+    creds = _get_engine_credentials()
+    if not creds:
         return None
-
-    token = _get_engine_token()
-    if not token:
+    creds_url, token = creds
+    api_url = creds_url or os.environ.get("BIFROST_API_URL", "").rstrip("/")
+    if not api_url:
         return None
 
     try:
