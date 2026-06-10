@@ -69,6 +69,7 @@ class MCPToolAccessService:
         is_superuser: bool,
         user_id: UUID | str | None = None,
         org_id: UUID | str | None = None,
+        is_external: bool = False,
     ) -> MCPToolAccessResult:
         """
         Get all MCP tools accessible to the user.
@@ -96,6 +97,7 @@ class MCPToolAccessService:
         accessible_agents = await self._get_accessible_agents(
             user_roles=user_roles,
             is_superuser=is_superuser,
+            is_external=is_external,
         )
 
         # Step 2: Collect tools from accessible agents, enforcing per-workflow
@@ -103,7 +105,8 @@ class MCPToolAccessService:
         tools: list[ToolInfo] = []
         seen_tool_ids: set[str] = set()  # Deduplicate across agents
         workflow_repo = self._build_workflow_repo(
-            user_id=user_id, org_id=org_id, is_superuser=is_superuser
+            user_id=user_id, org_id=org_id, is_superuser=is_superuser,
+            is_external=is_external,
         )
 
         for agent in accessible_agents:
@@ -161,6 +164,7 @@ class MCPToolAccessService:
         is_superuser: bool,
         user_id: UUID | str | None = None,
         org_id: UUID | str | None = None,
+        is_external: bool = False,
     ) -> AgentScopedToolResult | None:
         """
         Get MCP tools for a specific agent, verifying user access.
@@ -198,7 +202,7 @@ class MCPToolAccessService:
             return None
 
         # Check access using same rules as _get_accessible_agents
-        if not self._check_agent_access(agent, user_roles, is_superuser):
+        if not self._check_agent_access(agent, user_roles, is_superuser, is_external):
             logger.warning(f"User denied access to agent {agent_id}")
             return None
 
@@ -223,7 +227,8 @@ class MCPToolAccessService:
         # the executor). seen_tool_ids is fresh because this is an
         # agent-scoped call: no cross-agent dedup needed.
         workflow_repo = self._build_workflow_repo(
-            user_id=user_id, org_id=org_id, is_superuser=is_superuser
+            user_id=user_id, org_id=org_id, is_superuser=is_superuser,
+            is_external=is_external,
         )
         for workflow_info in await self._visible_workflows_for_agent(
             agent, workflow_repo, seen_tool_ids=set()
@@ -251,6 +256,7 @@ class MCPToolAccessService:
         user_id: UUID | str | None,
         org_id: UUID | str | None,
         is_superuser: bool,
+        is_external: bool = False,
     ):
         """Construct a WorkflowRepository pinned to the caller's identity.
 
@@ -267,6 +273,7 @@ class MCPToolAccessService:
             org_id=org_id,
             user_id=user_id,
             is_superuser=is_superuser,
+            is_external=is_external,
         )
 
     async def _visible_workflows_for_agent(
@@ -337,10 +344,12 @@ class MCPToolAccessService:
         agent: Agent,
         user_roles: list[str],
         is_superuser: bool,
+        is_external: bool = False,
     ) -> bool:
         """Check if user has access to a specific agent (same rules as _get_accessible_agents)."""
         if agent.access_level == AgentAccessLevel.AUTHENTICATED:
-            return True
+            # External users get no authenticated-tier entitlement (EXT-1).
+            return is_superuser or not is_external
 
         if agent.access_level == AgentAccessLevel.ROLE_BASED:
             agent_role_names = {role.name for role in agent.roles}
@@ -354,6 +363,7 @@ class MCPToolAccessService:
         self,
         user_roles: list[str],
         is_superuser: bool,
+        is_external: bool = False,
     ) -> list[Agent]:
         """
         Get agents accessible to the user based on access_level and roles.
@@ -384,8 +394,10 @@ class MCPToolAccessService:
 
         for agent in all_agents:
             if agent.access_level == AgentAccessLevel.AUTHENTICATED:
-                # Any authenticated user can access
-                accessible_agents.append(agent)
+                # Any authenticated user can access — except external users,
+                # who get no authenticated-tier entitlement (EXT-1).
+                if is_superuser or not is_external:
+                    accessible_agents.append(agent)
 
             elif agent.access_level == AgentAccessLevel.ROLE_BASED:
                 # Get role names from agent's roles

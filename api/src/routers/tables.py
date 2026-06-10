@@ -583,7 +583,10 @@ async def get_table_or_404(
     """
     target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(
-        ctx.db, target_org_id, is_superuser=ctx.user.is_superuser
+        ctx.db,
+        target_org_id,
+        is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
     )
 
     # Try UUID lookup first — repo.get(id=...) enforces the org gate for

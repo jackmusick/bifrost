@@ -264,6 +264,7 @@ async def create_form(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflow = await workflow_repo.get(id=UUID_TYPE(workflow_id))
             if not workflow:
@@ -424,6 +425,7 @@ async def get_form(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflow_name = None
             launch_workflow_name = None
@@ -599,6 +601,7 @@ async def update_form(
                     org_id=ctx_org_id,
                     user_id=ctx_user_id,
                     is_superuser=context.is_platform_admin,
+                    is_external=context.is_external,
                 )
                 workflow = await workflow_repo.get(id=UUID_TYPE(workflow_id))
                 if not workflow:
@@ -624,6 +627,7 @@ async def update_form(
                         org_id=ctx_org_id,
                         user_id=ctx_user_id,
                         is_superuser=context.is_platform_admin,
+                        is_external=context.is_external,
                     )
                     launch_workflow = await workflow_repo.get(id=UUID_TYPE(launch_workflow_id))
                     if not launch_workflow:

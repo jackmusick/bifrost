@@ -173,6 +173,7 @@ async def _get_connection_or_404(
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     connection = await repo.get_connection(connection_id)
     if connection is None:
@@ -495,6 +496,7 @@ async def create_mcp_connection(
         org_id=request.organization_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     server = await server_repo.get_server(request.server_id)
     if server is None:
@@ -529,6 +531,7 @@ async def create_mcp_connection(
         org_id=request.organization_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     refreshed = await conn_repo.get_connection(connection.id)
     assert refreshed is not None  # we just inserted it

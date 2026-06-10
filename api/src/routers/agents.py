@@ -131,8 +131,14 @@ async def _validate_user_tool_access(
     db: DbSession,
     user_id: UUID,
     tool_ids: list[str],
+    is_external: bool = False,
 ) -> None:
-    """Validate user can access all specified tools via their roles."""
+    """Validate user can access all specified tools via their roles.
+
+    External users get no authenticated-tier entitlement (EXT-1 rule 2):
+    a workflow with access_level='authenticated' still requires a role
+    intersection for them.
+    """
     if not tool_ids:
         return
 
@@ -160,7 +166,7 @@ async def _validate_user_tool_access(
         if not workflow.is_active:
             raise HTTPException(422, f"Tool '{workflow.name}' is inactive")
 
-        if workflow.access_level == "authenticated":
+        if workflow.access_level == "authenticated" and not is_external:
             continue
 
         result = await db.execute(
@@ -285,6 +291,7 @@ async def list_agents(
         org_id=filter_org_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     if is_admin:
@@ -344,7 +351,9 @@ async def create_agent(
         if agent_data.access_level != AgentAccessLevel.PRIVATE:
             raise HTTPException(403, "Non-admin users can only create private agents")
         agent_data.organization_id = user.organization_id
-        await _validate_user_tool_access(db, user.user_id, agent_data.tool_ids)
+        await _validate_user_tool_access(
+            db, user.user_id, agent_data.tool_ids, is_external=user.is_external
+        )
         agent_data.system_tools = []
         agent_data.knowledge_sources = []
         agent_data.delegated_agent_ids = []
@@ -586,6 +595,7 @@ async def get_agent(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -655,7 +665,9 @@ async def update_agent(
         if agent_data.access_level is not None and agent_data.access_level != AgentAccessLevel.PRIVATE:
             raise HTTPException(403, "Use the promote endpoint to change access level")
         if agent_data.tool_ids is not None:
-            await _validate_user_tool_access(db, user.user_id, agent_data.tool_ids)
+            await _validate_user_tool_access(
+                db, user.user_id, agent_data.tool_ids, is_external=user.is_external
+            )
         agent_data.system_tools = None
         agent_data.knowledge_sources = None
         agent_data.delegated_agent_ids = None
@@ -788,6 +800,7 @@ async def update_agent(
             org_id=user.organization_id,
             user_id=user.user_id,
             is_superuser=is_admin,
+            is_external=user.is_external,
         )
         await repo.set_mcp_connection_grants(
             agent_id,
@@ -949,6 +962,7 @@ async def get_agent_stats_endpoint(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -976,6 +990,7 @@ async def get_agent_tools(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -1017,6 +1032,7 @@ async def get_agent_delegations(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -1049,6 +1065,7 @@ async def upload_agent_logo(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
     agent = await repo.get_agent_with_access_check(agent_id)
     if not agent:
@@ -1104,6 +1121,7 @@ async def get_agent_logo(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
     agent = await repo.get_agent_with_access_check(agent_id)
     if not agent or not agent.logo_data:
@@ -1129,6 +1147,7 @@ async def delete_agent_logo(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
     agent = await repo.get_agent_with_access_check(agent_id)
     if not agent:

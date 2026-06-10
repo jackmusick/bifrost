@@ -27,7 +27,7 @@ from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
 from src.repositories.workflows import WorkflowRepository
 from src.models import Execution as ExecutionORM
-from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
+from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM
 from src.services.solutions.guard import assert_not_solution_managed
 from src.models import Role as RoleORM
 from src.models import Workflow as WorkflowORM
@@ -252,6 +252,7 @@ async def list_forms(
         org_id=filter_org,
         user_id=ctx.user.user_id if not ctx.user.is_superuser else None,
         is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
     )
 
     # Platform admins bypass access level filtering - they see all forms within org scope
@@ -437,6 +438,7 @@ async def get_form(
         org_id=None,  # No org filtering for initial fetch
         user_id=ctx.user.user_id if not ctx.user.is_superuser else None,
         is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
     )
     form = await repo.get_form(form_id)
 
@@ -462,36 +464,23 @@ async def get_form(
             detail="Form not found",
         )
 
-    # Check org access - user can access their org's forms OR global forms (org_id is NULL)
-    if form.organization_id is not None and form.organization_id != ctx.org_id:
+    # Single org+role+access_level gate — the same OrgScopedRepository gate
+    # the listing and execute paths use (handles cascade scope, role_based
+    # role checks, and external-user isolation in one place).
+    if not await _check_form_access(
+        db,
+        form,
+        ctx.user.user_id,
+        ctx.org_id,
+        ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to form",
         )
 
-    # Check access level
-    access_level = form.access_level or "role_based"
-    if access_level == "authenticated":
-        return await _to_public(form)
-
-    # Role-based: check if user has a role assigned to this form
-    role_query = select(UserRoleORM.role_id).where(UserRoleORM.user_id == ctx.user.user_id)
-    role_result = await db.execute(role_query)
-    user_role_ids = list(role_result.scalars().all())
-
-    if user_role_ids:
-        form_role_query = select(FormRoleORM).where(
-            FormRoleORM.form_id == form_id,
-            FormRoleORM.role_id.in_(user_role_ids),
-        )
-        form_role_result = await db.execute(form_role_query)
-        if form_role_result.scalar_one_or_none() is not None:
-            return await _to_public(form)
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Access denied to form",
-    )
+    return await _to_public(form)
 
 
 @router.patch(
@@ -722,6 +711,7 @@ async def _check_form_access(
     user_id: UUID,
     user_org_id: UUID | None,
     is_superuser: bool,
+    is_external: bool = False,
 ) -> bool:
     """
     Check if user has access to execute a form.
@@ -740,6 +730,7 @@ async def _check_form_access(
         org_id=user_org_id,
         user_id=user_id,
         is_superuser=is_superuser,
+        is_external=is_external,
     )
     accessible = await repo.get(id=form.id)
     return accessible is not None
@@ -789,7 +780,14 @@ async def execute_form(
 
     # Check access — embed users are pre-authorized via HMAC
     if not ctx.user.embed:
-        has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
+        has_access = await _check_form_access(
+            db,
+            form,
+            ctx.user.user_id,
+            ctx.org_id,
+            ctx.user.is_superuser,
+            is_external=ctx.user.is_external,
+        )
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -986,7 +984,14 @@ async def execute_startup_workflow(
 
     # Check access — embed users are pre-authorized via HMAC
     if not ctx.user.embed:
-        has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
+        has_access = await _check_form_access(
+            db,
+            form,
+            ctx.user.user_id,
+            ctx.org_id,
+            ctx.user.is_superuser,
+            is_external=ctx.user.is_external,
+        )
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -1186,7 +1191,14 @@ async def generate_upload_url(
 
     # Check access — embed users are pre-authorized via HMAC
     if not ctx.user.embed:
-        has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
+        has_access = await _check_form_access(
+            db,
+            form,
+            ctx.user.user_id,
+            ctx.org_id,
+            ctx.user.is_superuser,
+            is_external=ctx.user.is_external,
+        )
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

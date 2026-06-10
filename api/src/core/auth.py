@@ -47,6 +47,11 @@ class UserPrincipal:
     is_active: bool = True
     is_superuser: bool = False
     is_verified: bool = False
+    # External (portal/guest) principal: restricted to the org tier — no
+    # global entities, no access_level="authenticated" entitlement. The claim
+    # is minted already neutralized for bypass callers (platform admin /
+    # provider org) — see shared/external_access.py::resolve_external_claim.
+    is_external: bool = False
     roles: list[str] = field(default_factory=list)
     # Role identity used by table-policy `has_role` evaluator. Populated by
     # `get_execution_context` from the `user_roles` table; empty for token-only
@@ -228,6 +233,7 @@ async def get_current_user_optional(
         is_active=True,
         is_superuser=is_superuser,
         is_verified=True,
+        is_external=payload.get("is_external", False),
         roles=payload.get("roles", []),
         embed=payload.get("embed", False),
         jti=payload.get("jti"),
@@ -501,6 +507,7 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
         is_active=True,
         is_superuser=is_superuser,
         is_verified=True,
+        is_external=payload.get("is_external", False),
         roles=payload.get("roles", []),
         embed=payload.get("embed", False),
         jti=payload.get("jti"),

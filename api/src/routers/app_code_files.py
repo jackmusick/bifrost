@@ -225,6 +225,7 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     try:
         return await repo.can_access(id=app_id)

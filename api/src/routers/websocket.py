@@ -96,10 +96,11 @@ async def _resolve_table_id(name_or_id: str, user: UserPrincipal) -> str | None:
             # Non-superusers' name lookups are restricted to their own org
             # (cascade with global) — superusers see all orgs.
             if not user.is_superuser:
-                stmt = stmt.where(
-                    (TableOrm.organization_id == user.organization_id)
-                    | (TableOrm.organization_id.is_(None))
-                )
+                # Cascade (org + global) — external users get no global tier.
+                org_cond = TableOrm.organization_id == user.organization_id
+                if not user.is_external:
+                    org_cond = org_cond | TableOrm.organization_id.is_(None)
+                stmt = stmt.where(org_cond)
         result = await db.execute(stmt)
         row = result.one_or_none()
 
@@ -111,6 +112,9 @@ async def _resolve_table_id(name_or_id: str, user: UserPrincipal) -> str | None:
     # Org gate for UUID lookups (name lookups already constrained above).
     if not user.is_superuser:
         if table_org is not None and table_org != user.organization_id:
+            return None
+        # External users: global (NULL-org) tables are NOT in reach by id.
+        if table_org is None and user.is_external:
             return None
 
     return str(table_id)
@@ -1103,6 +1107,7 @@ async def _process_chat_message(
                     org_id=user.organization_id,
                     user_id=user.user_id,
                     is_superuser=user.is_superuser,
+                    is_external=user.is_external,
                 )
                 accessible_agent = await repo.get_agent_with_access_check(conversation.agent_id)
             if accessible_agent is None:

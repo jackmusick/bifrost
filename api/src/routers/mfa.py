@@ -25,6 +25,7 @@ from src.core.security import (
 )
 from src.services.mfa_service import MFAService
 from src.services.user_provisioning import get_user_roles
+from shared.external_access import resolve_external_claim
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,7 @@ async def verify_mfa(
         "email": user.email,
         "name": user.name or user.email.split("@")[0],
         "is_superuser": user.is_superuser,
+        "is_external": await resolve_external_claim(db, user),
         "org_id": str(user.organization_id) if user.organization_id else None,
         "roles": roles,
     }

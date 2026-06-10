@@ -154,6 +154,7 @@ class AgentExecutor:
                 org_id=user.organization_id,
                 user_id=user.user_id,
                 is_superuser=user.is_superuser,
+                is_external=user.is_external,
             )
             accessible_agent = await repo.get_agent_with_access_check(new_agent.id)
             if accessible_agent is None:
@@ -218,6 +219,7 @@ class AgentExecutor:
             user_id=user.user_id if user else None,
             org_id=user.organization_id if user else None,
             is_superuser=user.is_superuser if user else False,
+            is_external=user.is_external if user else False,
         )
 
         try:

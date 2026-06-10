@@ -790,6 +790,7 @@ async def execute_workflow(
         org_id=lookup_org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
     )
 
     # A Solution caller's path::fn ref carries no install id (it can't know the

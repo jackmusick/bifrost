@@ -95,6 +95,7 @@ async def list_agents(context: Any) -> ToolResult:
                 org_id=org_id,
                 user_id=user_id,
                 is_superuser=is_admin,
+                is_external=context.is_external,
             )
 
             if is_admin:

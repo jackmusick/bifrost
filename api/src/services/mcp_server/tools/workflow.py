@@ -61,6 +61,7 @@ async def execute_workflow(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflow = await repo.resolve(workflow_id)
 
@@ -122,6 +123,7 @@ async def list_workflows(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflows = await repo.search(query=query, category=category, limit=100)
             total_count = await repo.count_active()
@@ -269,6 +271,7 @@ async def get_workflow(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
 
             if workflow_id:

@@ -152,6 +152,7 @@ async def get_application_or_404(
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     try:
         if ctx.user.is_platform_admin:
@@ -194,6 +195,7 @@ async def get_application_by_id_or_404(
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     try:
         return await repo.can_access(id=app_id)
@@ -235,6 +237,7 @@ async def create_application(
         target_org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -279,6 +282,7 @@ async def list_applications(
         filter_org,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     # Superusers use list_all_in_scope (respects filter_type, no role checks)
@@ -313,6 +317,7 @@ async def get_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     application = await get_application_or_404(ctx, slug)
     return await application_to_public(application, repo)
@@ -336,6 +341,7 @@ async def update_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -391,6 +397,7 @@ async def delete_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     success = await repo.delete_application(app_id)
 
@@ -426,6 +433,7 @@ async def get_draft(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     app = await get_application_by_id_or_404(ctx, app_id)
     export_data = await repo.export_application(app)
@@ -458,6 +466,7 @@ async def save_draft(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     app = await get_application_by_id_or_404(ctx, app_id)
 
@@ -501,6 +510,7 @@ async def publish_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -556,6 +566,7 @@ async def replace_application_endpoint(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -788,6 +799,7 @@ async def export_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     application = await get_application_by_id_or_404(ctx, app_id)
     export_data = await repo.export_application(application, version_id)
@@ -824,6 +836,7 @@ async def rollback_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     application = await get_application_by_id_or_404(ctx, app_id)
 

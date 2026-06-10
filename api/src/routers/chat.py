@@ -419,6 +419,7 @@ async def _check_agent_access(db: DbSession, user, agent: Agent) -> bool:
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     accessible = await repo.get(id=agent.id)
     return accessible is not None

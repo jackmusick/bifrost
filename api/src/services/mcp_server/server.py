@@ -139,6 +139,10 @@ class MCPContext:
     user_id: UUID | str
     org_id: UUID | str | None = None
     is_platform_admin: bool = False
+    # External (portal/guest) principal — no global tier, no authenticated-
+    # tier entitlement. Mirrors UserPrincipal.is_external (the claim is
+    # already bypass-neutralized at token mint).
+    is_external: bool = False
     user_email: str = ""
     user_name: str = ""
 
@@ -211,6 +215,7 @@ def _get_context_from_token() -> MCPContext:
         user_id=token.claims.get("user_id", ""),
         org_id=token.claims.get("org_id"),
         is_platform_admin=token.claims.get("is_superuser", False),
+        is_external=token.claims.get("is_external", False),
         user_email=token.claims.get("email", ""),
         user_name=token.claims.get("name", ""),
     )
@@ -240,6 +245,7 @@ async def _get_runtime_context() -> MCPContext:
 
     user_roles = token.claims.get("roles", [])
     is_superuser = token.claims.get("is_superuser", False)
+    is_external = token.claims.get("is_external", False)
     user_id = token.claims.get("user_id")
     org_id = token.claims.get("org_id")
     agent_id = _get_agent_id_from_scope()
@@ -255,6 +261,7 @@ async def _get_runtime_context() -> MCPContext:
                     is_superuser=is_superuser,
                     user_id=user_id,
                     org_id=org_id,
+                    is_external=is_external,
                 )
                 if agent_result is not None:
                     accessible_namespaces = list(agent_result.accessible_namespaces)
@@ -264,6 +271,7 @@ async def _get_runtime_context() -> MCPContext:
                     is_superuser=is_superuser,
                     user_id=user_id,
                     org_id=org_id,
+                    is_external=is_external,
                 )
                 accessible_namespaces = list(result.accessible_namespaces)
     except Exception as e:
@@ -273,6 +281,7 @@ async def _get_runtime_context() -> MCPContext:
         user_id=token.claims.get("user_id", ""),
         org_id=token.claims.get("org_id"),
         is_platform_admin=is_superuser,
+        is_external=is_external,
         user_email=token.claims.get("email", ""),
         user_name=token.claims.get("name", ""),
         accessible_namespaces=accessible_namespaces,
@@ -689,6 +698,7 @@ async def _execute_workflow_tool_impl(
                 org_id=context.org_id,
                 user_id=context.user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflow = await repo.get(id=workflow_id)
 

@@ -619,6 +619,7 @@ class BifrostAuthProvider:
                 "email": payload.get("email"),
                 "name": payload.get("name"),
                 "is_superuser": payload.get("is_superuser", False),
+                "is_external": payload.get("is_external", False),
                 "org_id": payload.get("org_id"),
                 "roles": role_names,  # Role names for MCP tool filtering
             },
