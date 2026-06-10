@@ -229,11 +229,17 @@ class TestChildEnvIsolation:
         )
 
     @pytest.mark.asyncio
-    async def test_api_url_and_redis_present(self) -> None:
-        """BIFROST_API_URL and BIFROST_REDIS_URL MUST remain in the child env.
+    async def test_redis_present(self) -> None:
+        """BIFROST_REDIS_URL MUST remain in the child env.
 
-        These are the child's legitimate communication channels.
-        Asserts the positive side of the scrub whitelist.
+        The child uses Redis directly for: reading execution context,
+        streaming logs, buffering SDK writes, and module cache access.
+        Removing BIFROST_REDIS_URL would break the entire execution path.
+
+        Note: BIFROST_API_URL may not be set as an explicit env var in all
+        deployments (the worker uses a default of "http://api:8000" via
+        os.getenv). The child's API calls work via the credentials file
+        which contains the API URL from mint_engine_token().
         """
         if not _isolation_enforced():
             pytest.skip("BIFROST_ENV_ISOLATION not set.")
@@ -242,15 +248,11 @@ class TestChildEnvIsolation:
             import os
             env = os.environ
             result = {
-                "api_url": bool(env.get("BIFROST_API_URL")),
                 "redis_url": bool(env.get("BIFROST_REDIS_URL")),
             }
         """)
         r = await _run_script(script, "test-iso-whitelist")
         assert r["status"] == "Success", f"Script failed: {r['error']}"
-        assert r["result"]["api_url"] is True, (
-            "BIFROST_API_URL is absent from child env — SDK calls will fail."
-        )
         assert r["result"]["redis_url"] is True, (
             "BIFROST_REDIS_URL is absent from child env — engine Redis I/O will fail."
         )
