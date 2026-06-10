@@ -233,9 +233,12 @@ services:
       BIFROST_S3_ACCESS_KEY: bifrost
       BIFROST_S3_SECRET_KEY: bifrost_debug_key
       BIFROST_S3_REGION: us-east-1
-      BIFROST_USE_THREAD_WORKERS: "true"
       BIFROST_DATABASE_POOL_SIZE: "1"
       BIFROST_DATABASE_MAX_OVERFLOW: "2"
+      # C1.5: pip cache parity with k8s (C1.3).
+      PIP_NO_CACHE_DIR: "1"
+      # C1.5: Explicit HOME so pip user-site and engine credentials file resolve correctly.
+      HOME: /home/bifrost
     volumes:
       - ./api/src:/app/src:ro
       - /app/src/services/app_compiler/node_modules
@@ -251,7 +254,14 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
-    user: root
+    # C1.5: Capability parity with k8s (C1.4).
+    # user: "1000:1000" bypasses the entrypoint.sh gosu switch. The gosu switch
+    # requires CAP_SETUID/CAP_SETGID which are dropped by cap_drop: ALL, so we
+    # must set user: explicitly. Source mounts are :ro so bifrost uid reads them fine.
+    # read_only: is NOT set — hot-reload writes /tmp, __pycache__, coverage files.
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     command: >
       watchmedo auto-restart --directory=/app/src --directory=/app/shared
       --pattern="*.py" --recursive -- python -m src.worker.main

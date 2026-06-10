@@ -109,6 +109,7 @@ services:
 
   # Init Container (Test) - Runs migrations and warms module cache before API/workers start
   init:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -133,6 +134,7 @@ services:
 
   # FastAPI Application (Test) - Only started for E2E tests
   api:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -187,6 +189,7 @@ services:
   # Note: Discovery service has been removed - workflow/form extraction
   # now happens at write time in FileStorageService
   worker:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -209,6 +212,9 @@ services:
       # Worker needs minimal DB connections — Redis-first pattern for agent runs
       BIFROST_DATABASE_POOL_SIZE: "1"
       BIFROST_DATABASE_MAX_OVERFLOW: "2"
+      # C1.5: Parity with production hardening
+      PIP_NO_CACHE_DIR: "1"
+      HOME: /home/bifrost
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
@@ -224,8 +230,10 @@ services:
         condition: service_started
       api:
         condition: service_healthy
-    # Entrypoint handles permissions; run as root so it can fix volume ownership
-    user: root
+    # C1.5: Run as bifrost uid. user: "1000:1000" bypasses gosu so cap_drop: ALL works.
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     command: ["python", "-m", "src.worker.main"]
     profiles:
       - e2e  # Only start in E2E mode
@@ -233,6 +241,7 @@ services:
   # Scheduler (Test) - Only started for E2E tests
   # Handles background jobs like GitHub sync via Redis pubsub
   scheduler:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -279,6 +288,7 @@ services:
 
   # Test Runner - Executes pytest inside container with all dependencies
   test-runner:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -315,6 +325,8 @@ services:
       # Embeddings E2E test configuration (optional - tests skip if not set)
       # Uses OpenAI text-embedding-3-small for vector embeddings
       EMBEDDINGS_AI_TEST_KEY: ${EMBEDDINGS_AI_TEST_KEY:-}
+      # Phase 1 hardening is applied to this stack — posture assertions always on
+      BIFROST_POSTURE_HARDENED: "1"
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
@@ -351,6 +363,11 @@ services:
         condition: service_started
       init:
         condition: service_completed_successfully
+    # C1.5: Run as bifrost uid so posture tests introspect a hardened context.
+    # user: "1000:1000" bypasses gosu so cap_drop: ALL works.
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     # Default command runs all tests except E2E
     command: ["pytest", "tests/", "--ignore=tests/e2e/", "-v"]
     profiles:
@@ -363,6 +380,7 @@ services:
   # Client frontend (Vite dev server)
   # Serves the React app for Playwright browser tests
   client:
+    image: bifrost-test-client-dev:latest
     build:
       context: ./client
       dockerfile: Dockerfile.dev
