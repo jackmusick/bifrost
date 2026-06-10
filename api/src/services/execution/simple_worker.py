@@ -234,8 +234,6 @@ def _clear_workspace_modules() -> None:
     modules_kept = 0
 
     for name, module in workspace_modules:
-        if name in modules_to_clear:
-            continue
         cached_hash = getattr(module, '__content_hash__', None)
 
         if not cached_hash:
