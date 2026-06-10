@@ -214,7 +214,9 @@ class SolutionAppBuilder:
                     kwargs["ContinuationToken"] = token
                 resp = await c.list_objects_v2(**kwargs)
                 for obj in resp.get("Contents", []):
-                    paths.append(obj["Key"][strip:])
+                    key = obj.get("Key")
+                    if key:
+                        paths.append(key[strip:])
                 if not resp.get("IsTruncated"):
                     break
                 token = resp.get("NextContinuationToken")
