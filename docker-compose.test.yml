@@ -363,6 +363,11 @@ services:
         condition: service_started
       init:
         condition: service_completed_successfully
+    # C1.5: Run as bifrost uid so posture tests introspect a hardened context.
+    # user: "1000:1000" bypasses gosu so cap_drop: ALL works.
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     # Default command runs all tests except E2E
     command: ["pytest", "tests/", "--ignore=tests/e2e/", "-v"]
     profiles:
