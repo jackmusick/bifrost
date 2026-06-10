@@ -16,13 +16,17 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TESTS_ROOT = REPO_ROOT / "api" / "tests" / "e2e"
+API_ROOT = REPO_ROOT / "api"
+TESTS_ROOT = API_ROOT / "tests" / "e2e"
 
 # Files measured to dominate runtime (>= 5s each, summed across all tests
 # in the file). Bin-packed first to keep wall-clock balanced. Numbers are
 # rough seconds from a CI run; used only for ordering, not exact math.
 # Weights are from May 2026; refresh from a --durations=50 run when shards
 # drift past 3 min spread.
+#
+# Paths are relative to api/ (i.e., tests/e2e/...) to match what test.sh
+# passes to pytest inside the container (CWD=/app, mounted from ./api/).
 WEIGHTS = {
     "tests/e2e/api/test_executions.py": 70,
     "tests/e2e/platform/test_large_file_memory.py": 35,
@@ -36,9 +40,11 @@ WEIGHTS = {
 
 
 def collect_test_files() -> list[str]:
+    # Paths are relative to api/ so they are valid as pytest args inside the
+    # test-runner container (CWD=/app, which maps to ./api/ on the host).
     out = []
     for p in sorted(TESTS_ROOT.rglob("test_*.py")):
-        rel = p.relative_to(REPO_ROOT)
+        rel = p.relative_to(API_ROOT)
         out.append(str(rel))
     return out
 
