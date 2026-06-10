@@ -175,32 +175,23 @@ def _template_main(
     # - BEFORE pipe.send({"status": "ready"}) — all forks inherit this scrubbed env.
     #
     # Assertion: get_settings() must NOT have been called by this point.
-    # If it were, the lru_cache would hold a Settings object with the secrets
-    # and the scrub would have no effect on in-process reads.  We log the cache
-    # state so any future regression is immediately visible.
+    # If it were, the lru_cache would hold a Settings object with the secrets;
+    # we log loudly and the cache_clear() below evicts it before priming.
+    from src.config import get_settings
     try:
-        from src.config import get_settings as _get_settings
-        cache_info = _get_settings.cache_info()
+        cache_info = get_settings.cache_info()
         if cache_info.currsize != 0:
             logger.error(
                 "SECURITY: get_settings() cache is non-empty at env-scrub point "
-                f"(currsize={cache_info.currsize}). Secrets may be retained in "
-                "memory after scrub. Investigate immediately."
+                f"(currsize={cache_info.currsize}). A Settings object holding "
+                "real secrets was constructed during template startup — find and "
+                "remove that call. Evicting it now before the sanitized re-prime."
             )
         else:
             logger.info("get_settings cache_info at scrub: currsize=0 (clean)")
     except Exception as e:
         logger.warning(f"Could not check get_settings cache state: {e}")
 
-    # Note: BIFROST_SECRET_KEY is intentionally NOT scrubbed here.
-    # The Settings Pydantic model requires it (no default), so removing it
-    # would cause get_settings() to fail in the child path (_read_context_from_redis
-    # calls get_settings() for redis_url). The child no longer USES SECRET_KEY
-    # to mint tokens — that path is covered by the token hand-down (step 1) — but
-    # the Settings validation dependency means the key must remain present.
-    # Risk: child still holds SECRET_KEY in env. Mitigation: the only child code
-    # path that previously used it (authenticate_engine → create_access_token) is
-    # now bypassed by the pre-minted engine_token from context_data.
     _SCRUB_KEYS = [
         "BIFROST_DATABASE_URL",
         "BIFROST_DATABASE_URL_SYNC",
@@ -221,6 +212,24 @@ def _template_main(
         logger.info(f"Scrubbed {len(scrubbed)} env var(s) from template before fork: {scrubbed}")
     else:
         logger.info("Env scrub: no forbidden vars found (already absent — expected in tests)")
+
+    # BIFROST_SECRET_KEY needs more than deletion: Settings.secret_key is
+    # required (min_length=32, no default), and child code calls get_settings()
+    # on every execution (engine.py reads settings.public_url; the SDK redis
+    # helpers read settings.redis_url). Deleting the var outright would crash
+    # Settings construction in every fork; keeping it would hand every child
+    # the JWT-signing key. So: swap in an inert sentinel, prime the
+    # get_settings() cache from the now-scrubbed env, then delete the var.
+    # Forks inherit the cached object via COW: get_settings() keeps working
+    # everywhere in the child, but its secret_key is the sentinel and its
+    # DB/RabbitMQ/S3 fields are localhost defaults. The real key exists in
+    # neither the child's env nor its memory; tokens are pre-minted by the
+    # parent (token hand-down), so nothing in the child signs JWTs.
+    os.environ["BIFROST_SECRET_KEY"] = "scrubbed-execution-children-hold-no-platform-credentials"
+    get_settings.cache_clear()
+    get_settings()
+    del os.environ["BIFROST_SECRET_KEY"]
+    logger.info("SECRET_KEY scrubbed: settings cache primed with inert sentinel, env var removed")
 
     logger.info("Template process ready — all dependencies loaded")
     pipe.send({"status": "ready", "pid": os.getpid()})
