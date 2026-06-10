@@ -69,6 +69,11 @@ def test_vendored_shared_dep_resolves_without_global_repo_access(e2e_client, pla
     assert dep.status_code in (200, 201), dep.text
 
     # The vendored shared.* import resolves even with global_repo_access OFF.
-    result = execute_workflow_sync(e2e_client, headers, wf_id, request_sync=True)
+    # Deploy remaps manifest ids per-install (uuid5(install, manifest_id),
+    # criterion 9/10) — execute by the DEPLOYED id, as real callers do.
+    from src.services.solutions.deploy import solution_entity_id
+
+    deployed_wf_id = str(solution_entity_id(uuid.UUID(sid), uuid.UUID(wf_id)))
+    result = execute_workflow_sync(e2e_client, headers, deployed_wf_id, request_sync=True)
     assert result["status"] == "Success", result
     assert result["result"] == {"value": 7}
