@@ -79,3 +79,47 @@ def test_scope_filters_out_wrong_scope():
     assert _resolve_target_install(installs, "mysol", "org", deployer_org_id="org-a") == "o1"
     # And the global descriptor only the global one.
     assert _resolve_target_install(installs, "mysol", "global", deployer_org_id="org-a") == "g1"
+
+
+def test_deploy_fails_loudly_when_install_list_fetch_fails(tmp_path, monkeypatch):
+    """A non-200 from GET /api/solutions must abort the deploy with a loud
+    error — not silently treat the list as empty, attempt a fresh create, and
+    surface a confusing downstream 409 ('Failed to create install')."""
+    from click.testing import CliRunner
+
+    import bifrost.client as client_mod
+    from bifrost.commands.solution import solution_group
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "bifrost.solution.yaml").write_text("slug: s\nname: S\nscope: org\n")
+
+    class _Resp:
+        def __init__(self, status_code: int, text: str = "", body: dict | None = None):
+            self.status_code = status_code
+            self.text = text
+            self._body = body or {}
+
+        def json(self):
+            return self._body
+
+    class _FakeClient:
+        organization = {"id": "org-1"}
+
+        async def get(self, path, **kwargs):
+            assert path == "/api/solutions"
+            return _Resp(500, text="internal server error")
+
+        async def post(self, path, **kwargs):
+            # Mimic the confusing downstream failure the old code produced:
+            # the slug already exists, so the blind create 409s.
+            return _Resp(409, text="install already exists")
+
+    monkeypatch.setattr(
+        client_mod.BifrostClient, "get_instance", staticmethod(lambda **k: _FakeClient())
+    )
+
+    result = CliRunner().invoke(solution_group, ["deploy"])
+    assert result.exit_code != 0
+    assert "Failed to list installs (500)" in result.output
+    assert "internal server error" in result.output
+    assert "Failed to create install" not in result.output

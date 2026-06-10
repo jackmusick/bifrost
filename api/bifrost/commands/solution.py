@@ -741,7 +741,11 @@ def deploy_cmd(path: str, solution_id: str | None) -> None:
         if target_id is None:
             # Resolve or create the install by (slug, scope).
             resp = await client.get("/api/solutions")
-            installs = resp.json().get("solutions", []) if resp.status_code == 200 else []
+            if resp.status_code != 200:
+                raise click.ClickException(
+                    f"Failed to list installs ({resp.status_code}): {resp.text[:200]}"
+                )
+            installs = resp.json().get("solutions", [])
             org = client.organization or {}
             deployer_org_id = org.get("id")
             try:
