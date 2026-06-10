@@ -15,6 +15,8 @@
  */
 import { useCallback, useRef, useState } from "react";
 
+import type { components } from "@/lib/v1";
+
 import { useBifrostContext } from "./provider";
 
 export interface UseWorkflowState<T> {
@@ -28,11 +30,10 @@ export interface UseWorkflowState<T> {
   run: (input?: Record<string, unknown>) => Promise<T>;
 }
 
-interface ExecuteResponse {
-  status: string;
-  result?: unknown;
-  error?: string | null;
-}
+// The generated contract type: `status` is the PascalCase `ExecutionStatus`
+// literal union ("Success" | "Failed" | ...), so the compiler enforces the
+// exact wire casing in the failed-status check below.
+type ExecuteResponse = components["schemas"]["WorkflowExecutionResponse"];
 
 /**
  * Run a Bifrost workflow by UUID or `path::function` ref from a v2 app. Bare
@@ -77,7 +78,7 @@ export function useWorkflow<T = unknown>(workflowRef: string): UseWorkflowState<
         const body = (await resp.json()) as ExecuteResponse;
         // A failed run can come back with `error: null` — status is the
         // authoritative signal, the message is best-effort.
-        if (body.error || body.status === "failed") {
+        if (body.error || body.status === "Failed") {
           throw new Error(
             body.error ?? `Workflow failed (status: ${body.status})`,
           );

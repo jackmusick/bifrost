@@ -89,10 +89,11 @@ describe("useWorkflow", () => {
     expect("app_id" in calls[0].body).toBe(false);
   });
 
-  it("rejects on status=failed even when error is null, leaving data unchanged", async () => {
+  it("rejects on status=Failed even when error is null, leaving data unchanged", async () => {
+    // "Failed" is the real wire value — ExecutionStatus is PascalCase.
     const fakeFetch = (async () =>
       new Response(
-        JSON.stringify({ status: "failed", error: null, result: null }),
+        JSON.stringify({ status: "Failed", error: null, result: null }),
         { status: 200, headers: { "content-type": "application/json" } },
       )) as typeof fetch;
 
@@ -186,7 +187,7 @@ describe("useWorkflow", () => {
 
   it("surfaces a workflow-level error", async () => {
     const fakeFetch = (async () =>
-      new Response(JSON.stringify({ status: "failed", error: "boom" }), {
+      new Response(JSON.stringify({ status: "Failed", error: "boom" }), {
         status: 200,
         headers: { "content-type": "application/json" },
       })) as typeof fetch;
