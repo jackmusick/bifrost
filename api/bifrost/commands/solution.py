@@ -129,14 +129,13 @@ def scaffold_app_cmd(slug: str, path: str | None, api_url: str | None) -> None:
     # Register the app in .bifrost/apps.yaml so `bifrost deploy` finds it (the
     # deployer reads this manifest). Without this the scaffold would be source
     # with no way to deploy — a papercut. Keyed by a fresh UUID (app identity).
-    bifrost_dir = root
 
     # Write the sample workflow at the SOLUTION ROOT (not under the app dir), so
     # its ``path::fn`` ref (``functions/hello.py::main``) resolves the same way
     # everywhere — refs are workspace-root-relative. ``solution start`` discovers
     # it from the root and runs the app's first-run button locally. Don't clobber
     # an existing file (a re-scaffold of a second app must not overwrite edits).
-    sample_dest = bifrost_dir / _SAMPLE_WORKFLOW_PATH
+    sample_dest = root / _SAMPLE_WORKFLOW_PATH
     if not sample_dest.exists():
         sample_dest.parent.mkdir(parents=True, exist_ok=True)
         sample_dest.write_text(_SAMPLE_WORKFLOW_SOURCE)
@@ -144,7 +143,7 @@ def scaffold_app_cmd(slug: str, path: str | None, api_url: str | None) -> None:
         # a Workflow ROW for it — without this, deploy bundles the source but the
         # app's `functions/hello.py::main` ref 404s on a deployed install (the
         # source has no row to resolve). Keyed by a fresh UUID (workflow identity).
-        wf_manifest = bifrost_dir / ".bifrost" / "workflows.yaml"
+        wf_manifest = root / ".bifrost" / "workflows.yaml"
         wf_manifest.parent.mkdir(parents=True, exist_ok=True)
         wf_data = yaml.safe_load(wf_manifest.read_text()) if wf_manifest.is_file() else None
         wf_data = wf_data or {"workflows": {}}
@@ -157,7 +156,7 @@ def scaffold_app_cmd(slug: str, path: str | None, api_url: str | None) -> None:
         }
         wf_manifest.write_text(yaml.safe_dump(wf_data, sort_keys=False))
 
-    manifest = bifrost_dir / ".bifrost" / "apps.yaml"
+    manifest = root / ".bifrost" / "apps.yaml"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     data = yaml.safe_load(manifest.read_text()) if manifest.is_file() else None
     data = data or {"apps": {}}
