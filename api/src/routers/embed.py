@@ -46,24 +46,27 @@ async def embed_app(
             .where(Application.slug == slug)
             .options(selectinload(Application.embed_secrets))
         )
-        app = result.scalar_one_or_none()
+        candidates = list(result.scalars().all())
 
-    if not app:
+    if not candidates:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    active_secrets = [s for s in app.embed_secrets if s.is_active]
-    if not active_secrets:
-        raise HTTPException(status_code=403, detail="No embed secrets configured")
-
-    # Try each active secret using its configured scheme
-    verified = False
-    for secret_record in active_secrets:
-        raw_secret = decrypt_secret(secret_record.secret_encrypted)
-        if verify_embed_hmac(query_params, raw_secret, secret_record.hmac_scheme):
-            verified = True
+    # A slug may match multiple installs of the same solution (slug uniqueness
+    # is per-install). The embed secret is bound to ONE Application row, so the
+    # HMAC itself disambiguates: the row whose active secret verifies wins.
+    app = None
+    for candidate in candidates:
+        for secret_record in (s for s in candidate.embed_secrets if s.is_active):
+            raw_secret = decrypt_secret(secret_record.secret_encrypted)
+            if verify_embed_hmac(query_params, raw_secret, secret_record.hmac_scheme):
+                app = candidate
+                break
+        if app is not None:
             break
 
-    if not verified:
+    if app is None:
+        if not any(s.is_active for c in candidates for s in c.embed_secrets):
+            raise HTTPException(status_code=403, detail="No embed secrets configured")
         raise HTTPException(status_code=403, detail="Invalid HMAC signature")
 
     # Extract verified params (everything except hmac)
