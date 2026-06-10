@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType
@@ -158,6 +158,14 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         created_by: str,
     ) -> Application:
         """Create a new application with access control settings."""
+        # Serialize against solution deploys of the same slug (deploy.py takes
+        # the same lock): both sides SELECT-then-INSERT into disjoint partial
+        # unique indexes, so a racing pair lands two same-slug rows and every
+        # subsequent open 500s with MultipleResultsFound.
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('bifrost:appslug:' || :s))"),
+            {"s": data.slug},
+        )
         # Check if application already exists in this scope
         existing = await self.get_by_slug_global(data.slug)
         if existing:
