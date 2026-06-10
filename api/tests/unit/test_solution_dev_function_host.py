@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from bifrost.solution_dev.function_host import discover_functions
+from bifrost.solution_dev.function_host import FunctionHost, discover_functions
 
 
 def _write(p: Path, body: str) -> None:
@@ -35,8 +35,6 @@ def test_discovers_decorated_functions_in_arbitrary_folders(tmp_path: Path):
     assert "modules/sub/calc.py::add" in fns
     assert callable(fns["functions/hello.py::main"])
 
-
-from bifrost.solution_dev.function_host import FunctionHost
 
 
 def test_host_runs_a_function_and_returns_result(tmp_path):
