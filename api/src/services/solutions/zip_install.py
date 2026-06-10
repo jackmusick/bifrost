@@ -26,6 +26,7 @@ import logging
 import os
 import tempfile
 import zipfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,10 +35,20 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.models.contracts.solutions import (
+    SolutionConfigSchemaChange,
+    SolutionConfigSchemaState,
+    SolutionEntityDiff,
+    SolutionUpgradeDiff,
+)
 from src.models.enums import ConfigType
 from src.models.orm.solution_config_schema import SolutionConfigSchema
 from src.models.orm.solutions import Solution
-from src.services.solutions.deploy import SolutionBundle, SolutionDeployer
+from src.services.solutions.deploy import (
+    SolutionBundle,
+    SolutionDeployer,
+    solution_entity_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +140,74 @@ def preview_zip(data: bytes) -> PreviewResult:
         return _parse_workspace(Path(tmp))
 
 
+# Preview entity types ↔ SolutionUpgradeDiff sections (same attribute names).
+_DIFF_ENTITY_TYPES = ("workflows", "tables", "forms", "agents", "apps")
+
+
+def compute_upgrade_diff(
+    preview: PreviewResult,
+    *,
+    install_id: UUID,
+    installed: Mapping[str, Sequence[tuple[UUID, str]]],
+    installed_config_schemas: Sequence[tuple[str, str, bool]],
+) -> SolutionUpgradeDiff:
+    """Diff a parsed zip against an existing install's solution-owned rows.
+
+    Pure function (no DB/S3) so it is unit-testable. Identity matching mirrors
+    what deploy will actually do — the deployer rewrites every manifest id to
+    ``uuid5(install_id, manifest_id)`` (:func:`solution_entity_id`), so:
+
+    * manifest entry whose remapped id exists on the install → kept (unlisted)
+    * manifest entry whose remapped id is absent → ``added``
+    * install row whose id matches no remapped manifest id → ``removed``
+
+    Reported by display name, falling back to the id. ``installed`` maps entity
+    type (``workflows``/``tables``/``forms``/``agents``/``apps``) to the
+    install's current ``(id, name)`` rows; ``installed_config_schemas`` is the
+    install's ``(key, type, required)`` declarations, compared by key.
+    """
+    diff = SolutionUpgradeDiff()
+    for etype in _DIFF_ENTITY_TYPES:
+        entries: list[dict[str, Any]] = getattr(preview, etype)
+        rows = installed.get(etype, ())
+        remapped_names: dict[UUID, str] = {}
+        for entry in entries:
+            manifest_id = UUID(str(entry["id"]))
+            name = str(entry.get("name") or entry["id"])
+            remapped_names[solution_entity_id(install_id, manifest_id)] = name
+        row_ids = {row_id for row_id, _ in rows}
+        section: SolutionEntityDiff = getattr(diff, etype)
+        section.added = [
+            name for rid, name in remapped_names.items() if rid not in row_ids
+        ]
+        section.removed = [
+            name or str(row_id)
+            for row_id, name in rows
+            if row_id not in remapped_names
+        ]
+
+    bundle_decls = {
+        str(entry["key"]): SolutionConfigSchemaState(
+            type=str(entry.get("type") or "string"),
+            required=bool(entry.get("required", False)),
+        )
+        for entry in preview.config_schemas
+    }
+    installed_decls = {
+        key: SolutionConfigSchemaState(type=type_, required=required)
+        for key, type_, required in installed_config_schemas
+    }
+    cfg = diff.config_schemas
+    cfg.added = [k for k in bundle_decls if k not in installed_decls]
+    cfg.removed = [k for k in installed_decls if k not in bundle_decls]
+    cfg.changed = [
+        SolutionConfigSchemaChange(key=k, from_=installed_decls[k], to=bundle_decls[k])
+        for k in bundle_decls
+        if k in installed_decls and bundle_decls[k] != installed_decls[k]
+    ]
+    return diff
+
+
 def _build_bundle(solution: Solution, preview: PreviewResult, workspace: Path) -> SolutionBundle:
     """Build the full deploy bundle from a parsed workspace.
 
@@ -149,6 +228,23 @@ def _build_bundle(solution: Solution, preview: PreviewResult, workspace: Path) -
     )
 
 
+async def find_install(
+    db: AsyncSession, *, slug: str, organization_id: UUID | None
+) -> Solution | None:
+    """Find the install for ``(slug, organization_id)`` — the EXACT match rule
+    ``_resolve_or_create_solution`` uses (each org's install of a slug is
+    independent, criterion 9; ``None`` org == global NULL scope). Read-only."""
+    if organization_id is not None:
+        q = select(Solution).where(
+            Solution.slug == slug, Solution.organization_id == organization_id
+        )
+    else:
+        q = select(Solution).where(
+            Solution.slug == slug, Solution.organization_id.is_(None)
+        )
+    return (await db.execute(q)).scalars().first()
+
+
 async def _resolve_or_create_solution(
     db: AsyncSession, *, slug: str, name: str, organization_id: UUID | None
 ) -> Solution:
@@ -159,15 +255,7 @@ async def _resolve_or_create_solution(
     org's install of a slug is independent (criterion 9), so we match within the
     requested scope only and create when none exists.
     """
-    if organization_id is not None:
-        q = select(Solution).where(
-            Solution.slug == slug, Solution.organization_id == organization_id
-        )
-    else:
-        q = select(Solution).where(
-            Solution.slug == slug, Solution.organization_id.is_(None)
-        )
-    existing = (await db.execute(q)).scalars().first()
+    existing = await find_install(db, slug=slug, organization_id=organization_id)
     if existing is not None:
         return existing
 

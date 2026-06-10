@@ -115,9 +115,68 @@ class SolutionEntities(BaseModel):
     required_configs_unset: list[str] = Field(default_factory=list)
 
 
+class SolutionEntityDiff(BaseModel):
+    """Added/removed display names for ONE entity type in an upgrade preview.
+
+    Identity is the deployer's per-install uuid5 remap (``solution_entity_id``),
+    so "kept" (in neither list) means the deploy would UPDATE that row in place.
+    """
+
+    added: list[str] = Field(default_factory=list)
+    removed: list[str] = Field(default_factory=list)
+
+
+class SolutionConfigSchemaState(BaseModel):
+    """The compared portion of a config declaration (type + required)."""
+
+    type: str
+    required: bool
+
+
+class SolutionConfigSchemaChange(BaseModel):
+    """One config declaration whose type/required changed between versions."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    key: str
+    from_: SolutionConfigSchemaState = Field(alias="from")
+    to: SolutionConfigSchemaState
+
+
+class SolutionConfigSchemaDiff(BaseModel):
+    """Config DECLARATION diff (by key) for an upgrade preview."""
+
+    added: list[str] = Field(default_factory=list)
+    removed: list[str] = Field(default_factory=list)
+    changed: list[SolutionConfigSchemaChange] = Field(default_factory=list)
+
+
+class SolutionUpgradeDiff(BaseModel):
+    """What deploying the previewed zip would change on the existing install."""
+
+    workflows: SolutionEntityDiff = Field(default_factory=SolutionEntityDiff)
+    tables: SolutionEntityDiff = Field(default_factory=SolutionEntityDiff)
+    forms: SolutionEntityDiff = Field(default_factory=SolutionEntityDiff)
+    agents: SolutionEntityDiff = Field(default_factory=SolutionEntityDiff)
+    apps: SolutionEntityDiff = Field(default_factory=SolutionEntityDiff)
+    config_schemas: SolutionConfigSchemaDiff = Field(default_factory=SolutionConfigSchemaDiff)
+
+
+class SolutionExistingInstall(BaseModel):
+    """The install a previewed zip would UPGRADE (matched by slug + scope)."""
+
+    id: UUID
+    name: str
+    version: str | None = None
+
+
 class SolutionInstallPreview(BaseModel):
     """Parse-only preview of a Solution install zip — what it would create + its
-    declared configs. Nothing is persisted by the preview endpoint."""
+    declared configs. Nothing is persisted by the preview endpoint.
+
+    When an install already exists for the zip's slug at the requested scope,
+    ``existing_install`` + ``diff`` describe the upgrade the install would
+    perform (Task 22) — drag-drop routes to UPGRADE, never a second install."""
 
     slug: str | None = None
     name: str | None = None
@@ -129,6 +188,8 @@ class SolutionInstallPreview(BaseModel):
     forms: list[dict[str, Any]] = Field(default_factory=list)
     agents: list[dict[str, Any]] = Field(default_factory=list)
     config_schemas: list[dict[str, Any]] = Field(default_factory=list)
+    existing_install: SolutionExistingInstall | None = None
+    diff: SolutionUpgradeDiff | None = None
 
 
 class SolutionDeployRequest(BaseModel):

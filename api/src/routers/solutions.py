@@ -32,9 +32,11 @@ from src.models.contracts.solutions import (
     SolutionDeployResponse,
     SolutionEntities,
     SolutionEntitySummary,
+    SolutionExistingInstall,
     SolutionInstallPreview,
     SolutionsList,
     SolutionUpdate,
+    SolutionUpgradeDiff,
 )
 from src.models.orm.agents import Agent
 from src.models.orm.applications import Application
@@ -585,13 +587,33 @@ async def install_preview(
     file: Annotated[UploadFile, File(description="Solution workspace zip")],
     ctx: Context,
     user: CurrentSuperuser,
+    organization_id: Annotated[str | None, FastapiForm()] = None,
 ) -> SolutionInstallPreview:
     """Unzip + parse a Solution workspace zip and report what it would create.
 
     Parse-only: no DB write, no S3, no build. The drag-and-drop UI calls this to
     show the install plan + declared configs before committing.
+
+    When an install already exists for the zip's slug at the requested scope
+    (``organization_id`` resolved exactly as the install endpoint does:
+    empty/absent → global NULL), the response also carries ``existing_install``
+    + ``diff`` so the UI routes to UPGRADE instead of a second install (Task 22).
     """
-    from src.services.solutions.zip_install import preview_zip
+    from src.services.solutions.zip_install import (
+        compute_upgrade_diff,
+        find_install,
+        preview_zip,
+    )
+
+    org_id: UUID | None = None
+    if organization_id:
+        try:
+            org_id = UUID(organization_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid organization_id: {organization_id}",
+            ) from exc
 
     data = await file.read()
     try:
@@ -601,6 +623,50 @@ async def install_preview(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid solution zip: {exc}",
         ) from exc
+
+    existing_install: SolutionExistingInstall | None = None
+    diff: SolutionUpgradeDiff | None = None
+    existing = (
+        await find_install(ctx.db, slug=result.slug, organization_id=org_id)
+        if result.slug
+        else None
+    )
+    if existing is not None:
+        # Read-only lookups of the install's current solution-owned rows — the
+        # preview never writes (no flush/commit anywhere on this path).
+        installed: dict[str, list[tuple[UUID, str]]] = {}
+        for etype, model in (
+            ("workflows", Workflow),
+            ("tables", Table),
+            ("forms", Form),
+            ("agents", Agent),
+            ("apps", Application),
+        ):
+            rows = (
+                await ctx.db.execute(
+                    select(model.id, model.name).where(model.solution_id == existing.id)
+                )
+            ).all()
+            installed[etype] = [(row_id, name) for row_id, name in rows]
+        decls = (
+            await ctx.db.execute(
+                select(
+                    SolutionConfigSchema.key,
+                    SolutionConfigSchema.type,
+                    SolutionConfigSchema.required,
+                ).where(SolutionConfigSchema.solution_id == existing.id)
+            )
+        ).all()
+        existing_install = SolutionExistingInstall(
+            id=existing.id, name=existing.name, version=existing.version
+        )
+        diff = compute_upgrade_diff(
+            result,
+            install_id=existing.id,
+            installed=installed,
+            installed_config_schemas=[(k, t, r) for k, t, r in decls],
+        )
+
     return SolutionInstallPreview(
         slug=result.slug,
         name=result.name,
@@ -612,6 +678,8 @@ async def install_preview(
         forms=result.forms,
         agents=result.agents,
         config_schemas=result.config_schemas,
+        existing_install=existing_install,
+        diff=diff,
     )
 
 

@@ -19,40 +19,59 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 
-def _make_zip(slug: str, version: str | None = None) -> bytes:
+def _make_zip(
+    slug: str,
+    version: str | None = None,
+    *,
+    extra_workflow: bool = False,
+    api_key_type: str = "secret",
+) -> bytes:
     """A minimal Solution workspace zip: descriptor + a workflow (manifest +
     source) + a required secret config declaration.
 
     Entity ids are STABLE per slug (uuid5), mirroring a real workspace: the
     ``.bifrost/*.yaml`` manifests keep their ids across versions, so a v2 zip
-    of the same Solution carries the same manifest UUIDs as v1."""
+    of the same Solution carries the same manifest UUIDs as v1.
+    ``extra_workflow``/``api_key_type`` shape a "v2" zip for upgrade-diff tests.
+    """
     wf_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{slug}/workflows/main"))
     cfg_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{slug}/configs/API_KEY"))
     descriptor = f"slug: {slug}\nname: {slug.upper()}\nscope: global\n"
     if version is not None:
         descriptor += f"version: '{version}'\n"
+    workflows_yaml = (
+        "workflows:\n"
+        f"  {wf_id}:\n"
+        f"    id: {wf_id}\n"
+        "    name: main\n"
+        "    function_name: run\n"
+        "    path: workflows/main.py\n"
+    )
     files = {
         "bifrost.solution.yaml": descriptor,
-        ".bifrost/workflows.yaml": (
-            "workflows:\n"
-            f"  {wf_id}:\n"
-            f"    id: {wf_id}\n"
-            "    name: main\n"
-            "    function_name: run\n"
-            "    path: workflows/main.py\n"
-        ),
         ".bifrost/configs.yaml": (
             "configs:\n"
             "  API_KEY:\n"
             f"    id: {cfg_id}\n"
             "    key: API_KEY\n"
-            "    type: secret\n"
+            f"    type: {api_key_type}\n"
             "    required: true\n"
             "    description: needed\n"
             "    position: 0\n"
         ),
         "workflows/main.py": "def run(sdk):\n    return 'ok'\n",
     }
+    if extra_workflow:
+        wf2_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{slug}/workflows/extra"))
+        workflows_yaml += (
+            f"  {wf2_id}:\n"
+            f"    id: {wf2_id}\n"
+            "    name: extra\n"
+            "    function_name: run\n"
+            "    path: workflows/extra.py\n"
+        )
+        files["workflows/extra.py"] = "def run(sdk):\n    return 'extra'\n"
+    files[".bifrost/workflows.yaml"] = workflows_yaml
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         for name, content in files.items():
@@ -185,3 +204,74 @@ async def test_zip_install_upgrade_and_downgrade_gate(e2e_client, platform_admin
     assert forced.json()["id"] == sid
     assert forced.json()["version"] == "0.9.0"
     assert forced.json()["upgraded_from_version"] == "1.1.0"
+
+
+async def test_zip_preview_returns_upgrade_diff_for_existing_install(
+    e2e_client, platform_admin
+):
+    """Preview of a v2 zip whose slug+scope matches an existing install (Task 22):
+
+    * ``existing_install`` identifies the install (id, name, version=v1)
+    * ``diff`` reports the added workflow + the changed config declaration
+    * preview stays read-only — no second install row appears
+    * a fresh slug previews with ``existing_install``/``diff`` absent
+    """
+    headers = platform_admin.headers
+    upload_headers = {
+        k: v for k, v in headers.items() if k.lower() != "content-type"
+    }
+    slug = f"zip-diff-{uuid.uuid4().hex[:8]}"
+
+    # Install v1 (one workflow, API_KEY declared as secret).
+    v1 = e2e_client.post(
+        "/api/solutions/install",
+        headers=upload_headers,
+        files={"file": (f"{slug}.zip", _make_zip(slug, "1.0.0"), "application/zip")},
+        data={"config_values": "{}"},
+    )
+    assert v1.status_code in (200, 201), v1.text
+    sid = v1.json()["id"]
+
+    # Preview a v2 zip: same slug+scope, one extra workflow, API_KEY type changed.
+    v2_zip = _make_zip(slug, "2.0.0", extra_workflow=True, api_key_type="string")
+    pv = e2e_client.post(
+        "/api/solutions/install/preview",
+        headers=upload_headers,
+        files={"file": (f"{slug}.zip", v2_zip, "application/zip")},
+    )
+    assert pv.status_code == 200, pv.text
+    body = pv.json()
+
+    existing = body["existing_install"]
+    assert existing is not None, "preview must detect the existing install"
+    assert existing["id"] == sid
+    assert existing["version"] == "1.0.0"
+
+    diff = body["diff"]
+    assert diff is not None
+    assert diff["workflows"]["added"] == ["extra"]
+    assert diff["workflows"]["removed"] == []
+    changed = {c["key"]: c for c in diff["config_schemas"]["changed"]}
+    assert "API_KEY" in changed
+    assert changed["API_KEY"]["from"]["type"] == "secret"
+    assert changed["API_KEY"]["to"]["type"] == "string"
+
+    # Read-only: preview must NOT have created a second install for this slug.
+    listing = e2e_client.get("/api/solutions", headers=headers)
+    assert listing.status_code == 200, listing.text
+    rows = [s for s in listing.json()["solutions"] if s["slug"] == slug]
+    assert len(rows) == 1 and rows[0]["id"] == sid
+
+    # A fresh slug previews with no existing install and no diff.
+    fresh_slug = f"zip-fresh-{uuid.uuid4().hex[:8]}"
+    fresh = e2e_client.post(
+        "/api/solutions/install/preview",
+        headers=upload_headers,
+        files={"file": (f"{fresh_slug}.zip", _make_zip(fresh_slug, "1.0.0"), "application/zip")},
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert fresh.json()["existing_install"] is None
+    assert fresh.json()["diff"] is None
+    # ...and the fresh-slug preview created nothing either.
+    listing2 = e2e_client.get("/api/solutions", headers=headers)
+    assert [s for s in listing2.json()["solutions"] if s["slug"] == fresh_slug] == []
