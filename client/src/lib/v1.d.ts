@@ -21398,6 +21398,12 @@ export interface components {
              */
             is_system: boolean;
             /**
+             * Is External
+             * @description External (portal/guest) user: sees only their own org tier — no global entities and no 'authenticated' access-level entitlement
+             * @default false
+             */
+            is_external: boolean;
+            /**
              * Mfa Enabled
              * @default false
              */
@@ -21492,6 +21498,8 @@ export interface components {
             is_superuser?: boolean | null;
             /** Is Verified */
             is_verified?: boolean | null;
+            /** Is External */
+            is_external?: boolean | null;
             /** Mfa Enabled */
             mfa_enabled?: boolean | null;
             /** Organization Id */
@@ -22693,6 +22701,11 @@ export interface components {
              * @default false
              */
             is_superuser: boolean;
+            /**
+             * Is External
+             * @default false
+             */
+            is_external: boolean;
             /** Organization Id */
             organization_id?: string | null;
             /**

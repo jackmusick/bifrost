@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,7 @@ function CreateUserDialogContent({
 	const [email, setEmail] = useState("");
 	const [displayName, setDisplayName] = useState("");
 	const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+	const [isExternal, setIsExternal] = useState(false);
 	const [orgId, setOrgId] = useState<string>("");
 	const [validationError, setValidationError] = useState<string | null>(null);
 	const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(
@@ -157,6 +159,7 @@ function CreateUserDialogContent({
 					name: displayName.trim(),
 					is_active: true,
 					is_superuser: isPlatformAdmin,
+					is_external: !isPlatformAdmin && isExternal,
 					organization_id: orgId || null,
 					invite: true,
 					trigger_automation: false,
@@ -309,6 +312,23 @@ function CreateUserDialogContent({
 							: "The organization this user belongs to"}
 					</p>
 				</div>
+
+				{!isPlatformAdmin && (
+					<div className="flex items-center justify-between rounded-lg border p-4">
+						<div className="space-y-0.5">
+							<Label htmlFor="external">External user</Label>
+							<p className="text-xs text-muted-foreground">
+								Sees only role-granted entities in their
+								organization — no shared global resources
+							</p>
+						</div>
+						<Switch
+							id="external"
+							checked={isExternal}
+							onCheckedChange={setIsExternal}
+						/>
+					</div>
+				)}
 
 				{/* Roles multi-select */}
 				{!isPlatformAdmin && (
