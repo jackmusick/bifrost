@@ -147,7 +147,7 @@ async def get_application_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
-    if ctx.user.embed:
+    if ctx.user.embed is True:
         # Embed principals are HMAC-pre-authorized for exactly ONE app — the
         # token's app_id claim. Tier/role checks don't apply (the principal
         # is a synthetic external identity with no roles); identity binding
@@ -215,7 +215,7 @@ async def get_application_by_id_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
-    if ctx.user.embed:
+    if ctx.user.embed is True:
         # Embed pre-auth: bound to the token's app_id only (see the slug
         # helper above — OPEN-D).
         if ctx.user.app_id == str(app_id):

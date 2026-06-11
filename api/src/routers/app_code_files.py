@@ -220,7 +220,7 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
     Raises:
         HTTPException 404 if not found or access denied
     """
-    if ctx.user.embed:
+    if ctx.user.embed is True:
         # Embed pre-auth (OPEN-D): the token is HMAC-bound to exactly ONE
         # app (its app_id claim). Tier/role checks don't apply; identity
         # binding does — only the bound app's files resolve.

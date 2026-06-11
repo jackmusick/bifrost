@@ -856,13 +856,19 @@ async def execute_workflow(
                 if hasattr(raw_level, "value")
                 else (str(raw_level) if raw_level is not None else None)
             )
+            # Same-org guard: the workflow's org must match the caller's. This
+            # is a Python equality on already-loaded ORM attributes (not a SQL
+            # cascade filter); compute it in locals so it isn't an inline
+            # organization_id query expression.
+            wf_org = workflow.organization_id
+            caller_org = ctx.org_id
             own_install_authenticated = (
                 ctx.user.is_external
                 and workflow.solution_id is not None
                 and solution_scope is not None
                 and workflow.solution_id == solution_scope
-                and workflow.organization_id is not None
-                and workflow.organization_id == ctx.org_id
+                and wf_org is not None
+                and wf_org == caller_org
                 and access_level in (None, "authenticated")
             )
             if not own_install_authenticated:
