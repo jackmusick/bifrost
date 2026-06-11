@@ -308,6 +308,226 @@ class TestExternalUserRoleGrant:
         )
 
 
+@pytest.fixture(scope="module")
+def global_tool(e2e_client, platform_admin):
+    """A GLOBAL workflow of type='tool' — the /api/tools canary."""
+    content = '''"""E2E External Users Global Tool"""
+from bifrost import tool
+
+@tool(
+    name="e2e_external_users_global_tool",
+    description="Global tool canary for external-user isolation",
+)
+async def e2e_external_users_global_tool(q: str = "x") -> str:
+    return q
+'''
+    result = write_and_register(
+        e2e_client,
+        platform_admin.headers,
+        "e2e_external_users_global_tool.py",
+        content,
+        "e2e_external_users_global_tool",
+    )
+    assert result["type"] == "tool", result
+    yield result
+    e2e_client.delete(
+        "/api/files/editor?path=e2e_external_users_global_tool.py",
+        headers=platform_admin.headers,
+    )
+
+
+def _tool_workflow_ids(e2e_client, user) -> list[dict]:
+    resp = e2e_client.get("/api/tools?type=workflow", headers=user.headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()["tools"]
+
+
+class TestExternalUserGlobalTools:
+    """Proof: an external user gets ZERO global tools from /api/tools."""
+
+    def test_external_user_sees_no_global_tools(
+        self, e2e_client, external_user, global_tool
+    ):
+        tools = _tool_workflow_ids(e2e_client, external_user)
+        global_tools = [t for t in tools if t.get("organization_id") is None]
+        assert global_tools == [], (
+            "external user's /api/tools must contain zero global tools"
+        )
+        assert global_tool["id"] not in {t["id"] for t in tools}
+
+    def test_normal_user_sees_global_tool(
+        self, e2e_client, org1_user, global_tool
+    ):
+        tools = _tool_workflow_ids(e2e_client, org1_user)
+        assert global_tool["id"] in {t["id"] for t in tools}, (
+            "normal org user must still see the global tool"
+        )
+
+
+@pytest.fixture
+async def global_kb_doc(db_session, org1):
+    """Seed a GLOBAL and an org knowledge document directly in the DB — the
+    content-leak canary. Seeding via DB (not the embedding-dependent
+    create_document endpoint) keeps the test independent of an embedding
+    service; the /documents LIST path under test is a plain SELECT.
+    """
+    from src.models.orm.knowledge import KnowledgeStore
+
+    ns = f"e2e-ext-ns-{SUFFIX}"
+    glob = KnowledgeStore(
+        namespace=ns,
+        organization_id=None,
+        key="global-secret",
+        content="GLOBAL-SECRET-CONTENT",
+        doc_metadata={},
+        embedding=[0.1, 0.2, 0.3],
+        chunk_index=0,
+        chunk_count=1,
+    )
+    org_doc = KnowledgeStore(
+        namespace=ns,
+        organization_id=UUID(org1["id"]),
+        key="org-doc",
+        content="ORG-CONTENT",
+        doc_metadata={},
+        embedding=[0.1, 0.2, 0.3],
+        chunk_index=0,
+        chunk_count=1,
+    )
+    db_session.add_all([glob, org_doc])
+    await db_session.commit()
+    yield {"id": str(glob.id), "namespace": ns, "org_doc_id": str(org_doc.id)}
+    for d in (glob, org_doc):
+        await db_session.delete(d)
+    await db_session.commit()
+
+
+class TestExternalUserGlobalKnowledge:
+    """Proof (worst leak): an external user reads ZERO global KB documents."""
+
+    def test_external_user_lists_no_global_docs(
+        self, e2e_client, external_user, global_kb_doc
+    ):
+        resp = e2e_client.get(
+            "/api/knowledge-sources/documents",
+            headers=external_user.headers,
+            params={"namespace": f"e2e-ext-ns-{SUFFIX}"},
+        )
+        assert resp.status_code == 200, resp.text
+        docs = resp.json()
+        global_docs = [d for d in docs if d.get("organization_id") is None]
+        assert global_docs == [], (
+            "external user must read zero global knowledge documents"
+        )
+        assert global_kb_doc["id"] not in {d["id"] for d in docs}
+
+    def test_normal_user_lists_global_doc(
+        self, e2e_client, org1_user, global_kb_doc
+    ):
+        resp = e2e_client.get(
+            "/api/knowledge-sources/documents",
+            headers=org1_user.headers,
+            params={"namespace": f"e2e-ext-ns-{SUFFIX}"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert global_kb_doc["id"] in {d["id"] for d in resp.json()}, (
+            "normal org user must still read the global knowledge document"
+        )
+
+
+@pytest.fixture(scope="module")
+def global_role_agent(e2e_client, platform_admin, global_tool, portal_role):
+    """A GLOBAL role_based agent, assigned to portal_role (which the external
+    user holds), exposing the global tool workflow. Pre-fix an external user
+    would reach this agent's tools via the global tier + role-name match
+    (LEAK #2); post-fix the org filter drops it before the role check.
+    """
+    resp = e2e_client.post(
+        "/api/agents",
+        headers=platform_admin.headers,
+        json={
+            "name": f"E2E Ext Global Role Agent {SUFFIX}",
+            "system_prompt": "You are a global role agent.",
+            "access_level": "role_based",
+            "organization_id": None,
+            "role_ids": [portal_role["id"]],
+            "tool_ids": [global_tool["id"]],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    agent = resp.json()
+    yield agent
+    e2e_client.delete(f"/api/agents/{agent['id']}", headers=platform_admin.headers)
+
+
+class TestExternalUserMCPAgentIsolation:
+    """Proof (LEAK #2): an external user cannot reach a global/cross-org agent's
+    tools via /api/mcp/tools, even when they share the agent's role."""
+
+    def _mcp_tool_names(self, e2e_client, user) -> set[str]:
+        resp = e2e_client.get("/api/mcp/tools", headers=user.headers)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        tools = body.get("tools", body) if isinstance(body, dict) else body
+        return {t.get("name") or t.get("id") for t in tools}
+
+    def test_external_user_cannot_reach_global_agent_tools(
+        self, e2e_client, external_user, global_role_agent, global_tool
+    ):
+        names = self._mcp_tool_names(e2e_client, external_user)
+        assert global_tool["name"] not in names, (
+            "external user must NOT reach a global role_based agent's tools "
+            "(no global tier — LEAK #2)"
+        )
+        assert global_tool["id"] not in names
+
+    def test_normal_user_with_role_reaches_global_agent_tools(
+        self, e2e_client, platform_admin, org1, portal_role,
+        global_role_agent, global_tool,
+    ):
+        # A NON-external org user holding portal_role DOES reach the global
+        # agent's tools — proving the restriction is external-specific.
+        suffix = uuid4().hex[:8]
+        user = E2EUser(
+            email=f"e2e-mcp-normal-{suffix}@gobifrost.dev",
+            password="NormalPass123!",
+            name=f"Normal {suffix}",
+            organization_id=UUID(org1["id"]),
+        )
+        resp = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": user.email,
+                "name": user.name,
+                "organization_id": org1["id"],
+                "is_superuser": False,
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        user.user_id = UUID(resp.json()["id"])
+        e2e_client.post(
+            f"/api/roles/{portal_role['id']}/users",
+            headers=platform_admin.headers,
+            json={"user_ids": [str(user.user_id)]},
+        )
+        user = _register_and_authenticate_user(e2e_client, user, skip_registration=False)
+        try:
+            names = self._mcp_tool_names(e2e_client, user)
+            assert global_tool["name"] in names, (
+                "normal org user with the role must reach the global agent's tools"
+            )
+        finally:
+            e2e_client.patch(
+                f"/api/users/{user.user_id}",
+                headers=platform_admin.headers,
+                json={"is_active": False},
+            )
+            e2e_client.delete(
+                f"/api/users/{user.user_id}", headers=platform_admin.headers
+            )
+
+
 class TestExternalFlagLifecycle:
     def test_flag_updatable_via_user_update(
         self, e2e_client, platform_admin, org1
