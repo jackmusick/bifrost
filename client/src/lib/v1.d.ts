@@ -3725,22 +3725,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8680,6 +8680,83 @@ export interface paths {
          * @description Deletes the caller's user_mcp_credentials row for this connection and the underlying oauth_tokens row. Idempotent — returns 204 whether or not a credential existed.
          */
         delete: operations["disconnect_user_credential_api_me_mcp_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/modules/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch Module
+         * @description Fetch a workspace module by path.
+         *
+         *     Returns the module source and hash exactly as the module cache would.
+         *     On miss (module not found in Redis or S3), returns 404.
+         *
+         *     This endpoint is called by the child process's virtual import hook when
+         *     Redis is cold (i.e. after a Redis restart that evicted cached modules).
+         *     The child authenticates with its pre-minted engine token.
+         *
+         *     Args:
+         *         path: Module path relative to workspace root (e.g. "features/api.py").
+         */
+        get: operations["fetch_module_api_sdk_modules__path__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/modules-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch Module Index
+         * @description Fetch the set of all known workspace module paths.
+         *
+         *     Returns JSON: {"paths": ["features/api.py", ...]}.
+         *     Used by the child's VirtualModuleFinder to rebuild the module index when
+         *     the Redis SET is cold.
+         */
+        get: operations["fetch_module_index_api_sdk_modules_index_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch Requirements
+         * @description Fetch requirements.txt content.
+         *
+         *     Returns JSON: {"content": "...", "hash": "..."} or 404 if none exists.
+         *     Used by the child's install_requirements() when Redis is cold.
+         */
+        get: operations["fetch_requirements_api_sdk_requirements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -28784,7 +28861,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28817,7 +28894,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28850,7 +28927,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -28883,7 +28960,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__get: {
+    execute_endpoint_api_endpoints__workflow_id__delete: {
         parameters: {
             query?: never;
             header: {
@@ -37986,6 +38063,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_module_api_sdk_modules__path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_module_index_api_sdk_modules_index_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    fetch_requirements_api_sdk_requirements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
