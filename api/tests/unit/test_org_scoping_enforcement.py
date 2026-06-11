@@ -94,10 +94,10 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/integrations.py', 'ConfigModel.organization_id == organization_id,', 'integration config inline; phase 5 migrates'),
     ('routers/integrations.py', 'ConfigModel.organization_id == org_id,', 'integration config inline; phase 5 migrates'),
     ('routers/knowledge_sources.py', 'KnowledgeNamespaceRole.organization_id == org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'stmt = stmt.where(KnowledgeStore.organization_id.is_(None))', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id == filter_org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id.is_(None),', 'knowledge sources inline cascade; phase 6 migrates'),
+    # The KnowledgeStore document-list inline cascades were removed (EXT-1
+    # NEW-J) — list_all_documents / list_documents now route through
+    # org_filter_clause (the single source of truth that honors the EMPTY
+    # sentinel). Only the namespace-role + target_org_id lookups remain inline.
     ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id == target_org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
     ('routers/llm_config.py', 'SystemConfig.organization_id.is_(None),', 'SystemConfig admin lookup; pre-repo pattern (permanent)'),
     ('routers/mcp_connections.py', 'query = query.where(MCPConnection.organization_id == scope_org)', 'MCP connection org filter; phase 6 migrates'),

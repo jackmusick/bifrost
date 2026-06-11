@@ -73,6 +73,9 @@ class MCPServerRepository(OrgScopedRepository[MCPServer]):
 
         if filter_type == OrgFilterType.ALL:
             pass
+        elif filter_type == OrgFilterType.EMPTY:
+            # Org-less external sentinel (EXT-1 NEW-J): match nothing.
+            query = query.where(MCPServer.id.is_(None))
         elif filter_type == OrgFilterType.GLOBAL_ONLY:
             query = query.where(MCPServer.organization_id.is_(None))
         elif filter_type == OrgFilterType.ORG_ONLY:

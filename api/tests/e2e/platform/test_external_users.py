@@ -13,6 +13,7 @@ org:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -432,6 +433,83 @@ class TestExternalUserGlobalKnowledge:
         assert resp.status_code == 200, resp.text
         assert global_kb_doc["id"] in {d["id"] for d in resp.json()}, (
             "normal org user must still read the global knowledge document"
+        )
+
+
+@pytest.mark.e2e
+class TestOrglessExternalEmptyTier:
+    """EXT-1 NEW-J: an ORG-LESS external (organization_id=None — a
+    misconfiguration: users.py accepts is_external + no org) must read NOTHING,
+    never the GLOBAL tier. The HTTP auth gate (auth.py: non-superuser + no org +
+    not embed -> 401) blocks such a token today, so the leak is not reachable
+    over HTTP — but the data layer must still be safe (defense in depth). These
+    tests exercise the EXACT query path the knowledge list router builds, via
+    resolve_org_filter + org_filter_clause, for an org-less external principal,
+    and assert the global canary is never returned. The non-regressions
+    (org-having external -> own org; normal -> own+global) are covered by the
+    HTTP-reachable sibling classes above."""
+
+    async def test_orgless_external_knowledge_query_is_empty(
+        self, db_session, global_kb_doc
+    ):
+        from sqlalchemy import select
+
+        from src.core.org_filter import org_filter_clause, resolve_org_filter
+        from src.models.orm.knowledge import KnowledgeStore
+
+        # The org-less external principal (the misconfiguration NEW-J hardens).
+        principal = SimpleNamespace(
+            is_superuser=False, is_external=True, organization_id=None
+        )
+        filter_type, filter_org_id = resolve_org_filter(principal)
+
+        stmt = select(KnowledgeStore).where(
+            KnowledgeStore.namespace == global_kb_doc["namespace"]
+        )
+        clause = org_filter_clause(
+            KnowledgeStore.organization_id, filter_type, filter_org_id
+        )
+        assert clause is not None, "org-less external must get a (false) clause"
+        stmt = stmt.where(clause)
+
+        rows = (await db_session.execute(stmt)).scalars().all()
+        assert rows == [], (
+            "org-less external must read ZERO knowledge docs (incl. the global "
+            f"canary {global_kb_doc['id']}) — got {[str(r.id) for r in rows]}"
+        )
+
+    async def test_orghaving_external_knowledge_query_excludes_global(
+        self, db_session, global_kb_doc, org1
+    ):
+        # Non-regression: an ORG-HAVING external still reads its own org's docs,
+        # and still NOT the global one.
+        from sqlalchemy import select
+
+        from src.core.org_filter import org_filter_clause, resolve_org_filter
+        from src.models.orm.knowledge import KnowledgeStore
+
+        principal = SimpleNamespace(
+            is_superuser=False,
+            is_external=True,
+            organization_id=UUID(org1["id"]),
+        )
+        filter_type, filter_org_id = resolve_org_filter(principal)
+        stmt = select(KnowledgeStore).where(
+            KnowledgeStore.namespace == global_kb_doc["namespace"]
+        )
+        clause = org_filter_clause(
+            KnowledgeStore.organization_id, filter_type, filter_org_id
+        )
+        stmt = stmt.where(clause)
+        rows = (await db_session.execute(stmt)).scalars().all()
+        org_ids = {
+            str(r.organization_id) if r.organization_id else None for r in rows
+        }
+        assert None not in org_ids, (
+            "org-having external must not read the global tier"
+        )
+        assert org1["id"] in org_ids, (
+            "org-having external must still read its own org's doc"
         )
 
 

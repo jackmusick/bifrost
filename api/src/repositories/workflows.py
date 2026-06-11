@@ -242,6 +242,9 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
             else:
                 # GLOBAL_ONLY (or no org) for an external => nothing.
                 stmt = stmt.where(false())
+        elif filter_type is OrgFilterType.EMPTY:
+            # Org-less external sentinel (EXT-1 NEW-J): match nothing.
+            stmt = stmt.where(false())
         elif filter_type is OrgFilterType.ORG_PLUS_GLOBAL:
             if filter_org_id is None:
                 stmt = stmt.where(Workflow.organization_id.is_(None))
@@ -253,7 +256,11 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
                     )
                 )
         elif filter_type is OrgFilterType.ORG_ONLY:
-            stmt = stmt.where(Workflow.organization_id == filter_org_id)
+            # A None org here is not a license to read global (EXT-1 NEW-J).
+            if filter_org_id is None:
+                stmt = stmt.where(false())
+            else:
+                stmt = stmt.where(Workflow.organization_id == filter_org_id)
         elif filter_type is OrgFilterType.GLOBAL_ONLY:
             stmt = stmt.where(Workflow.organization_id.is_(None))
 

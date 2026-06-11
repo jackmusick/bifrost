@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, cast, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -673,7 +673,13 @@ async def _resolve_solution_table_by_name(
     # a global solution-managed table can't be resolved by name (EXT-1 NEW-3).
     if not ctx.user.is_superuser:
         if getattr(ctx.user, "is_external", False):
-            stmt = stmt.where(Table.organization_id == target_org_id)
+            # External: own org only, no global tier. An ORG-LESS external
+            # (target_org_id None) must read NOTHING — ``== None`` would compile
+            # to ``IS NULL`` and resolve a GLOBAL solution table (EXT-1 NEW-J).
+            if target_org_id is None:
+                stmt = stmt.where(false())
+            else:
+                stmt = stmt.where(Table.organization_id == target_org_id)
         else:
             stmt = stmt.where(
                 or_(

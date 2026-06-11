@@ -97,6 +97,9 @@ class FormRepository(OrgScopedRepository[FormORM]):
         if filter_type == OrgFilterType.ALL:
             # No org filter - show everything
             pass
+        elif filter_type == OrgFilterType.EMPTY:
+            # Org-less external sentinel (EXT-1 NEW-J): match nothing.
+            query = query.where(self.model.id.is_(None))
         elif filter_type == OrgFilterType.GLOBAL_ONLY:
             # Only global forms (org_id IS NULL)
             query = query.where(self.model.organization_id.is_(None))

@@ -86,10 +86,11 @@ class TestResolveOrgFilterExternal:
         assert ft == OrgFilterType.ALL
 
     def test_external_user_without_org_sees_nothing_global(self):
-        # An org-less external must NOT fall into GLOBAL_ONLY (the normal-user
-        # edge case). It gets ORG_ONLY with org=None -> resolves to nothing.
+        # EXT-1 NEW-J: an org-less external must resolve to the EMPTY sentinel,
+        # NOT (ORG_ONLY, None) — the latter compiles to `org_id == None` =
+        # `IS NULL` and leaks the GLOBAL tier. EMPTY forces a no-match.
         ft, org = resolve_org_filter(self._user(is_external=True, org=None))
-        assert ft == OrgFilterType.ORG_ONLY
+        assert ft == OrgFilterType.EMPTY
         assert org is None
 
 
@@ -130,6 +131,28 @@ class TestWorkflowToolsExternal:
         sql = _capture_sql(session)
         # global-only for an external collapses to a false predicate.
         assert "organization_id IS NULL" not in sql
+
+    async def test_empty_sentinel_matches_nothing(self, session):
+        # EXT-1 NEW-J: an org-less external resolves to EMPTY — the repo must
+        # match nothing (false()), never the IS NULL global tier. Use a
+        # NON-external repo to prove the EMPTY branch itself (not just the
+        # external_restricted short-circuit) compiles to a no-match.
+        session.execute.return_value = _rows([])
+        repo = WorkflowRepository(session, org_id=None, user_id=uuid4())
+        await repo.list_tools_for_filter(OrgFilterType.EMPTY, None)
+        sql = _capture_sql(session)
+        assert "organization_id IS NULL" not in sql
+        assert "false" in sql.lower()
+
+    async def test_org_only_none_org_matches_nothing(self, session):
+        # The exact NEW-J trap at the repo: ORG_ONLY + None org must NOT
+        # compile to IS NULL (a non-external defense-in-depth path).
+        session.execute.return_value = _rows([])
+        repo = WorkflowRepository(session, org_id=None, user_id=uuid4())
+        await repo.list_tools_for_filter(OrgFilterType.ORG_ONLY, None)
+        sql = _capture_sql(session)
+        assert "organization_id IS NULL" not in sql
+        assert "false" in sql.lower()
 
 
 # =============================================================================

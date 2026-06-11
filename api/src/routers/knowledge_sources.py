@@ -12,12 +12,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, select, update
 
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.database import DbSession
 from src.core.log_safety import log_safe
-from src.core.org_filter import OrgFilterType, resolve_org_filter
+from src.core.org_filter import OrgFilterType, org_filter_clause, resolve_org_filter
 from src.models.contracts.knowledge import (
     KnowledgeDocumentBulkScopeUpdate,
     KnowledgeDocumentCreate,
@@ -60,6 +60,9 @@ async def list_namespaces(
     if filter_type == OrgFilterType.ALL:
         # Superuser with no scope filter — show ALL namespaces
         ns_list = await repo.list_all_namespaces()
+    elif filter_type == OrgFilterType.EMPTY:
+        # Org-less external (EXT-1 NEW-J): read nothing — never the global tier.
+        ns_list = []
     elif filter_type == OrgFilterType.GLOBAL_ONLY:
         ns_list = await repo.list_namespaces(organization_id=None, include_global=True)
     elif filter_type == OrgFilterType.ORG_ONLY:
@@ -212,20 +215,13 @@ async def list_all_documents(
 
     stmt = select(KnowledgeStore)
 
-    # Apply org scope filter (same pattern as workflows router)
-    if filter_type == OrgFilterType.ALL:
-        pass  # No org filter - show everything
-    elif filter_type == OrgFilterType.GLOBAL_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
-    elif filter_type == OrgFilterType.ORG_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)
-    else:  # ORG_PLUS_GLOBAL
-        stmt = stmt.where(
-            or_(
-                KnowledgeStore.organization_id == filter_org_id,
-                KnowledgeStore.organization_id.is_(None),
-            )
-        )
+    # Apply org scope filter via the single source of truth (EXT-1 NEW-J):
+    # EMPTY (org-less external) -> false(); never a hand-rolled IS NULL leak.
+    _clause = org_filter_clause(
+        KnowledgeStore.organization_id, filter_type, filter_org_id
+    )
+    if _clause is not None:
+        stmt = stmt.where(_clause)
 
     if namespace:
         stmt = stmt.where(KnowledgeStore.namespace == namespace)
@@ -357,19 +353,12 @@ async def list_documents(
 
     stmt = select(KnowledgeStore).where(KnowledgeStore.namespace == namespace)
 
-    if filter_type == OrgFilterType.ALL:
-        pass
-    elif filter_type == OrgFilterType.GLOBAL_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
-    elif filter_type == OrgFilterType.ORG_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)
-    else:  # ORG_PLUS_GLOBAL
-        stmt = stmt.where(
-            or_(
-                KnowledgeStore.organization_id == filter_org_id,
-                KnowledgeStore.organization_id.is_(None),
-            )
-        )
+    # Single source of truth (EXT-1 NEW-J): EMPTY (org-less external) -> false().
+    _clause = org_filter_clause(
+        KnowledgeStore.organization_id, filter_type, filter_org_id
+    )
+    if _clause is not None:
+        stmt = stmt.where(_clause)
 
     if search:
         stmt = stmt.where(
