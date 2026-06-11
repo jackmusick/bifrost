@@ -41,7 +41,7 @@ export function ChatBubble({
 	if (kind === "user") {
 		return (
 			<div className={cn("flex flex-col items-end", className)}>
-				<div className="max-w-[92%] whitespace-pre-wrap rounded-[10px] bg-primary/15 px-3 py-2.5 text-[13.5px] leading-relaxed text-foreground">
+				<div className="max-w-[92%] whitespace-pre-wrap rounded-2xl bg-primary/15 px-3 py-2.5 text-[13.5px] leading-relaxed text-foreground">
 					{children}
 				</div>
 				{time ? (
@@ -72,7 +72,7 @@ export function ChatBubble({
 			>
 				<Sparkles className="h-[11px] w-[11px]" />
 			</div>
-			<div className="min-w-0 flex-1 rounded-[10px] border bg-muted/40 px-3 py-2.5 text-[13.5px] leading-relaxed text-foreground">
+			<div className="min-w-0 flex-1 rounded-2xl bg-muted/40 ring-1 ring-foreground/5 px-3 py-2.5 text-[13.5px] leading-relaxed text-foreground">
 				<div className="whitespace-pre-wrap">{children}</div>
 				{slots ? <div className="mt-3 space-y-2">{slots}</div> : null}
 				{time ? (
@@ -97,7 +97,7 @@ export interface ChatBubbleSlotProps {
 }
 
 /**
- * Nested block inside a ChatBubble slot. Bordered card on base bg with a small
+ * Nested block inside a ChatBubble slot. Recessed step-1 block with a small
  * colored title line and an optional action row at the bottom.
  */
 export function ChatBubbleSlot({
@@ -113,7 +113,7 @@ export function ChatBubbleSlot({
 				? "text-yellow-500"
 				: "text-primary";
 	return (
-		<div className="rounded-md border bg-background/60 p-2.5">
+		<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 p-2.5">
 			<div
 				className={cn(
 					"mb-2 text-[12px] font-medium",

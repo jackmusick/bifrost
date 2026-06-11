@@ -108,7 +108,7 @@ function StatCard({
 				}
 			}}
 			className={cn(
-				"flex flex-col gap-1 rounded-lg border bg-card p-4 transition-colors",
+				"flex flex-col gap-1 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 p-4 transition-colors",
 				interactive && "cursor-pointer hover:bg-accent/40",
 			)}
 			data-slot="stat-card"

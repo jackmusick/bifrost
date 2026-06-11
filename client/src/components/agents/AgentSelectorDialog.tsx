@@ -120,7 +120,7 @@ export function AgentSelectorDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="flex-1 min-h-0 flex flex-col border rounded-lg overflow-hidden">
+				<div className="flex-1 min-h-0 flex flex-col rounded-lg ring-1 ring-foreground/5 overflow-hidden">
 					{/* Search */}
 					<div className="p-3 border-b bg-muted/20">
 						<div className="relative">

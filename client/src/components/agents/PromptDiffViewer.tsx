@@ -25,7 +25,7 @@ export function PromptDiffViewer({
 			<div
 				data-testid="prompt-diff-empty"
 				className={cn(
-					"rounded-md border bg-muted/30 px-3 py-4 text-center",
+					"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-4 text-center",
 					TYPE_MUTED,
 					TONE_MUTED,
 					className,
@@ -39,7 +39,10 @@ export function PromptDiffViewer({
 	return (
 		<div
 			data-testid="prompt-diff-viewer"
-			className={cn("overflow-hidden rounded-md border", className)}
+			className={cn(
+				"overflow-hidden rounded-md ring-1 ring-foreground/5",
+				className,
+			)}
 		>
 			<ReactDiffViewer
 				oldValue={before}

@@ -205,7 +205,7 @@ export function ChatInput({
 				<div
 					ref={containerRef}
 					className={cn(
-						"relative rounded-2xl border bg-muted/50 shadow-lg",
+						"relative rounded-2xl bg-muted/50 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10",
 						"transition-all duration-200",
 						"focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
 					)}

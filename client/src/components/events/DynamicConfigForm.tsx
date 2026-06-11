@@ -113,7 +113,7 @@ function FieldLabel({
 					>
 						<p>{help.text}</p>
 						{help.code && (
-							<pre className="bg-background/20 rounded px-2 py-1 text-[10px] font-mono whitespace-pre overflow-x-auto">
+							<pre className="bg-background/20 rounded-md px-2 py-1 text-[10px] font-mono whitespace-pre overflow-x-auto">
 								{help.code}
 							</pre>
 						)}
@@ -300,7 +300,7 @@ function DynamicField({
 								>
 									<p>{help.text}</p>
 									{help.code && (
-										<pre className="bg-background/20 rounded px-2 py-1 text-[10px] font-mono whitespace-pre overflow-x-auto">
+										<pre className="bg-background/20 rounded-md px-2 py-1 text-[10px] font-mono whitespace-pre overflow-x-auto">
 											{help.code}
 										</pre>
 									)}

@@ -31,7 +31,7 @@ function DragPreview({
 	entityName: string;
 }) {
 	return (
-		<div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-lg">
+		<div className="flex items-center gap-2 rounded-2xl bg-card shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10 px-3 py-2">
 			<GripVertical className="h-4 w-4 text-muted-foreground" />
 			<span className="font-medium">
 				{count > 1 ? `${count} entities` : entityName}
@@ -124,11 +124,11 @@ export function EntityCard({
 			<div
 				ref={ref}
 				className={cn(
-					"flex items-start gap-3 rounded-lg border p-3 transition-all cursor-grab active:cursor-grabbing",
+					"flex items-start gap-3 rounded-2xl shadow-sm ring-1 p-3 transition-all cursor-grab active:cursor-grabbing",
 					dragging && "opacity-50 scale-95",
 					selected
-						? "border-primary bg-accent"
-						: "bg-card hover:border-primary/50",
+						? "ring-primary bg-accent"
+						: "bg-card ring-foreground/5 hover:ring-primary/50 dark:ring-foreground/10 dark:hover:ring-primary/50",
 				)}
 			>
 				<Checkbox

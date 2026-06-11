@@ -208,7 +208,7 @@ export function DependencyGraph({
 					}}
 				/>
 				<Panel position="top-right">
-					<div className="bg-background/80 backdrop-blur-sm rounded-lg border p-3 shadow-sm">
+					<div className="bg-background/80 backdrop-blur-sm rounded-lg ring-1 ring-foreground/5 p-3 shadow-sm">
 						<div className="text-xs font-medium mb-2 text-muted-foreground">
 							Legend
 						</div>

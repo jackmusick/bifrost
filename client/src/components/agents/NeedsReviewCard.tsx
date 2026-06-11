@@ -38,7 +38,7 @@ export function NeedsReviewCard({
 				}
 			}}
 			className={cn(
-				"flex items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 transition-colors",
+				"flex items-start gap-3 rounded-2xl bg-rose-500/5 shadow-sm ring-1 ring-rose-500/30 p-3 transition-colors",
 				onOpen && "cursor-pointer hover:bg-rose-500/10",
 				className,
 			)}

@@ -112,7 +112,7 @@ function TextViewer({ data, label }: { data: unknown; label: string }) {
 					<Copy className="h-3 w-3" />
 				)}
 			</Button>
-			<pre className="bg-muted p-4 rounded-lg overflow-auto max-h-80 text-sm font-mono whitespace-pre-wrap">
+			<pre className="bg-muted/50 ring-1 ring-foreground/5 p-4 rounded-md overflow-auto max-h-80 text-sm font-mono whitespace-pre-wrap">
 				{displayText}
 			</pre>
 		</div>

@@ -132,13 +132,13 @@ export function DependencyPanel({ appId }: DependencyPanelProps) {
 
 				{/* Search results dropdown */}
 				{showResults && searchResults.length > 0 && (
-					<div className="absolute left-2 right-2 top-full mt-1 z-50 bg-popover border rounded-md shadow-md max-h-64 overflow-auto">
+					<div className="absolute left-2 right-2 top-full mt-1 z-50 rounded-2xl bg-popover p-1 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10 max-h-64 overflow-auto">
 						{searchResults.map((pkg) => {
 							const isInstalled = pkg.name in dependencies;
 							return (
 								<button
 									key={pkg.name}
-									className="w-full text-left px-3 py-2 hover:bg-accent text-sm border-b last:border-b-0 disabled:opacity-50"
+									className="w-full text-left px-3 py-2 rounded-xl hover:bg-accent text-sm disabled:opacity-50"
 									onClick={() => handleAdd(pkg)}
 									disabled={isInstalled || isSaving}
 								>

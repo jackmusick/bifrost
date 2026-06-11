@@ -143,7 +143,7 @@ export function AskUserQuestionCard({
 	});
 
 	return (
-		<div className="border rounded-lg bg-card overflow-hidden border-primary/50 max-w-2xl">
+		<div className="rounded-2xl bg-card shadow-sm ring-1 ring-primary/50 dark:ring-primary/50 overflow-hidden max-w-2xl">
 			{/* Header */}
 			<div className="flex items-center gap-2 px-4 py-3 bg-primary/5 border-b border-primary/20">
 				<HelpCircle className="h-4 w-4 text-primary" />

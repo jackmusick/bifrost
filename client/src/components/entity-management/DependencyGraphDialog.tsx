@@ -45,7 +45,7 @@ export function DependencyGraphDialog({
 						)}
 					</DialogTitle>
 				</DialogHeader>
-				<div className="flex-1 min-h-0 rounded-lg border bg-background/50 overflow-hidden">
+				<div className="flex-1 min-h-0 rounded-lg ring-1 ring-foreground/5 bg-background/50 overflow-hidden">
 					{isLoading ? (
 						<div className="h-full flex items-center justify-center">
 							<div className="flex flex-col items-center gap-4">

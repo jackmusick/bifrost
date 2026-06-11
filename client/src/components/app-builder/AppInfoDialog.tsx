@@ -522,7 +522,7 @@ export function AppInfoDialog({
 												</PopoverContent>
 											</Popover>
 											{selectedRoleIds.length > 0 && (
-												<div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
+												<div className="flex flex-wrap gap-2 p-2 rounded-md bg-muted/50 ring-1 ring-foreground/5">
 													{selectedRoleIds.map((roleId) => {
 														const role = roles?.find(
 															(r: RolePublic) => r.id === roleId,

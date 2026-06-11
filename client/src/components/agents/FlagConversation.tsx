@@ -15,6 +15,7 @@
 import { useEffect, useRef } from "react";
 import { Sparkles, Loader2, CheckCircle, XCircle, PlayCircle } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/components/ui/chat-composer";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
@@ -168,14 +169,14 @@ function ProposalBubble({
 			data-bubble-kind="proposal"
 		>
 			<AvatarBadge />
-			<div className="flex-1 rounded-2xl border bg-card px-3.5 py-2.5">
+			<div className="flex-1 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 px-3.5 py-2.5">
 				<div className="mb-2 text-xs font-medium text-primary">
 					Proposed change
 				</div>
 				<div className="mb-2.5 text-sm text-muted-foreground">
 					{msg.summary}
 				</div>
-				<div className="rounded border bg-background p-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap">
+				<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 p-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap">
 					{msg.diff.map((d, i) => (
 						<div
 							key={i}
@@ -201,13 +202,9 @@ function ProposalBubble({
 				</div>
 				{onTestAgainstRun ? (
 					<div className="mt-2.5 flex items-center gap-2">
-						<button
-							type="button"
-							onClick={onTestAgainstRun}
-							className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-						>
+						<Button type="button" size="xs" onClick={onTestAgainstRun}>
 							<PlayCircle size={12} /> Test against this run
-						</button>
+						</Button>
 						<span className="text-[11.5px] text-muted-foreground">
 							Sandbox · nothing is applied live
 						</span>
@@ -235,7 +232,7 @@ function DryRunBubble({ msg }: { msg: DryRunTurn }) {
 			>
 				{passed ? <CheckCircle size={11} /> : <XCircle size={11} />}
 			</div>
-			<div className="flex-1 rounded-2xl border bg-card px-3.5 py-2.5">
+			<div className="flex-1 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 px-3.5 py-2.5">
 				<div
 					className={cn(
 						"mb-2 text-xs font-medium",
@@ -251,7 +248,7 @@ function DryRunBubble({ msg }: { msg: DryRunTurn }) {
 						<div className="mb-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
 							Before
 						</div>
-						<div className="rounded bg-rose-500/10 px-2 py-1.5 text-xs">
+						<div className="rounded-md bg-rose-500/10 px-2 py-1.5 text-xs">
 							{msg.before}
 						</div>
 					</div>
@@ -261,7 +258,7 @@ function DryRunBubble({ msg }: { msg: DryRunTurn }) {
 						</div>
 						<div
 							className={cn(
-								"rounded px-2 py-1.5 text-xs",
+								"rounded-md px-2 py-1.5 text-xs",
 								passed
 									? "bg-emerald-500/10"
 									: "bg-yellow-500/10",

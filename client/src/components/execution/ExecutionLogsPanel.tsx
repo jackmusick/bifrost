@@ -205,7 +205,7 @@ export function ExecutionLogsPanel({
 						<summary className="cursor-pointer text-muted-foreground">
 							data
 						</summary>
-						<pre className="mt-1 p-2 rounded bg-muted">
+						<pre className="mt-1 p-2 rounded-md bg-muted">
 							{JSON.stringify(data, null, 2)}
 						</pre>
 					</details>

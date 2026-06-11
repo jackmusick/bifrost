@@ -32,7 +32,7 @@ export function FileTabConflictMenu({
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<button
-					className="flex-shrink-0 rounded p-0.5 hover:bg-orange-500/20 transition-colors"
+					className="flex-shrink-0 rounded-md p-0.5 hover:bg-orange-500/20 transition-colors"
 					title={
 						conflictReason === "content_changed"
 							? "File content has changed on the server"

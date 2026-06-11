@@ -104,7 +104,7 @@ export function TerminalExecutionResult({
 
 		return (
 			<div className="ml-4 mt-1 text-xs">
-				<div className="bg-muted/30 p-2 rounded border border-border/50 max-h-[200px] overflow-auto">
+				<div className="bg-muted/50 p-2 rounded-md ring-1 ring-foreground/5 max-h-[200px] overflow-auto">
 					<pre className="text-foreground/80 whitespace-pre-wrap font-mono">
 						{preview}
 						{hasMore && "\n..."}
@@ -136,7 +136,7 @@ export function TerminalExecutionResult({
 
 		return (
 			<div className="ml-4 mt-1 text-xs">
-				<div className="bg-muted/30 p-2 rounded border border-border/50 max-h-[200px] overflow-auto">
+				<div className="bg-muted/50 p-2 rounded-md ring-1 ring-foreground/5 max-h-[200px] overflow-auto">
 					<pre className="text-foreground/80 whitespace-pre-wrap font-mono">
 						{preview}
 						{hasMore && "\n..."}

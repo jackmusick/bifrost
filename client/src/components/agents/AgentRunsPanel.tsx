@@ -141,7 +141,7 @@ export function AgentRunsPanel() {
 	if (runs.length === 0) {
 		return (
 			<div
-				className="rounded-md border bg-muted/20 p-8 text-center text-sm text-muted-foreground"
+				className="rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 p-8 text-center text-sm text-muted-foreground"
 				data-testid="agent-runs-panel-empty"
 			>
 				<Bot className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
@@ -151,10 +151,7 @@ export function AgentRunsPanel() {
 	}
 
 	return (
-		<div
-			className="overflow-hidden rounded-md border"
-			data-testid="agent-runs-panel"
-		>
+		<div data-testid="agent-runs-panel">
 			<DataTable>
 				<DataTableHeader>
 					<DataTableRow>

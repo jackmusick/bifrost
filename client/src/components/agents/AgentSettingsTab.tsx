@@ -538,7 +538,7 @@ export function AgentSettingsTab({
 										</PopoverContent>
 									</Popover>
 									{field.value?.length ? (
-										<div className="flex flex-wrap gap-1.5 rounded-md border bg-muted/40 p-2">
+										<div className="flex flex-wrap gap-1.5 rounded-md bg-muted/50 ring-1 ring-foreground/5 p-2">
 											{field.value.map((roleId) => {
 												const role = roles?.find(
 													(r: RolePublic) => r.id === roleId,
@@ -584,7 +584,7 @@ export function AgentSettingsTab({
 						control={form.control}
 						name="is_active"
 						render={({ field }) => (
-							<FormItem className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2.5">
+							<FormItem className="flex items-center justify-between gap-3 rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2.5">
 								<div className="flex flex-col">
 									<FormLabel className="m-0">
 										{field.value ? "Agent is active" : "Agent is paused"}
@@ -1097,7 +1097,7 @@ export function AgentSettingsTab({
 									/>
 								</FormControl>
 								{field.value?.length ? (
-									<div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2">
+									<div className="flex items-center gap-2 rounded-md bg-muted/50 ring-1 ring-foreground/5 p-2">
 										<Badge
 											variant="secondary"
 											className="font-mono text-xs"
@@ -1366,7 +1366,7 @@ function AgentMCPConnectionsPanelInner({
 	if (connections.length === 0) {
 		return (
 			<div
-				className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground"
+				className="rounded-md bg-muted/50 ring-1 ring-foreground/5 p-3 text-xs text-muted-foreground"
 				data-testid="agent-mcp-connections-panel-empty"
 			>
 				This organization has no MCP connections. Add one from the MCP
@@ -1377,7 +1377,7 @@ function AgentMCPConnectionsPanelInner({
 
 	return (
 		<div
-			className="rounded-md border bg-muted/20 p-3 space-y-3"
+			className="rounded-md bg-muted/50 ring-1 ring-foreground/5 p-3 space-y-3"
 			data-testid="agent-mcp-connections-panel"
 		>
 			<div>

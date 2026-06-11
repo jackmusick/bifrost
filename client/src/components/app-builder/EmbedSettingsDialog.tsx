@@ -275,10 +275,10 @@ export function EmbedSettingsDialog({
                   {secrets.map((secret) => (
                     <div
                       key={secret.id}
-                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                      className={`flex items-center justify-between p-3 rounded-lg ring-1 ring-foreground/5 border-l-4 ${
                         secret.is_active
-                          ? "border-l-4 border-l-green-500"
-                          : "border-l-4 border-l-gray-300 opacity-60"
+                          ? "border-l-green-500"
+                          : "border-l-gray-300 opacity-60"
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -434,7 +434,7 @@ export function EmbedSettingsDialog({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 flex items-start gap-2">
+            <div className="rounded-md bg-amber-500/10 ring-1 ring-amber-500/30 p-3 flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
               <p className="text-sm">
                 Copy this secret now — it will not be shown again.
