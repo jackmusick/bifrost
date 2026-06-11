@@ -631,7 +631,7 @@ export function FormInfoDialog({
 											</PopoverContent>
 										</Popover>
 										{selectedRoleIds.length > 0 && (
-											<div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
+											<div className="flex flex-wrap gap-2 rounded-md bg-muted/50 p-2 ring-1 ring-foreground/5">
 												{selectedRoleIds.map((roleId) => {
 													const role = roles?.find(
 														(r: Role) => r.id === roleId,
@@ -718,7 +718,7 @@ export function FormInfoDialog({
 						{launchWorkflowId &&
 							launchWorkflowId !== "__none__" &&
 							launchWorkflowParams.length > 0 && (
-								<div className="space-y-3 rounded-lg border p-4 bg-muted/50">
+								<div className="space-y-3 rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5">
 									<div>
 										<Label className="text-sm font-medium">
 											Default Launch Parameters

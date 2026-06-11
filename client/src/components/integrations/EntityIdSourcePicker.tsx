@@ -44,7 +44,7 @@ export function EntityIdSourcePicker({
 							type="button"
 							key={keyId(c)}
 							onClick={() => setSelectedKey(keyId(c))}
-							className={`w-full text-left rounded-md border p-2 cursor-pointer transition-colors ${
+							className={`w-full text-left rounded-lg border p-2 cursor-pointer transition-colors ${
 								isSelected
 									? "border-primary bg-primary/5"
 									: "hover:bg-muted/30"

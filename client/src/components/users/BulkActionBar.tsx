@@ -46,7 +46,7 @@ export function BulkActionBar({
 			role="region"
 			aria-label="Bulk user actions"
 			className={cn(
-				"sticky bottom-4 left-0 right-0 mx-auto flex items-center gap-3 rounded-lg border bg-popover px-4 py-2 shadow-lg",
+				"sticky bottom-4 left-0 right-0 mx-auto flex items-center gap-3 rounded-2xl bg-popover px-4 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10",
 				"w-full max-w-3xl z-20",
 				className,
 			)}

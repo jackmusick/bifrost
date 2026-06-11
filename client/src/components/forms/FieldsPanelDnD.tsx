@@ -303,7 +303,7 @@ function PaletteItem({ template }: PaletteItemProps) {
 				dragging ? "opacity-50 scale-95" : ""
 			}`}
 		>
-			<div className={`${template.color} p-2 rounded`}>
+			<div className={`${template.color} p-2 rounded-md`}>
 				<Icon className="h-4 w-4 text-white" />
 			</div>
 			<span className="text-sm font-medium">{template.label}</span>
@@ -373,7 +373,7 @@ function WorkflowInputItem({ param }: WorkflowInputItemProps) {
 				dragging ? "opacity-50 scale-95" : ""
 			}`}
 		>
-			<div className={`${template?.color ?? "bg-blue-500"} p-2 rounded`}>
+			<div className={`${template?.color ?? "bg-blue-500"} p-2 rounded-md`}>
 				<Icon className="h-4 w-4 text-white" />
 			</div>
 			<div className="flex-1 min-w-0">

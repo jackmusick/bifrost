@@ -160,7 +160,7 @@ export function RoleDialog({ role, open, onClose }: RoleDialogProps) {
 								control={form.control}
 								name="can_promote_agent"
 								render={({ field }) => (
-									<FormItem className="flex items-center justify-between rounded-lg border p-3">
+									<FormItem className="flex items-center justify-between rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
 										<div className="space-y-0.5">
 											<FormLabel className="text-sm">
 												Promote Agents

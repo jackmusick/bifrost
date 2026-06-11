@@ -97,7 +97,7 @@ export function DataProviderInputsConfig({
 	};
 
 	return (
-		<div className="space-y-3 rounded-lg border border-primary/20 bg-accent/50 p-4">
+		<div className="space-y-3 rounded-lg bg-accent/50 p-4 ring-1 ring-primary/20">
 			<div>
 				<h4 className="text-sm font-semibold">Data Provider Inputs</h4>
 				<p className="text-xs text-muted-foreground mt-1">

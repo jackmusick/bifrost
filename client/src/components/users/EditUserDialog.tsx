@@ -301,7 +301,7 @@ function EditUserDialogContent({
 					/>
 				</div>
 
-				<div className="flex items-center justify-between rounded-lg border p-4">
+				<div className="flex items-center justify-between rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5">
 					<div className="space-y-0.5">
 						<Label htmlFor="active">Account Status</Label>
 						<p className="text-xs text-muted-foreground">

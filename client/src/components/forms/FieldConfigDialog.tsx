@@ -802,7 +802,7 @@ function FieldConfigDialogContent({
 								<Label htmlFor="content">
 									HTML/JSX Template
 								</Label>
-								<div className="border rounded-md overflow-hidden">
+								<div className="overflow-hidden rounded-md ring-1 ring-foreground/5">
 									<div className="px-3">
 										<Editor
 											height="120px"
@@ -964,7 +964,7 @@ function FieldConfigDialogContent({
 								<p className="text-xs font-medium">Examples:</p>
 								<div className="space-y-2">
 									<div>
-										<code className="block bg-muted p-2 rounded text-xs">
+										<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 											context.field.country === "US"
 										</code>
 										<p className="text-xs text-muted-foreground mt-1">
@@ -972,7 +972,7 @@ function FieldConfigDialogContent({
 										</p>
 									</div>
 									<div>
-										<code className="block bg-muted p-2 rounded text-xs">
+										<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 											context.field.age &gt;= 18
 										</code>
 										<p className="text-xs text-muted-foreground mt-1">
@@ -980,7 +980,7 @@ function FieldConfigDialogContent({
 										</p>
 									</div>
 									<div>
-										<code className="block bg-muted p-2 rounded text-xs">
+										<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 											context.workflow.is_admin === true
 										</code>
 										<p className="text-xs text-muted-foreground mt-1">
@@ -1002,7 +1002,7 @@ function FieldConfigDialogContent({
 										<p className="text-xs text-muted-foreground mb-2">
 											Basic usage:
 										</p>
-										<code className="block bg-muted p-2 rounded text-xs">
+										<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 											{
 												"<div>\n  <p>User: {context.workflow.user_email}</p>\n</div>"
 											}
@@ -1012,7 +1012,7 @@ function FieldConfigDialogContent({
 										<p className="text-xs text-muted-foreground mb-2">
 											Mapping arrays:
 										</p>
-										<code className="block bg-muted p-2 rounded text-xs">
+										<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 											{
 												"{context.workflow.items?.map((item, i) =>\n  <div key={i}>{item.name}</div>\n)}"
 											}
@@ -1022,7 +1022,7 @@ function FieldConfigDialogContent({
 										<p className="text-xs text-muted-foreground mb-2">
 											Use className for styling:
 										</p>
-										<code className="block bg-muted p-2 rounded text-xs">
+										<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 											{
 												'<div className="text-lg font-bold">\n  Content\n</div>'
 											}
@@ -1093,7 +1093,7 @@ function FieldConfigDialogContent({
 										</p>
 										<div className="space-y-2">
 											<div>
-												<code className="block bg-muted p-2 rounded text-xs">
+												<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 													context.field.country ===
 													"US"
 												</code>
@@ -1102,7 +1102,7 @@ function FieldConfigDialogContent({
 												</p>
 											</div>
 											<div>
-												<code className="block bg-muted p-2 rounded text-xs">
+												<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 													context.field.age &gt;= 18
 												</code>
 												<p className="text-xs text-muted-foreground mt-1">
@@ -1110,7 +1110,7 @@ function FieldConfigDialogContent({
 												</p>
 											</div>
 											<div>
-												<code className="block bg-muted p-2 rounded text-xs">
+												<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 													context.workflow.is_admin
 													=== true
 												</code>
@@ -1133,7 +1133,7 @@ function FieldConfigDialogContent({
 												<p className="text-xs text-muted-foreground mb-2">
 													Basic usage:
 												</p>
-												<code className="block bg-muted p-2 rounded text-xs">
+												<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 													{
 														"<div>\n  <p>User: {context.workflow.user_email}</p>\n</div>"
 													}
@@ -1143,7 +1143,7 @@ function FieldConfigDialogContent({
 												<p className="text-xs text-muted-foreground mb-2">
 													Mapping arrays:
 												</p>
-												<code className="block bg-muted p-2 rounded text-xs">
+												<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 													{
 														"{context.workflow.items?.map((item, i) =>\n  <div key={i}>{item.name}</div>\n)}"
 													}
@@ -1153,7 +1153,7 @@ function FieldConfigDialogContent({
 												<p className="text-xs text-muted-foreground mb-2">
 													Use className for styling:
 												</p>
-												<code className="block bg-muted p-2 rounded text-xs">
+												<code className="block rounded-md bg-muted p-2 text-xs ring-1 ring-foreground/5">
 													{
 														'<div className="text-lg font-bold">\n  Content\n</div>'
 													}

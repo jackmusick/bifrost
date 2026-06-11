@@ -245,7 +245,7 @@ export function WorkflowSelector({
 		return (
 			<div
 				className={cn(
-					"flex items-center gap-2 h-10 px-3 border rounded-md bg-muted/50",
+					"flex items-center gap-2 h-10 px-3 rounded-md bg-muted/50 ring-1 ring-foreground/5",
 					className,
 				)}
 			>
@@ -261,7 +261,7 @@ export function WorkflowSelector({
 		return (
 			<div
 				className={cn(
-					"flex items-center h-10 px-3 border border-destructive/50 rounded-md bg-destructive/10",
+					"flex items-center h-10 px-3 rounded-md bg-destructive/10 ring-1 ring-destructive/50",
 					className,
 				)}
 			>

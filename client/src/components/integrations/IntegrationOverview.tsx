@@ -282,13 +282,13 @@ export function IntegrationOverview({
 						<div className="space-y-3">
 							{/* Expiration warnings */}
 							{isOAuthExpired && (
-								<div className="flex items-center gap-2 p-2 rounded bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 text-sm">
+								<div className="flex items-center gap-2 p-2 rounded-md bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 text-sm">
 									<AlertCircle className="h-4 w-4" />
 									Token expired - reconnect required
 								</div>
 							)}
 							{isOAuthExpiringSoon && !isOAuthExpired && (
-								<div className="flex items-center gap-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
+								<div className="flex items-center gap-2 p-2 rounded-md bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
 									<Clock className="h-4 w-4" />
 									Token expires soon - consider refreshing
 								</div>
@@ -299,7 +299,7 @@ export function IntegrationOverview({
 								oauthConfig &&
 								oauthConfig.has_refresh_token === false &&
 								canUseAuthCodeFlow && (
-									<div className="flex items-center gap-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
+									<div className="flex items-center gap-2 p-2 rounded-md bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
 										<AlertCircle className="h-4 w-4" />
 										No refresh token - manual
 										reconnection required when token

@@ -683,7 +683,7 @@ export function WorkflowEditDialog({
 									</Popover>
 
 									{selectedRoleIds.length > 0 && (
-										<div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
+										<div className="flex flex-wrap gap-2 rounded-md bg-muted/50 p-2 ring-1 ring-foreground/5">
 											{selectedRoleIds.map((roleId) => {
 												const role = roles?.find(
 													(r: RolePublic) => r.id === roleId
@@ -885,7 +885,7 @@ export function WorkflowEditDialog({
 									<div className="space-y-2">
 										<Label>Example Request</Label>
 										<div className="relative">
-											<pre className="p-4 bg-muted rounded-md text-xs overflow-x-auto">
+											<pre className="rounded-md bg-muted p-4 text-xs overflow-x-auto ring-1 ring-foreground/5">
 												<code>{curlExample}</code>
 											</pre>
 											<Button

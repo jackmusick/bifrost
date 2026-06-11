@@ -232,7 +232,7 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 												) => (
 													<div
 														key={index}
-														className="border border-destructive/20 bg-destructive/5 rounded-lg p-3"
+														className="rounded-lg bg-destructive/5 p-3 ring-1 ring-destructive/20"
 													>
 														<div className="flex items-start gap-2">
 															<div className="flex-1">
@@ -250,7 +250,7 @@ export function RefreshJobStatus({ className }: RefreshJobStatusProps) {
 
 							{/* Success Message */}
 							{!hasFailures && jobStatus.needs_refresh > 0 && (
-								<div className="border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 rounded-lg p-4">
+								<div className="rounded-lg bg-green-50 p-4 ring-1 ring-green-200 dark:bg-green-950/30 dark:ring-green-900">
 									<div className="flex items-center gap-2">
 										<CheckCircle2 className="h-5 w-5 text-green-600" />
 										<p className="text-sm font-medium text-green-900 dark:text-green-100">

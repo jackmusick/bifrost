@@ -173,7 +173,7 @@ export function IntegrationMappingsTab({
 								No data provider configured — entity IDs must be entered manually.
 							</p>
 						)}
-						<div className="rounded-md border overflow-x-auto">
+						<div className="overflow-x-auto">
 							<DataTable>
 								<DataTableHeader>
 									<DataTableRow>

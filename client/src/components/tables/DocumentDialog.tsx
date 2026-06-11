@@ -145,7 +145,7 @@ function DocumentDialogInner({
 					</Button>
 				</div>
 
-				<div className="border rounded-md overflow-hidden h-[400px]">
+				<div className="overflow-hidden rounded-md ring-1 ring-foreground/5 h-[400px]">
 					<Editor
 						height="100%"
 						language="json"

@@ -82,7 +82,7 @@ function CategorySection({
 							No categories found
 						</div>
 					) : (
-						<div className="space-y-0.5">
+						<div className="space-y-0.5 px-2">
 							{categories.map((cat) => (
 								<button
 									key={cat.name}
@@ -94,7 +94,7 @@ function CategorySection({
 										)
 									}
 									className={cn(
-										"flex items-center w-full px-6 py-1.5 text-sm transition-colors",
+										"flex items-center w-full rounded-lg px-4 py-1.5 text-sm transition-colors",
 										selectedCategory === cat.name
 											? "bg-primary/10 text-primary font-medium"
 											: "hover:bg-muted/50 text-foreground",
@@ -171,7 +171,7 @@ function EntitySection({
 							No {title.toLowerCase()} found
 						</div>
 					) : (
-						<div className="space-y-0.5">
+						<div className="space-y-0.5 px-2">
 							{entities.map((entity) => (
 								<button
 									key={entity.id}
@@ -183,7 +183,7 @@ function EntitySection({
 										)
 									}
 									className={cn(
-										"flex items-center w-full px-6 py-1.5 text-sm transition-colors",
+										"flex items-center w-full rounded-lg px-4 py-1.5 text-sm transition-colors",
 										selectedId === entity.id
 											? "bg-primary/10 text-primary font-medium"
 											: "hover:bg-muted/50 text-foreground",
@@ -338,34 +338,28 @@ export function WorkflowSidebar({
 	return (
 		<div
 			className={cn(
-				"flex flex-col border rounded-lg bg-card h-full",
+				"flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10",
 				className,
 			)}
 		>
 			{/* Header */}
-			<div className="flex items-center justify-between p-3 border-b">
-				<span className="font-semibold text-sm">Filters</span>
+			<div className="flex items-center justify-between border-b px-4 py-3">
+				<span className="font-medium text-sm">Filters</span>
 				<div className="flex items-center gap-1">
 					{hasActiveFilter && (
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={clearFilters}
-							className="h-6 px-2 text-xs"
-						>
-							<X className="h-3 w-3 mr-1" />
+						<Button variant="ghost" size="xs" onClick={clearFilters}>
+							<X />
 							Clear
 						</Button>
 					)}
 					{onClose && (
 						<Button
 							variant="ghost"
-							size="icon"
+							size="icon-xs"
 							onClick={onClose}
-							className="h-6 w-6"
 							title="Hide filters"
 						>
-							<PanelLeftClose className="h-4 w-4" />
+							<PanelLeftClose className="size-4" />
 						</Button>
 					)}
 				</div>
@@ -404,11 +398,11 @@ export function WorkflowSidebar({
 						By Status
 					</span>
 				</div>
-				<div className="border-b">
+				<div className="border-b space-y-0.5 px-2 pb-2">
 					<button
 						onClick={() => onEndpointFilterChange(!endpointFilter)}
 						className={cn(
-							"flex items-center w-full px-6 py-2 text-sm transition-colors",
+							"flex items-center w-full rounded-lg px-4 py-2 text-sm transition-colors",
 							endpointFilter
 								? "bg-primary/10 text-primary font-medium"
 								: "hover:bg-muted/50 text-foreground",
@@ -422,7 +416,7 @@ export function WorkflowSidebar({
 					<button
 						onClick={() => onOrphanedFilterChange(!orphanedFilter)}
 						className={cn(
-							"flex items-center w-full px-6 py-2 text-sm transition-colors",
+							"flex items-center w-full rounded-lg px-4 py-2 text-sm transition-colors",
 							orphanedFilter
 								? "bg-primary/10 text-primary font-medium"
 								: "hover:bg-muted/50 text-foreground",
