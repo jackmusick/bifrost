@@ -246,11 +246,13 @@ _LITERAL_SUPERUSER_USER_REACHABLE_ALLOWLIST: dict[str, str] = {
     # in the repo construction; the repo stays sentinel for decryption.
     "routers/cli.py::cli_get_config": "external gated via merged_for_sdk(external=...) (NEW-1)",
     "routers/cli.py::cli_list_config": "external gated via merged_for_sdk(external=...) (NEW-1)",
-    # cli SDK integrations: OAuth token resolution is an engine/SDK-or-superuser
-    # surface (_resolve_sdk_org_id gates the org; tokens are not org-cascade
-    # user data an external enumerates). Sentinel by call-site.
-    "routers/cli.py::sdk_integrations_get": "SDK/engine OAuth token resolve (org gated by _resolve_sdk_org_id)",
-    "routers/cli.py::sdk_integrations_refresh_token": "SDK/engine OAuth token refresh (org gated)",
+    # cli SDK integrations (EXT-1 OPEN-E): the OAuth/integration cascade now
+    # passes is_external from the principal everywhere EXCEPT the DEFAULTS-path
+    # OAuth-token lookup, which is reached ONLY when ``not current_user.is_external``
+    # (the whole defaults OAuth block is gated off for externals — a global
+    # third-party credential). So this one literal-sentinel construction is
+    # external-unreachable by call-site.
+    "routers/cli.py::sdk_integrations_get": "defaults-path OAuth lookup is guarded by `not is_external` (OPEN-E)",
     # tables router: create/list/update/delete are all CurrentSuperuser-gated.
     "routers/tables.py::create_table": "CurrentSuperuser route",
     "routers/tables.py::list_tables": "CurrentSuperuser route",
@@ -432,6 +434,11 @@ _METHOD_SELF_GUARDING: dict[str, str] = {
     # merged_for_sdk is reachable behind the PLAIN CurrentUser endpoint
     # /api/cli/config/get — NOT sentinel-only. EXT-1 NEW-1.
     "config.merged_for_sdk": "tests/unit/test_config_merged_external.py",
+    # get_org_level_for_provider is reachable behind the PLAIN CurrentUser
+    # endpoints /api/sdk/integrations/get + /refresh_token — NOT sentinel-only
+    # (this exact false "SDK/engine" exemption is why OPEN-E slipped 3×). It
+    # now branches on self.external_restricted.
+    "oauth.get_org_level_for_provider": "tests/unit/test_integrations_external.py",
 }
 
 # SENTINEL/ADMIN-ONLY methods: never reached by a direct external user, so the
@@ -445,7 +452,6 @@ _METHOD_SENTINEL_ONLY: dict[str, str] = {
     "tables.list_tables": "CurrentSuperuser route only (is_superuser=True caller)",
     "config.list_configs": "superuser-only config endpoint (is_superuser=True)",
     "oauth.get_token": "SDK/engine-or-superuser gated (is_superuser=True)",
-    "oauth.get_org_level_for_provider": "SDK/engine token resolve (is_superuser=True)",
     "knowledge.get_by_key": "SDK/CLI sentinel knowledge read (is_superuser=True)",
     "knowledge.get_all_by_namespace": "docs-indexer sentinel read (is_superuser=True)",
 }

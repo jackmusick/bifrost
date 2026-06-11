@@ -653,8 +653,11 @@ async def sdk_integrations_get(
             mapping = await repo.get_integration_for_org(request.name, org_uuid)
 
         if mapping:
-            # Org-specific mapping found
-            config = await repo.get_config_for_mapping(mapping.integration_id, org_uuid)
+            # Org-specific mapping found. EXTERNAL callers (OPEN-E) drop the
+            # global tier on both the config merge and the OAuth-token cascade.
+            config = await repo.get_config_for_mapping(
+                mapping.integration_id, org_uuid, external=current_user.is_external
+            )
             integration = mapping.integration
             entity_id = mapping.entity_id or (integration.default_entity_id if integration else None)
 
@@ -674,8 +677,12 @@ async def sdk_integrations_get(
                 if not token:
                     # Cascade: prefer org-scoped token, fall back to global.
                     # See api/src/repositories/README.md for the pattern.
+                    # External callers get org-only (no global token — OPEN-E).
                     oauth_token_repo = OAuthTokenRepository(
-                        db, org_id=org_uuid, is_superuser=True
+                        db,
+                        org_id=org_uuid,
+                        is_superuser=not current_user.is_external,
+                        is_external=current_user.is_external,
                     )
                     token = await oauth_token_repo.get_org_level_for_provider(
                         integration.oauth_provider.id
@@ -683,6 +690,7 @@ async def sdk_integrations_get(
                 response_data["oauth"] = await _build_oauth_data(
                     integration.oauth_provider, token, entity_id, resolve_url_template, decrypt_secret,
                     oauth_scope=request.oauth_scope,
+                    external=current_user.is_external,
                 )
 
             logger.info(f"SDK retrieved integration '{log_safe(request.name)}' (org mapping) for user {current_user.email}")
@@ -695,7 +703,12 @@ async def sdk_integrations_get(
             return None
 
         entity_id = integration.default_entity_id or integration.entity_id
-        config = await repo.get_integration_defaults(integration.id)
+        # Integration DEFAULTS are the global (org_id=NULL) tier — an EXTERNAL
+        # caller (OPEN-E) reading them would receive decrypted global secrets,
+        # so external=True returns no defaults at all.
+        config = await repo.get_integration_defaults(
+            integration.id, external=current_user.is_external
+        )
 
         secret_keys = [s.key for s in integration.config_schema if s.type == "secret"]
         response_data = {
@@ -707,8 +720,12 @@ async def sdk_integrations_get(
             "config_secret_keys": secret_keys,
         }
 
-        # Build OAuth data if provider exists
-        if integration.oauth_provider:
+        # Build OAuth data if provider exists. This is the DEFAULTS path: the
+        # only provider here is the INTEGRATION-LEVEL (global) one, and
+        # _build_oauth_data decrypts its client_secret. An EXTERNAL caller
+        # (OPEN-E) must get NO OAuth block at all — there is no org-tier
+        # provider on this branch to fall back to.
+        if integration.oauth_provider and not current_user.is_external:
             # Cascade: prefer org-scoped token, fall back to global.
             # See api/src/repositories/README.md for the pattern.
             oauth_token_repo = OAuthTokenRepository(
@@ -740,6 +757,7 @@ async def _build_oauth_data(
     resolve_url_template: Any,
     decrypt_secret: Any,
     oauth_scope: str | None = None,
+    external: bool = False,
 ) -> SDKIntegrationsOAuthData:
     """Build OAuth data dict from provider and token for CLI response.
 
@@ -750,10 +768,17 @@ async def _build_oauth_data(
         resolve_url_template: Function to resolve {entity_id} in URLs
         decrypt_secret: Function to decrypt encrypted values
         oauth_scope: Override scope for token request (triggers fresh token fetch)
+        external: When True (EXT-1 OPEN-E), an EXTERNAL portal caller — the
+            provider's ``client_secret`` is a GLOBAL third-party credential, so
+            it is never decrypted/returned and the client-credentials
+            auto-refresh (which needs it) is suppressed. Only a stored,
+            org-bound ``access_token`` (already scoped by the caller's repo)
+            is returned. Engine/sentinel/normal callers leave this False.
     """
-    # Decrypt client secret (needed for both stored tokens and auto-refresh)
+    # Decrypt client secret (needed for both stored tokens and auto-refresh).
+    # An external never receives it (global third-party credential — OPEN-E).
     client_secret = None
-    if provider.encrypted_client_secret:
+    if provider.encrypted_client_secret and not external:
         try:
             raw = provider.encrypted_client_secret
             client_secret = await asyncio.to_thread(
@@ -1182,8 +1207,15 @@ async def sdk_integrations_refresh_token(
     try:
         # Cascade: prefer org-scoped provider, fall back to global.
         # See api/src/repositories/README.md for the pattern.
+        # EXTERNAL callers (OPEN-E) get org-only on BOTH the provider lookup
+        # and the token lookup: a portal user must never refresh / receive a
+        # global third-party OAuth token. An external with no org provider
+        # 404s (the by-name cascade drops the global tier for externals).
         provider_repo = OAuthProviderRepository(
-            db, org_id=org_uuid, is_superuser=True
+            db,
+            org_id=org_uuid,
+            is_superuser=not current_user.is_external,
+            is_external=current_user.is_external,
         )
         provider = await provider_repo.get(provider_name=request.connection_name)
 
@@ -1196,7 +1228,10 @@ async def sdk_integrations_refresh_token(
         # For authorization_code flow we need the stored token up front so
         # build_token_refresh_context can carry the encrypted refresh token.
         token_repo = OAuthTokenRepository(
-            db, org_id=org_uuid, is_superuser=True
+            db,
+            org_id=org_uuid,
+            is_superuser=not current_user.is_external,
+            is_external=current_user.is_external,
         )
         stored_token = None
         if provider.oauth_flow_type == "authorization_code":

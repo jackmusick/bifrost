@@ -339,8 +339,9 @@ class OAuthTokenRepository(OrgScopedRepository[OAuthToken]):
         org_id: UUID | str | None,
         user_id: UUID | str | None = None,
         is_superuser: bool = False,
+        is_external: bool = False,
     ):
-        super().__init__(session, org_id, user_id, is_superuser)
+        super().__init__(session, org_id, user_id, is_superuser, is_external)
 
     async def get_org_level_for_provider(
         self, provider_id: UUID
@@ -351,6 +352,13 @@ class OAuthTokenRepository(OrgScopedRepository[OAuthToken]):
         repository's ``org_id``; fall back to the global token if no
         org-specific row exists. NEVER returns another org's token —
         the cascade explicitly filters by either this org or NULL.
+
+        EXTERNAL principals (EXT-1 OPEN-E) get the org tier ONLY: the global
+        (``organization_id IS NULL``) token is a decrypted third-party
+        credential and must never fall through to a portal user. An external
+        repo with no org returns ``None``. The engine-sentinel / normal-user
+        path is unchanged — it still cascades to global, because a workflow
+        legitimately uses its org's integrations including global defaults.
 
         Args:
             provider_id: ``OAuthProvider`` UUID.
@@ -370,6 +378,11 @@ class OAuthTokenRepository(OrgScopedRepository[OAuthToken]):
             token = result.scalars().first()
             if token is not None:
                 return token
+
+        # External principals have no global tier (EXT-1 OPEN-E): never fall
+        # back to the global OAuth token (decrypted third-party credential).
+        if self.external_restricted:
+            return None
 
         # Fall back to global.
         result = await self.session.execute(

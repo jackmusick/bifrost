@@ -617,7 +617,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
         return config
 
     async def get_config_for_mapping(
-        self, integration_id: UUID, org_id: UUID
+        self, integration_id: UUID, org_id: UUID, *, external: bool = False
     ) -> dict:
         """
         Get merged configuration for an integration mapping.
@@ -628,23 +628,38 @@ class IntegrationsRepository(BaseRepository[Integration]):
         Args:
             integration_id: Integration UUID
             org_id: Organization UUID
+            external: When True (EXT-1 OPEN-E), an EXTERNAL portal caller —
+                drop the global (org_id=NULL) integration defaults entirely so
+                a decrypted global SECRET is never returned. Org-specific
+                config only. Engine/sentinel/normal callers leave this False
+                and keep the defaults+overrides merge.
 
         Returns:
-            dict: Merged configuration (integration defaults + org overrides)
+            dict: Merged configuration (integration defaults + org overrides),
+            or org-specific config only for external callers.
         """
         from src.models.orm import Config as ConfigModel
         from sqlalchemy import or_
 
-        # Query for both integration defaults (org_id=NULL) and org-specific overrides
-        config_query = select(ConfigModel).where(
-            and_(
-                ConfigModel.integration_id == integration_id,
-                or_(
-                    ConfigModel.organization_id.is_(None),
+        if external:
+            # External: org tier only — never read the global defaults.
+            config_query = select(ConfigModel).where(
+                and_(
+                    ConfigModel.integration_id == integration_id,
                     ConfigModel.organization_id == org_id,
-                ),
+                )
             )
-        )
+        else:
+            # Both integration defaults (org_id=NULL) and org-specific overrides
+            config_query = select(ConfigModel).where(
+                and_(
+                    ConfigModel.integration_id == integration_id,
+                    or_(
+                        ConfigModel.organization_id.is_(None),
+                        ConfigModel.organization_id == org_id,
+                    ),
+                )
+            )
         result = await self.session.execute(config_query)
         config_entries = result.scalars().all()
 
@@ -676,7 +691,9 @@ class IntegrationsRepository(BaseRepository[Integration]):
 
         return config
 
-    async def get_integration_defaults(self, integration_id: UUID) -> dict[str, Any]:
+    async def get_integration_defaults(
+        self, integration_id: UUID, *, external: bool = False
+    ) -> dict[str, Any]:
         """
         Get integration-level config defaults (org_id=NULL).
 
@@ -684,11 +701,19 @@ class IntegrationsRepository(BaseRepository[Integration]):
 
         Args:
             integration_id: Integration UUID
+            external: When True (EXT-1 OPEN-E), an EXTERNAL portal caller —
+                these defaults ARE the global (org_id=NULL) tier and may carry
+                decrypted SECRETs, so return nothing. An external with no org
+                mapping gets no integration config at all (no global leak).
 
         Returns:
-            dict: Integration-level config defaults
+            dict: Integration-level config defaults, or empty for externals.
         """
         from src.models.orm import Config as ConfigModel
+
+        if external:
+            # The defaults ARE the global tier — an external never reads it.
+            return {}
 
         config_query = select(ConfigModel).where(
             and_(
