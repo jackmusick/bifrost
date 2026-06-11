@@ -27,9 +27,11 @@ test.describe("Agents Fleet Page (admin)", () => {
 				.first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Either we have agent cards/rows or an empty state
+		// Either we have agent cards/rows or an empty state. `:visible` keeps
+		// the always-hidden mobile metrics strip (also `.grid`, DOM-first) from
+		// being picked by `.first()` at the desktop viewport.
 		const cardsOrEmpty = page
-			.locator(".grid")
+			.locator(".grid:visible")
 			.or(page.getByRole("table"))
 			.or(page.getByText(/no agents/i));
 		await expect(cardsOrEmpty.first()).toBeVisible();
