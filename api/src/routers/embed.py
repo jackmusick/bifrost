@@ -89,6 +89,13 @@ async def embed_app(
         "email": "embed@internal.gobifrost.com",
         "is_superuser": False,
         "embed": True,
+        # OPEN-D: an embed end user is EXTERNAL-equivalent — the token is
+        # handed to an untrusted third-party-embedded browser. Stamping
+        # is_external engages the external gates (no global config secrets,
+        # no global knowledge/tables) even if a future endpoint slips past
+        # the EmbedScopeMiddleware allowlist. Embed rendering itself is
+        # HMAC-pre-authorized and bound to this app/form id, not tiers.
+        "is_external": True,
         "roles": ["EmbedUser"],
     }
     access_token = create_access_token(token_data, expires_delta=timedelta(hours=8))
@@ -167,6 +174,13 @@ async def embed_form(
         "email": "embed@internal.gobifrost.com",
         "is_superuser": False,
         "embed": True,
+        # OPEN-D: an embed end user is EXTERNAL-equivalent — the token is
+        # handed to an untrusted third-party-embedded browser. Stamping
+        # is_external engages the external gates (no global config secrets,
+        # no global knowledge/tables) even if a future endpoint slips past
+        # the EmbedScopeMiddleware allowlist. Embed rendering itself is
+        # HMAC-pre-authorized and bound to this app/form id, not tiers.
+        "is_external": True,
         "roles": ["EmbedUser"],
     }
     access_token = create_access_token(token_data, expires_delta=timedelta(hours=8))

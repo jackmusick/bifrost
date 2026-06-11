@@ -220,6 +220,19 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
     Raises:
         HTTPException 404 if not found or access denied
     """
+    if ctx.user.embed:
+        # Embed pre-auth (OPEN-D): the token is HMAC-bound to exactly ONE
+        # app (its app_id claim). Tier/role checks don't apply; identity
+        # binding does — only the bound app's files resolve.
+        if ctx.user.app_id == str(app_id):
+            app = await ctx.db.get(Application, app_id)
+            if app is not None:
+                return app
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{app_id}' not found",
+        )
+
     repo = ApplicationRepository(
         session=ctx.db,
         org_id=ctx.org_id,

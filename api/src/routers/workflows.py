@@ -790,7 +790,12 @@ async def execute_workflow(
         org_id=lookup_org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_superuser,
-        is_external=ctx.user.is_external,
+        # Embed principals carry is_external=True (OPEN-D: external-equivalent
+        # for the config/knowledge/table data gates), but workflow execution
+        # is the HMAC-pre-authorized app function-call channel — deliberately
+        # allowlisted by EmbedScopeMiddleware and execution-scoped by jti.
+        # Keep the pre-OPEN-D resolution semantics for embed sessions here.
+        is_external=ctx.user.is_external and not ctx.user.embed,
     )
 
     # A Solution caller's path::fn ref carries no install id (it can't know the

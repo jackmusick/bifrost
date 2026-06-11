@@ -147,6 +147,31 @@ async def get_application_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
+    if ctx.user.embed:
+        # Embed principals are HMAC-pre-authorized for exactly ONE app — the
+        # token's app_id claim. Tier/role checks don't apply (the principal
+        # is a synthetic external identity with no roles); identity binding
+        # does: only the bound app resolves, anything else is a 404. This
+        # both keeps embed rendering working under is_external=True (OPEN-D)
+        # and stops an embed token browsing other apps' metadata.
+        result = await ctx.db.execute(
+            select(Application).where(Application.slug == slug)
+        )
+        app = next(
+            (
+                a
+                for a in result.scalars().all()
+                if ctx.user.app_id == str(a.id)
+            ),
+            None,
+        )
+        if app is not None:
+            return app
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{slug}' not found",
+        )
+
     repo = ApplicationRepository(
         session=ctx.db,
         org_id=ctx.org_id,
@@ -190,6 +215,18 @@ async def get_application_by_id_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
+    if ctx.user.embed:
+        # Embed pre-auth: bound to the token's app_id only (see the slug
+        # helper above — OPEN-D).
+        if ctx.user.app_id == str(app_id):
+            app = await ctx.db.get(Application, app_id)
+            if app is not None:
+                return app
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{app_id}' not found",
+        )
+
     repo = ApplicationRepository(
         session=ctx.db,
         org_id=ctx.org_id,
