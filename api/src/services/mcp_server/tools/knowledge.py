@@ -64,7 +64,11 @@ async def search_knowledge(
             embedding_client = await get_embedding_client(db)
             query_embedding = await embedding_client.embed_single(query)
 
-            # Search knowledge store
+            # Search knowledge store. An EXTERNAL caller has no global tier
+            # (EXT-1 rule 1 / LEAK #6): force org-only so they never read global
+            # KB document CONTENT. Engine/autonomous (non-MCP) paths are
+            # unaffected — this gate keys off the calling principal.
+            is_external = bool(getattr(context, "is_external", False))
             repo = KnowledgeRepository(
                 db, org_id=context.org_id if context.org_id else None, is_superuser=True
             )
@@ -72,7 +76,7 @@ async def search_knowledge(
                 query_embedding=query_embedding,
                 namespace=namespaces_to_search,
                 limit=limit,
-                fallback=True,
+                fallback=not is_external,
             )
 
             if not results:

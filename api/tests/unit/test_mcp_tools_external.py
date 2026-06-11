@@ -11,7 +11,7 @@ but DOES for a normal org user.
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -19,6 +19,7 @@ import pytest
 from src.services.mcp_server.tools import agents as agents_tool
 from src.services.mcp_server.tools import apps as apps_tool
 from src.services.mcp_server.tools import forms as forms_tool
+from src.services.mcp_server.tools import knowledge as knowledge_tool
 from src.services.mcp_server.tools import tables as tables_tool
 
 
@@ -126,3 +127,42 @@ class TestMCPGetToolsExternal:
         ctx = _ctx(is_external=False)
         await agents_tool.get_agent(ctx, agent_name="some-agent")
         assert "organization_id IS NULL" in _executed_sql(ctx)
+
+
+@pytest.mark.asyncio
+class TestMCPSearchKnowledgeExternal:
+    """LEAK #6: MCP search_knowledge forced fallback=True (org + global). An
+    external caller must search org-only — no global KB document content."""
+
+    async def _run(self, ctx, captured):
+        ctx.accessible_namespaces = ["ns"]
+        embed = MagicMock()
+        embed.embed_single = AsyncMock(return_value=[0.0] * 8)
+        repo = MagicMock()
+
+        async def _search(**kwargs):
+            captured["fallback"] = kwargs.get("fallback")
+            return []
+
+        repo.search = _search
+        with (
+            patch(
+                "src.services.embeddings.get_embedding_client",
+                new=AsyncMock(return_value=embed),
+            ),
+            patch(
+                "src.repositories.knowledge.KnowledgeRepository",
+                return_value=repo,
+            ),
+        ):
+            await knowledge_tool.search_knowledge(ctx, query="q")
+
+    async def test_external_forces_no_global_fallback(self):
+        captured: dict = {}
+        await self._run(_ctx(is_external=True), captured)
+        assert captured["fallback"] is False
+
+    async def test_normal_user_keeps_fallback(self):
+        captured: dict = {}
+        await self._run(_ctx(is_external=False), captured)
+        assert captured["fallback"] is True
