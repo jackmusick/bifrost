@@ -32,7 +32,7 @@ export function ExecutionResultPanel({
 		) {
 			return (
 				<PrettyInputDisplay
-					inputData={result as Record<string, unknown>}
+					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
 					defaultView="pretty"
 				/>
@@ -66,7 +66,7 @@ export function ExecutionResultPanel({
 		if (!resultType && typeof result === "object" && result !== null) {
 			return (
 				<PrettyInputDisplay
-					inputData={result as Record<string, unknown>}
+					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
 					defaultView="pretty"
 				/>
