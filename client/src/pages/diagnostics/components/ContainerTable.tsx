@@ -98,9 +98,9 @@ export function ContainerTable({ pools, workerIds }: ContainerTableProps) {
     };
 
     return (
-        <div className="border rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10">
             <Table>
-                <TableHeader>
+                <TableHeader className="bg-muted">
                     <TableRow className="text-xs">
                         <TableHead className="w-8" />
                         <TableHead>Container</TableHead>

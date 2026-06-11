@@ -805,7 +805,7 @@ export function ExecutionHistory() {
 				>
 					{isError ? (
 						<div
-							className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
+							className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-16 text-center"
 							data-testid="history-error"
 						>
 							<AlertCircle className="h-10 w-10 text-destructive" />
@@ -827,7 +827,7 @@ export function ExecutionHistory() {
 						</div>
 					) : isFetching && !executions.length ? (
 						<div
-							className="rounded-lg border bg-card"
+							className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10"
 							data-testid="history-loading"
 						>
 							<div className="border-b px-4 py-3">
@@ -1109,7 +1109,7 @@ export function ExecutionHistory() {
 						</DataTable>
 					) : hasActiveFilters ? (
 						<div
-							className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
+							className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-16 text-center"
 							data-testid="history-empty-filtered"
 						>
 							<SearchX className="h-10 w-10 text-muted-foreground" />
@@ -1130,7 +1130,7 @@ export function ExecutionHistory() {
 						</div>
 					) : (
 						<div
-							className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
+							className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-16 text-center"
 							data-testid="history-empty"
 						>
 							<HistoryIcon className="h-10 w-10 text-muted-foreground" />
