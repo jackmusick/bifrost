@@ -24,7 +24,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
 	AlertTriangle,
-	Check,
 	ChevronsUpDown,
 	Info,
 	Loader2,
@@ -506,6 +505,10 @@ export function AgentSettingsTab({
 															<CommandItem
 																key={role.id}
 																value={role.name ?? ""}
+																data-checked={
+																	field.value?.includes(role.id) ??
+																	false
+																}
 																onSelect={() => {
 																	const current = field.value ?? [];
 																	field.onChange(
@@ -517,31 +520,16 @@ export function AgentSettingsTab({
 																	);
 																}}
 															>
-																<div className="flex flex-1 items-center gap-2">
-																	<Checkbox
-																		checked={field.value?.includes(
-																			role.id,
-																		)}
-																	/>
-																	<div className="flex flex-col">
-																		<span className="font-medium">
-																			{role.name}
+																<div className="flex flex-col flex-1">
+																	<span className="font-medium">
+																		{role.name}
+																	</span>
+																	{role.description ? (
+																		<span className="text-xs text-muted-foreground">
+																			{role.description}
 																		</span>
-																		{role.description ? (
-																			<span className="text-xs text-muted-foreground">
-																				{role.description}
-																			</span>
-																		) : null}
-																	</div>
+																	) : null}
 																</div>
-																<Check
-																	className={cn(
-																		"ml-auto h-4 w-4",
-																		field.value?.includes(role.id)
-																			? "opacity-100"
-																			: "opacity-0",
-																	)}
-																/>
 															</CommandItem>
 														))}
 													</CommandGroup>
@@ -852,6 +840,9 @@ export function AgentSettingsTab({
 													<CommandItem
 														key={tool.id}
 														value={`system-${tool.name}`}
+														data-checked={
+															systemTools?.includes(tool.id) ?? false
+														}
 														onSelect={() => {
 															const current = systemTools ?? [];
 															form.setValue(
@@ -862,14 +853,6 @@ export function AgentSettingsTab({
 															);
 														}}
 													>
-														<Check
-															className={cn(
-																"mr-2 h-4 w-4",
-																systemTools?.includes(tool.id)
-																	? "opacity-100"
-																	: "opacity-0",
-															)}
-														/>
 														<div className="flex flex-col">
 															<span className="font-mono text-sm">
 																{tool.id}
@@ -897,6 +880,9 @@ export function AgentSettingsTab({
 															data-mismatch={
 																isMismatch ? "true" : undefined
 															}
+															data-checked={
+																toolIds?.includes(tool.id) ?? false
+															}
 															onSelect={() => {
 																if (isMismatch) return;
 																const current = toolIds ?? [];
@@ -910,14 +896,6 @@ export function AgentSettingsTab({
 																);
 															}}
 														>
-															<Check
-																className={cn(
-																	"mr-2 h-4 w-4",
-																	toolIds?.includes(tool.id)
-																		? "opacity-100"
-																		: "opacity-0",
-																)}
-															/>
 															<div className="flex flex-col">
 																<span>
 																	{tool.name}
@@ -1060,6 +1038,10 @@ export function AgentSettingsTab({
 														<CommandItem
 															key={delegate.id}
 															value={delegate.name}
+															data-checked={
+																field.value?.includes(delegate.id) ??
+																false
+															}
 															onSelect={() => {
 																const current = field.value ?? [];
 																field.onChange(
@@ -1071,14 +1053,6 @@ export function AgentSettingsTab({
 																);
 															}}
 														>
-															<Check
-																className={cn(
-																	"mr-2 h-4 w-4",
-																	field.value?.includes(delegate.id)
-																		? "opacity-100"
-																		: "opacity-0",
-																)}
-															/>
 															<div className="flex flex-col">
 																<span>{delegate.name}</span>
 																{delegate.description ? (

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
+import { ChevronsUpDown, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -104,6 +104,7 @@ export function Combobox({
 									key={option.value}
 									value={option.value}
 									keywords={[option.label]}
+									data-checked={value === option.value}
 									onSelect={() => {
 										onValueChange?.(
 											option.value === value
@@ -123,14 +124,6 @@ export function Combobox({
 											</span>
 										)}
 									</div>
-									<Check
-										className={cn(
-											"ml-auto h-4 w-4",
-											value === option.value
-												? "opacity-100"
-												: "opacity-0",
-										)}
-									/>
 								</CommandItem>
 							))}
 						</CommandGroup>

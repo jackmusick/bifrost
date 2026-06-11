@@ -517,6 +517,9 @@ function DynamicField({
 													String(idx)
 												}
 												value={optLabel}
+												data-checked={
+													optValue === value
+												}
 												onSelect={() => {
 													onChange(optValue);
 													setOpen(false);

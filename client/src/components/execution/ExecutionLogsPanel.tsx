@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Copy, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -214,7 +215,7 @@ export function ExecutionLogsPanel({
 						<summary className="cursor-pointer text-muted-foreground">
 							data
 						</summary>
-						<pre className="mt-1 p-2 bg-muted rounded">
+						<pre className="mt-1 p-2 rounded bg-muted dark:bg-muted/50">
 							{JSON.stringify(data, null, 2)}
 						</pre>
 					</details>
@@ -259,9 +260,14 @@ export function ExecutionLogsPanel({
 			);
 
 		return (
-			<div className={className}>
+			<div
+				className={cn(
+					"overflow-hidden rounded-lg bg-muted/30 ring-1 ring-foreground/5 dark:bg-background/40",
+					className,
+				)}
+			>
 				{/* Header */}
-				<div className="flex items-center justify-between border-b bg-muted/30 px-4 py-1.5">
+				<div className="flex items-center justify-between border-b border-border/50 bg-muted/40 px-4 py-1.5 dark:bg-muted/20">
 					<div className="flex items-center gap-2">
 						<span className="text-sm font-medium">Logs</span>
 						{lineCount > 0 && (

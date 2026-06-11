@@ -11,7 +11,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
 	Loader2,
-	Check,
 	ChevronsUpDown,
 	X,
 	ChevronDown,
@@ -61,9 +60,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
-import { cn } from "@/lib/utils";
 import { term, useTerminology } from "@/lib/terminology";
 import { useRoles } from "@/hooks/useRoles";
 import { useAuth } from "@/contexts/AuthContext";
@@ -500,38 +497,23 @@ export function AppInfoDialog({
 																	<CommandItem
 																		key={role.id}
 																		value={role.name || ""}
+																		data-checked={field.value.includes(
+																			role.id,
+																		)}
 																		onSelect={() =>
 																			toggleRole(role.id)
 																		}
 																	>
-																		<div className="flex items-center gap-2 flex-1">
-																			<Checkbox
-																				checked={field.value.includes(
-																					role.id,
-																				)}
-																				onCheckedChange={() =>
-																					toggleRole(role.id)
-																				}
-																			/>
-																			<div className="flex flex-col">
-																				<span className="font-medium">
-																					{role.name}
+																		<div className="flex flex-col flex-1">
+																			<span className="font-medium">
+																				{role.name}
+																			</span>
+																			{role.description && (
+																				<span className="text-xs text-muted-foreground">
+																					{role.description}
 																				</span>
-																				{role.description && (
-																					<span className="text-xs text-muted-foreground">
-																						{role.description}
-																					</span>
-																				)}
-																			</div>
-																		</div>
-																		<Check
-																			className={cn(
-																				"ml-auto h-4 w-4",
-																				field.value.includes(role.id)
-																					? "opacity-100"
-																					: "opacity-0",
 																			)}
-																		/>
+																		</div>
 																	</CommandItem>
 																))}
 															</CommandGroup>

@@ -54,7 +54,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -662,31 +661,19 @@ export function WorkflowEditDialog({
 															<CommandItem
 																key={role.id}
 																value={role.name || ""}
+																data-checked={selectedRoleIds.includes(role.id)}
 																onSelect={() => handleRoleToggle(role.id)}
 															>
-																<div className="flex items-center gap-2 flex-1">
-																	<Checkbox
-																		checked={selectedRoleIds.includes(role.id)}
-																	/>
-																	<div className="flex flex-col">
-																		<span className="font-medium">
-																			{role.name}
+																<div className="flex flex-col flex-1">
+																	<span className="font-medium">
+																		{role.name}
+																	</span>
+																	{role.description && (
+																		<span className="text-xs text-muted-foreground">
+																			{role.description}
 																		</span>
-																		{role.description && (
-																			<span className="text-xs text-muted-foreground">
-																				{role.description}
-																			</span>
-																		)}
-																	</div>
-																</div>
-																<Check
-																	className={cn(
-																		"ml-auto h-4 w-4",
-																		selectedRoleIds.includes(role.id)
-																			? "opacity-100"
-																			: "opacity-0"
 																	)}
-																/>
+																</div>
 															</CommandItem>
 														))}
 													</CommandGroup>

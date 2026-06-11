@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Bot, Check } from "lucide-react";
+import { Bot } from "lucide-react";
 import {
 	Command,
 	CommandEmpty,
@@ -143,10 +143,11 @@ export function MentionPicker({
 								<CommandItem
 									key={agent.id}
 									value={agent.name}
+									data-checked={index === clampedIndex}
 									onSelect={() => onSelect(agent)}
 									className={cn(
 										"cursor-pointer",
-										index === clampedIndex && "bg-accent",
+										index === clampedIndex && "bg-muted",
 									)}
 								>
 									<Bot className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -158,9 +159,6 @@ export function MentionPicker({
 											</span>
 										)}
 									</div>
-									{index === clampedIndex && (
-										<Check className="ml-auto h-4 w-4" />
-									)}
 								</CommandItem>
 							))}
 						</CommandGroup>

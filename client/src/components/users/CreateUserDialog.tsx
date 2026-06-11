@@ -30,7 +30,6 @@ import {
 	Shield,
 	AlertCircle,
 	Loader2,
-	Check,
 	ChevronsUpDown,
 	X,
 } from "lucide-react";
@@ -355,6 +354,9 @@ function CreateUserDialogContent({
 													key={role.id}
 													value={role.id}
 													keywords={[role.name]}
+													data-checked={selectedRoleIds.has(
+														role.id,
+													)}
 													onSelect={() =>
 														toggleRole(role.id)
 													}
@@ -371,16 +373,6 @@ function CreateUserDialogContent({
 															</span>
 														)}
 													</div>
-													<Check
-														className={cn(
-															"ml-auto h-4 w-4",
-															selectedRoleIds.has(
-																role.id,
-															)
-																? "opacity-100"
-																: "opacity-0",
-														)}
-													/>
 												</CommandItem>
 											))}
 										</CommandGroup>

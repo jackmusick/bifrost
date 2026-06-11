@@ -10,7 +10,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
 	AlertTriangle,
-	Check,
 	ChevronsUpDown,
 	Globe,
 	Loader2,
@@ -476,19 +475,12 @@ function ComboboxWorkflowSelector({
 								<CommandItem
 									key={workflow.id}
 									value={`${workflow.name} ${workflow.description ?? ""}`}
+									data-checked={value === workflow.id}
 									onSelect={() => {
 										onChange(workflow.id);
 										setOpen(false);
 									}}
 								>
-									<Check
-										className={cn(
-											"mr-2 h-4 w-4",
-											value === workflow.id
-												? "opacity-100"
-												: "opacity-0"
-										)}
-									/>
 									{renderItem(workflow)}
 								</CommandItem>
 							))}

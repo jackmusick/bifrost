@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ChevronsUpDown, Loader2, X } from "lucide-react";
+import { ChevronsUpDown, Loader2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -155,6 +155,7 @@ export function MultiCombobox({
 										key={option.value}
 										value={option.value}
 										keywords={[option.label]}
+										data-checked={isSelected}
 										onSelect={() => toggle(option.value)}
 									>
 										<div className="flex flex-col flex-1">
@@ -167,14 +168,6 @@ export function MultiCombobox({
 												</span>
 											)}
 										</div>
-										<Check
-											className={cn(
-												"ml-auto h-4 w-4",
-												isSelected
-													? "opacity-100"
-													: "opacity-0",
-											)}
-										/>
 									</CommandItem>
 								);
 							})}
