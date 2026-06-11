@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -98,6 +98,7 @@ class MCPToolAccessService:
             user_roles=user_roles,
             is_superuser=is_superuser,
             is_external=is_external,
+            org_id=org_id,
         )
 
         # Step 2: Collect tools from accessible agents, enforcing per-workflow
@@ -183,7 +184,10 @@ class MCPToolAccessService:
         Returns:
             AgentScopedToolResult if agent exists and user has access, None otherwise
         """
-        # Query the specific agent with tools and roles eagerly loaded
+        # Query the specific agent with tools and roles eagerly loaded.
+        # Org-scope IN THE DATABASE (LEAK #2): a by-id fetch must not reach an
+        # agent outside the caller's org cascade — otherwise a role_based agent
+        # in another org with a same-named role would pass _check_agent_access.
         query = (
             select(Agent)
             .options(
@@ -193,6 +197,23 @@ class MCPToolAccessService:
             .where(Agent.id == str(agent_id))
             .where(Agent.is_active.is_(True))
         )
+
+        if not is_superuser:
+            scope_org = UUID(org_id) if isinstance(org_id, str) and org_id else org_id
+            if scope_org is not None:
+                if is_external:
+                    query = query.where(Agent.organization_id == scope_org)
+                else:
+                    query = query.where(
+                        or_(
+                            Agent.organization_id == scope_org,
+                            Agent.organization_id.is_(None),
+                        )
+                    )
+            elif is_external:
+                query = query.where(false())
+            else:
+                query = query.where(Agent.organization_id.is_(None))
 
         result = await self.session.execute(query)
         agent = result.scalars().unique().first()
@@ -364,6 +385,7 @@ class MCPToolAccessService:
         user_roles: list[str],
         is_superuser: bool,
         is_external: bool = False,
+        org_id: UUID | str | None = None,
     ) -> list[Agent]:
         """
         Get agents accessible to the user based on access_level and roles.
@@ -374,8 +396,13 @@ class MCPToolAccessService:
           OR be a platform admin (superuser)
         - ROLE_BASED with no roles: Only superusers can access
         - Platform admins (superusers) bypass ROLE_BASED role checks (issue #244)
+
+        Org scoping (LEAK #2): the query is org-scoped IN THE DATABASE so a
+        role_based agent in another org with a same-named role can NEVER leak.
+        A regular user sees their org + global; an external user sees their
+        org ONLY (no global tier); a superuser sees all orgs.
         """
-        # Query all active agents with their tools and roles eagerly loaded
+        # Query active agents, scoped to the caller's org cascade.
         query = (
             select(Agent)
             .options(
@@ -384,6 +411,26 @@ class MCPToolAccessService:
             )
             .where(Agent.is_active.is_(True))
         )
+
+        if not is_superuser:
+            scope_org = UUID(org_id) if isinstance(org_id, str) and org_id else org_id
+            if scope_org is not None:
+                if is_external:
+                    # External: own org tier ONLY (no global arm).
+                    query = query.where(Agent.organization_id == scope_org)
+                else:
+                    query = query.where(
+                        or_(
+                            Agent.organization_id == scope_org,
+                            Agent.organization_id.is_(None),
+                        )
+                    )
+            elif is_external:
+                # External with no org: no agent is in reach.
+                query = query.where(false())
+            else:
+                # Non-admin with no org: global only.
+                query = query.where(Agent.organization_id.is_(None))
 
         result = await self.session.execute(query)
         all_agents = result.scalars().unique().all()
