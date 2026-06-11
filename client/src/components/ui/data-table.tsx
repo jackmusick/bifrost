@@ -86,7 +86,7 @@ const DataTableHeader = React.forwardRef<
 	<thead
 		ref={ref}
 		className={cn(
-			"sticky top-0 z-10 bg-muted [&_tr]:border-b",
+			"sticky top-0 z-10 bg-card [&_tr]:border-b",
 			className,
 		)}
 		{...props}
@@ -113,7 +113,7 @@ const DataTableFooter = React.forwardRef<
 	<tfoot
 		ref={ref}
 		className={cn(
-			"bg-muted/50 font-medium [&>tr]:last:border-b-0",
+			"bg-card font-medium [&>tr]:last:border-b-0",
 			className,
 		)}
 		{...props}

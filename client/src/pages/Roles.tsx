@@ -255,7 +255,7 @@ export function Roles() {
 										sortDirection={sortDirection}
 									/>
 								</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap text-right sticky right-0 bg-muted">
+								<DataTableHead className="w-0 whitespace-nowrap text-right sticky right-0 bg-card">
 									Actions
 								</DataTableHead>
 							</DataTableRow>
