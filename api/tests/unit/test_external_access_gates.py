@@ -280,19 +280,23 @@ def test_principal_derived_repo_constructions_pass_is_external():
 # branch on self.external_restricted/is_external themselves. The lint VERIFIES
 # the guard is still present — if a future edit strips it (LEAK #4's failure
 # mode), the method drops out of this set's protection and becomes a violation.
+# Maps each self-guarding method to a DEDICATED behavioral test file that
+# proves the external path drops the global tier. The token-presence check
+# above catches a fully stripped guard; these tests catch a logically broken
+# guard (e.g. data-flow guards that AST spans can't see — NEW-1's external flag,
+# knowledge.search's fallback flag). The meta-test below asserts each file
+# exists, so removing a method's safety net can't pass silently.
 _METHOD_SELF_GUARDING: dict[str, str] = {
-    "agents.list_agents": "branches on self.external_restricted (commit cb7f9181)",
-    "agents.get_agent_with_access_check": "early-returns on self.external_restricted",
-    "forms.get_form_with_access_check": "early-returns on self.external_restricted",
-    "knowledge.search": "forces org-only when self.external_restricted",
-    "knowledge.list_namespaces": "forces org-only when self.external_restricted",
-    "knowledge.list_documents_by_namespace": "forces org-only when self.external_restricted",
-    "workflows.list_tools_for_filter": "forces org-only when self.external_restricted",
+    "agents.list_agents": "tests/unit/repositories/test_external_subclass_gates.py",
+    "agents.get_agent_with_access_check": "tests/unit/repositories/test_external_subclass_gates.py",
+    "forms.get_form_with_access_check": "tests/unit/repositories/test_external_subclass_gates.py",
+    "knowledge.search": "tests/unit/test_external_leak_closures.py",
+    "knowledge.list_namespaces": "tests/unit/test_external_leak_closures.py",
+    "knowledge.list_documents_by_namespace": "tests/unit/test_external_leak_closures.py",
+    "workflows.list_tools_for_filter": "tests/unit/test_external_leak_closures.py",
     # merged_for_sdk is reachable behind the PLAIN CurrentUser endpoint
-    # /api/cli/config/get — NOT sentinel-only. It honors an explicit `external`
-    # flag (defaulting to self.is_external) that drops the global tier. EXT-1
-    # NEW-1. Verified self-guarding: stripping the flag re-leaks global secrets.
-    "config.merged_for_sdk": "drops global tier for external caller (EXT-1 NEW-1)",
+    # /api/cli/config/get — NOT sentinel-only. EXT-1 NEW-1.
+    "config.merged_for_sdk": "tests/unit/test_config_merged_external.py",
 }
 
 # SENTINEL/ADMIN-ONLY methods: never reached by a direct external user, so the
@@ -329,6 +333,104 @@ def _method_does_org_or_global_read(method: ast.AST) -> bool:
     return is_cascade_shape and not is_write
 
 
+def _external_guarded_spans(scope: ast.AST) -> list[tuple[int, int]]:
+    """Line spans within ``scope`` that run for a NON-external/bypass principal.
+
+    POLARITY-AWARE (shared by the path lint and the method self-guard check):
+      if is_external:        orelse guarded (body LEAKS)
+      if not is_external:    body guarded   (orelse LEAKS)
+      if is_platform_admin:  body guarded   (orelse NOT)
+      if not is_platform_admin: orelse guarded (body is the regular cascade,
+                             NOT auto-excused — must carry its own ext guard)
+    A global arm sitting in a guarded span is recognized as gated.
+    """
+
+    def _span(branch: list[ast.stmt]) -> list[tuple[int, int]]:
+        return [(s.lineno, getattr(s, "end_lineno", s.lineno)) for s in branch]
+
+    def _is_ext_test(test: ast.expr) -> bool:
+        src = ast.unparse(test)
+        names = {n.id for n in ast.walk(test) if isinstance(n, ast.Name)}
+        return (
+            "is_external" in src
+            or "external_restricted" in src
+            or "external" in names
+        )
+
+    def _is_bypass_test(test: ast.expr) -> bool:
+        src = ast.unparse(test)
+        return "is_platform_admin" in src or "is_superuser" in src
+
+    def _exits(branch: list[ast.stmt]) -> bool:
+        # The branch unconditionally leaves the function (early-return guard).
+        return any(isinstance(s, (ast.Return, ast.Raise)) for s in branch)
+
+    spans: list[tuple[int, int]] = []
+    # Branch-wrap guards (lexical if/else) — polarity-aware.
+    for node in ast.walk(scope):
+        if not isinstance(node, ast.If):
+            continue
+        test_src = ast.unparse(node.test)
+        negated = test_src.startswith("not ") or " not " in test_src
+        if _is_ext_test(node.test):
+            spans += _span(node.orelse if not negated else node.body)
+        elif _is_bypass_test(node.test):
+            spans += _span(node.body if not negated else node.orelse)
+
+    # Early-return guards at FUNCTION scope: ``if <ext-test>: return …`` (or
+    # ``if not <non-ext>: return``) means everything AFTER the if runs only for
+    # a non-external principal. Recognize this so guard styles other than
+    # if/else wrapping (e.g. AgentRepository.get_agent_with_access_check) count.
+    for fn in ast.walk(scope):
+        if not isinstance(fn, (ast.AsyncFunctionDef, ast.FunctionDef)):
+            continue
+        body = fn.body
+        for idx, stmt in enumerate(body):
+            if not isinstance(stmt, ast.If):
+                continue
+            test_src = ast.unparse(stmt.test)
+            negated = test_src.startswith("not ") or " not " in test_src
+            # ``if external: return`` (positive ext-test, body exits) guards the
+            # remainder. ``if not external: <run>`` is already a branch-wrap.
+            if _is_ext_test(stmt.test) and not negated and _exits(stmt.body):
+                rest = body[idx + 1 :]
+                if rest:
+                    spans.append(
+                        (rest[0].lineno, getattr(rest[-1], "end_lineno", rest[-1].lineno))
+                    )
+    return spans
+
+
+def _unguarded_global_arm_lines(
+    scope: ast.AST, models: set[str] | None = None
+) -> list[int]:
+    """Lines in ``scope`` where ``<Model>.organization_id.is_(None)`` sits
+    OUTSIDE an external-guarded branch. ``models=None`` matches any base."""
+    guarded = _external_guarded_spans(scope)
+
+    def _is_guarded(ln: int) -> bool:
+        return any(lo <= ln <= hi for lo, hi in guarded)
+
+    out: list[int] = []
+    for node in ast.walk(scope):
+        if not isinstance(node, ast.Attribute):
+            continue
+        if not (
+            isinstance(node.value, ast.Attribute)
+            and node.value.attr == "organization_id"
+            and node.attr == "is_"
+        ):
+            continue
+        base = node.value.value
+        base_name = base.id if isinstance(base, ast.Name) else None
+        if models is not None and base_name not in models:
+            continue
+        if _is_guarded(node.lineno):
+            continue
+        out.append(node.lineno)
+    return out
+
+
 def test_repo_read_cascade_methods_honor_external_restricted():
     """A repository READ method that builds an org-OR-global cascade by hand
     (instead of ``_apply_cascade_scope``, which honors ``self.is_external``)
@@ -358,11 +460,27 @@ def test_repo_read_cascade_methods_honor_external_restricted():
                     continue
                 if not _method_does_org_or_global_read(method):
                     continue
-                src = ast.unparse(method)
+                # Guard tokens in the CODE only — a mention in the docstring
+                # must NOT count (else a stripped guard with a stale docstring
+                # passes). Drop a leading string-expr (docstring) before unparse.
+                body = method.body
+                if (
+                    body
+                    and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)
+                ):
+                    body = body[1:]
+                src = "\n".join(ast.unparse(s) for s in body)
                 has_guard = "external_restricted" in src or "is_external" in src
                 if key in _METHOD_SELF_GUARDING:
-                    # VERIFY the self-guard is still present — a stripped guard
-                    # (LEAK #4's failure mode) re-opens the global tier.
+                    # The self-guard token must be present (catches a fully
+                    # stripped guard — LEAK #4's failure mode). A guard that is
+                    # present but logically broken (e.g. NEW-1's external=False)
+                    # is NOT structurally detectable here — those methods carry
+                    # a DEDICATED behavioral test (asserted to exist + pass by
+                    # ``test_self_guarding_methods_have_behavioral_coverage``),
+                    # which is the real safety net for data-flow guards.
                     if not has_guard:
                         violations.append(
                             f"{path.relative_to(API_SRC)}::{cls.name}.{method.name} "
@@ -383,6 +501,24 @@ def test_repo_read_cascade_methods_honor_external_restricted():
         "Use the cascade primitive, branch on self.external_restricted, or "
         "allow-list with a reason + dedicated external test:\n  "
         + "\n  ".join(violations)
+    )
+
+
+def test_self_guarding_methods_have_behavioral_coverage():
+    """Every self-guarding cascade method must name an EXISTING behavioral test
+    that proves its external path drops the global tier. This is the safety net
+    for data-flow guards the structural lint can't verify (NEW-1's external
+    flag, knowledge.search's fallback flag). Deleting a method's covering test
+    fails here instead of silently un-protecting it."""
+    repo_root = API_SRC.parent
+    missing = [
+        f"{method} -> {test_path}"
+        for method, test_path in _METHOD_SELF_GUARDING.items()
+        if not (repo_root / test_path).exists()
+    ]
+    assert not missing, (
+        "Self-guarding method names a behavioral test file that does not "
+        "exist:\n  " + "\n  ".join(missing)
     )
 
 
@@ -489,63 +625,11 @@ def test_user_reachable_paths_dont_hand_roll_global_arm():
             if rel in _PATH_GLOBAL_ARM_ALLOWLIST:
                 continue
 
-            # A global arm is "guarded" only when it sits in the branch that
-            # runs for a NON-external principal of an external-ness test.
-            # POLARITY MATTERS — excusing both branches (or the non-admin body
-            # of a bypass test) is how a leak slips back in:
-            #   if is_external:        BODY=external (a global arm here LEAKS);
-            #                          orelse=non-external (guarded).
-            #   if not is_external:    BODY=non-external (guarded);
-            #                          orelse=external (LEAKS).
-            # Bypass tests (is_platform_admin / is_superuser) guard ONLY the
-            # branch where the principal IS the bypass principal:
-            #   if is_platform_admin:  BODY guarded; orelse NOT.
-            #   if not is_platform_admin: BODY is the regular-user cascade and
-            #                          is NOT auto-excused — it must carry its
-            #                          own is_external guard.
-            def _span(branch: list[ast.stmt]) -> list[tuple[int, int]]:
-                return [
-                    (s.lineno, getattr(s, "end_lineno", s.lineno)) for s in branch
-                ]
-
-            guarded_spans: list[tuple[int, int]] = []
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.If):
-                    continue
-                test_src = ast.unparse(node.test)
-                negated = test_src.startswith("not ") or " not " in test_src
-                is_ext_test = (
-                    "is_external" in test_src or "external_restricted" in test_src
-                )
-                is_bypass_test = (
-                    "is_platform_admin" in test_src or "is_superuser" in test_src
-                )
-                if is_ext_test:
-                    # non-external branch is guarded.
-                    guarded_spans += _span(node.orelse if not negated else node.body)
-                elif is_bypass_test:
-                    # only the IS-bypass branch is guarded.
-                    guarded_spans += _span(node.body if not negated else node.orelse)
-
-            def _is_guarded(lineno: int) -> bool:
-                return any(lo <= lineno <= hi for lo, hi in guarded_spans)
-
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Attribute):
-                    continue
-                if not (
-                    isinstance(node.value, ast.Attribute)
-                    and node.value.attr == "organization_id"
-                    and node.attr == "is_"
-                ):
-                    continue
-                base = node.value.value
-                base_name = base.id if isinstance(base, ast.Name) else None
-                if base_name not in _EXEC_RESOLUTION_MODELS:
-                    continue
-                if _is_guarded(node.lineno):
-                    continue
-                violations.append(f"{rel}:{node.lineno} ({base_name})")
+            # Polarity-aware global-arm detection (shared helper): a global arm
+            # outside an external-guarded branch leaks. The model filter limits
+            # to execution-resolution entities.
+            for lineno in _unguarded_global_arm_lines(tree, _EXEC_RESOLUTION_MODELS):
+                violations.append(f"{rel}:{lineno}")
 
     assert not violations, (
         "User-reachable router/service path hand-rolls "
