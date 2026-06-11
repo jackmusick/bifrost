@@ -276,26 +276,29 @@ def test_principal_derived_repo_constructions_pass_is_external():
 # entry is ``"<file_stem>.<method>"`` with a one-line reason pointing at the
 # guard / dedicated test. Keep SHORT — every entry is a method the structural
 # lint trusts to gate externals itself.
-_METHOD_CASCADE_EXTERNAL_ALLOWLIST: dict[str, str] = {
-    # The base cascade primitive and the subclass read-cascade methods that
-    # explicitly branch on self.external_restricted (EXT-1 + this pass).
+# SELF-GUARDING read-cascade methods: they keep an inline global arm but
+# branch on self.external_restricted/is_external themselves. The lint VERIFIES
+# the guard is still present — if a future edit strips it (LEAK #4's failure
+# mode), the method drops out of this set's protection and becomes a violation.
+_METHOD_SELF_GUARDING: dict[str, str] = {
     "agents.list_agents": "branches on self.external_restricted (commit cb7f9181)",
     "agents.get_agent_with_access_check": "early-returns on self.external_restricted",
     "forms.get_form_with_access_check": "early-returns on self.external_restricted",
-    "knowledge.search": "forces org-only when self.external_restricted (this pass)",
-    "knowledge.list_namespaces": "forces org-only when self.external_restricted (this pass)",
+    "knowledge.search": "forces org-only when self.external_restricted",
+    "knowledge.list_namespaces": "forces org-only when self.external_restricted",
     "knowledge.list_documents_by_namespace": "forces org-only when self.external_restricted",
-    "workflows.list_tools_for_filter": "forces org-only when self.external_restricted (this pass)",
-    # Admin/superuser-only enumerations: callers pass an explicit OrgFilterType
-    # and are gated to superusers at the router; never an external read path.
+    "workflows.list_tools_for_filter": "forces org-only when self.external_restricted",
+}
+
+# SENTINEL/ADMIN-ONLY methods: never reached by a direct external user, so the
+# inline global arm is safe by CALL-SITE (verified manually). These are exempt
+# without requiring an inline guard.
+_METHOD_SENTINEL_ONLY: dict[str, str] = {
     "agents.list_all_in_scope": "superuser-only enumeration (OrgFilterType, router-gated)",
     "forms.list_all_in_scope": "superuser-only enumeration (OrgFilterType, router-gated)",
     "applications.list_all_in_scope": "superuser-only enumeration (OrgFilterType, router-gated)",
     "external_mcp.list_all_in_scope": "superuser-only enumeration (OrgFilterType, router-gated)",
     "tables.list_tables": "CurrentSuperuser route only (is_superuser=True caller)",
-    # Config + OAuth token + knowledge-key reads are SDK-sentinel ONLY
-    # (is_superuser=True at every call site — engine/CLI, never a direct
-    # external user). README: Config/OAuth/Knowledge are 'No (SDK only)'.
     "config.list_configs": "superuser-only config endpoint (is_superuser=True)",
     "config.merged_for_sdk": "SDK sentinel config load (is_superuser=True)",
     "oauth.get_token": "SDK/engine-or-superuser gated (is_superuser=True)",
@@ -346,13 +349,25 @@ def test_repo_read_cascade_methods_honor_external_restricted():
                 if not isinstance(method, (ast.AsyncFunctionDef, ast.FunctionDef)):
                     continue
                 key = f"{stem}.{method.name}"
-                if key in _METHOD_CASCADE_EXTERNAL_ALLOWLIST:
+                # Sentinel/admin-only methods are exempt by call-site.
+                if key in _METHOD_SENTINEL_ONLY:
                     continue
                 if not _method_does_org_or_global_read(method):
                     continue
-                # Methods that explicitly branch on the external guard are OK.
                 src = ast.unparse(method)
-                if "external_restricted" in src or "is_external" in src:
+                has_guard = "external_restricted" in src or "is_external" in src
+                if key in _METHOD_SELF_GUARDING:
+                    # VERIFY the self-guard is still present — a stripped guard
+                    # (LEAK #4's failure mode) re-opens the global tier.
+                    if not has_guard:
+                        violations.append(
+                            f"{path.relative_to(API_SRC)}::{cls.name}.{method.name} "
+                            f"is allow-listed as self-guarding but no longer "
+                            f"references self.external_restricted/is_external"
+                        )
+                    continue
+                # Any other cascade method that branches on the guard is OK.
+                if has_guard:
                     continue
                 violations.append(
                     f"{path.relative_to(API_SRC)}::{cls.name}.{method.name}"
@@ -455,32 +470,43 @@ def test_user_reachable_paths_dont_hand_roll_global_arm():
             if rel in _PATH_GLOBAL_ARM_ALLOWLIST:
                 continue
 
-            # A global arm is "guarded" when it sits inside an `if`/`else` whose
-            # condition tests external-ness (e.g. `if not is_external:`), or
-            # inside an `else` of such an `if`. Record the line spans of those
-            # guarded branches so a global arm within one is recognized as safe.
+            # A global arm is "guarded" only when it sits in the branch that
+            # runs for a NON-external principal of an external-ness test.
+            # POLARITY MATTERS — excusing both branches (or the non-admin body
+            # of a bypass test) is how a leak slips back in:
+            #   if is_external:        BODY=external (a global arm here LEAKS);
+            #                          orelse=non-external (guarded).
+            #   if not is_external:    BODY=non-external (guarded);
+            #                          orelse=external (LEAKS).
+            # Bypass tests (is_platform_admin / is_superuser) guard ONLY the
+            # branch where the principal IS the bypass principal:
+            #   if is_platform_admin:  BODY guarded; orelse NOT.
+            #   if not is_platform_admin: BODY is the regular-user cascade and
+            #                          is NOT auto-excused — it must carry its
+            #                          own is_external guard.
+            def _span(branch: list[ast.stmt]) -> list[tuple[int, int]]:
+                return [
+                    (s.lineno, getattr(s, "end_lineno", s.lineno)) for s in branch
+                ]
+
             guarded_spans: list[tuple[int, int]] = []
             for node in ast.walk(tree):
                 if not isinstance(node, ast.If):
                     continue
                 test_src = ast.unparse(node.test)
-                # Guarded when the branch is selected by an external-ness test
-                # OR a bypass-principal test (platform admin / superuser):
-                # bypass principals legitimately reach the global tier.
-                guard_tokens = (
-                    "is_external",
-                    "external_restricted",
-                    "is_platform_admin",
-                    "is_superuser",
+                negated = test_src.startswith("not ") or " not " in test_src
+                is_ext_test = (
+                    "is_external" in test_src or "external_restricted" in test_src
                 )
-                if not any(tok in test_src for tok in guard_tokens):
-                    continue
-                branches = [node.body, node.orelse]
-                for branch in branches:
-                    for stmt in branch:
-                        guarded_spans.append(
-                            (stmt.lineno, getattr(stmt, "end_lineno", stmt.lineno))
-                        )
+                is_bypass_test = (
+                    "is_platform_admin" in test_src or "is_superuser" in test_src
+                )
+                if is_ext_test:
+                    # non-external branch is guarded.
+                    guarded_spans += _span(node.orelse if not negated else node.body)
+                elif is_bypass_test:
+                    # only the IS-bypass branch is guarded.
+                    guarded_spans += _span(node.body if not negated else node.orelse)
 
             def _is_guarded(lineno: int) -> bool:
                 return any(lo <= lineno <= hi for lo, hi in guarded_spans)
