@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
  * @param dateString - ISO date string from backend
  * @returns Date object in user's local timezone
  */
-function parseBackendDate(dateString: string): Date {
+export function parseBackendDate(dateString: string): Date {
 	// If the string doesn't end with 'Z' and doesn't have a timezone offset,
 	// it's a UTC timestamp from Python's isoformat(), so append 'Z'
 	if (
