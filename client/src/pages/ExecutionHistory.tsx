@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import {
 	CheckCircle,
 	XCircle,
@@ -13,7 +13,6 @@ import {
 	AlertCircle,
 	Info,
 	Eye,
-	Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -111,7 +110,6 @@ interface StuckExecution {
 }
 
 export function ExecutionHistory() {
-	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const { isPlatformAdmin, user } = useAuth();
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
@@ -187,8 +185,8 @@ export function ExecutionHistory() {
 		// Add excludeLocal filter (inverse of showLocal)
 		baseFilters.excludeLocal = !showLocal;
 
-		// Add workflow ID filter
-		if (workflowIdFilter) {
+		// Workflow IDs are implementation details; only admins get this filter.
+		if (isPlatformAdmin && workflowIdFilter) {
 			baseFilters.workflow_id = workflowIdFilter;
 		}
 
@@ -210,7 +208,7 @@ export function ExecutionHistory() {
 		}
 
 		return baseFilters;
-	}, [statusFilter, dateRange, showLocal, workflowIdFilter]);
+	}, [statusFilter, dateRange, showLocal, isPlatformAdmin, workflowIdFilter]);
 
 	// Pass filterOrgId to backend for filtering (undefined = all, null = global only)
 	// For platform admins, undefined means show all. For non-admins, backend handles filtering.
@@ -703,26 +701,28 @@ export function ExecutionHistory() {
 						: "Search by workflow name, user, or execution ID..."}
 					className="flex-1 max-w-2xl"
 				/>
-				<WorkflowSelector
-					value={workflowIdFilter || undefined}
-					onChange={(value) => {
-						const newFilter = value ?? "";
-						setWorkflowIdFilter(newFilter);
-						setSearchParams((prev) => {
-							const next = new URLSearchParams(prev);
-							if (newFilter) {
-								next.set("workflow", newFilter);
-							} else {
-								next.delete("workflow");
-							}
-							return next;
-						}, { replace: true });
-					}}
-					variant="combobox"
-					allowClear={true}
-					placeholder="All workflows"
-					className="w-48"
-				/>
+				{isPlatformAdmin && (
+					<WorkflowSelector
+						value={workflowIdFilter || undefined}
+						onChange={(value) => {
+							const newFilter = value ?? "";
+							setWorkflowIdFilter(newFilter);
+							setSearchParams((prev) => {
+								const next = new URLSearchParams(prev);
+								if (newFilter) {
+									next.set("workflow", newFilter);
+								} else {
+									next.delete("workflow");
+								}
+								return next;
+							}, { replace: true });
+						}}
+						variant="combobox"
+						allowClear={true}
+						placeholder="All workflows"
+						className="w-48"
+					/>
+				)}
 				<DateRangePicker
 					dateRange={dateRange}
 					onDateRangeChange={setDateRange}
@@ -860,6 +860,10 @@ export function ExecutionHistory() {
 									return (
 										<DataTableRow
 											key={execution.execution_id}
+											data-testid="execution-row"
+											data-execution-id={
+												execution.execution_id
+											}
 											clickable
 											href={`/history/${execution.execution_id}`}
 											onClick={(e) => {
@@ -892,42 +896,12 @@ export function ExecutionHistory() {
 													)}
 												</DataTableCell>
 											)}
-											<DataTableCell className="font-mono text-sm">
+											<DataTableCell
+												className="font-mono text-sm"
+												data-testid="execution-workflow-cell"
+											>
 												<div className="flex items-center gap-2">
 													{execution.workflow_name}
-													{execution.session_id && (
-														<TooltipProvider>
-															<Tooltip>
-																<TooltipTrigger
-																	asChild
-																>
-																	<Button
-																		variant="ghost"
-																		size="icon"
-																		className="h-6 w-6 text-muted-foreground hover:text-primary"
-																		onClick={(
-																			e,
-																		) => {
-																			e.stopPropagation();
-																			navigate(
-																				`/cli/${execution.session_id}`,
-																			);
-																		}}
-																	>
-																		<Terminal className="h-4 w-4" />
-																	</Button>
-																</TooltipTrigger>
-																<TooltipContent side="right">
-																	<p className="text-sm">
-																		Dev run
-																		- Click
-																		to view
-																		session
-																	</p>
-																</TooltipContent>
-															</Tooltip>
-														</TooltipProvider>
-													)}
 												</div>
 											</DataTableCell>
 											<DataTableCell>

@@ -535,10 +535,10 @@ class BundlerService:
             n for _, n in user_components if n in imported_names
         )
         deprecated_icons = sorted(lucide_names)
-        # React Router navigation primitives: with the bundled runtime the
-        # host sets `basename` on BrowserRouter, so raw React Router
-        # Link/NavLink/Navigate/useNavigate/navigate handle the /apps/<slug>
-        # prefix automatically. Users should import them from 'react-router-dom'.
+        # React Router navigation primitives: app bundles resolve
+        # react-router-dom through the host import-map stub. The host stub wraps
+        # app-sensitive APIs (navigation + useLocation), while leaving route
+        # matching primitives raw.
         #
         # Must stay in sync with `client/src/lib/bifrost-runtime.ts`'s
         # react-router-dom re-exports. Only runtime values (components / hooks /
@@ -626,20 +626,16 @@ class BundlerService:
 
         # React Router navigation primitives.
         #
-        # Link / NavLink / Navigate / useNavigate / navigate route through the
-        # platform wrappers in `app-code-platform/navigation.tsx` — they prepend
-        # the app base path (`/apps/<slug>/preview` or `/apps/<slug>`) so bare
-        # `<Link to="/other">` inside a bundled app resolves correctly under the
-        # host's shared BrowserRouter. They live on `globalThis.__bifrost_platform`
-        # just like the rest of the platform scope, populated by BundledAppShell
-        # before the bundle imports.
+        # Link / NavLink / Navigate / useNavigate / navigate / useLocation route
+        # through the platform wrappers. Navigation APIs prepend the app base
+        # path (`/apps/<slug>/preview` or `/apps/<slug>`), and useLocation strips
+        # that base path back off so app code sees routes like `/other`.
         #
-        # Everything else (Routes, Route, Outlet, useLocation, etc.) re-exports
-        # directly from "react-router-dom" (resolved via import map to the host's
-        # copy).
+        # Everything else (Routes, Route, Outlet, etc.) re-exports directly
+        # from "react-router-dom" (resolved via import map to the host's copy).
         #
         # Only emit re-exports for names user code actually imported.
-        wrapped_router_names = {"Link", "NavLink", "Navigate", "useNavigate", "navigate"}
+        wrapped_router_names = {"Link", "NavLink", "Navigate", "useNavigate", "navigate", "useLocation"}
         router_re_exported = router_primitives & imported_names
         raw_router_names = router_re_exported - wrapped_router_names
         wrapped_router_re_exported = router_re_exported & wrapped_router_names
@@ -772,5 +768,3 @@ def _has_default_export(src: str) -> bool:
     synthesized `bifrost` package.
     """
     return bool(_DEFAULT_EXPORT_RE.search(src))
-
-

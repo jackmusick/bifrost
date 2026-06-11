@@ -1,19 +1,20 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from shared.version import MIN_CLI_VERSION, get_version
+from shared.contract_version import get_contract_version
+from shared.version import get_version
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 
 
 class VersionResponse(BaseModel):
     version: str
-    min_cli_version: str
+    contract_version: int
 
 
 @router.get("", response_model=VersionResponse)
 async def get_version_info() -> VersionResponse:
     return VersionResponse(
         version=get_version(),
-        min_cli_version=MIN_CLI_VERSION,
+        contract_version=get_contract_version(),
     )

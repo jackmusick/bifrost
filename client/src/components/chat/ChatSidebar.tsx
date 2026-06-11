@@ -78,12 +78,18 @@ interface ChatSidebarProps {
 	activeWorkspace?: Workspace | null;
 	/** Triggered when the user opens the workspace settings Sheet. */
 	onOpenWorkspaceSettings?: () => void;
+	/** Mobile: close the sidebar overlay. */
+	onClose?: () => void;
+	/** Mobile: a conversation was chosen — collapse the overlay. */
+	onConversationSelected?: () => void;
 }
 
 export function ChatSidebar({
 	className,
 	activeWorkspace,
 	onOpenWorkspaceSettings,
+	onClose,
+	onConversationSelected,
 }: ChatSidebarProps) {
 	const navigate = useNavigate();
 	const [searchTerm, setSearchTerm] = useState("");
@@ -119,36 +125,44 @@ export function ChatSidebar({
 	});
 
 	const handleNewChat = () => {
+		setActiveConversation(null);
 		setActiveAgent(null);
-		createConversation.mutate(
-			{
-				body: {
-					channel: "chat",
-					...(activeWorkspace
-						? { workspace_id: activeWorkspace.id }
-						: {}),
+		if (activeWorkspace) {
+			// Workspace chats must be created up-front so the conversation is
+			// bound to the workspace (the deferred create in ChatWindow has no
+			// workspace context).
+			createConversation.mutate(
+				{
+					body: {
+						channel: "chat",
+						workspace_id: activeWorkspace.id,
+					},
 				},
-			},
-			{
-				onSuccess: (data) => {
-					navigate(
-						activeWorkspace
-							? `/chat/${data.id}?workspace=${activeWorkspace.id}`
-							: `/chat/${data.id}`,
-					);
+				{
+					onSuccess: (data) => {
+						navigate(
+							`/chat/${data.id}?workspace=${activeWorkspace.id}`,
+						);
+						onConversationSelected?.();
+					},
 				},
-			},
-		);
+			);
+			return;
+		}
+		navigate("/chat");
+		onConversationSelected?.();
 	};
 
 	const handleSelectConversation = (conv: ConversationSummary) => {
 		setActiveConversation(conv.id);
 		setActiveAgent(conv.agent_id ?? null);
+		// Update URL to enable bookmarking/sharing
 		navigate(
 			inWorkspaceMode
 				? `/chat/${conv.id}?workspace=${activeWorkspace.id}`
 				: `/chat/${conv.id}`,
 		);
+		onConversationSelected?.();
 	};
 
 	const handleDeleteConfirm = () => {
@@ -214,12 +228,24 @@ export function ChatSidebar({
 		<TooltipProvider delayDuration={300}>
 			<div
 				className={cn(
-					"flex flex-col h-full bg-muted/30 border-r w-72",
+					"flex flex-col h-full bg-background border-r w-72",
 					className,
 				)}
 			>
 				{/* === Top block — primary nav (always visible) =============== */}
 				<div className="p-3 border-b space-y-1">
+					{onClose && (
+						<div className="flex justify-end lg:hidden">
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={onClose}
+								aria-label="Close chat sidebar"
+							>
+								<X className="h-4 w-4" />
+							</Button>
+						</div>
+					)}
 					<button
 						type="button"
 						onClick={handleNewChat}
@@ -384,7 +410,8 @@ export function ChatSidebar({
 											<Button
 												variant="ghost"
 												size="icon-sm"
-												className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+												className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
+												aria-label={`Actions for ${conv.title || conv.agent_name || "Untitled"}`}
 												onClick={(e) =>
 													e.stopPropagation()
 												}

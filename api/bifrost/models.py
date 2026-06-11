@@ -176,7 +176,7 @@ class OAuthCredentials(BaseModel):
 
         client = get_client()
         response = await client.post(
-            "/api/cli/integrations/refresh_token",
+            "/api/sdk/integrations/refresh_token",
             json={"connection_name": self.connection_name},
         )
 

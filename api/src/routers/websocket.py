@@ -19,7 +19,8 @@ from sqlalchemy.orm import selectinload
 from shared.policies.probe import is_subscribe_authorized
 from shared.policies.subscription import decide_visibility_change
 from shared.role_cache import get_user_roles
-from src.core.auth import UserPrincipal, get_current_user_ws
+from src.core.auth import get_current_user_ws
+from src.core.principal import UserPrincipal
 from src.core.database import get_db_context
 from src.core.log_safety import log_safe
 from src.core.pubsub import manager
@@ -1174,6 +1175,25 @@ async def _process_chat_message(
             })
             return
 
+        if conversation.agent_id:
+            from src.repositories.agents import AgentRepository
+
+            async with session_factory() as db:
+                repo = AgentRepository(
+                    db,
+                    org_id=user.organization_id,
+                    user_id=user.user_id,
+                    is_superuser=user.is_superuser,
+                )
+                accessible_agent = await repo.get_agent_with_access_check(conversation.agent_id)
+            if accessible_agent is None:
+                await websocket.send_json({
+                    "type": "error",
+                    "conversation_id": conversation_id,
+                    "error": "You don't have access to this agent",
+                })
+                return
+
         # Check if conversation needs a title (no title set yet)
         needs_title = conversation.title is None
 
@@ -1191,6 +1211,7 @@ async def _process_chat_message(
                 user_message=message,
                 stream=True,
                 local_id=local_id,
+                user=user,
             ):
                 # Track partial content from deltas
                 if chunk.type == "delta" and chunk.content:

@@ -40,6 +40,8 @@ from src.models import (
     RecreateFileResponse,
     RegisterWorkflowRequest,
     RegisterWorkflowResponse,
+    RemapWorkflowRequest,
+    RemapWorkflowResponse,
     ReplaceWorkflowRequest,
     ReplaceWorkflowResponse,
     WorkflowExecutionRequest,
@@ -58,14 +60,14 @@ from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.forms import Form, FormField
 from src.models.orm.applications import Application
 from src.models.orm.agents import Agent, AgentTool
-from src.models.orm.developer import DeveloperContext
 from src.models.orm.users import Role
 from src.services.workflow_validation import _extract_relative_path
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
-from src.core.database import DbSession
+from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.pubsub import publish_execution_update, publish_history_update
+from src.core.cache import get_cached_data_provider
 
 logger = logging.getLogger(__name__)
 
@@ -808,8 +810,9 @@ async def execute_workflow(
     # Priority order:
     # 0. Explicit org_id override (admin only, checked above)
     # 1. Org-scoped workflow: use workflow's organization_id (enforces workflow isolation)
-    # 2. Global workflow: use caller's org context (ctx.org_id or developer context)
-    # 3. Inline code: use caller's org context
+    # 2. Global workflow / inline code: use caller's org context (ctx.org_id).
+    #    Platform admins and provider-org members targeting a non-default
+    #    org must pass request.org_id explicitly per call.
     if request.org_id:
         execution_org_id = UUID(request.org_id)
         logger.info(f"Using explicit org_id override: {execution_org_id}")
@@ -818,17 +821,7 @@ async def execute_workflow(
         execution_org_id = workflow.organization_id
         logger.info(f"Using workflow's organization: {execution_org_id}")
     else:
-        # Global workflow or inline code - use caller's org context
         execution_org_id = ctx.org_id
-        if ctx.user.is_superuser:
-            # Platform admin - developer context overrides default org
-            dev_ctx_result = await db.execute(
-                select(DeveloperContext).where(DeveloperContext.user_id == ctx.user.user_id)
-            )
-            dev_ctx = dev_ctx_result.scalar_one_or_none()
-            if dev_ctx and dev_ctx.default_org_id:
-                execution_org_id = dev_ctx.default_org_id
-                logger.info(f"Using developer context org: {execution_org_id}")
 
     # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
     # The deferred_execution_promoter job will publish this row when it matures.
@@ -860,7 +853,14 @@ async def execute_workflow(
             scheduled_at=scheduled_at,
         )
 
-    # Build shared context for execution
+    # Build shared context for execution.
+    #
+    # Only org_id is load-bearing here: at the enqueue boundary the context is
+    # reduced to scalars (org_id, user_id, is_platform_admin, ...) and stored in
+    # Redis — this Organization object is NOT serialized to the worker. The
+    # worker rehydrates the org (including is_provider) from org_id via
+    # OrganizationRepository.get_with_cache in the workflow_execution consumer.
+    # So leaving name/is_provider unset here is intentional, not a gap.
     org = None
     if execution_org_id:
         org = Organization(id=str(execution_org_id), name="", is_active=True)
@@ -891,23 +891,45 @@ async def execute_workflow(
                 transient=request.transient,
             )
         elif workflow and workflow.type == "data_provider":
-            # Execute data provider through normal workflow path
-            # Data providers are transient (no execution tracking) and always sync
+            # Only short-circuit on the sync/transient hot path. A non-transient
+            # request (e.g. manual "Execute" from the workflows page) expects a
+            # tracked execution row to navigate to — returning a synthetic
+            # execution_id would 404 the history detail page.
+            if request.transient and workflow.cache_ttl_seconds > 0:
+                cached_result = await get_cached_data_provider(
+                    str(execution_org_id) if execution_org_id else None,
+                    workflow.name,
+                    request.input_data,
+                )
+                if cached_result:
+                    return WorkflowExecutionResponse(
+                        execution_id=shared_ctx.execution_id,
+                        workflow_id=str(workflow.id),
+                        workflow_name=workflow.name,
+                        status=ExecutionStatus.SUCCESS,
+                        result=cached_result.get("data"),
+                        duration_ms=0,
+                        is_transient=True,
+                    )
+
+            # Data providers always run sync (small payloads, no UI poll flow),
+            # but honor the caller's transient flag: dropdown-options pass
+            # transient=True for the fast path, the manual Execute page passes
+            # transient=False and expects a tracked execution row.
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=str(workflow.id),
                 input_data=request.input_data,
-                transient=True,
+                transient=request.transient,
                 sync=True,
             )
-            # Return with is_transient flag for consistency
             return WorkflowExecutionResponse(
                 execution_id=result.execution_id,
                 workflow_id=str(workflow.id),
                 workflow_name=workflow.name,
                 status=result.status,
-                result=result.result,  # list[dict] with value, label, description
-                is_transient=True,
+                result=result.result,
+                is_transient=request.transient,
             )
         elif workflow:
             # Execute workflow by ID
@@ -1265,7 +1287,13 @@ async def register_workflow(
     )
     workflow = result.scalar_one()
 
-    # Refresh MCP tool registry so new tools appear immediately
+    # Commit before refreshing MCP tools. refresh_workflow_tools() opens its
+    # own session via get_db_context(), and at READ COMMITTED it cannot see
+    # this request's still-uncommitted INSERT — leaving the freshly-registered
+    # workflow missing from FastMCP's in-memory registry until the next API
+    # restart. update_workflow / delete_workflow already follow this pattern.
+    await db.commit()
+
     try:
         from src.services.mcp_server.server import refresh_workflow_tools
         await refresh_workflow_tools()
@@ -1301,7 +1329,8 @@ async def update_workflow(
     - organization_id: Set to null for global scope, or an org UUID for org-scoped
     - access_level: 'authenticated' or 'role_based'
     - clear_roles: If true, clear all role assignments
-    - display_name: User-facing display name (can be set to null to use code name)
+    - name: MCP tool name (defaults to the Python function name on registration)
+    - display_name: User-facing display name (can be set to null to fall back to name)
     - timeout_seconds: Max execution time (0-86400 seconds, where 0 disables the timeout)
     - execution_mode: 'sync' or 'async'
     - time_saved: Minutes saved per execution (for ROI reporting)
@@ -1404,6 +1433,22 @@ async def update_workflow(
             # Also set to role_based access level (effectively no access)
             workflow.access_level = "role_based"
             logger.info(f"Cleared all role assignments for workflow '{log_safe(workflow.name)}'")
+
+        # Update MCP tool name if provided. ``function_name`` remains the
+        # source-code identity used for path::function references.
+        if "name" in request.model_fields_set:
+            if request.name is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="name cannot be null",
+                )
+            new_name = request.name.strip()
+            if not new_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="name cannot be empty",
+                )
+            workflow.name = new_name
 
         # Update display_name if provided
         if "display_name" in request.model_fields_set:
@@ -1701,6 +1746,50 @@ async def replace_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to replace workflow",
+        )
+
+
+@router.post(
+    "/{workflow_id}/remap",
+    response_model=RemapWorkflowResponse,
+    summary="Remap workflow references",
+    description="Move references from one workflow ID to another active workflow ID",
+)
+async def remap_workflow_references(
+    workflow_id: UUID,
+    request: RemapWorkflowRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> RemapWorkflowResponse:
+    """Move references from ``workflow_id`` to ``target_workflow_id``."""
+    from src.services.workflow_orphan import WorkflowOrphanService
+
+    try:
+        target_workflow_id = UUID(request.target_workflow_id)
+        orphan_service = WorkflowOrphanService(db)
+        result = await orphan_service.remap_workflow_references(
+            source_workflow_id=workflow_id,
+            target_workflow_id=target_workflow_id,
+        )
+
+        return RemapWorkflowResponse(
+            success=True,
+            source_workflow_id=result.source_workflow_id,
+            target_workflow_id=result.target_workflow_id,
+            updated=result.updated,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Error remapping workflow references: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to remap workflow references",
         )
 
 

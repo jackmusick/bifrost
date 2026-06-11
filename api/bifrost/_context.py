@@ -126,9 +126,15 @@ def get_default_scope() -> str | None:
 
 
 def resolve_scope(scope: str | None) -> str | None:
-    """Resolve scope for SDK calls with provider org authorization.
+    """Resolve scope for SDK calls with the C2 bypass gate.
 
-    If explicit scope differs from default scope, requires provider org context.
+    The same rule the API enforces: a caller asking for a scope other
+    than their own org must be either a platform admin (engine carries
+    this on ``ExecutionContext.is_platform_admin``) OR a member of a
+    provider org. Either gate alone is sufficient.
+
+    CLI mode (no ExecutionContext) returns the requested scope unchanged
+    — the API will apply its own resolver against the user's JWT.
     """
     default = get_default_scope()
     if scope is None:
@@ -138,11 +144,13 @@ def resolve_scope(scope: str | None) -> str | None:
     ctx = _execution_context.get()
     if ctx is None:
         return scope  # CLI mode — user authenticates with their own JWT
-    if ctx.organization and ctx.organization.is_provider:
+    is_platform_admin = bool(getattr(ctx, "is_platform_admin", False))
+    is_provider_org = bool(ctx.organization and ctx.organization.is_provider)
+    if is_platform_admin or is_provider_org:
         return scope
     raise PermissionError(
         f"Scope override to '{scope}' denied. "
-        "Only provider organizations can access other org scopes."
+        "Platform admins or provider-org members only."
     )
 
 

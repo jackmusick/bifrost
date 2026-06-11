@@ -48,16 +48,23 @@ from bifrost.platform_names import PLATFORM_EXPORT_NAMES as _PLATFORM_EXPORT_NAM
 logger = logging.getLogger(__name__)
 
 # Default ignore patterns applied even without a .gitignore file.
-# .bifrost/ is always force-included via negation so push/pull/sync round-trip
-# the manifest. The watch handler layers an additional .bifrost/ exclusion on
-# top of these for its own observer (see _WatchChangeHandler).
+# .bifrost/ is import/export-only and is never part of push/pull/sync/watch.
 _DEFAULT_IGNORE_PATTERNS = [
     ".git/",
     "__pycache__/",
     ".ruff_cache/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".pyright/",
     "node_modules/",
+    ".bifrost/",
     ".venv/",
     "venv/",
+    ".tox/",
+    "build/",
+    "dist/",
+    "coverage/",
+    ".coverage",
     ".DS_Store",
     "*.pyc",
     # Editor atomic-write turds (e.g. foo.tsx.tmp.12345.1776000000000).
@@ -72,9 +79,60 @@ _DEFAULT_IGNORE_PATTERNS = [
     ".#*",
 ]
 
-_FORCE_INCLUDE_PATTERNS = [
-    "!.bifrost/",
-]
+
+def _ensure_utf8_stdio() -> None:
+    """Make stdout/stderr tolerate non-ASCII output on Windows.
+
+    Windows consoles default to cp1252, so printing the status glyphs and
+    em-dashes the CLI uses (✓, ✗, ⚠, ←, —) raises UnicodeEncodeError and
+    aborts the command mid-run. Reconfiguring the streams to UTF-8 fixes the
+    whole class at once; on a terminal that is already UTF-8 (Linux/macOS,
+    Windows Terminal) this is a no-op. ``errors="backslashreplace"`` keeps a
+    legacy console from crashing even if a glyph can't be rendered.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (ValueError, OSError):
+            # Stream doesn't support reconfigure (e.g. already-wrapped or a
+            # non-text buffer in tests). Output safety still holds for the
+            # tested summary path via _check_glyph(); nothing to do here.
+            pass
+
+
+def _stdout_can_encode(text: str) -> bool:
+    """True if the current stdout encoding can represent ``text``.
+
+    Windows consoles default to cp1252, which cannot encode the glyphs we
+    like to use on UTF-8 terminals (✓, ✗, —). Printing them there raises
+    UnicodeEncodeError mid-command. Callers use this to pick an ASCII
+    fallback instead of crashing.
+    """
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        text.encode(enc)
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
+
+
+def _check_glyph() -> str:
+    """Status glyph for plain-stdout (non-TUI) output.
+
+    On UTF-8 terminals it renders as ✓; on cp1252 Windows consoles it
+    degrades to "OK" so the CLI never crashes printing a result. Evaluated
+    per call (not cached) so it honours the actual stdout at print time.
+    The Textual TUI renders to its own buffer and is unaffected, so it keeps
+    using the Unicode glyphs directly.
+    """
+    return "✓" if _stdout_can_encode("✓") else "OK"
+
+
+def _print_sync_summary(summary: str) -> None:
+    print(f"  {_check_glyph()} {summary}")
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +162,21 @@ def _is_bifrost_path(path: str) -> bool:
     return ".bifrost" in path.replace("\\", "/").split("/")
 
 
+def _workspace_root_for(local_root: pathlib.Path) -> pathlib.Path:
+    """Return the invocation root when ``local_root`` sits under cwd."""
+    try:
+        cwd = pathlib.Path.cwd().resolve()
+        local_root.resolve().relative_to(cwd)
+        return cwd
+    except (OSError, ValueError):
+        return local_root
+
+
 def _build_file_filter(local_root: pathlib.Path) -> "pathspec.PathSpec":
     """Build a gitignore-style file filter for the given directory.
 
-    Loads .gitignore if present, otherwise uses sensible defaults.
-    Always force-includes .bifrost/ regardless of ignore rules.
+    Loads cwd-root and local .gitignore files when applicable.
+    Excludes .bifrost/ because manifests are handled only by import/export.
     """
     import pathspec
 
@@ -116,12 +184,14 @@ def _build_file_filter(local_root: pathlib.Path) -> "pathspec.PathSpec":
     # never lists .git/ because git handles it implicitly, but we need it.
     lines = list(_DEFAULT_IGNORE_PATTERNS)
 
-    gitignore_path = local_root / ".gitignore"
-    if gitignore_path.is_file():
-        lines.extend(gitignore_path.read_text(encoding="utf-8").splitlines())
+    workspace_root = _workspace_root_for(local_root)
+    workspace_gitignore = workspace_root / ".gitignore"
+    if workspace_gitignore.is_file():
+        lines.extend(workspace_gitignore.read_text(encoding="utf-8").splitlines())
 
-    # Always force-include .bifrost/
-    lines.extend(_FORCE_INCLUDE_PATTERNS)
+    gitignore_path = local_root / ".gitignore"
+    if gitignore_path != workspace_gitignore and gitignore_path.is_file():
+        lines.extend(gitignore_path.read_text(encoding="utf-8").splitlines())
 
     return pathspec.PathSpec.from_lines("gitwildmatch", lines)
 
@@ -130,37 +200,123 @@ def _build_file_filter(local_root: pathlib.Path) -> "pathspec.PathSpec":
 WATCH_HEARTBEAT_SECONDS = 60
 
 
+def _warn(message: str) -> None:
+    """Emit a one-line yellow warning to stderr (never blocks)."""
+    print(f"\033[33m{message}\033[0m", file=sys.stderr)
+
+
 def _check_cli_version() -> None:
-    """Warn if the installed CLI is older than the API's minimum required version."""
+    """Gate the command against the deployed server. Two independent gates:
+
+    1. **Contract (HARD).** The server reports ``contract_version`` at
+       ``GET /api/version``. If it differs from the CLI's baked
+       ``CONTRACT_VERSION``, the CLI is contract-incompatible → ``sys.exit(1)``
+       with the upgrade message, for every command. ``CONTRACT_VERSION`` is
+       bumped only on breaking changes to the contract surface the CLI consumes
+       (enforced by ``tests/unit/test_contract_version.py``), so an unrelated
+       server release no longer force-reinstalls every CLI.
+
+    2. **Build drift (SOFT).** ``contract_version`` matches but the build
+       ``version`` differs → a one-line stderr notice, deduped per (url,
+       version). Never blocks.
+
+    **Old server** (response lacks ``contract_version``): we can't verify the
+    contract. Rather than hard-block on build-version equality — a rollout
+    footgun, since a fresh CLI almost always differs from a not-yet-upgraded
+    server — we emit a soft warning and continue.
+
+    **Un-reachable verdict** (network/parse error, missing ``version``): emit a
+    visible warning instead of silently skipping, so a stale CLI proceeding
+    against an incompatible server is never invisible. Never blocks.
+    """
+    import httpx
+
+    from bifrost import __version__
+    from bifrost.contract_version import CONTRACT_VERSION
+
+    installed = __version__.lstrip("v")
+    if installed in ("unknown", "0.0.0+source"):
+        return  # dev/source install — nothing to compare against
+
+    # Re-load dotenv so a CWD-local .env's BIFROST_API_URL is honored even
+    # if bifrost.client's import-time load happened against a different cwd.
     try:
-        import urllib.request
-        import json as _json
-        from bifrost import __version__
+        from dotenv import find_dotenv, load_dotenv
+        load_dotenv(find_dotenv(usecwd=True), override=False)
+    except ImportError:
+        pass  # python-dotenv is optional; without it, only os.environ is consulted
 
-        config_path = pathlib.Path.home() / ".bifrost" / "config.json"
-        if not config_path.exists():
-            return
-        config = _json.loads(config_path.read_text())
-        api_url = config.get("api_url", "").rstrip("/")
-        if not api_url:
-            return
-
-        with urllib.request.urlopen(f"{api_url}/api/version", timeout=3) as resp:
-            data = _json.loads(resp.read())
-
-        min_ver = data.get("min_cli_version", "")
-        installed = __version__.lstrip("v")
-        if min_ver and installed != "unknown" and installed < min_ver:
-            print(
-                f"\033[33mWarning: CLI version {installed} is older than the "
-                f"minimum required {min_ver}. Run:\n"
-                f"  pipx install {api_url}/api/cli/download\n\033[0m",
-                file=sys.stderr,
-            )
+    # Use credentials._resolve_url (not get_credentials) because the version
+    # check only needs the URL — get_credentials returns None unless full
+    # tokens are present too, which would skip the check on a logged-out CLI.
+    try:
+        api_url = credentials._resolve_url(None)
     except Exception as e:
-        # Best-effort version check on every CLI invocation — no network, malformed config,
-        # or non-200 response should ever break the CLI flow
-        logger.debug(f"CLI version check skipped: {e}")
+        logger.debug(f"CLI version check skipped (no URL): {e}")
+        return
+    if not api_url:
+        return
+
+    # Fetch the server's version document. A failure here is an UN-REACHABLE
+    # verdict — warn (Q2), never block. Use httpx (already a hard dep), not
+    # urllib: CDNs/WAFs in front of prod Bifrost (Cloudflare on
+    # bifrost.gocovi.com) 403 the default `Python-urllib/X.Y` UA; httpx's UA
+    # gets through and matches every other SDK request.
+    try:
+        resp = httpx.get(f"{api_url}/api/version", timeout=3)
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, dict):
+            # Valid JSON but not an object (e.g. a proxy returning an error
+            # array/string) — treat as an unreadable verdict, not a crash.
+            raise ValueError(f"unexpected response shape: {type(data).__name__}")
+    except Exception as e:
+        _warn(
+            f"Could not verify CLI compatibility with {api_url} ({e}). "
+            f"Continuing — run a command again once the server is reachable."
+        )
+        return
+
+    server_version = (data.get("version") or "").lstrip("v")
+    server_contract = data.get("contract_version")
+
+    # Gate 1 — contract (HARD). Only when the server actually reports one.
+    if server_contract is not None:
+        if server_contract != CONTRACT_VERSION:
+            _warn(
+                f"Your CLI is incompatible with this server "
+                f"(CLI contract v{CONTRACT_VERSION}, server contract "
+                f"v{server_contract}). You must upgrade:\n"
+                f"  pipx install --force {api_url}/api/cli/download"
+            )
+            sys.exit(1)
+        # Gate 2 — build drift (SOFT, deduped). Contract is fine; just nudge.
+        if server_version and server_version != installed:
+            from bifrost import _version_notice
+
+            if _version_notice.should_notify(api_url, server_version):
+                _warn(
+                    f"A newer Bifrost CLI is available "
+                    f"({installed} → {server_version}); your current CLI is still "
+                    f"compatible. Update when convenient:\n"
+                    f"  pipx install --force {api_url}/api/cli/download"
+                )
+                _version_notice.mark_notified(api_url, server_version)
+        return
+
+    # Old server: no contract_version to compare against.
+    if not server_version:
+        _warn(
+            f"Could not verify CLI compatibility with {api_url} "
+            f"(server reported no version). Continuing."
+        )
+        return
+    if server_version != installed:
+        _warn(
+            f"Could not verify contract compatibility — {api_url} predates "
+            f"contract versioning (CLI {installed}, server {server_version}). "
+            f"Continuing; consider upgrading the server."
+        )
 
 
 async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool:
@@ -185,6 +341,10 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
         api_url = os.getenv("BIFROST_DEV_URL", "http://localhost:8000")
 
     api_url = api_url.rstrip("/")
+
+    # Surface keyring fallback here — login is the user's chance to fix it.
+    from bifrost.credentials import warn_if_keyring_fallback
+    warn_if_keyring_fallback()
 
     try:
         async with httpx.AsyncClient(base_url=api_url, timeout=30.0) as client:
@@ -472,6 +632,8 @@ def main(args: list[str] | None = None) -> int:
     """
     if args is None:
         args = sys.argv[1:]
+
+    _ensure_utf8_stdio()
 
     # No args - show help
     if not args:
@@ -936,7 +1098,7 @@ def _run_direct(
         if organization_id:
             try:
                 response = client._sync_http.get(
-                    "/api/cli/context",
+                    "/api/sdk/context",
                     params={"org_id": organization_id},
                 )
                 if response.status_code == 403:
@@ -1201,7 +1363,7 @@ async def _run_session_flow(
     print(f"Registering session with {len(workflow_infos)} workflow(s)...")
     try:
         response = await client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": file_path,
@@ -1240,14 +1402,14 @@ async def _run_session_flow(
         # Send heartbeat periodically
         if time.time() - last_heartbeat > heartbeat_interval:
             try:
-                await client.post(f"/api/cli/sessions/{session_id}/heartbeat")
+                await client.post(f"/api/sdk/sessions/{session_id}/heartbeat")
                 last_heartbeat = time.time()
             except Exception:
                 pass  # Ignore heartbeat failures
 
         # Poll for pending execution
         try:
-            response = await client.get(f"/api/cli/sessions/{session_id}/pending")
+            response = await client.get(f"/api/sdk/sessions/{session_id}/pending")
 
             if response.status_code == 204:
                 # No pending execution yet
@@ -1311,7 +1473,7 @@ async def _post_result(
     """Post execution result back to API."""
     try:
         await client.post(
-            f"/api/cli/sessions/{session_id}/executions/{execution_id}/result",
+            f"/api/sdk/sessions/{session_id}/executions/{execution_id}/result",
             json={
                 "status": status,
                 "result": result,
@@ -1558,9 +1720,6 @@ Examples:
     if not resolved.exists() or not resolved.is_dir():
         print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
         return 1
-    if not _ensure_workspace_marker(resolved):
-        _print_not_a_workspace_error("push")
-        return 1
 
     # Block push if a watch (or another sync/push) is already running in
     # this workspace — see handle_sync for rationale.
@@ -1634,9 +1793,6 @@ Examples:
     if not resolved.exists() or not resolved.is_dir():
         print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
         return 1
-    if not _ensure_workspace_marker(resolved):
-        _print_not_a_workspace_error("sync")
-        return 1
 
     # Block sync if a watch (or another sync) is already running in this
     # workspace — concurrent watch+sync would issue separate session_ids
@@ -1672,8 +1828,7 @@ def handle_watch(args: list[str]) -> int:
     """
     Handle 'bifrost watch' command.
 
-    Watches a Bifrost workspace for file changes and auto-pushes.
-    Requires the directory to contain a .bifrost/ directory (workspace root).
+    Watches a directory for file changes and auto-pushes.
 
     Usage:
       bifrost watch [path] [--mirror] [--validate] [--force]
@@ -1683,7 +1838,6 @@ def handle_watch(args: list[str]) -> int:
 Usage: bifrost watch [path] [options]
 
 Watch for file changes and auto-push to Bifrost platform.
-Must be run from a Bifrost workspace (directory containing .bifrost/).
 
 Arguments:
   path                  Local directory to watch (default: current directory)
@@ -1705,14 +1859,9 @@ Examples:
     if parsed is None:
         return 1
 
-    # Resolve path and verify .bifrost/ exists
     resolved = pathlib.Path(parsed.local_path).resolve()
     if not resolved.exists() or not resolved.is_dir():
         print(f"Error: {parsed.local_path} is not a valid directory", file=sys.stderr)
-        return 1
-
-    if not _ensure_workspace_marker(resolved):
-        _print_not_a_workspace_error("watch")
         return 1
 
     # Acquire the per-workspace lock. Held for the lifetime of the watch
@@ -1822,9 +1971,6 @@ Examples:
     if not resolved.exists() or not resolved.is_dir():
         print(f"Error: {local_path} is not a valid directory", file=sys.stderr)
         return 1
-    if not _ensure_workspace_marker(resolved):
-        _print_not_a_workspace_error("pull")
-        return 1
 
     # Block pull if a watch (or another sync/push/pull) is already running
     # in this workspace — see handle_sync for rationale.
@@ -1863,100 +2009,18 @@ def _detect_repo_prefix(path: pathlib.Path) -> str:
     yields ``apps/my-app``). The launch directory itself yields ``""``.
 
     Paths that don't sit under the cwd (unusual: an absolute path outside
-    the workspace) fall through to ``""`` — the caller is expected to have
-    already validated the path via ``_ensure_workspace_marker``.
+    the workspace) fall through to ``""``.
     """
     try:
         cwd = pathlib.Path.cwd().resolve()
         relative = path.resolve().relative_to(cwd)
     except (OSError, ValueError):
         return ""
-    prefix = str(relative)
+    # Repo keys are always POSIX ("/"). On Windows str(WindowsPath) uses "\",
+    # which would produce backslash repo prefixes and break path matching and
+    # the known-hash cache (causing the same file to re-upload every tick).
+    prefix = relative.as_posix()
     return "" if prefix == "." else prefix
-
-
-_WORKSPACE_SENTINEL = ".workspace"
-
-
-def _is_workspace_bifrost_dir(d: pathlib.Path) -> bool:
-    """Distinguish a workspace ``.bifrost/`` from the CLI config ``~/.bifrost/``.
-
-    A workspace ``.bifrost/`` either contains manifest YAMLs (``tables.yaml``,
-    ``workflows.yaml``, etc., produced by sync/export) or the empty
-    ``.workspace`` sentinel file (created on first ``bifrost watch`` /
-    ``push`` / ``pull`` after the user confirms this is their workspace).
-
-    The CLI config directory at ``~/.bifrost/`` only contains
-    ``credentials.json`` and must NOT be treated as a workspace.
-    """
-    if not d.is_dir():
-        return False
-    try:
-        if (d / _WORKSPACE_SENTINEL).exists():
-            return True
-        return any(d.glob("*.yaml"))
-    except OSError:
-        return False
-
-
-def _find_bifrost_dir(local_root: pathlib.Path) -> pathlib.Path:
-    """Return the workspace ``.bifrost/`` for ``local_root``.
-
-    The launch directory IS the workspace root — no walk-up. Either:
-    1. ``local_root`` itself IS a workspace ``.bifrost/`` (e.g., user ran
-       ``bifrost watch .bifrost``); return it.
-    2. ``local_root/.bifrost/`` exists and looks like a workspace; return it.
-    3. Otherwise return ``local_root/.bifrost`` as the *expected* path. The
-       caller is responsible for verifying existence (and, in interactive
-       contexts, prompting the user to mark this directory as a workspace).
-
-    Removing the walk-up eliminates a class of "wrong workspace inferred"
-    bugs — most notably the credentials-only ``~/.bifrost/`` collision that
-    silently rooted every relative path at ``$HOME``.
-    """
-    if local_root.name == ".bifrost" and _is_workspace_bifrost_dir(local_root):
-        return local_root
-
-    candidate = local_root / ".bifrost"
-    if _is_workspace_bifrost_dir(candidate):
-        return candidate
-
-    return local_root / ".bifrost"  # Expected path; may not exist
-
-
-def _ensure_workspace_marker(local_root: pathlib.Path, *, prompt: bool = True) -> bool:
-    """Confirm ``local_root`` is the user's workspace and create the marker.
-
-    If ``local_root/.bifrost/`` already looks like a workspace, returns True
-    immediately. Otherwise, asks the user (when ``prompt`` is True and stdin
-    is a tty) whether to mark this directory. On confirmation, creates
-    ``.bifrost/.workspace``. Returns True on success, False if the user
-    declined or stdin isn't a tty.
-    """
-    bifrost_dir = local_root / ".bifrost"
-    if _is_workspace_bifrost_dir(bifrost_dir):
-        return True
-
-    if not prompt or not sys.stdin.isatty():
-        return False
-
-    print(f"No .bifrost/ found in {local_root}.", file=sys.stderr)
-    answer = input("Is this your Bifrost workspace? Create a marker so future commands recognize it? [y/N] ").strip().lower()
-    if answer not in {"y", "yes"}:
-        return False
-
-    bifrost_dir.mkdir(parents=True, exist_ok=True)
-    (bifrost_dir / _WORKSPACE_SENTINEL).touch()
-    print(f"Marked {local_root} as a Bifrost workspace.", file=sys.stderr)
-    return True
-
-
-def _print_not_a_workspace_error(command: str) -> None:
-    """Print the standard 'not a workspace' error for a CLI command."""
-    print("Error: not a Bifrost workspace.", file=sys.stderr)
-    print(f"  Run 'bifrost {command}' from a directory that contains .bifrost/,", file=sys.stderr)
-    print("  or confirm the prompt above to mark this directory.", file=sys.stderr)
-
 
 async def _push_with_precheck(
     local_path: str,
@@ -2072,23 +2136,19 @@ class _WatchChangeHandler:
     """
 
     def __init__(self, state: _WatchState):
-        import pathspec
         self.state = state
-        # Watch spec layers .bifrost/ on top of the shared push/pull filter so
-        # observer events under the manifest directory are dropped before they
-        # ever reach the handler. The shared filter still force-includes
-        # .bifrost/ for full sync paths — only watch excludes it.
-        base_lines = list(_DEFAULT_IGNORE_PATTERNS)
-        gitignore_path = state.base_path / ".gitignore"
-        if gitignore_path.is_file():
-            base_lines.extend(gitignore_path.read_text(encoding="utf-8").splitlines())
-        base_lines.append(".bifrost/")
-        self._spec = pathspec.PathSpec.from_lines("gitwildmatch", base_lines)
+        self._spec = _build_file_filter(state.base_path)
 
     def _should_skip(self, file_path: str) -> bool:
         p = pathlib.Path(file_path)
-        rel = str(p.relative_to(self.state.base_path))
-        return _should_skip_path(rel, self._spec)
+        # POSIX separators: these strings feed pathspec globs and repo keys,
+        # which are always "/"-based. str(WindowsPath) would use "\".
+        rel = p.relative_to(self.state.base_path).as_posix()
+        repo_rel: str | None = None
+        workspace_root = _workspace_root_for(self.state.base_path)
+        if p.is_relative_to(workspace_root):
+            repo_rel = p.relative_to(workspace_root).as_posix()
+        return _should_skip_path(rel, self._spec, repo_rel)
 
     def dispatch(self, event: Any) -> None:
         """Called by watchdog for all events."""
@@ -2149,21 +2209,23 @@ async def _process_watch_deletes(
     for abs_path_str in deletes:
         abs_p = pathlib.Path(abs_path_str)
         if not abs_p.exists():
-            rel = abs_p.relative_to(base_path)
-            repo_path = f"{repo_prefix}/{rel}" if repo_prefix else str(rel)
+            # POSIX separators: repo keys are always "/". str(WindowsPath)
+            # would use "\", desyncing the key from the server's path.
+            rel = abs_p.relative_to(base_path).as_posix()
+            repo_path = f"{repo_prefix}/{rel}" if repo_prefix else rel
             try:
                 resp = await client.post("/api/files/delete", json={
                     "path": repo_path, "location": "workspace", "mode": "cloud",
                 }, headers=extra_headers)
                 if resp.status_code == 204:
                     deleted_count += 1
-                    deleted_rels.append(str(rel))
+                    deleted_rels.append(rel)
                     state.forget_known_hash(repo_path)
             except Exception as del_err:
                 status_code = getattr(getattr(del_err, "response", None), "status_code", None)
                 if status_code == 404:
                     deleted_count += 1
-                    deleted_rels.append(str(rel))
+                    deleted_rels.append(rel)
                     state.forget_known_hash(repo_path)
                 else:
                     ts = datetime.now().strftime('%H:%M:%S')
@@ -2197,8 +2259,12 @@ async def _process_watch_batch(
             try:
                 raw_bytes = abs_p.read_bytes()
                 raw = _normalize_line_endings(raw_bytes)
-                rel = abs_p.relative_to(base_path)
-                repo_path = f"{repo_prefix}/{rel}" if repo_prefix else str(rel)
+                # POSIX separators so the repo_path (and thus the known-hash
+                # cache key) matches the server. With str(WindowsPath) the "\"
+                # key never matches the server's "/" key, so the no-op-push
+                # guard below never fires and every file re-uploads each tick.
+                rel = abs_p.relative_to(base_path).as_posix()
+                repo_path = f"{repo_prefix}/{rel}" if repo_prefix else rel
                 file_hash = hashlib.md5(raw).hexdigest()
                 if state.get_known_hash(repo_path) == file_hash:
                     # No-op push: the server already has this content (common
@@ -2286,7 +2352,7 @@ async def _process_watch_batch(
                 parts.append(f"{watch_created} written")
             if deleted_count:
                 parts.append(f"{deleted_count} deleted")
-            print(f"  [{ts}] \u2713 Pushed {', '.join(parts) if parts else 'no changes'}", flush=True)
+            print(f"  [{ts}] ✓ Pushed {', '.join(parts) if parts else 'no changes'}", flush=True)
 
         # Log errors as separate rows (with detail sub-rows in TUI)
         if watch_errors:
@@ -2351,7 +2417,7 @@ async def _auto_validate_app(
                     watch_app.log_success(msg)
                 else:
                     ts = datetime.now().strftime('%H:%M:%S')
-                    print(f"  [{ts}] \u2713 {msg}", flush=True)
+                    print(f"  [{ts}] ✓ {msg}", flush=True)
             else:
                 if errors:
                     msg = f"App '{slug}' validation: {len(errors)} error(s)"
@@ -2589,7 +2655,7 @@ async def _watch_loop(
                     if watch_app:
                         watch_app.log_success("File watcher restarted")
                     else:
-                        print("  \u2713 File watcher restarted", flush=True)
+                        print("  ✓ File watcher restarted", flush=True)
                 except Exception as e:
                     if watch_app:
                         watch_app.log_error(f"Could not restart file watcher: {e}")
@@ -2772,9 +2838,15 @@ def _strip_repo_prefix(repo_path: str, repo_prefix: str) -> str:
     return repo_path
 
 
-def _should_skip_path(rel_path: str, spec: "pathspec.PathSpec") -> bool:
+def _should_skip_path(
+    rel_path: str,
+    spec: "pathspec.PathSpec",
+    repo_path: str | None = None,
+) -> bool:
     """Check if a relative path should be skipped during push/watch."""
-    return spec.match_file(rel_path)
+    if spec.match_file(rel_path):
+        return True
+    return repo_path is not None and repo_path != rel_path and spec.match_file(repo_path)
 
 
 def _collect_push_files(
@@ -2793,13 +2865,14 @@ def _collect_push_files(
         if file_path.is_dir():
             continue
         rel = file_path.relative_to(path)
-        rel_str = str(rel)
-        if spec.match_file(rel_str):
+        # POSIX separators: repo keys and pathspec globs are always "/"-based.
+        rel_str = rel.as_posix()
+        repo_path = f"{repo_prefix}/{rel_str}" if repo_prefix else rel_str
+        if _should_skip_path(rel_str, spec, repo_path):
             continue
         try:
             raw = _normalize_line_endings(file_path.read_bytes())
             content = base64.b64encode(raw).decode("ascii")
-            repo_path = f"{repo_prefix}/{rel_str}" if repo_prefix else rel_str
             files[repo_path] = content
         except OSError:
             skipped += 1
@@ -2946,7 +3019,7 @@ async def _sync_files(
         rel = _strip_repo_prefix(server_path, repo_prefix)
         if _is_bifrost_path(rel):
             continue
-        if _should_skip_path(rel, spec):
+        if _should_skip_path(rel, spec, server_path):
             continue
         sync_items.append({
             "name": rel,
@@ -3098,7 +3171,7 @@ async def _sync_files(
                 errors.append(f"{name}: {e}")
                 print(f"  Error: {name}: {e}", file=sys.stderr)
         summary = await _post_sync(errors)
-        print(f"  \u2713 {summary}")
+        _print_sync_summary(summary)
 
     _cols = shutil.get_terminal_size((80, 24)).columns
     if errors:

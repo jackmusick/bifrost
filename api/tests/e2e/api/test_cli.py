@@ -2,7 +2,10 @@
 CLI E2E Tests.
 
 Tests the Bifrost CLI API endpoints including:
-- Developer context (get, update)
+- Developer context (GET only — PUT was deleted in the 2026-05 org-scoping
+  overhaul. The caller's effective org is the auth-verified
+  ``user.organization_id``; cross-org targeting happens via the explicit
+  ``scope`` parameter on each SDK call.)
 - File operations via CLI (read, write, list, delete)
 - Config operations via CLI (get, set, list, delete)
 - SDK download
@@ -21,16 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 class TestCLIContext:
-    """Test SDK developer context endpoints."""
+    """Test GET /api/sdk/context — the CLI bootstrap endpoint."""
 
     def test_get_context_with_session_auth(
         self,
         e2e_client,
         platform_admin,
     ):
-        """Test getting developer context with session auth."""
         response = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
@@ -45,63 +47,14 @@ class TestCLIContext:
         self,
         e2e_client,
     ):
-        """Test that context endpoint requires valid authentication."""
-        # Clear cookies to test without session auth
         e2e_client.cookies.clear()
-
-        # No auth at all
-        response = e2e_client.get("/api/cli/context")
+        response = e2e_client.get("/api/sdk/context")
         assert response.status_code in [401, 422]
-
-    def test_update_context_default_params(
-        self,
-        e2e_client,
-        platform_admin,
-    ):
-        """Test updating developer context default parameters."""
-        response = e2e_client.put(
-            "/api/cli/context",
-            json={
-                "default_parameters": {
-                    "env": "test",
-                    "debug": True,
-                },
-            },
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-
-        data = response.json()
-        assert data["default_parameters"]["env"] == "test"
-        assert data["default_parameters"]["debug"] is True
-
-    def test_update_context_track_executions(
-        self,
-        e2e_client,
-        platform_admin,
-    ):
-        """Test updating track_executions setting."""
-        # Disable tracking
-        response = e2e_client.put(
-            "/api/cli/context",
-            json={"track_executions": False},
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        assert response.json()["track_executions"] is False
-
-        # Re-enable tracking
-        response = e2e_client.put(
-            "/api/cli/context",
-            json={"track_executions": True},
-            headers=platform_admin.headers,
-        )
-        assert response.status_code == 200
-        assert response.json()["track_executions"] is True
 
 
 class TestCLIContextOrgOverride:
-    """Test /api/cli/context?org_id= for CLI org override (superuser only)."""
+    """Test /api/sdk/context?org_id= — the platform-admin / provider-org
+    cross-org targeting affordance. C2 gate."""
 
     def test_superuser_can_get_org_context(
         self,
@@ -109,21 +62,18 @@ class TestCLIContextOrgOverride:
         platform_admin,
         org1,
     ):
-        """Superuser can fetch context for a specific org via ?org_id=."""
         response = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             params={"org_id": org1["id"]},
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
 
         data = response.json()
-        # User info should match the superuser
         assert data["user"]["id"] == str(platform_admin.user_id)
         assert data["user"]["email"] == platform_admin.email
         assert data["user"]["is_superuser"] is True
 
-        # Organization should match the requested org
         assert data["organization"] is not None
         assert data["organization"]["id"] == org1["id"]
         assert data["organization"]["name"] == org1["name"]
@@ -137,51 +87,58 @@ class TestCLIContextOrgOverride:
     ):
         """Org context response has all fields needed to build ExecutionContext."""
         response = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             params={"org_id": org1["id"]},
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
         data = response.json()
 
-        # User fields that _run_direct reads
         user = data["user"]
-        assert "id" in user
-        assert "email" in user
-        assert "name" in user
-        assert "is_superuser" in user
+        for field in ("id", "email", "name", "is_superuser"):
+            assert field in user, f"missing user.{field}"
 
-        # Organization fields that _run_direct reads
         org = data["organization"]
-        assert "id" in org
-        assert "name" in org
-        assert "is_active" in org
-        assert "is_provider" in org
+        for field in ("id", "name", "is_active", "is_provider"):
+            assert field in org, f"missing organization.{field}"
 
-    def test_non_superuser_gets_403(
+    def test_non_superuser_cannot_target_other_org(
+        self,
+        e2e_client,
+        org1_user,
+        org2,
+    ):
+        """A regular org user cannot fetch another org's context."""
+        response = e2e_client.get(
+            "/api/sdk/context",
+            params={"org_id": org2["id"]},
+            headers=org1_user.headers,
+        )
+        assert response.status_code == 403
+
+    def test_non_superuser_can_target_own_org(
         self,
         e2e_client,
         org1_user,
         org1,
     ):
-        """Non-superuser cannot use ?org_id= override."""
+        """A regular user CAN pass ?org_id matching their own org."""
         response = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             params={"org_id": org1["id"]},
             headers=org1_user.headers,
         )
-        assert response.status_code == 403
+        assert response.status_code == 200
 
     def test_nonexistent_org_gets_404(
         self,
         e2e_client,
         platform_admin,
     ):
-        """Request for a nonexistent org returns 404."""
         import uuid
         fake_org_id = str(uuid.uuid4())
         response = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             params={"org_id": fake_org_id},
             headers=platform_admin.headers,
         )
@@ -194,42 +151,41 @@ class TestCLIContextOrgOverride:
         org1,
         org2,
     ):
-        """Superuser can fetch context for different orgs in sequence."""
-        # Get org1 context
         resp1 = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             params={"org_id": org1["id"]},
             headers=platform_admin.headers,
         )
         assert resp1.status_code == 200
         assert resp1.json()["organization"]["id"] == org1["id"]
 
-        # Get org2 context
         resp2 = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             params={"org_id": org2["id"]},
             headers=platform_admin.headers,
         )
         assert resp2.status_code == 200
         assert resp2.json()["organization"]["id"] == org2["id"]
-
-        # Confirm they're different orgs
         assert resp1.json()["organization"]["id"] != resp2.json()["organization"]["id"]
 
-    def test_without_org_id_uses_default(
+    def test_without_org_id_uses_users_own_org(
         self,
         e2e_client,
         org1_user,
     ):
-        """Without ?org_id, returns user's default org from developer context."""
+        """Without ?org_id, returns the user's auth-verified org.
+
+        Pre-overhaul this fetched ``DeveloperContext.default_org_id``,
+        which was a per-user mutable field anyone could set to forge
+        another org's identity. Now sourced from ``User.organization_id``.
+        """
         response = e2e_client.get(
-            "/api/cli/context",
+            "/api/sdk/context",
             headers=org1_user.headers,
         )
         assert response.status_code == 200
         data = response.json()
 
-        # org1_user's developer context has default_org_id set to org1
         assert data["organization"] is not None
         assert data["organization"]["id"] == str(org1_user.organization_id)
 
@@ -434,7 +390,7 @@ class TestCLIConfigOperations:
 
         # Set config
         response = e2e_client.post(
-            "/api/cli/config/set",
+            "/api/sdk/config/set",
             json={
                 "key": test_key,
                 "value": test_value,
@@ -445,7 +401,7 @@ class TestCLIConfigOperations:
 
         # Get config
         response = e2e_client.post(
-            "/api/cli/config/get",
+            "/api/sdk/config/get",
             json={"key": test_key},
             headers=headers,
         )
@@ -454,7 +410,7 @@ class TestCLIConfigOperations:
 
         # Cleanup
         e2e_client.post(
-            "/api/cli/config/delete",
+            "/api/sdk/config/delete",
             json={"key": test_key},
             headers=headers,
         )
@@ -470,7 +426,7 @@ class TestCLIConfigOperations:
         headers = platform_admin.headers
 
         response = e2e_client.post(
-            "/api/cli/config/set",
+            "/api/sdk/config/set",
             json={
                 "key": test_key,
                 "value": test_value,
@@ -481,7 +437,7 @@ class TestCLIConfigOperations:
 
         # Cleanup
         e2e_client.post(
-            "/api/cli/config/delete",
+            "/api/sdk/config/delete",
             json={"key": test_key},
             headers=headers,
         )
@@ -497,7 +453,7 @@ class TestCLIConfigOperations:
         headers = platform_admin.headers
 
         response = e2e_client.post(
-            "/api/cli/config/set",
+            "/api/sdk/config/set",
             json={
                 "key": test_key,
                 "value": test_value,
@@ -509,7 +465,7 @@ class TestCLIConfigOperations:
 
         # Cleanup
         e2e_client.post(
-            "/api/cli/config/delete",
+            "/api/sdk/config/delete",
             json={"key": test_key},
             headers=headers,
         )
@@ -523,7 +479,7 @@ class TestCLIConfigOperations:
         headers = platform_admin.headers
 
         response = e2e_client.post(
-            "/api/cli/config/list",
+            "/api/sdk/config/list",
             json={},
             headers=headers,
         )
@@ -543,14 +499,14 @@ class TestCLIConfigOperations:
 
         # Create config
         e2e_client.post(
-            "/api/cli/config/set",
+            "/api/sdk/config/set",
             json={"key": test_key, "value": "to delete"},
             headers=headers,
         )
 
         # Delete it - returns 200 with boolean True/False
         response = e2e_client.post(
-            "/api/cli/config/delete",
+            "/api/sdk/config/delete",
             json={"key": test_key},
             headers=headers,
         )
@@ -566,7 +522,7 @@ class TestCLIConfigOperations:
         headers = platform_admin.headers
 
         response = e2e_client.post(
-            "/api/cli/config/get",
+            "/api/sdk/config/get",
             json={"key": "nonexistent_config_12345"},
             headers=headers,
         )
@@ -771,7 +727,8 @@ assert isinstance(WorkflowMetadata, type)
 # from ``bifrost.contracts``). If the tarball ever drops a file that
 # the commands depend on, this import explodes.
 from bifrost.commands import ENTITY_GROUPS
-assert len(ENTITY_GROUPS) == 11, f"expected 11 entity groups, got {{len(ENTITY_GROUPS)}}"
+assert len(ENTITY_GROUPS) == 13, f"expected 13 entity groups, got {{len(ENTITY_GROUPS)}}"
+assert "claims" in ENTITY_GROUPS
 
 # And the mirrored DTO package must itself be importable.
 from bifrost import contracts as _contracts
@@ -866,7 +823,7 @@ class TestCLISessions:
     ):
         """Test listing sessions when none exist."""
         response = e2e_client.get(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
@@ -885,7 +842,7 @@ class TestCLISessions:
         session_id = str(uuid.uuid4())
 
         response = e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -909,7 +866,7 @@ class TestCLISessions:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -924,7 +881,7 @@ class TestCLISessions:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -935,7 +892,7 @@ class TestCLISessions:
 
         # Get session
         response = e2e_client.get(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
@@ -943,7 +900,7 @@ class TestCLISessions:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -955,7 +912,7 @@ class TestCLISessions:
         """Test getting a session that doesn't exist."""
         fake_id = "00000000-0000-0000-0000-000000000000"
         response = e2e_client.get(
-            f"/api/cli/sessions/{fake_id}",
+            f"/api/sdk/sessions/{fake_id}",
             headers=platform_admin.headers,
         )
         assert response.status_code == 404
@@ -971,7 +928,7 @@ class TestCLISessions:
 
         # Create session with a workflow
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -988,7 +945,7 @@ class TestCLISessions:
 
         # Continue with the workflow (returns 202 Accepted)
         response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={
                 "workflow_name": "my_workflow",
                 "params": {"test": "value"},
@@ -1001,7 +958,7 @@ class TestCLISessions:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1016,7 +973,7 @@ class TestCLISessions:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1033,7 +990,7 @@ class TestCLISessions:
 
         # Try to continue with non-existent workflow (returns 400 Bad Request)
         response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={
                 "workflow_name": "fake_workflow",
                 "params": {},
@@ -1044,7 +1001,7 @@ class TestCLISessions:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1059,7 +1016,7 @@ class TestCLISessions:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1070,14 +1027,14 @@ class TestCLISessions:
 
         # Get pending (returns 204 No Content when no pending execution)
         response = e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
         assert response.status_code == 204
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1092,7 +1049,7 @@ class TestCLISessions:
 
         # Create session with workflow
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1109,14 +1066,14 @@ class TestCLISessions:
 
         # Continue with workflow
         e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={"workflow_name": "pending_test", "params": {}},
             headers=platform_admin.headers,
         )
 
         # Check pending state - returns 200 with pending execution data
         response = e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
         assert response.status_code == 200
@@ -1126,7 +1083,7 @@ class TestCLISessions:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1141,7 +1098,7 @@ class TestCLISessions:
 
         # Create session with workflow
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1158,14 +1115,14 @@ class TestCLISessions:
 
         # Continue with workflow
         e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={"workflow_name": "poll_test", "params": {}},
             headers=platform_admin.headers,
         )
 
         # First poll - should return pending execution data
         response1 = e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
         assert response1.status_code == 200
@@ -1173,14 +1130,14 @@ class TestCLISessions:
 
         # Second poll - should be cleared (204 No Content)
         response2 = e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
         assert response2.status_code == 204
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1195,7 +1152,7 @@ class TestCLISessions:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1206,14 +1163,14 @@ class TestCLISessions:
 
         # Delete session
         response = e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
         assert response.status_code == 204
 
         # Verify deleted
         response = e2e_client.get(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
         assert response.status_code == 404
@@ -1238,7 +1195,7 @@ class TestCLIExecutionFlow:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1255,7 +1212,7 @@ class TestCLIExecutionFlow:
 
         # Continue to start execution
         continue_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={"workflow_name": "log_test", "params": {}},
             headers=platform_admin.headers,
         )
@@ -1263,13 +1220,13 @@ class TestCLIExecutionFlow:
 
         # Poll pending to get execution_id and mark it as running
         e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
 
         # Submit logs - path includes execution_id
         log_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/executions/{execution_id}/log",
+            f"/api/sdk/sessions/{session_id}/executions/{execution_id}/log",
             json={
                 "level": "info",
                 "message": "Test log message",
@@ -1280,7 +1237,7 @@ class TestCLIExecutionFlow:
 
         # Submit result - returns 200 with status info
         result_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/executions/{execution_id}/result",
+            f"/api/sdk/sessions/{session_id}/executions/{execution_id}/result",
             json={
                 "status": "success",
                 "result": {"output": "test result"},
@@ -1291,7 +1248,7 @@ class TestCLIExecutionFlow:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1306,7 +1263,7 @@ class TestCLIExecutionFlow:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1323,7 +1280,7 @@ class TestCLIExecutionFlow:
 
         # Continue to start execution
         continue_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={"workflow_name": "fail_test", "params": {}},
             headers=platform_admin.headers,
         )
@@ -1331,13 +1288,13 @@ class TestCLIExecutionFlow:
 
         # Poll pending to get execution_id and mark it as running
         e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
 
         # Submit failure result
         result_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/executions/{execution_id}/result",
+            f"/api/sdk/sessions/{session_id}/executions/{execution_id}/result",
             json={
                 "status": "failed",
                 "error": "Test error message",
@@ -1348,7 +1305,7 @@ class TestCLIExecutionFlow:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1363,7 +1320,7 @@ class TestCLIExecutionFlow:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1380,7 +1337,7 @@ class TestCLIExecutionFlow:
 
         # Continue
         continue_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={"workflow_name": "format_test", "params": {}},
             headers=platform_admin.headers,
         )
@@ -1388,13 +1345,13 @@ class TestCLIExecutionFlow:
 
         # Poll pending to get execution_id and mark it as running
         e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
 
         # Submit log with all fields
         log_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/executions/{execution_id}/log",
+            f"/api/sdk/sessions/{session_id}/executions/{execution_id}/log",
             json={
                 "level": "warning",
                 "message": "Warning message",
@@ -1407,7 +1364,7 @@ class TestCLIExecutionFlow:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )
 
@@ -1422,7 +1379,7 @@ class TestCLIExecutionFlow:
 
         # Create session
         e2e_client.post(
-            "/api/cli/sessions",
+            "/api/sdk/sessions",
             json={
                 "session_id": session_id,
                 "file_path": "/test/workflow.py",
@@ -1439,7 +1396,7 @@ class TestCLIExecutionFlow:
 
         # Continue
         continue_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/continue",
+            f"/api/sdk/sessions/{session_id}/continue",
             json={"workflow_name": "result_format_test", "params": {}},
             headers=platform_admin.headers,
         )
@@ -1447,13 +1404,13 @@ class TestCLIExecutionFlow:
 
         # Poll pending to get execution_id and mark it as running
         e2e_client.get(
-            f"/api/cli/sessions/{session_id}/pending",
+            f"/api/sdk/sessions/{session_id}/pending",
             headers=platform_admin.headers,
         )
 
         # Submit result with complex structure
         result_response = e2e_client.post(
-            f"/api/cli/sessions/{session_id}/executions/{execution_id}/result",
+            f"/api/sdk/sessions/{session_id}/executions/{execution_id}/result",
             json={
                 "status": "success",
                 "result": {
@@ -1468,6 +1425,6 @@ class TestCLIExecutionFlow:
 
         # Cleanup
         e2e_client.delete(
-            f"/api/cli/sessions/{session_id}",
+            f"/api/sdk/sessions/{session_id}",
             headers=platform_admin.headers,
         )

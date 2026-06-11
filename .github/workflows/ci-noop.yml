@@ -33,7 +33,11 @@ on:
       - "**/*.svg"
       - "**/*.webp"
       - "**/*.ico"
+      - ".agents/**"
       - ".claude/**"
+      - ".claude-plugin/**"
+      - ".codex/**"
+      - ".codex-plugin/**"
       - "docs/**"
       - "LICENSE"
       - ".github/CODEOWNERS"
@@ -60,6 +64,12 @@ jobs:
   test-unit:
     runs-on: ubuntu-latest
     name: Unit Tests
+    steps:
+      - run: echo "Skipped — docs/config-only PR."
+
+  test-client-unit:
+    runs-on: ubuntu-latest
+    name: Client Unit Tests
     steps:
       - run: echo "Skipped — docs/config-only PR."
 

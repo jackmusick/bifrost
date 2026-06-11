@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from src.models.orm.integrations import Integration
 
 
+# Execution-resolution entity — access via OAuthProviderRepository
+# (OrgScopedRepository). See api/src/repositories/README.md.
 class OAuthProvider(Base):
     """OAuth provider configuration."""
 
@@ -39,6 +41,11 @@ class OAuthProvider(Base):
         JSONB,
         default={},
         comment="Default values for URL template placeholders (e.g., {'entity_id': 'common'})"
+    )
+    entity_id_source: Mapped[dict | None] = mapped_column(
+        JSONB,
+        default=None,
+        comment="Where to extract entity_id from OAuth callback artifacts; shape: {type: 'url_param'|'id_token_claim'|'token_response_field', key: '...'}",
     )
     scopes: Mapped[list] = mapped_column(JSONB, default=[])
     redirect_uri: Mapped[str | None] = mapped_column(String(500), default=None)
@@ -79,6 +86,10 @@ class OAuthProvider(Base):
     )
 
 
+# Execution-resolution entity — access via OAuthTokenRepository
+# (OrgScopedRepository). MUST filter by organization_id — the lack of this
+# filter caused the cross-tenant token leak fixed in the 2026-05 overhaul.
+# See api/src/repositories/README.md.
 class OAuthToken(Base):
     """OAuth tokens for integration connections."""
 
@@ -96,6 +107,9 @@ class OAuthToken(Base):
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     scopes: Mapped[list] = mapped_column(JSONB, default=[])
+    status: Mapped[str] = mapped_column(String(50), default="not_connected", server_default=text("'not_connected'"))
+    status_message: Mapped[str | None] = mapped_column(Text, default=None)
+    last_refresh_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
     )

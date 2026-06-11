@@ -14,7 +14,6 @@ class TestHeartbeatCgroupData:
         pool = ProcessPoolManager.__new__(ProcessPoolManager)
         pool.worker_id = "test-worker"
         pool.processes = {}
-        pool.min_workers = 0
         pool.max_workers = 10
         pool._started_at = datetime.now(timezone.utc)
         pool._requirements_installed = 0
@@ -37,7 +36,6 @@ class TestHeartbeatCgroupData:
         pool = ProcessPoolManager.__new__(ProcessPoolManager)
         pool.worker_id = "test-worker"
         pool.processes = {}
-        pool.min_workers = 0
         pool.max_workers = 10
         pool._started_at = datetime.now(timezone.utc)
         pool._requirements_installed = 0
@@ -60,7 +58,6 @@ class TestHeartbeatCgroupData:
         pool = ProcessPoolManager.__new__(ProcessPoolManager)
         pool.worker_id = "test-worker"
         pool.processes = {}
-        pool.min_workers = 0
         pool.max_workers = 10
         pool._started_at = datetime.now(timezone.utc)
         pool._requirements_installed = 0
@@ -96,7 +93,6 @@ class TestHeartbeatCgroupData:
                 "state": ProcessState.IDLE,
                 "uptime_seconds": 1.0,
                 "executions_completed": 0,
-                "pending_recycle": False,
                 "current_execution": None,
             },
         )()
@@ -137,7 +133,6 @@ class TestHeartbeatCgroupData:
                 "state": ProcessState.IDLE,
                 "uptime_seconds": 1.0,
                 "executions_completed": 0,
-                "pending_recycle": False,
                 "current_execution": None,
             },
         )()

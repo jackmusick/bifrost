@@ -43,12 +43,20 @@ def knowledge_cleanup(
     cleans up any documents created during the test.
     """
     # Clean up any existing knowledge for org1 before test
-    namespaces_to_clean = ["e2e-test", "e2e-isolation", "e2e-org1", "e2e-org2", "e2e-global"]
+    namespaces_to_clean = [
+        "e2e-test",
+        "e2e-isolation",
+        "e2e-org1",
+        "e2e-org2",
+        "e2e-global",
+        "e2e-chunking",
+        "e2e-dedup",
+    ]
 
     for ns in namespaces_to_clean:
         try:
             e2e_client.delete(
-                f"/api/cli/knowledge/namespace/{ns}",
+                f"/api/sdk/knowledge/namespace/{ns}",
                 headers=platform_admin.headers,
             )
         except Exception:
@@ -60,7 +68,7 @@ def knowledge_cleanup(
     for ns in namespaces_to_clean:
         try:
             e2e_client.delete(
-                f"/api/cli/knowledge/namespace/{ns}",
+                f"/api/sdk/knowledge/namespace/{ns}",
                 headers=platform_admin.headers,
             )
             logger.info(f"Cleaned up knowledge namespace: {ns}")

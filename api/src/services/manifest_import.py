@@ -87,6 +87,7 @@ def _diff_and_collect(
         ("workflows", "workflows"),
         ("integrations", "integrations"),
         ("configs", "configs"),
+        ("claims", "claims"),
         ("tables", "tables"),
         ("events", "events"),
         ("forms", "forms"),
@@ -454,6 +455,7 @@ def _rewrite_org_ids(manifest: "Manifest", target_organization_id: UUID) -> "Man
     new_agents = {k: _with_org(v) for k, v in manifest.agents.items()}
     new_apps = {k: _with_org(v) for k, v in manifest.apps.items()}
     new_configs = {k: _with_org(v) for k, v in manifest.configs.items()}
+    new_claims = {k: _with_org(v) for k, v in manifest.claims.items()}
     new_tables = {k: _with_org(v) for k, v in manifest.tables.items()}
     new_events = {k: _with_org(v) for k, v in manifest.events.items()}
 
@@ -469,6 +471,7 @@ def _rewrite_org_ids(manifest: "Manifest", target_organization_id: UUID) -> "Man
         "agents": new_agents,
         "apps": new_apps,
         "configs": new_configs,
+        "claims": new_claims,
         "tables": new_tables,
         "events": new_events,
         "integrations": new_integrations,
@@ -674,6 +677,24 @@ async def import_manifest_from_repo(
         except Exception as e:
             logger.warning(f"Failed to refresh MCP workflow tools after manifest import: {e}")
 
+    # 6c. Invalidate the config read-through cache for every config the import
+    # upserted or deleted. The import writes Config rows directly (raw ops),
+    # bypassing the PUT /api/config handler that normally invalidates — so
+    # without this, a renamed/moved/deleted config (or a changed non-secret
+    # value) keeps serving stale from ConfigRepository's cache until TTL.
+    if result.applied and not dry_run and resolver.configs_touched:
+        from src.core.cache import invalidate_config
+        from src.core.log_safety import log_safe
+
+        for cfg_org_id, cfg_key in resolver.configs_touched:
+            try:
+                await invalidate_config(cfg_org_id, cfg_key)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to invalidate config cache after import "
+                    f"(org={cfg_org_id}, key={log_safe(cfg_key)}): {e}"
+                )
+
     # 7. Regenerate manifest from DB (partial: only changed entities).
     # NOTE: control reaches this point only when ``changed_ids`` is truthy —
     # the empty-changes case returns at step 4c (around line 596) before
@@ -702,6 +723,14 @@ class ManifestResolver:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        # (org_id_str_or_None, key) for every Config touched (upserted or
+        # deleted) during this import. The import writes Config rows directly
+        # (raw Upsert/delete ops), bypassing the PUT /api/config handler that
+        # normally invalidates the read-through cache in ConfigRepository. The
+        # importer drains this set after the transaction commits and calls
+        # invalidate_config on each, so a renamed/moved/deleted config (or a
+        # changed non-secret value) does not keep serving stale until TTL.
+        self.configs_touched: set[tuple[str | None, str]] = set()
 
     async def _prefetch_existing_entities(self) -> dict:
         """Prefetch all existing entity IDs/natural-keys in bulk queries.
@@ -723,6 +752,7 @@ class ManifestResolver:
         """
         from src.models.orm.applications import Application
         from src.models.orm.config import Config
+        from src.models.orm.custom_claims import CustomClaim
         from src.models.orm.integrations import (
             Integration,
             IntegrationConfigSchema,
@@ -807,6 +837,16 @@ class ManifestResolver:
         for row in cfg_result.all():
             cache["config_by_natural"][(row[1], row[2], row[3])] = (row[0], row[4], row[5])
 
+        # Custom Claims: {(name, org_id): id} + {id} set
+        claim_result = await self.db.execute(
+            select(CustomClaim.id, CustomClaim.name, CustomClaim.organization_id)
+        )
+        cache["claim_ids"] = set()
+        cache["claim_by_natural"] = {}
+        for row in claim_result.all():
+            cache["claim_ids"].add(row[0])
+            cache["claim_by_natural"][(row[1], row[2])] = row[0]
+
         return cache
 
     async def plan_import(self, manifest: "Manifest", work_dir: Path | None = None, progress_fn=None, repo: "RepoStorage | None" = None, dry_run: bool = False, changed_ids: set[str] | None = None) -> "list[SyncOp]":
@@ -871,6 +911,7 @@ class ManifestResolver:
             total += sum(1 for mwf in manifest.workflows.values() if mwf.id in changed_ids)
             total += sum(1 for minteg in manifest.integrations.values() if minteg.id in changed_ids)
             total += sum(1 for mcfg in manifest.configs.values() if mcfg.id in changed_ids)
+            total += sum(1 for mclaim in manifest.claims.values() if mclaim.id in changed_ids)
             total += sum(1 for mapp in manifest.apps.values() if mapp.id in changed_ids)
             total += sum(1 for mtable in manifest.tables.values() if mtable.id in changed_ids)
             total += sum(1 for mes in manifest.events.values() if mes.id in changed_ids)
@@ -879,7 +920,7 @@ class ManifestResolver:
         else:
             total = (len(manifest.organizations) + len(manifest.roles)
                      + len(manifest.workflows) + len(manifest.integrations)
-                     + len(manifest.configs) + len(manifest.apps)
+                     + len(manifest.configs) + len(manifest.claims) + len(manifest.apps)
                      + len(manifest.tables) + len(manifest.events)
                      + len(manifest.forms) + len(manifest.agents))
         current = 0
@@ -1012,7 +1053,21 @@ class ManifestResolver:
                     await op.execute(self.db)
             all_ops.extend(table_ops)
 
-        # 6. Resolve event sources + subscriptions
+        # 6. Resolve custom claims (refs org + source table by name)
+        for key, mclaim in manifest.claims.items():
+            if changed_ids is not None and mclaim.id not in changed_ids:
+                continue
+            await _prog(f"Importing custom claim: {mclaim.name or key}")
+            claim_ops = await self._resolve_custom_claim(mclaim.name or key, mclaim, cache)
+            for op in claim_ops:
+                if dry_run:
+                    if isinstance(op, Upsert):
+                        op.action_taken = "updated" if op.id in cache.get("claim_ids", set()) else "inserted"
+                else:
+                    await op.execute(self.db)
+            all_ops.extend(claim_ops)
+
+        # 7. Resolve event sources + subscriptions
         for key, mes in manifest.events.items():
             if changed_ids is not None and mes.id not in changed_ids:
                 continue
@@ -1026,7 +1081,7 @@ class ManifestResolver:
                     await op.execute(self.db)
             all_ops.extend(es_ops)
 
-        # 7. Resolve forms (metadata ops only — indexer called in _import_all_entities)
+        # 8. Resolve forms (metadata ops only — indexer called in _import_all_entities)
         for _form_name, mform in manifest.forms.items():
             if changed_ids is not None and mform.id not in changed_ids:
                 continue
@@ -1042,7 +1097,7 @@ class ManifestResolver:
                         await op.execute(self.db)
                 all_ops.extend(form_ops)
 
-        # 8. Resolve agents (metadata ops only — indexer called in _import_all_entities)
+        # 9. Resolve agents (metadata ops only — indexer called in _import_all_entities)
         for _agent_name, magent in manifest.agents.items():
             if changed_ids is not None and magent.id not in changed_ids:
                 continue
@@ -1058,7 +1113,7 @@ class ManifestResolver:
                         await op.execute(self.db)
                 all_ops.extend(agent_ops)
 
-        # 9. Resolve MCP servers (with nested connections + tools)
+        # 10. Resolve MCP servers (with nested connections + tools)
         imported_server_ids: set[str] = set()
         for server_key, mserver in manifest.mcp_servers.items():
             if changed_ids is not None and mserver.id not in changed_ids:
@@ -1653,6 +1708,7 @@ class ManifestResolver:
 
         present_integ_uuids = [UUID(m.id) for m in manifest.integrations.values()]
         present_config_uuids = [UUID(m.id) for m in manifest.configs.values()]
+        present_claim_uuids = [UUID(m.id) for m in manifest.claims.values()]
         present_table_uuids = [UUID(m.id) for m in manifest.tables.values()]
         present_event_uuids = [UUID(m.id) for m in manifest.events.values()]
         present_sub_uuids: list[UUID] = []
@@ -1755,19 +1811,27 @@ class ManifestResolver:
 
         # Delete configs not in manifest (skip integration-schema-linked configs —
         # those are user-set values managed by IntegrationConfigSchema cascade)
-        cfg_q = select(Config.id).where(Config.config_schema_id.is_(None))
+        cfg_q = select(
+            Config.id, Config.organization_id, Config.key
+        ).where(Config.config_schema_id.is_(None))
         if present_config_uuids:
             cfg_q = cfg_q.where(Config.id.notin_(present_config_uuids))
         cfg_result = await self.db.execute(cfg_q)
-        stale_cfg_ids = [row[0] for row in cfg_result.all()]
+        stale_cfg_rows = cfg_result.all()
+        stale_cfg_ids = [row[0] for row in stale_cfg_rows]
         if stale_cfg_ids:
-            for sid in stale_cfg_ids:
+            for sid, s_org_id, s_key in stale_cfg_rows:
                 logger.info(f"Deleting config {sid} — removed from repo")
                 entity_changes.append(EntityChange(
                     action="removed",
                     entity_type="configs",
                     name=str(sid),
                 ))
+                # Record for post-commit cache invalidation (the deleted row
+                # would otherwise keep serving from the read-through cache).
+                self.configs_touched.add(
+                    (str(s_org_id) if s_org_id is not None else None, s_key)
+                )
             if not dry_run:
                 await self.db.execute(
                     sa_delete(Config).where(Config.id.in_(stale_cfg_ids))
@@ -1785,6 +1849,11 @@ class ManifestResolver:
                 entity_type="tables",
                 name=row[1] or str(row[0]),
             ))
+
+        # Delete custom claims not in manifest.
+        from src.models.orm.custom_claims import CustomClaim
+
+        await _bulk_delete(CustomClaim, [], present_claim_uuids, "claims")
 
         # Delete event subscriptions not in manifest
         await _bulk_delete(EventSubscription, [], present_sub_uuids, "event_subscriptions")
@@ -2020,6 +2089,16 @@ class ManifestResolver:
                 )
             )
 
+        if cache is not None:
+            cs_refresh = await self.db.execute(
+                select(IntegrationConfigSchema).where(
+                    IntegrationConfigSchema.integration_id == integ_id
+                )
+            )
+            cache["integ_cs"][integ_id] = {
+                cs.key: cs for cs in cs_refresh.scalars().all()
+            }
+
         # Sync OAuth provider (structure only — client_secret never imported)
         if minteg.oauth_provider:
             op_data = minteg.oauth_provider
@@ -2114,8 +2193,21 @@ class ManifestResolver:
         integ_id = UUID(mcfg.integration_id) if mcfg.integration_id else None
         org_id = UUID(mcfg.organization_id) if mcfg.organization_id else None
 
+        # Record for post-commit cache invalidation. Only non-integration
+        # configs are read through ConfigRepository's cache (merged_for_sdk /
+        # get_config exclude integration_id IS NOT NULL), so those are the only
+        # ones whose cache can go stale on a value/key change here.
+        if integ_id is None:
+            self.configs_touched.add(
+                (str(org_id) if org_id is not None else None, mcfg.key)
+            )
+
         # Check prefetch cache for existing config by natural key
         cache_hit = cache["config_by_natural"].get((mcfg.key, integ_id, org_id))
+        schema_id = None
+        if integ_id is not None:
+            schema = cache.get("integ_cs", {}).get(integ_id, {}).get(mcfg.key)
+            schema_id = schema.id if schema is not None else None
 
         # Convert string config_type to enum for proper DB storage
         from src.models.enums import ConfigType
@@ -2126,7 +2218,7 @@ class ManifestResolver:
             existing_id, existing_value, _config_schema_id = cache_hit
 
             # Secret with existing value — don't overwrite
-            if is_secret and existing_value is not None:
+            if is_secret and existing_value is not None and schema_id is None:
                 return []
 
             # Update existing row (including ID if it changed)
@@ -2139,6 +2231,8 @@ class ManifestResolver:
                 "organization_id": org_id,
                 "updated_by": "git-sync",
             }
+            if schema_id is not None:
+                update_values["config_schema_id"] = schema_id
             if not is_secret:
                 update_values["value"] = mcfg.value if mcfg.value is not None else {}
 
@@ -2159,6 +2253,8 @@ class ManifestResolver:
                 "value": mcfg.value if mcfg.value is not None else {},
                 "updated_by": "git-sync",
             }
+            if schema_id is not None:
+                insert_values["config_schema_id"] = schema_id
             return [Upsert(
                 model=Config,
                 id=cfg_id,
@@ -2345,6 +2441,92 @@ class ManifestResolver:
             schema=mtable.table_schema,
             access=access,
             created_by="git-sync",
+        ).on_conflict_do_nothing()
+        await self.db.execute(stmt)
+
+        return []
+
+    async def _resolve_custom_claim(self, claim_name: str, mclaim, cache: dict | None = None) -> "list[SyncOp]":
+        """Resolve a custom claim from manifest into the DB.
+
+        Uses upsert-by-natural-key ``(organization_id, name)`` first so importing
+        the same portable claim into another environment preserves existing rows
+        and then realigns the DB id to the manifest UUID.
+        """
+        from uuid import UUID
+
+        from sqlalchemy import update
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.custom_claims import CustomClaim
+        from src.services.sync_ops import SyncOp  # noqa: F401
+
+        claim_id = UUID(mclaim.id)
+        org_id = UUID(mclaim.organization_id)
+        now = datetime.now(timezone.utc)
+        query = mclaim.query.model_dump(mode="json")
+
+        if cache is not None:
+            existing_by_natural = cache["claim_by_natural"].get((claim_name, org_id))
+        else:
+            natural_q = select(CustomClaim.id).where(
+                CustomClaim.name == claim_name,
+                CustomClaim.organization_id == org_id,
+            )
+            existing_by_natural = (await self.db.execute(natural_q)).scalar_one_or_none()
+
+        if existing_by_natural is not None:
+            # Keep the DB-assigned id stable. Claims are referenced by
+            # (org_id, name) everywhere (policies, manifest dependency graph),
+            # so realigning the PK to match a foreign manifest UUID would
+            # invalidate any in-flight ORM identity map without buying us
+            # anything. Matches the upsert pattern in _resolve_config /
+            # _resolve_integration.
+            await self.db.execute(
+                update(CustomClaim)
+                .where(CustomClaim.id == existing_by_natural)
+                .values(
+                    name=claim_name,
+                    description=mclaim.description,
+                    organization_id=org_id,
+                    type=mclaim.type,
+                    query=query,
+                    updated_at=now,
+                )
+            )
+            return []
+
+        if cache is not None:
+            existing_by_id = claim_id if claim_id in cache["claim_ids"] else None
+        else:
+            existing_by_id = (
+                await self.db.execute(
+                    select(CustomClaim.id).where(CustomClaim.id == claim_id)
+                )
+            ).scalar_one_or_none()
+
+        if existing_by_id is not None:
+            await self.db.execute(
+                update(CustomClaim)
+                .where(CustomClaim.id == claim_id)
+                .values(
+                    name=claim_name,
+                    description=mclaim.description,
+                    organization_id=org_id,
+                    type=mclaim.type,
+                    query=query,
+                    updated_at=now,
+                )
+            )
+            return []
+
+        stmt = insert(CustomClaim).values(
+            id=claim_id,
+            name=claim_name,
+            description=mclaim.description,
+            organization_id=org_id,
+            type=mclaim.type,
+            query=query,
         ).on_conflict_do_nothing()
         await self.db.execute(stmt)
 

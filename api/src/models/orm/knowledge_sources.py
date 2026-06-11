@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     from src.models.orm.users import Role
 
 
+# Identity entity — RBAC junction table for knowledge namespaces,
+# consumed by KnowledgeRepository, not name-cascade resolved.
+# See api/src/repositories/README.md.
 class KnowledgeNamespaceRole(Base):
     """Maps a knowledge namespace to a role for access control."""
 

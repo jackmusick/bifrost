@@ -7,7 +7,25 @@
  * Mirrors: api/tests/e2e/api/test_executions.py
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function openFirstExecution(page: Page) {
+	const executionRow = page.locator("[data-testid='execution-row']").first();
+	if (!(await executionRow.isVisible().catch(() => false))) {
+		return false;
+	}
+
+	const executionId = await executionRow.getAttribute("data-execution-id");
+	if (!executionId) {
+		throw new Error("Execution row is missing data-execution-id");
+	}
+
+	await page.goto(`/history/${executionId}`);
+	await page.waitForURL(new RegExp(`/history/${executionId}$`), {
+		timeout: 5000,
+	});
+	return true;
+}
 
 test.describe("Execution History", () => {
 	test("should display execution history page", async ({ page }) => {
@@ -28,7 +46,7 @@ test.describe("Execution History", () => {
 
 		// Either we have executions or an empty state
 		const executionContent = page.locator(
-			"table tbody tr, [data-testid='execution-row'], [data-testid='execution-card']",
+			"[data-testid='execution-row'], [data-testid='execution-card']",
 		);
 
 		const hasExecutions = await executionContent.count().catch(() => 0);
@@ -49,13 +67,13 @@ test.describe("Execution History", () => {
 
 		// Look for status indicators
 		const statusBadge = page.locator(
-			"[data-testid='status-badge'], .badge, [class*='status']",
+			"[data-testid='execution-row'] [data-slot='badge'], [data-testid='execution-row'] [data-testid='status-badge']",
 		);
 
 		// If we have executions, we should have status badges
 		const hasExecutions =
 			(await page
-				.locator("table tbody tr, [data-testid='execution-row']")
+				.locator("[data-testid='execution-row']")
 				.count()
 				.catch(() => 0)) > 0;
 
@@ -73,22 +91,10 @@ test.describe("Execution Details", () => {
 			page.getByRole("heading", { name: /history|executions/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Find an execution row
-		const executionRow = page
-			.locator(
-				"table tbody tr, [data-testid='execution-row'], [data-testid='execution-card']",
-			)
-			.first();
-
-		if (await executionRow.isVisible().catch(() => false)) {
-			await executionRow.click();
-
+		if (await openFirstExecution(page)) {
 			// Should navigate to execution details
-			await page.waitForURL(/\/history\/[a-f0-9-]+/, { timeout: 5000 });
-
-			// Should show execution details
 			await expect(
-				page.getByText(/status|result|output|logs/i),
+				page.getByText("Execution Status", { exact: true }).first(),
 			).toBeVisible({ timeout: 5000 });
 		}
 	});
@@ -100,21 +106,11 @@ test.describe("Execution Details", () => {
 			page.getByRole("heading", { name: /history|executions/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Find an execution
-		const executionRow = page
-			.locator(
-				"table tbody tr, [data-testid='execution-row'], [data-testid='execution-card']",
-			)
-			.first();
-
-		if (await executionRow.isVisible().catch(() => false)) {
-			await executionRow.click();
-			await page.waitForURL(/\/history\/[a-f0-9-]+/, { timeout: 5000 });
-
+		if (await openFirstExecution(page)) {
 			// Should show output section
-			await expect(page.getByText(/output|result|response/i)).toBeVisible(
-				{ timeout: 5000 },
-			);
+			await expect(
+				page.getByText("Result", { exact: true }).first(),
+			).toBeVisible({ timeout: 5000 });
 		}
 	});
 
@@ -125,26 +121,10 @@ test.describe("Execution Details", () => {
 			page.getByRole("heading", { name: /history|executions/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Find an execution
-		const executionRow = page
-			.locator(
-				"table tbody tr, [data-testid='execution-row'], [data-testid='execution-card']",
-			)
-			.first();
-
-		if (await executionRow.isVisible().catch(() => false)) {
-			await executionRow.click();
-			await page.waitForURL(/\/history\/[a-f0-9-]+/, { timeout: 5000 });
-
-			// Look for logs tab/section
-			const logsTab = page.getByRole("tab", { name: /logs/i });
-			const logsSection = page.getByText(/logs|console/i);
-
-			const hasLogs =
-				(await logsTab.isVisible().catch(() => false)) ||
-				(await logsSection.isVisible().catch(() => false));
-
-			expect(hasLogs).toBe(true);
+		if (await openFirstExecution(page)) {
+			await expect(
+				page.getByText("Logs", { exact: true }).first(),
+			).toBeVisible({ timeout: 5000 });
 		}
 	});
 });

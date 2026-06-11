@@ -26,12 +26,22 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { Shield, AlertCircle, Loader2, Check, ChevronsUpDown, X } from "lucide-react";
+import {
+	Shield,
+	AlertCircle,
+	Loader2,
+	Check,
+	ChevronsUpDown,
+	X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateUser } from "@/hooks/useUsers";
 import { useRoles, useAssignUsersToRole } from "@/hooks/useRoles";
 import { useOrganizations } from "@/hooks/useOrganizations";
+import { useEventSources } from "@/services/events";
+import { useSendInvite } from "@/hooks/useUserInvites";
+import { RegistrationLinkDialog } from "@/components/users/RegistrationLinkDialog";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 
@@ -46,15 +56,23 @@ interface CreateUserDialogProps {
 // Extract dialog content to separate component for key-based remounting
 function CreateUserDialogContent({
 	onOpenChange,
+	onRegistrationLinkCreated,
 }: {
 	onOpenChange: (open: boolean) => void;
+	onRegistrationLinkCreated: (
+		userId: string,
+		email: string,
+		url: string,
+	) => void;
 }) {
 	const [email, setEmail] = useState("");
 	const [displayName, setDisplayName] = useState("");
 	const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 	const [orgId, setOrgId] = useState<string>("");
 	const [validationError, setValidationError] = useState<string | null>(null);
-	const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+	const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(
+		new Set(),
+	);
 	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
 
 	const queryClient = useQueryClient();
@@ -66,7 +84,9 @@ function CreateUserDialogContent({
 	const roles = useMemo(() => (allRoles ?? []) as Role[], [allRoles]);
 
 	// Find the provider org (for auto-selecting when platform admin is chosen)
-	const providerOrg = organizations?.find((org: Organization) => org.is_provider);
+	const providerOrg = organizations?.find(
+		(org: Organization) => org.is_provider,
+	);
 
 	// Auto-select provider org when switching to platform admin
 	const handleUserTypeChange = (value: string) => {
@@ -138,6 +158,8 @@ function CreateUserDialogContent({
 					is_active: true,
 					is_superuser: isPlatformAdmin,
 					organization_id: orgId || null,
+					invite: true,
+					trigger_automation: false,
 				},
 			});
 
@@ -155,10 +177,17 @@ function CreateUserDialogContent({
 			}
 
 			toast.success("User created successfully", {
-				description: `${displayName} (${email}) has been added to the platform`,
+				description: `${displayName.trim()} (${email.trim()}) has been added to the platform`,
 			});
 
 			onOpenChange(false);
+			if (result?.id && result?.registration_url) {
+				onRegistrationLinkCreated(
+					result.id,
+					email.trim(),
+					result.registration_url,
+				);
+			}
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error
@@ -285,7 +314,10 @@ function CreateUserDialogContent({
 				{!isPlatformAdmin && (
 					<div className="space-y-2">
 						<Label>Roles</Label>
-						<Popover open={rolesPopoverOpen} onOpenChange={setRolesPopoverOpen}>
+						<Popover
+							open={rolesPopoverOpen}
+							onOpenChange={setRolesPopoverOpen}
+						>
 							<PopoverTrigger asChild>
 								<Button
 									variant="outline"
@@ -293,10 +325,13 @@ function CreateUserDialogContent({
 									aria-expanded={rolesPopoverOpen}
 									className="w-full justify-between font-normal"
 								>
-									<span className={cn(
-										"truncate",
-										selectedRoleIds.size === 0 && "text-muted-foreground",
-									)}>
+									<span
+										className={cn(
+											"truncate",
+											selectedRoleIds.size === 0 &&
+												"text-muted-foreground",
+										)}
+									>
 										{selectedRoleIds.size === 0
 											? "Select roles..."
 											: `${selectedRoleIds.size} role${selectedRoleIds.size === 1 ? "" : "s"} selected`}
@@ -304,31 +339,44 @@ function CreateUserDialogContent({
 									<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 								</Button>
 							</PopoverTrigger>
-							<PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+							<PopoverContent
+								className="w-[var(--radix-popover-trigger-width)] p-0"
+								align="start"
+							>
 								<Command>
 									<CommandInput placeholder="Search roles..." />
 									<CommandList className="max-h-48 overflow-y-auto">
-										<CommandEmpty>No roles found.</CommandEmpty>
+										<CommandEmpty>
+											No roles found.
+										</CommandEmpty>
 										<CommandGroup>
 											{roles.map((role) => (
 												<CommandItem
 													key={role.id}
 													value={role.id}
 													keywords={[role.name]}
-													onSelect={() => toggleRole(role.id)}
+													onSelect={() =>
+														toggleRole(role.id)
+													}
 												>
 													<div className="flex flex-col flex-1">
-														<span className="font-medium">{role.name}</span>
+														<span className="font-medium">
+															{role.name}
+														</span>
 														{role.description && (
 															<span className="text-xs text-muted-foreground">
-																{role.description}
+																{
+																	role.description
+																}
 															</span>
 														)}
 													</div>
 													<Check
 														className={cn(
 															"ml-auto h-4 w-4",
-															selectedRoleIds.has(role.id)
+															selectedRoleIds.has(
+																role.id,
+															)
 																? "opacity-100"
 																: "opacity-0",
 														)}
@@ -343,7 +391,11 @@ function CreateUserDialogContent({
 						{selectedRoleNames.length > 0 && (
 							<div className="flex flex-wrap gap-1 mt-1">
 								{selectedRoleNames.map(({ id, name }) => (
-									<Badge key={id} variant="secondary" className="text-xs">
+									<Badge
+										key={id}
+										variant="secondary"
+										className="text-xs"
+									>
 										{name}
 										<button
 											type="button"
@@ -398,9 +450,64 @@ export function CreateUserDialog({
 	open,
 	onOpenChange,
 }: CreateUserDialogProps) {
+	const [registrationLink, setRegistrationLink] = useState<{
+		userId: string;
+		email: string;
+		url: string;
+	} | null>(null);
+	const sendInvite = useSendInvite();
+	const { data: eventSources } = useEventSources({
+		sourceType: "topic",
+		limit: 100,
+	});
+	const inviteAutomationConfigured =
+		eventSources?.items?.some(
+			(source) =>
+				source.is_active &&
+				source.event_type === "user.invited" &&
+				source.subscription_count > 0,
+		) ?? false;
+
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			{open && <CreateUserDialogContent onOpenChange={onOpenChange} />}
-		</Dialog>
+		<>
+			<Dialog open={open} onOpenChange={onOpenChange}>
+				{open && (
+					<CreateUserDialogContent
+						onOpenChange={onOpenChange}
+						onRegistrationLinkCreated={(userId, email, url) =>
+							setRegistrationLink({ userId, email, url })
+						}
+					/>
+				)}
+			</Dialog>
+			<RegistrationLinkDialog
+				open={registrationLink !== null}
+				email={registrationLink?.email}
+				url={registrationLink?.url}
+				canSendEmail={inviteAutomationConfigured}
+				isSendingEmail={sendInvite.isPending}
+				onSendEmail={async () => {
+					if (!registrationLink) return;
+					try {
+						await sendInvite.mutateAsync({
+							userId: registrationLink.userId,
+							registrationUrl: registrationLink.url,
+						});
+						toast.success("Registration email sent");
+						setRegistrationLink(null);
+					} catch (error) {
+						toast.error("Failed to send registration email", {
+							description:
+								error instanceof Error
+									? error.message
+									: "Unknown error occurred",
+						});
+					}
+				}}
+				onOpenChange={(nextOpen) => {
+					if (!nextOpen) setRegistrationLink(null);
+				}}
+			/>
+		</>
 	);
 }

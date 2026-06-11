@@ -9,6 +9,7 @@ import { EditorOverlay } from "@/components/editor/EditorOverlay";
 import { UnifiedDock } from "@/components/layout/UnifiedDock";
 import { QuickAccess } from "@/components/quick-access/QuickAccess";
 import { PageLoader } from "@/components/PageLoader";
+import { RouteTransitionProgress } from "@/components/layout/RouteTransitionProgress";
 import { useEditorStore } from "@/stores/editorStore";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -28,6 +29,9 @@ const Config = lazyWithReload(() =>
 );
 const Roles = lazyWithReload(() =>
 	import("@/pages/Roles").then((m) => ({ default: m.Roles })),
+);
+const RoleDetail = lazyWithReload(() =>
+	import("@/pages/RoleDetail").then((m) => ({ default: m.RoleDetail })),
 );
 const Users = lazyWithReload(() =>
 	import("@/pages/Users").then((m) => ({ default: m.Users })),
@@ -124,17 +128,14 @@ const Setup = lazyWithReload(() =>
 const MFASetup = lazyWithReload(() =>
 	import("@/pages/MFASetup").then((m) => ({ default: m.MFASetup })),
 );
+const Register = lazyWithReload(() =>
+	import("@/pages/Register").then((m) => ({ default: m.Register })),
+);
 const AuthCallback = lazyWithReload(() =>
 	import("@/pages/AuthCallback").then((m) => ({ default: m.AuthCallback })),
 );
 const MCPCallback = lazyWithReload(() =>
 	import("@/pages/MCPCallback").then((m) => ({ default: m.MCPCallback })),
-);
-const CLI = lazyWithReload(() =>
-	import("@/pages/CLI").then((m) => ({ default: m.CLI })),
-);
-const Workbench = lazyWithReload(() =>
-	import("@/pages/Workbench").then((m) => ({ default: m.Workbench })),
 );
 const Chat = lazyWithReload(() =>
 	import("@/pages/Chat").then((m) => ({ default: m.Chat })),
@@ -250,6 +251,7 @@ function AppRoutes() {
 					{/* Public routes - no auth required */}
 					<Route path="login" element={<Login />} />
 					<Route path="setup" element={<Setup />} />
+					<Route path="accept-invite" element={<Register />} />
 					<Route path="mfa-setup" element={<MFASetup />} />
 					<Route
 						path="auth/callback/:provider"
@@ -380,6 +382,22 @@ function AppRoutes() {
 							element={
 								<ProtectedRoute requirePlatformAdmin>
 									<Roles />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="roles/:roleId"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<RoleDetail />
+								</ProtectedRoute>
+							}
+						/>
+						<Route
+							path="roles/:roleId/:tab"
+							element={
+								<ProtectedRoute requirePlatformAdmin>
+									<RoleDetail />
 								</ProtectedRoute>
 							}
 						/>
@@ -652,15 +670,6 @@ function AppRoutes() {
 							}
 						/>
 
-						{/* CLI Sessions - PlatformAdmin only */}
-						<Route
-							path="cli"
-							element={
-								<ProtectedRoute requirePlatformAdmin>
-									<CLI />
-								</ProtectedRoute>
-							}
-						/>
 					</Route>
 
 					{/* ContentLayout - Pages without default padding */}
@@ -691,15 +700,6 @@ function AppRoutes() {
 								</ProtectedRoute>
 							}
 						/>
-						{/* Workbench (CLI Session Detail) - PlatformAdmin only */}
-						<Route
-							path="cli/:sessionId"
-							element={
-								<ProtectedRoute requirePlatformAdmin>
-									<Workbench />
-								</ProtectedRoute>
-							}
-						/>
 						{/* Execution Details - PlatformAdmin or OrgUser */}
 						<Route
 							path="history/:executionId"
@@ -720,6 +720,7 @@ function App() {
 	return (
 		<ErrorBoundary>
 			<BrowserRouter>
+				<RouteTransitionProgress />
 				<AuthProvider>
 					<OrgScopeProvider>
 						<KeyboardProvider>

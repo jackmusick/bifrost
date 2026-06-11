@@ -8,6 +8,7 @@ File operations with two storage modes:
 Auth: CurrentSuperuser (platform admins and workflow engine)
 """
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -62,14 +63,19 @@ router = APIRouter(prefix="/api/files", tags=["Files"])
 
 Mode = Literal["local", "cloud"]
 
-# Location is now a free string; reserved-vs-freeform validation lives in
+# Location is now a free string; managed-vs-freeform validation lives in
 # `shared.file_paths.validate_location_name` and is applied by the resolver.
+FILE_LOCATION_DESCRIPTION = (
+    "Storage location. Special values: workspace (default), temp, uploads. "
+    "Custom names like reports are accepted; internal prefixes _repo, _tmp, "
+    "and _apps are blocked."
+)
 
 
 class FileReadRequest(BaseModel):
     """Request to read a file."""
     path: str = Field(..., description="File path relative to location root")
-    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    location: str = Field(default="workspace", description=FILE_LOCATION_DESCRIPTION)
     scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
     binary: bool = Field(default=False, description="If true, return base64-encoded content")
@@ -79,7 +85,7 @@ class FileWriteRequest(BaseModel):
     """Request to write a file."""
     path: str = Field(..., description="File path relative to location root")
     content: str = Field(..., description="File content (text or base64 for binary)")
-    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    location: str = Field(default="workspace", description=FILE_LOCATION_DESCRIPTION)
     scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
     binary: bool = Field(default=False, description="If true, content is base64-encoded")
@@ -88,7 +94,7 @@ class FileWriteRequest(BaseModel):
 class FileDeleteRequest(BaseModel):
     """Request to delete a file."""
     path: str = Field(..., description="File path relative to location root")
-    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    location: str = Field(default="workspace", description=FILE_LOCATION_DESCRIPTION)
     scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
 
@@ -96,7 +102,7 @@ class FileDeleteRequest(BaseModel):
 class FileListRequest(BaseModel):
     """Request to list files."""
     directory: str = Field(default="", description="Directory path relative to location root")
-    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    location: str = Field(default="workspace", description=FILE_LOCATION_DESCRIPTION)
     scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
     include_metadata: bool = Field(default=False, description="If true, return ETags + last_modified per file")
@@ -105,7 +111,7 @@ class FileListRequest(BaseModel):
 class FileExistsRequest(BaseModel):
     """Request to check file existence."""
     path: str = Field(..., description="File path relative to location root")
-    location: str = Field(default="workspace", description="Storage location: reserved (workspace, temp, uploads) or freeform")
+    location: str = Field(default="workspace", description=FILE_LOCATION_DESCRIPTION)
     scope: str | None = Field(default=None, description="Org scope. Required for non-workspace, non-uploads locations.")
     mode: Mode = Field(default="cloud", description="Storage mode: local or cloud")
 
@@ -163,7 +169,7 @@ async def read_file(
     user: CurrentSuperuser,
     db: AsyncSession = Depends(get_db),
 ) -> FileReadResponse:
-    """Read a file from workspace, temp, or uploads."""
+    """Read a file from a managed or custom location."""
     try:
         backend = get_backend(request.mode, db)
         content = await backend.read(request.path, request.location, scope=request.scope)
@@ -196,7 +202,7 @@ async def write_file(
     user: CurrentSuperuser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Write a file to workspace, temp, or uploads."""
+    """Write a file to a managed or custom location."""
     try:
         backend = get_backend(request.mode, db)
 
@@ -224,7 +230,7 @@ async def delete_file(
     user: CurrentSuperuser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Delete a file from workspace, temp, or uploads."""
+    """Delete a file from a managed or custom location."""
     try:
         backend = get_backend(request.mode, db)
         await backend.delete(request.path, request.location, scope=request.scope)
@@ -631,6 +637,12 @@ async def list_files_editor(
 
         # Folders first
         for folder_path in child_folders:
+            # SeaweedFS can briefly retain an empty CommonPrefix after deleting
+            # every object under it. Treat the non-delimited object list as the
+            # source of truth before showing a folder in the editor.
+            if not await repo.list(folder_path):
+                continue
+
             clean = folder_path.rstrip("/")
             files.append(FileMetadata(
                 path=clean,
@@ -927,9 +939,22 @@ async def delete_file_editor(
         children = await repo.list(folder_prefix)
 
         if children:
-            # Folder delete: delete each child; any failure should fail request
-            for child_path in children:
-                await storage.delete_file(child_path)
+            # Folder delete: drain the prefix. Some S3-compatible stores can
+            # report folder markers briefly after child deletion.
+            for attempt in range(5):
+                for child_path in sorted(set(children)):
+                    if child_path.endswith("/"):
+                        await repo.delete(child_path)
+                    else:
+                        await storage.delete_file(child_path)
+                await repo.delete(path.rstrip("/"))
+                await repo.delete(folder_prefix)
+
+                children = await repo.list(folder_prefix)
+                if not children:
+                    break
+                if attempt < 4:
+                    await asyncio.sleep(0.1)
         else:
             # Single file delete
             await storage.delete_file(path)

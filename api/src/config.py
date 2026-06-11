@@ -81,14 +81,11 @@ class Settings(BaseSettings):
         description="Max concurrent workflow executions (controls RabbitMQ prefetch)"
     )
 
-    # Process Pool Configuration
-    min_workers: int = Field(
-        default=2,
-        description="Minimum worker processes to maintain (warm pool)"
-    )
+    # Process Pool Configuration (on-demand only — every execution forks
+    # a fresh one-shot worker, capped at `max_workers` concurrent forks).
     max_workers: int = Field(
         default=10,
-        description="Maximum worker processes for scaling"
+        description="Maximum concurrent worker processes (queue cap)"
     )
     execution_timeout_seconds: int = Field(
         default=300,
@@ -97,14 +94,6 @@ class Settings(BaseSettings):
     graceful_shutdown_seconds: int = Field(
         default=5,
         description="Seconds to wait after SIGTERM before SIGKILL"
-    )
-    recycle_after_executions: int = Field(
-        default=100,
-        description="Recycle process after N executions (0 = never). Safety net for memory leaks."
-    )
-    recycle_memory_mb: int = Field(
-        default=768,
-        description="Recycle process when RSS exceeds this threshold in MB (0 = disabled)"
     )
     worker_heartbeat_interval_seconds: int = Field(
         default=10,
@@ -190,7 +179,7 @@ class Settings(BaseSettings):
 
     s3_endpoint_url: str | None = Field(
         default=None,
-        description="S3 endpoint URL (None for AWS, 'http://minio:9000' for local MinIO)"
+        description="S3 endpoint URL (None for AWS, local S3-compatible endpoint for self-hosted storage)"
     )
 
     s3_access_key: str | None = Field(

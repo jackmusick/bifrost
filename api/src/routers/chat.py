@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser
-from src.core.database import DbSession
+from src.core.db_deps import DbSession
 from src.models.contracts.agents import (
     ChatRequest,
     ChatResponse,
@@ -32,8 +32,7 @@ from src.models.contracts.agents import (
     SwitchBranchRequest,
     ToolCall,
 )
-from src.models.enums import AgentAccessLevel
-from src.models.orm import Agent, AgentRole, Conversation, Message, Workspace
+from src.models.orm import Agent, Conversation, Message, Workspace
 from src.services.agent_executor import AgentExecutor
 from src.services.workspace_service import can_access_workspace
 
@@ -622,6 +621,12 @@ async def send_message(
             detail=f"Conversation {conversation_id} not found",
         )
 
+    if conversation.agent and not await _check_agent_access(db, user, conversation.agent):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this agent",
+        )
+
     # Agent is now optional - agentless chat uses default system prompt
 
     # Execute chat — executor manages its own short-lived sessions
@@ -641,6 +646,7 @@ async def send_message(
         conversation=conversation,
         user_message=request.message,
         stream=False,
+        user=user,
     ):
         if chunk.type == "delta" and chunk.content:
             final_content += chunk.content
@@ -676,27 +682,24 @@ async def send_message(
 
 
 async def _check_agent_access(db: DbSession, user, agent: Agent) -> bool:
-    """Check if user has access to an agent based on its access level."""
-    # Authenticated agents are accessible to any logged-in user
-    if agent.access_level == AgentAccessLevel.AUTHENTICATED:
-        return True
+    """Check if user has access to an agent.
 
-    # Role-based access requires matching roles
-    if agent.access_level == AgentAccessLevel.ROLE_BASED:
-        if user.is_platform_admin:
-            return True
+    Delegates to ``AgentRepository.get(id=...)`` — the same gate the UI
+    listing path and MCP tool access service use. Returns True iff the
+    repo finds the agent in the user's scope (org + global cascade) AND
+    the access_level / role check passes.
 
-        # Check if user has any role assigned to this agent
-        # user.roles is list[str] (role names), so we need to join through Role table
-        if user.roles:
-            from src.models.orm import Role
-            result = await db.execute(
-                select(AgentRole)
-                .join(Role, AgentRole.role_id == Role.id)
-                .where(AgentRole.agent_id == agent.id)
-                .where(Role.name.in_(user.roles))
-                .limit(1)
-            )
-            return result.scalar_one_or_none() is not None
+    Prior to this delegation, the function checked access_level and roles
+    but had no org-scope check, allowing an Org A user with a same-named
+    role to access an Org B agent if they knew its ID.
+    """
+    from src.repositories.agents import AgentRepository
 
-    return False
+    repo = AgentRepository(
+        db,
+        org_id=user.organization_id,
+        user_id=user.user_id,
+        is_superuser=user.is_platform_admin,
+    )
+    accessible = await repo.get(id=agent.id)
+    return accessible is not None

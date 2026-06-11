@@ -19,7 +19,7 @@ class TestConfigGetDecryptsSecrets:
         encrypted = encrypt_secret(plaintext)
 
         mock_resolver = AsyncMock()
-        mock_resolver.load_config_for_scope = AsyncMock(return_value={
+        mock_resolver.merged_for_sdk = AsyncMock(return_value={
             "test_secret": {"value": encrypted, "type": "secret"},
         })
 
@@ -29,8 +29,8 @@ class TestConfigGetDecryptsSecrets:
 
         request = CLIConfigGetRequest(key="test_secret")
 
-        with patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value="org-123"), \
-             patch("src.core.config_resolver.ConfigResolver", return_value=mock_resolver):
+        with patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value="11111111-1111-1111-1111-111111111111"), \
+             patch("src.repositories.config.ConfigRepository", return_value=mock_resolver):
             result = await cli_get_config(request=request, current_user=mock_user, db=AsyncMock())
 
         assert isinstance(result, CLIConfigValue)
@@ -46,7 +46,7 @@ class TestConfigGetDecryptsSecrets:
         from src.models.contracts.cli import CLIConfigGetRequest, CLIConfigValue
 
         mock_resolver = AsyncMock()
-        mock_resolver.load_config_for_scope = AsyncMock(return_value={
+        mock_resolver.merged_for_sdk = AsyncMock(return_value={
             "bad_secret": {"value": "not-valid-encrypted-data", "type": "secret"},
         })
 
@@ -55,8 +55,8 @@ class TestConfigGetDecryptsSecrets:
 
         request = CLIConfigGetRequest(key="bad_secret")
 
-        with patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value="org-123"), \
-             patch("src.core.config_resolver.ConfigResolver", return_value=mock_resolver):
+        with patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value="11111111-1111-1111-1111-111111111111"), \
+             patch("src.repositories.config.ConfigRepository", return_value=mock_resolver):
             result = await cli_get_config(request=request, current_user=mock_user, db=AsyncMock())
 
         assert isinstance(result, CLIConfigValue)
@@ -71,7 +71,7 @@ class TestConfigGetDecryptsSecrets:
         plain_value = "just_a_string"
 
         mock_resolver = AsyncMock()
-        mock_resolver.load_config_for_scope = AsyncMock(return_value={
+        mock_resolver.merged_for_sdk = AsyncMock(return_value={
             "normal_key": {"value": plain_value, "type": "string"},
         })
 
@@ -80,8 +80,8 @@ class TestConfigGetDecryptsSecrets:
 
         request = CLIConfigGetRequest(key="normal_key")
 
-        with patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value="org-123"), \
-             patch("src.core.config_resolver.ConfigResolver", return_value=mock_resolver):
+        with patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value="11111111-1111-1111-1111-111111111111"), \
+             patch("src.repositories.config.ConfigRepository", return_value=mock_resolver):
             result = await cli_get_config(request=request, current_user=mock_user, db=AsyncMock())
 
         assert isinstance(result, CLIConfigValue)
@@ -102,7 +102,7 @@ class TestConfigListMasksSecrets:
         encrypted = encrypt_secret("real_api_key_value")
 
         mock_resolver = AsyncMock()
-        mock_resolver.load_config_for_scope = AsyncMock(return_value={
+        mock_resolver.merged_for_sdk = AsyncMock(return_value={
             "normal_key": {"value": "normal_value", "type": "string"},
             "secret_key": {"value": encrypted, "type": "secret"},
         })
@@ -112,8 +112,8 @@ class TestConfigListMasksSecrets:
 
         request = CLIConfigListRequest()
 
-        with patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value="org-123"), \
-             patch("src.core.config_resolver.ConfigResolver", return_value=mock_resolver):
+        with patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value="11111111-1111-1111-1111-111111111111"), \
+             patch("src.repositories.config.ConfigRepository", return_value=mock_resolver):
             result = await cli_list_config(request=request, current_user=mock_user, db=AsyncMock())
 
         assert result["normal_key"] == "normal_value"
@@ -130,7 +130,7 @@ class TestConfigListMasksSecrets:
         from src.models.contracts.cli import CLIConfigListRequest
 
         mock_resolver = AsyncMock()
-        mock_resolver.load_config_for_scope = AsyncMock(return_value={
+        mock_resolver.merged_for_sdk = AsyncMock(return_value={
             "empty_secret": {"value": None, "type": "secret"},
         })
 
@@ -139,8 +139,8 @@ class TestConfigListMasksSecrets:
 
         request = CLIConfigListRequest()
 
-        with patch("src.routers.cli._get_cli_org_id", new_callable=AsyncMock, return_value="org-123"), \
-             patch("src.core.config_resolver.ConfigResolver", return_value=mock_resolver):
+        with patch("src.routers.cli._resolve_sdk_org_id", new_callable=AsyncMock, return_value="11111111-1111-1111-1111-111111111111"), \
+             patch("src.repositories.config.ConfigRepository", return_value=mock_resolver):
             result = await cli_list_config(request=request, current_user=mock_user, db=AsyncMock())
 
         assert result["empty_secret"] == "[SECRET]"

@@ -19,8 +19,10 @@ import click
 
 from .agents import agents_group
 from .apps import apps_group
+from .claims import claims_group
 from .configs import configs_group
 from .events import events_group
+from .files import files_group
 from .forms import forms_group
 from .integrations import integrations_group
 from .orgs import orgs_group
@@ -38,10 +40,12 @@ ENTITY_GROUPS: dict[str, click.Group] = {
     "forms": forms_group,
     "agents": agents_group,
     "apps": apps_group,
+    "claims": claims_group,
     "integrations": integrations_group,
     "configs": configs_group,
     "tables": tables_group,
     "events": events_group,
+    "files": files_group,
     "requirements": requirements_group,
 }
 

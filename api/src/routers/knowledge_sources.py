@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import delete, or_, select, update
 
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
-from src.core.database import DbSession
+from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType, resolve_org_filter
 from src.models.contracts.knowledge import (
@@ -414,25 +414,24 @@ async def create_document(
     try:
         from src.services.embeddings.factory import get_embedding_client
         client = await get_embedding_client(db)
-        embedding = await client.embed(data.content)
     except ValueError as e:
         raise HTTPException(503, f"Embedding service unavailable: {e}")
 
     repo = KnowledgeRepository(session=db, org_id=target_org_id)
-    doc_id = await repo.store(
+    doc_ids = await repo.store_chunked(
         content=data.content,
-        embedding=embedding,
         namespace=namespace,
         key=data.key,
         metadata=data.metadata,
         organization_id=target_org_id,
         created_by=user.user_id,
+        embedder=client,
     )
     await db.flush()
 
     # Load the created document
     result = await db.execute(
-        select(KnowledgeStore).where(KnowledgeStore.id == UUID(doc_id))
+        select(KnowledgeStore).where(KnowledgeStore.id == UUID(doc_ids[0]))
     )
     doc = result.scalar_one()
 

@@ -41,6 +41,8 @@ from src.models import (
     OAuthProviderInfo,
 )
 from src.models.contracts.passkeys import (
+    InvitePasskeyOptionsRequest,
+    InvitePasskeyVerifyRequest,
     SetupPasskeyOptionsRequest,
     SetupPasskeyOptionsResponse,
     SetupPasskeyVerifyRequest,
@@ -48,7 +50,7 @@ from src.models.contracts.passkeys import (
 )
 from src.config import get_settings
 from src.core.auth import CurrentActiveUser
-from src.core.database import DbSession
+from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.rate_limit import auth_limiter, mfa_limiter, get_client_ip
 from src.services.audit import emit_audit
@@ -1794,3 +1796,97 @@ async def authorize_device(
     )
 
     return DeviceAuthorizeResponse(success=True)
+
+
+# =============================================================================
+# Invite Registration
+# =============================================================================
+
+from src.models.contracts.user_invites import RegisterFromInviteRequest  # noqa: E402
+from src.models.contracts.users import UserPublic  # noqa: E402
+from src.services.user_invite_service import (  # noqa: E402
+    InviteConsumeError,
+    UserInviteService,
+)
+
+
+@router.post("/register-from-invite", response_model=UserPublic)
+async def register_from_invite(
+    request: RegisterFromInviteRequest,
+    db: DbSession,
+) -> UserPublic:
+    """Consume a single-use invite token and complete user registration.
+
+    This endpoint is intentionally unauthenticated — the token IS the
+    credential. On success the user is marked is_registered=True and (if a
+    password was supplied) their hashed_password is set.
+    """
+    svc = UserInviteService(db)
+    try:
+        registered = await svc.consume(token=request.token, password=request.password)
+    except InviteConsumeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if request.name and not registered.name:
+        registered.name = request.name
+        await db.flush()
+
+    public = UserPublic.model_validate(registered)
+    public.invite_status = "active"
+    return public
+
+
+@router.post("/register-from-invite/passkey/options", response_model=SetupPasskeyOptionsResponse)
+async def register_from_invite_passkey_options(
+    request: InvitePasskeyOptionsRequest,
+    db: DbSession,
+) -> SetupPasskeyOptionsResponse:
+    """Start passkey registration for a user holding a valid invite token."""
+    from src.services.passkey_service import PasskeyService
+
+    invite_svc = UserInviteService(db)
+    try:
+        _, invited_user = await invite_svc.get_valid_invite_user(token=request.token)
+        options = await PasskeyService(db).generate_registration_options(invited_user.id)
+    except (InviteConsumeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return SetupPasskeyOptionsResponse(
+        registration_token=request.token,
+        options=options,
+        expires_in=300,
+    )
+
+
+@router.post("/register-from-invite/passkey/verify", response_model=SetupPasskeyVerifyResponse)
+async def register_from_invite_passkey_verify(
+    request: InvitePasskeyVerifyRequest,
+    response: Response,
+    db: DbSession,
+) -> SetupPasskeyVerifyResponse:
+    """Complete invite registration by verifying a passkey and logging the user in."""
+    import json
+
+    from src.services.passkey_service import PasskeyService
+
+    invite_svc = UserInviteService(db)
+    try:
+        _, invited_user = await invite_svc.get_valid_invite_user(token=request.token)
+        passkey_service = PasskeyService(db)
+        await passkey_service.verify_registration(
+            user_id=invited_user.id,
+            credential_json=json.dumps(request.credential),
+            device_name=request.device_name,
+        )
+        registered = await invite_svc.consume(token=request.token)
+        await db.commit()
+    except (InviteConsumeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    login = await _generate_login_tokens(registered, db, response)
+    return SetupPasskeyVerifyResponse(
+        user_id=str(registered.id),
+        email=registered.email,
+        access_token=login.access_token or "",
+        refresh_token=login.refresh_token or "",
+    )

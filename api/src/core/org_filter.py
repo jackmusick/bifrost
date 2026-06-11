@@ -2,7 +2,7 @@
 Organization Filter Helper
 
 Provides consistent organization filtering logic across endpoints.
-Replaces the deprecated X-Organization-Id header approach with query parameters.
+Org scoping is selected via the `scope` query parameter.
 
 Scope Parameter Values:
 - Not sent / omitted → show all (no filter) - superusers only
@@ -13,7 +13,7 @@ Scope Parameter Values:
 from enum import Enum
 from uuid import UUID
 
-from src.core.auth import UserPrincipal
+from src.core.principal import UserPrincipal
 
 
 class OrgFilterType(Enum):

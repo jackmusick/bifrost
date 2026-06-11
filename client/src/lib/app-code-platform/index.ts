@@ -22,6 +22,7 @@ export { useWorkflowQuery } from "./useWorkflowQuery";
 export { useWorkflowMutation } from "./useWorkflowMutation";
 
 // Router utilities
+export { useLocation } from "./useLocation";
 export { useParams } from "./useParams";
 export { useSearchParams } from "./useSearchParams";
 export {

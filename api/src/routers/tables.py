@@ -20,15 +20,17 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
+from shared.claims.preresolve import preresolve_for_policies
+from shared.claims.registry import referenced_claim_names
 from shared.policies.probe import (
     compile_read_filter,
     evaluate_action,
-    make_seed_admin_bypass,
 )
-from src.core.auth import Context, CurrentSuperuser, UserPrincipal
+from src.core.auth import Context, CurrentSuperuser
+from src.core.principal import UserPrincipal
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.log_safety import log_safe
-from src.core.org_filter import OrgFilterType, resolve_org_filter, resolve_target_org
+from src.core.org_filter import resolve_org_filter, resolve_target_org
 from src.models.contracts.policies import (
     PolicyValidationError,
     PolicyValidationResponse,
@@ -51,8 +53,9 @@ from src.models.contracts.tables import (
     TablePublic,
     TableUpdate,
 )
+from src.models.orm.custom_claims import CustomClaim as CustomClaimORM
 from src.models.orm.tables import Document, Table
-from src.repositories.org_scoped import OrgScopedRepository
+from src.repositories.tables import TableRepository
 from src.core.pubsub import publish_document_change, publish_policy_changed
 from src.services.audit import emit_audit
 
@@ -156,6 +159,12 @@ async def _check_action_or_403(
     mutation or only after read-only operations.
     """
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        user,
+        policies,
+        db,
+        table.organization_id,
+    )
     if evaluate_action(action, policies, row, user):
         return
 
@@ -193,153 +202,6 @@ async def _check_action_or_403(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Access denied",
     )
-
-
-# =============================================================================
-# Repository
-# =============================================================================
-
-
-class TableRepository(OrgScopedRepository[Table]):
-    """Repository for table operations.
-
-    Tables do NOT have role-based access control - they are SDK/superuser-only
-    resources. All endpoints use CurrentSuperuser dependency.
-    """
-
-    model = Table
-    role_table = None  # Explicit: Tables have NO role-based access control
-
-    async def list_tables(
-        self,
-        filter_type: OrgFilterType = OrgFilterType.ORG_PLUS_GLOBAL,
-    ) -> list[Table]:
-        """List tables with specified filter type.
-
-        Supports all OrgFilterType values for superuser flexibility:
-        - ALL: No org filter (show everything)
-        - GLOBAL_ONLY: Only global records (org_id IS NULL)
-        - ORG_ONLY: Only specific org's records (no global)
-        - ORG_PLUS_GLOBAL: Cascade scoping (org + global)
-        """
-        query = select(self.model)
-
-        if filter_type == OrgFilterType.ALL:
-            # No organization filter - show all tables
-            pass
-        elif filter_type == OrgFilterType.GLOBAL_ONLY:
-            # Only global records
-            query = query.where(self.model.organization_id.is_(None))
-        elif filter_type == OrgFilterType.ORG_ONLY:
-            # Only specific org, no global fallback
-            query = query.where(self.model.organization_id == self.org_id)
-        else:
-            # ORG_PLUS_GLOBAL: Use cascade scoping
-            query = self._apply_cascade_scope(query)
-
-        query = query.order_by(self.model.name)
-
-        result = await self.session.execute(query)
-        return list(result.scalars().all())
-
-    async def get_by_name(self, name: str) -> Table | None:
-        """Get by name with cascade scoping: org-specific > global.
-
-        Uses cascade lookup to avoid MultipleResultsFound when
-        the same name exists in both org scope and global scope.
-        """
-        return await self.get(name=name)
-
-    async def get_by_name_strict(self, name: str) -> Table | None:
-        """Get table by name strictly in current org scope (no fallback)."""
-        query = select(self.model).where(
-            self.model.name == name,
-            self.model.organization_id == self.org_id,
-        )
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
-
-    async def create_table(
-        self,
-        data: TableCreate,
-        created_by: str,
-    ) -> Table:
-        """Create a new table.
-
-        When `policies` is omitted from the request, the table is seeded
-        with `admin_bypass` so platform admins can still operate on it
-        without an explicit rule. Callers who want a strictly-empty policy
-        set must pass `policies=TablePolicies()` explicitly.
-        """
-        # Check if table already exists in this scope
-        existing = await self.get_by_name_strict(data.name)
-        if existing:
-            raise ValueError(f"Table '{data.name}' already exists")
-
-        if data.policies is not None:
-            access_json: dict[str, Any] | None = data.policies.model_dump(mode="json")
-        else:
-            access_json = make_seed_admin_bypass()
-
-        table = Table(
-            name=data.name,
-            description=data.description,
-            schema=data.schema,
-            organization_id=self.org_id,
-            created_by=created_by,
-            access=access_json,
-        )
-        self.session.add(table)
-        await self.session.flush()
-        await self.session.refresh(table)
-
-        logger.info(f"Created table '{log_safe(data.name)}' in org {self.org_id}")
-        return table
-
-    async def update_table(
-        self,
-        table_id: UUID,
-        data: TableUpdate,
-    ) -> Table | None:
-        """Update a table by ID."""
-        query = select(self.model).where(self.model.id == table_id)
-        result = await self.session.execute(query)
-        table = result.scalar_one_or_none()
-        if not table:
-            return None
-
-        if data.name is not None:
-            table.name = data.name
-        if data.description is not None:
-            table.description = data.description
-        if data.schema is not None:
-            table.schema = data.schema
-        if "policies" in data.model_fields_set:
-            table.access = (
-                data.policies.model_dump(mode="json")
-                if data.policies is not None
-                else None
-            )
-
-        await self.session.flush()
-        await self.session.refresh(table)
-
-        logger.info(f"Updated table '{log_safe(table.name)}' (id={log_safe(table_id)})")
-        return table
-
-    async def delete_table(self, table_id: UUID) -> bool:
-        """Delete a table and all its documents (cascade) by ID."""
-        query = select(self.model).where(self.model.id == table_id)
-        result = await self.session.execute(query)
-        table = result.scalar_one_or_none()
-        if not table:
-            return False
-
-        await self.session.delete(table)
-        await self.session.flush()
-
-        logger.info(f"Deleted table '{log_safe(table.name)}' (id={log_safe(table_id)})")
-        return True
 
 
 def _escape_like(value: str) -> str:
@@ -659,6 +521,48 @@ def _resolve_target_org_safe(ctx: Context, scope: str | None) -> UUID | None:
         )
 
 
+def _validate_policy_claim_refs(
+    expr: object,
+    known_claim_names: set[str],
+) -> None:
+    """Reject policy claim references not defined in the table's org."""
+    refs = referenced_claim_names(expr)
+    missing = refs - known_claim_names
+    if missing:
+        raise ValueError(
+            f"policy references unknown claims: {sorted(missing)}; "
+            f"defined in this org: {sorted(known_claim_names)}"
+        )
+
+
+async def _known_claim_names_for_org(
+    db: AsyncSession,
+    organization_id: UUID | None,
+) -> set[str]:
+    if organization_id is None:
+        return set()
+    rows = (
+        await db.execute(
+            select(CustomClaimORM.name).where(
+                CustomClaimORM.organization_id == organization_id
+            )
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+async def _validate_table_policy_claim_refs(
+    db: AsyncSession,
+    organization_id: UUID | None,
+    policies: TablePolicies | None,
+) -> None:
+    if policies is None:
+        return
+    known = await _known_claim_names_for_org(db, organization_id)
+    for policy in policies.policies:
+        _validate_policy_claim_refs(policy.when, known)
+
+
 async def get_table_or_404(
     ctx: Context,
     name_or_id: str,
@@ -684,7 +588,10 @@ async def get_table_or_404(
         table = await repo.get(id=table_uuid)
     except ValueError:
         # Not a UUID — fall through to name-based lookup
-        logger.debug(f"table identifier {name_or_id!r} is not a UUID, falling back to name lookup")
+        logger.debug(
+            f"table identifier {log_safe(name_or_id)!r} is not a UUID, "
+            "falling back to name lookup"
+        )
 
     # Fall back to name lookup (cascade scoping: org-specific then global)
     if not table:
@@ -727,8 +634,15 @@ async def create_table(
         target_org_id = _resolve_target_org_safe(ctx, scope)
     else:
         target_org_id = ctx.org_id
-    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
+    try:
+        await _validate_table_policy_claim_refs(ctx.db, target_org_id, data.policies)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
 
+    repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
     try:
         table = await repo.create_table(data, created_by=user.email)
         return TablePublic.model_validate(table)
@@ -932,6 +846,27 @@ async def update_table(
     user: CurrentSuperuser,
 ) -> TablePublic:
     """Update table metadata by ID (platform admin only)."""
+    if "policies" in data.model_fields_set:
+        existing_table = (
+            await ctx.db.execute(select(Table).where(Table.id == table_id))
+        ).scalar_one_or_none()
+        if existing_table is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Table '{table_id}' not found",
+            )
+        try:
+            await _validate_table_policy_claim_refs(
+                ctx.db,
+                existing_table.organization_id,
+                data.policies,
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
+            )
+
     repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
     try:
         table = await repo.update_table(table_id, data)
@@ -1124,6 +1059,12 @@ async def count_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
 
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
     read_filter = compile_read_filter(policies, ctx.user)
     if read_filter is None:
         # No rule grants read → count zero. Same existence-leak rationale
@@ -1250,6 +1191,12 @@ async def query_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
 
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
     read_filter = compile_read_filter(policies, ctx.user)
     if read_filter is None:
         # No rule grants read → empty result. Don't 403 to avoid leaking
@@ -1298,6 +1245,12 @@ async def batch_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
 
     # Pre-resolve attribution per item up front so any forged-attribution
     # 403 surfaces before we do work and applies all-or-nothing across
@@ -1404,6 +1357,12 @@ async def batch_delete_documents(
     table = await get_table_or_404(ctx, table_id, scope=scope)
     repo = DocumentRepository(ctx.db, table)
     policies = _load_policies(table)
+    await preresolve_for_policies(
+        ctx.user,
+        policies,
+        ctx.db,
+        table.organization_id,
+    )
 
     # Pre-flight: load each existing row and check `delete` against policy.
     denied: list[int] = []

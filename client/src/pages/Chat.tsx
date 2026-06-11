@@ -34,9 +34,7 @@ export function Chat() {
 	const { data: activeWorkspace } = useWorkspace(workspaceId);
 
 	useEffect(() => {
-		if (conversationId) {
-			setActiveConversation(conversationId);
-		}
+		setActiveConversation(conversationId ?? null);
 	}, [conversationId, setActiveConversation]);
 
 	useEffect(() => {

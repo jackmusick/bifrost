@@ -7,7 +7,7 @@
 # - NO exposed ports (all communication via Docker network)
 # - Fresh database for each test run
 # - PgBouncer for connection pooling (matches production)
-# - MinIO for S3-compatible storage (workspace and files)
+# - SeaweedFS for S3-compatible storage (workspace and files)
 #
 # NOTE: Ports are NOT exposed to the host, allowing tests to run while
 # the development stack is running on the default ports.
@@ -61,17 +61,21 @@ services:
   # RabbitMQ Message Broker (Test)
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+    # Run as uid 100 so .erlang.cookie is created owned by rabbitmq, not root.
+    # Docker >= 24 creates the mount point 0755 root:root; the root entrypoint
+    # then writes the cookie root-owned 0400 and the uid-100 server can't read
+    # it ("Error when reading /var/lib/rabbitmq/.erlang.cookie: eacces").
+    # Setting the user fixes the root cause without depending on tmpfs mode
+    # bits — important because Docker Desktop/WSL2 does not honour tmpfs
+    # uid/gid/mode under `docker compose` (only under `docker run`).
+    user: rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: bifrost
       RABBITMQ_DEFAULT_PASS: bifrost_test
-    # No ports exposed - all access via Docker network
+    # No ports exposed - all access via Docker network.
+    # Ephemeral storage so test runs never inherit broker state.
     tmpfs:
-      # Ephemeral storage - prevents Erlang cookie permission issues.
-      # mode=1777 (sticky world-writable) matches the image's own dir perms
-      # so the rabbitmq user can create .erlang.cookie; Docker >= 24 stopped
-      # defaulting tmpfs to 1777 and now creates it 0755 root:root, which
-      # breaks the boot with "Error when reading /var/lib/rabbitmq/.erlang.cookie: eacces".
-      - /var/lib/rabbitmq:mode=1777
+      - /var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_running"]
       interval: 5s
@@ -91,38 +95,21 @@ services:
       timeout: 5s
       retries: 10
 
-  # MinIO - S3-compatible object storage (Test)
+  # SeaweedFS - S3-compatible object storage (Test)
   # Stores workspace files and runtime outputs
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
     environment:
-      MINIO_ROOT_USER: bifrost
-      MINIO_ROOT_PASSWORD: bifrost_test_key
+      AWS_ACCESS_KEY_ID: bifrost
+      AWS_SECRET_ACCESS_KEY: bifrost_test_key
+      S3_BUCKET: bifrost-test
     # No ports exposed - all access via Docker network
     tmpfs:
       - /data  # Ephemeral storage - fresh each run
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  # MinIO bucket initialization (Test)
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: |
-      /bin/sh -c "
-      mc alias set myminio http://minio:9000 bifrost bifrost_test_key
-      mc mb myminio/bifrost-test --ignore-existing
-      echo 'MinIO bucket created successfully'
-      "
 
   # Init Container (Test) - Runs migrations and warms module cache before API/workers start
   init:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -147,6 +134,7 @@ services:
 
   # FastAPI Application (Test) - Only started for E2E tests
   api:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -158,9 +146,9 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
-      # S3 configuration for MinIO
+      # S3-compatible object storage
       BIFROST_S3_BUCKET: bifrost-test
-      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ENDPOINT_URL: http://seaweedfs:8333
       BIFROST_S3_ACCESS_KEY: bifrost
       BIFROST_S3_SECRET_KEY: bifrost_test_key
       BIFROST_S3_REGION: us-east-1
@@ -183,8 +171,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_started
       init:
         condition: service_completed_successfully
     healthcheck:
@@ -201,6 +189,7 @@ services:
   # Note: Discovery service has been removed - workflow/form extraction
   # now happens at write time in FileStorageService
   worker:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -212,9 +201,9 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
-      # S3 configuration for MinIO
+      # S3-compatible object storage
       BIFROST_S3_BUCKET: bifrost-test
-      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ENDPOINT_URL: http://seaweedfs:8333
       BIFROST_S3_ACCESS_KEY: bifrost
       BIFROST_S3_SECRET_KEY: bifrost_test_key
       BIFROST_S3_REGION: us-east-1
@@ -223,6 +212,9 @@ services:
       # Worker needs minimal DB connections — Redis-first pattern for agent runs
       BIFROST_DATABASE_POOL_SIZE: "1"
       BIFROST_DATABASE_MAX_OVERFLOW: "2"
+      # C1.5: Parity with production hardening
+      PIP_NO_CACHE_DIR: "1"
+      HOME: /home/bifrost
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
@@ -234,12 +226,14 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_started
       api:
         condition: service_healthy
-    # Entrypoint handles permissions; run as root so it can fix volume ownership
-    user: root
+    # C1.5: Run as bifrost uid. user: "1000:1000" bypasses gosu so cap_drop: ALL works.
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     command: ["python", "-m", "src.worker.main"]
     profiles:
       - e2e  # Only start in E2E mode
@@ -247,6 +241,7 @@ services:
   # Scheduler (Test) - Only started for E2E tests
   # Handles background jobs like GitHub sync via Redis pubsub
   scheduler:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -258,9 +253,9 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
-      # S3 configuration for MinIO
+      # S3-compatible object storage
       BIFROST_S3_BUCKET: bifrost-test
-      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ENDPOINT_URL: http://seaweedfs:8333
       BIFROST_S3_ACCESS_KEY: bifrost
       BIFROST_S3_SECRET_KEY: bifrost_test_key
       BIFROST_S3_REGION: us-east-1
@@ -281,8 +276,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_started
       api:
         condition: service_healthy
     # Entrypoint handles permissions; run as root so it can fix volume ownership
@@ -293,6 +288,7 @@ services:
 
   # Test Runner - Executes pytest inside container with all dependencies
   test-runner:
+    image: bifrost-test-api-dev:latest
     build:
       context: .
       dockerfile: api/Dockerfile.dev
@@ -305,9 +301,9 @@ services:
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
       BIFROST_ALLOW_REGISTRATION: "true"
-      # S3 configuration for MinIO
+      # S3-compatible object storage
       BIFROST_S3_BUCKET: bifrost-test
-      BIFROST_S3_ENDPOINT_URL: http://minio:9000
+      BIFROST_S3_ENDPOINT_URL: http://seaweedfs:8333
       BIFROST_S3_ACCESS_KEY: bifrost
       BIFROST_S3_SECRET_KEY: bifrost_test_key
       BIFROST_S3_REGION: us-east-1
@@ -329,6 +325,8 @@ services:
       # Embeddings E2E test configuration (optional - tests skip if not set)
       # Uses OpenAI text-embedding-3-small for vector embeddings
       EMBEDDINGS_AI_TEST_KEY: ${EMBEDDINGS_AI_TEST_KEY:-}
+      # Phase 1 hardening is applied to this stack — posture assertions always on
+      BIFROST_POSTURE_HARDENED: "1"
     volumes:
       - ./api/src:/app/src
       - /app/src/services/app_compiler/node_modules  # preserve npm deps from image
@@ -361,10 +359,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
+      seaweedfs:
+        condition: service_started
       init:
         condition: service_completed_successfully
+    # C1.5: Run as bifrost uid so posture tests introspect a hardened context.
+    # user: "1000:1000" bypasses gosu so cap_drop: ALL works.
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     # Default command runs all tests except E2E
     command: ["pytest", "tests/", "--ignore=tests/e2e/", "-v"]
     profiles:
@@ -377,6 +380,7 @@ services:
   # Client frontend (Vite dev server)
   # Serves the React app for Playwright browser tests
   client:
+    image: bifrost-test-client-dev:latest
     build:
       context: ./client
       dockerfile: Dockerfile.dev

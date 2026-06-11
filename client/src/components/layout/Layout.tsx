@@ -1,11 +1,9 @@
 import { Outlet } from "react-router-dom";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
-import { VersionUpdateBanner } from "./VersionUpdateBanner";
 import { useAuth } from "@/contexts/AuthContext";
 import { NoAccess } from "@/components/NoAccess";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PasskeySetupBanner } from "@/components/PasskeySetupBanner";
 import { RouteErrorBoundary } from "@/components/PageErrorBoundary";
 import { useSidebar } from "@/hooks/useSidebar";
 import { useFileActivity } from "@/hooks/useFileActivity";
@@ -22,7 +20,6 @@ export function Layout() {
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background">
-				<VersionUpdateBanner />
 				<Header />
 				<div className="flex">
 					<main className="flex-1 p-6 lg:p-8">
@@ -51,30 +48,26 @@ export function Layout() {
 	}
 
 	return (
-		<div className="h-screen flex flex-col bg-background overflow-hidden">
-			<VersionUpdateBanner />
-			<div className="flex-1 flex overflow-hidden">
-				{/* Sidebar - full height with logo */}
-				<Sidebar
-					isMobileMenuOpen={isMobileMenuOpen}
-					setIsMobileMenuOpen={setIsMobileMenuOpen}
-					isCollapsed={isSidebarCollapsed}
-				/>
+		<div className="h-dvh flex bg-background overflow-hidden">
+			{/* Sidebar - full height with logo */}
+			<Sidebar
+				isMobileMenuOpen={isMobileMenuOpen}
+				setIsMobileMenuOpen={setIsMobileMenuOpen}
+				isCollapsed={isSidebarCollapsed}
+			/>
 
-				{/* Main content area with header */}
-				<div className="flex-1 flex flex-col overflow-hidden">
-					<Header
-						onMobileMenuToggle={() => setIsMobileMenuOpen(true)}
-						onSidebarToggle={toggleSidebar}
-						isSidebarCollapsed={isSidebarCollapsed}
-					/>
-					<main className="flex-1 overflow-auto p-6 lg:p-8">
-						<PasskeySetupBanner />
-						<RouteErrorBoundary>
-							<Outlet />
-						</RouteErrorBoundary>
-					</main>
-				</div>
+			{/* Main content area with header */}
+			<div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+				<Header
+					onMobileMenuToggle={() => setIsMobileMenuOpen(true)}
+					onSidebarToggle={toggleSidebar}
+					isSidebarCollapsed={isSidebarCollapsed}
+				/>
+				<main className="flex-1 min-h-0 overflow-auto p-4 sm:p-6 lg:p-8">
+					<RouteErrorBoundary>
+						<Outlet />
+					</RouteErrorBoundary>
+				</main>
 			</div>
 		</div>
 	);

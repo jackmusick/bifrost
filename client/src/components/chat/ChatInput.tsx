@@ -259,6 +259,7 @@ export function ChatInput({
 						)}
 						<textarea
 							ref={textareaRef}
+							aria-label="Chat input"
 							value={message}
 							onChange={handleInputChange}
 							onKeyDown={handleKeyDown}
@@ -317,6 +318,7 @@ export function ChatInput({
 								onClick={onStop}
 								size="icon"
 								variant="destructive"
+								aria-label="Stop generation"
 								className={cn(
 									"h-8 w-8 rounded-full shrink-0",
 									"transition-all duration-200",
@@ -330,6 +332,7 @@ export function ChatInput({
 								onClick={handleSend}
 								disabled={!canSend}
 								size="icon"
+								aria-label="Send message"
 								className={cn(
 									"h-8 w-8 rounded-full shrink-0",
 									"transition-all duration-200",

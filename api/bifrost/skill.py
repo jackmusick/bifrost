@@ -25,11 +25,12 @@ import shutil
 import sys
 import tarfile
 from pathlib import Path
+from pathlib import PurePosixPath
 
 import httpx
 
 
-_DEFAULT_REPO = "jackmusick/bifrost"
+_DEFAULT_REPO = "gobifrost/bifrost"
 _DEFAULT_REF = "main"
 
 
@@ -50,7 +51,7 @@ Subcommands:
 
 Options for update:
   --ref <tag-or-branch>   Git ref to pull from (default: main)
-  --repo <owner/repo>     GitHub repo to pull from (default: jackmusick/bifrost)
+  --repo <owner/repo>     GitHub repo to pull from (default: gobifrost/bifrost)
 
 Examples:
   bifrost skill list
@@ -225,6 +226,11 @@ def _fetch_skill_files(repo: str, ref: str) -> dict[str, bytes]:
         members = tar.getmembers()
 
         # First pass: read top-level skills/ symlinks to build the allowlist.
+        # Some Windows checkouts materialize symlinks as tiny text files whose
+        # contents are the intended target. Accept that shape too so a repacked
+        # archive from Windows still exposes the same public skills.
+        # The public alias and the real skill folder name can differ, e.g.
+        # ``skills/build -> ../.claude/skills/bifrost-build``.
         for member in members:
             parts = member.name.split("/", 1)
             if len(parts) != 2:
@@ -236,7 +242,20 @@ def _fetch_skill_files(repo: str, ref: str) -> dict[str, bytes]:
             if not name or "/" in name:
                 continue
             if member.issym() or member.islnk():
-                public_skills.add(name)
+                target_name = PurePosixPath(member.linkname).name
+                public_skills.add(target_name or name)
+                continue
+            if member.isfile():
+                extracted = tar.extractfile(member)
+                if extracted is None:
+                    continue
+                try:
+                    target = extracted.read().decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    continue
+                target_name = PurePosixPath(target).name
+                if target_name:
+                    public_skills.add(target_name)
 
         if not public_skills:
             raise ValueError(

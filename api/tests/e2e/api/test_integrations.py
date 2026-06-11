@@ -1038,7 +1038,7 @@ class TestIntegrationConfig:
 
 # Note: TestIntegrationsCLI class was removed during SDK simplification.
 # CLI endpoints for integrations now use JWT authentication from `bifrost login`
-# rather than developer API keys from `/api/cli/keys`.
+# rather than developer API keys from `/api/sdk/keys`.
 
 
 @pytest.mark.e2e

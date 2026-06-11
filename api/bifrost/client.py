@@ -203,6 +203,10 @@ async def login_flow(api_url: str | None = None, auto_open: bool = True) -> bool
 
     api_url = api_url.rstrip("/")
 
+    # Surface keyring fallback here — login is the user's chance to fix it.
+    from bifrost.credentials import warn_if_keyring_fallback
+    warn_if_keyring_fallback()
+
     try:
         async with httpx.AsyncClient(base_url=api_url, timeout=30.0) as client:
             # Step 1: Request device code
@@ -457,7 +461,7 @@ class BifrostClient:
     def _fetch_context_sync(self) -> dict[str, Any]:
         """Fetch development context synchronously."""
         if self._context is None:
-            response = self._sync_http.get("/api/cli/context")
+            response = self._sync_http.get("/api/sdk/context")
             raise_for_status_with_detail(response)
             self._context = response.json()
         return self._context or {}
@@ -466,7 +470,7 @@ class BifrostClient:
         """Fetch development context."""
         if self._context is None:
             http = self._get_async_client()
-            response = await http.get("/api/cli/context")
+            response = await http.get("/api/sdk/context")
             raise_for_status_with_detail(response)
             self._context = response.json()
         return self._context or {}

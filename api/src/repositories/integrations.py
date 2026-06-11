@@ -374,28 +374,37 @@ class IntegrationsRepository(BaseRepository[Integration]):
         return result.unique().scalar_one_or_none()
 
     async def list_mappings(
-        self, integration_id: UUID
+        self,
+        integration_id: UUID,
+        *,
+        organization_id: UUID | None = None,
     ) -> list[IntegrationMapping]:
         """
-        List all mappings for an integration.
+        List mappings for an integration.
 
         Args:
             integration_id: Integration UUID
+            organization_id: Optional org filter. When provided, returns only
+                that org's mapping (used by non-bypass callers in the SDK
+                surface so they can't enumerate other orgs' mappings). When
+                ``None``, returns all mappings — reserved for callers that
+                have already gated on platform-admin / provider-org bypass.
 
         Returns:
-            List of mappings for the integration
+            List of mappings for the integration (possibly empty).
         """
-        result = await self.session.execute(
-            select(IntegrationMapping)
-            .where(IntegrationMapping.integration_id == integration_id)
-            .options(
-                joinedload(IntegrationMapping.integration)
-                .options(joinedload(Integration.oauth_provider)),
-                joinedload(IntegrationMapping.organization),
-                joinedload(IntegrationMapping.oauth_token),
-            )
-            .order_by(IntegrationMapping.created_at)
+        stmt = select(IntegrationMapping).where(
+            IntegrationMapping.integration_id == integration_id
         )
+        if organization_id is not None:
+            stmt = stmt.where(IntegrationMapping.organization_id == organization_id)
+        stmt = stmt.options(
+            joinedload(IntegrationMapping.integration)
+            .options(joinedload(Integration.oauth_provider)),
+            joinedload(IntegrationMapping.organization),
+            joinedload(IntegrationMapping.oauth_token),
+        ).order_by(IntegrationMapping.created_at)
+        result = await self.session.execute(stmt)
         return list(result.unique().scalars().all())
 
     async def _save_config(
@@ -709,25 +718,10 @@ class IntegrationsRepository(BaseRepository[Integration]):
 
         return config
 
-    async def get_provider_org_token(self, provider_id: UUID) -> Any:
-        """
-        Get org-level OAuth token for a provider (user_id=NULL).
-
-        Used when getting integration defaults - returns the org-level
-        token that's not tied to a specific user.
-
-        Args:
-            provider_id: OAuthProvider UUID
-
-        Returns:
-            OAuthToken or None if not found
-        """
-        from src.models.orm.oauth import OAuthToken
-
-        result = await self.session.execute(
-            select(OAuthToken).where(
-                OAuthToken.provider_id == provider_id,
-                OAuthToken.user_id.is_(None),
-            )
-        )
-        return result.scalars().first()
+# Deleted (2026-05): get_provider_org_token had no organization_id filter
+# and could return any org's user_id=NULL token. The cross-tenant token
+# leak is fixed by routing all OAuth token reads through
+# OAuthTokenRepository.get_org_level_for_provider in
+# api/src/repositories/oauth.py, which applies the standard cascade
+# (org-specific preferred, falls back to global) and never silently
+# returns another org's token.

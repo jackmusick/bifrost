@@ -13,7 +13,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
-from src.models import BrandingSettings, BrandingUpdateRequest
+from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
+
+from src.models import BrandingSettings, BrandingTerminology, BrandingUpdateRequest, GlobalBranding
 from src.core.auth import Context, CurrentActiveUser
 from src.core.database import AsyncSession, get_db
 
@@ -24,6 +26,23 @@ router = APIRouter(prefix="/api/branding", tags=["Branding"])
 # Allowed image types for logo upload
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/svg+xml"}
 MAX_LOGO_SIZE = 5 * 1024 * 1024  # 5MB
+
+
+def _branding_response(branding: GlobalBranding | None) -> BrandingSettings:
+    if not branding:
+        return BrandingSettings(
+            square_logo_url=None,
+            rectangle_logo_url=None,
+            primary_color=None,
+            terminology=BrandingTerminology(),
+        )
+
+    return BrandingSettings(
+        primary_color=branding.primary_color,
+        terminology=BrandingTerminology.model_validate(branding.terminology or {}),
+        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
+        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
+    )
 
 
 # =============================================================================
@@ -49,20 +68,7 @@ async def get_branding(
     from src.repositories.branding import BrandingRepository
     branding_repo = BrandingRepository(db)
     branding = await branding_repo.get_branding()
-
-    if not branding:
-        # Return defaults if no branding configured
-        return BrandingSettings(
-            square_logo_url=None,
-            rectangle_logo_url=None,
-            primary_color=None,
-        )
-
-    return BrandingSettings(
-        primary_color=branding.primary_color,
-        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
-        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
-    )
+    return _branding_response(branding)
 
 
 # =============================================================================
@@ -96,17 +102,16 @@ async def update_branding(
     from src.repositories.branding import BrandingRepository
     branding_repo = BrandingRepository(ctx.db)
 
-    # Update primary color only
-    branding = await branding_repo.set_branding(primary_color=request.primary_color)
+    terminology = request.terminology.model_dump(exclude_none=True) if request.terminology else None
+    branding = await branding_repo.set_branding(
+        primary_color=request.primary_color,
+        terminology=terminology,
+    )
 
     await ctx.db.commit()
     logger.info(f"Primary color updated by {user.email}")
 
-    return BrandingSettings(
-        primary_color=branding.primary_color,
-        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
-        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
-    )
+    return _branding_response(branding)
 
 
 @router.post(
@@ -155,6 +160,15 @@ async def upload_logo(
             detail=f"File too large. Maximum size: {MAX_LOGO_SIZE // 1024 // 1024}MB",
         )
 
+    if file.content_type == "image/svg+xml":
+        try:
+            content = sanitize_svg(content)
+        except SvgSanitizationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid SVG: {exc}",
+            )
+
     # Save logo binary data to database
     from src.repositories.branding import BrandingRepository
     branding_repo = BrandingRepository(ctx.db)
@@ -173,11 +187,7 @@ async def upload_logo(
     await ctx.db.commit()
     logger.info(f"Logo '{logo_type}' uploaded by {user.email}")
 
-    return BrandingSettings(
-        primary_color=branding.primary_color,
-        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
-        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
-    )
+    return _branding_response(branding)
 
 
 @router.get(
@@ -276,11 +286,7 @@ async def reset_logo(
     await ctx.db.commit()
     logger.info(f"Logo '{logo_type}' reset to default by {user.email}")
 
-    return BrandingSettings(
-        primary_color=branding.primary_color,
-        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
-        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
-    )
+    return _branding_response(branding)
 
 
 @router.delete(
@@ -309,11 +315,7 @@ async def reset_color(
     await ctx.db.commit()
     logger.info(f"Primary color reset to default by {user.email}")
 
-    return BrandingSettings(
-        primary_color=branding.primary_color,
-        square_logo_url="/api/branding/logo/square" if branding.square_logo_data else None,
-        rectangle_logo_url="/api/branding/logo/rectangle" if branding.rectangle_logo_data else None,
-    )
+    return _branding_response(branding)
 
 
 @router.delete(
@@ -346,4 +348,5 @@ async def reset_all_branding(
         primary_color=None,
         square_logo_url=None,
         rectangle_logo_url=None,
+        terminology=BrandingTerminology(),
     )

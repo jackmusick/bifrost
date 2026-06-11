@@ -29,7 +29,7 @@ from shared.model_migration import (
     scan_orphaned_allowlists,
 )
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
-from src.core.database import DbSession
+from src.core.db_deps import DbSession
 from src.models import (
     OrgAllowlistImpactRow,
     PlatformAllowlistApplyRequest,

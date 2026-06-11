@@ -113,6 +113,13 @@ Non-obvious semantics:
 - `update` is patch-without-draft — metadata changes apply to the live app, no staging step.
 - `replace <ref> --repo-path <new>` repoints an app's source directory. Validates uniqueness (no other app already owns `<new>`), nesting (no other app's `repo_path` sits above or below `<new>`), and that source files exist under `<new>`. `--force` bypasses all three. Metadata-only: no S3 file moves — caller reconciles files via `bifrost sync`.
 
+Workflow hooks in apps:
+- Use `useWorkflowQuery(workflowUuid, params?, options?)` for page-load / param-driven data. It starts a workflow on mount and again when `JSON.stringify(params ?? {})` changes. Use `enabled: false` to gate execution.
+- Use `useWorkflowMutation(workflowUuid)` for click/submit actions. `execute(params)` resolves with the final workflow result, not the execution ID.
+- Both hooks expose `executionId`, `status`, `logs`, `data`, `isLoading`, `isError`, and `errorMessage` (`error` is only a deprecated string alias). `executionId` is reactive state: it becomes non-null once the platform creates the execution, before the final result is available. To redirect to an execution page, watch `executionId` in `useEffect`.
+- Hook state is latest-run state, not per-call state. Do not use one hook instance for concurrent `execute()` calls if the UI needs separate execution IDs/loading/error state per run.
+- There is currently no public workflow SDK method named `execution.publish`, `execution.update`, or `executions.publish` for arbitrary structured progress events. For live structured progress, write rows to a table and read them with `useTable`; for textual progress, use workflow logs.
+
 Run `bifrost apps <verb> --help` for the complete flag list.
 
 ## Integrations
@@ -162,21 +169,47 @@ Non-obvious semantics:
 - The policy `when` is a JSON AST. Operators: `and`/`or`/`not`, `eq`/`neq`/`lt`/`lte`/`gt`/`gte`, `in`, `is_null`, `call`. References: `{row: "field"}`, `{user: "field"}`. Functions: `has_role(name_or_uuid)`.
 - Browser apps call tables directly via `import { tables, useTable } from "bifrost"`. SDK calls return what the policy permits; no execution records.
 - Workflow SDK auto-attributes `created_by`/`updated_by` from `context.user_id`; pass `created_by=` to override.
-- Subscriptions: `useTable(name, query?)` is the unified live-query hook. Lower-level `tables.subscribe(tableId, filter, onEvent)` for non-React code. Server filters per-policy AND per-user-filter; the four-way fanout emits insert/update/delete including transitions into and out of visibility.
+- Subscriptions: `useTable(name, query?)` is the unified live-query hook. Its `where` uses the field-keyed shorthand DSL (`{status: "open"}`, `{amount: {gte: 100}}`), not raw policy `Expr` (`{eq: [...]}`). Lower-level `tables.subscribe(tableId, filter, onEvent)` is for non-React code and takes policy `Expr`. Server filters per-policy AND per-user-filter; the four-way fanout emits insert/update/delete including transitions into and out of visibility.
+- Query-only operators `contains`, `starts_with`, `ends_with`, and `has_key` work with `tables.query` but not with live `useTable.where`; using them in `useTable` surfaces an error because the subscription filter cannot represent them.
 - `update --name` prints a warning to stderr about workflow SDK references (SDK calls like `sdk.tables.get("clients")` reference tables by name). It does not block — the author must grep the workspace before pushing.
 - `--application` accepts app slug / UUID / name.
 
 Run `bifrost tables <verb> --help` for the complete flag list.
 
+## Custom Claims
+
+Custom Claims are org-scoped, query-resolved facts about the calling user.
+Table policies reference them as `{claims: "<name>"}`.
+
+Example claim:
+  name: allowed_campus_ids
+  type: list
+  query:
+    table: user_campus_access
+    where: { eq: [{ row: user_id }, { user: user_id }] }
+    select: campus_id
+
+Example policy using a claim:
+  policies:
+    - name: scoped_read
+      actions: [read]
+      when:
+        in: [{ row: campus_id }, { claims: allowed_campus_ids }]
+
+CLI: `bifrost claims list|get|create|update|delete`
+MCP: `list_claims`, `get_claim`, `create_claim`, `update_claim`, `delete_claim`
+Spec: `docs/superpowers/specs/2026-05-21-table-policies-custom-claims.md`
+
 ## Events
 
-Event sources (webhook / schedule / internal) and the subscriptions that dispatch events to workflows or agents.
+Event sources (webhook / schedule / topic) and the subscriptions that dispatch events to workflows or agents.
 
 Commands: `events list-sources / get-source / list-subscriptions / get-subscription / create-source / update-source / subscribe / update-subscription`.
 
 Examples:
 - `bifrost events create-source --name nightly --source-type schedule --cron "0 2 * * *" --timezone UTC`
 - `bifrost events create-source --name hook --source-type webhook --adapter generic`
+- `bifrost events create-source --name "User Invited" --source-type topic --event-type user.invited`
 - `bifrost events subscribe <source-ref> --workflow <wf-ref> --event-type ticket.created`
 - `bifrost events update-subscription <source-ref> <subscription-id> --event-type ticket.updated`
 
@@ -189,6 +222,29 @@ Non-obvious semantics:
 - `subscribe` accepts exactly one of `--workflow` or `--agent`; target type is inferred.
 
 Run `bifrost events <verb> --help` for the complete flag list.
+
+### Topic events (platform-emitted or SDK-emitted)
+
+Topic sources have `source_type=topic` and `event_type` set to the topic string. Each topic source is an `EventSource` row; subscriptions on that source fire for every emit. Subscribe with `bifrost events subscribe <source-ref> --workflow <ref>`.
+
+Emit from a workflow:
+```python
+from bifrost import events
+result = await events.emit("acme.deal_won", {"amount": 50000})
+# result: {"event_id": "...", "subscribers_notified": N}
+```
+
+When a workflow is triggered by a topic, `context.event` is set:
+- `context.event.type` — topic string
+- `context.event.data` — payload dict
+- `context.event.organization_id` — org stamped at emit time
+- `context.event.received_at` — ISO-8601 timestamp
+
+| Topic | When emitted | Key payload fields |
+|---|---|---|
+| `user.invited` | `POST /api/users` with `invite=true` (and `trigger_automation≠false`), or `POST /api/users/{id}/invite/resend` | `user_id`, `email`, `name`, `registration_url`, `expires_at`, `invited_by`, `reason` |
+
+Full topic docs: `docs/events/topics.md`.
 
 ## Requirements (Python workflow deps)
 

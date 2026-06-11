@@ -245,14 +245,6 @@ def org1_user(
     user = _register_and_authenticate_user(e2e_client, user, skip_registration=False)
     user.organization_id = UUID(org1["id"])
 
-    # Set developer context with default org (required for CLI knowledge isolation)
-    response = e2e_client.put(
-        "/api/cli/context",
-        headers=user.headers,
-        json={"default_org_id": org1["id"]},
-    )
-    assert response.status_code == 200, f"Set developer context failed: {response.text}"
-
     logger.info(f"Created org1 user: {user.email}")
     return user
 
@@ -293,14 +285,6 @@ def org2_user(
     user = _register_and_authenticate_user(e2e_client, user, skip_registration=False)
     user.organization_id = UUID(org2["id"])
 
-    # Set developer context with default org (required for CLI knowledge isolation)
-    response = e2e_client.put(
-        "/api/cli/context",
-        headers=user.headers,
-        json={"default_org_id": org2["id"]},
-    )
-    assert response.status_code == 200, f"Set developer context failed: {response.text}"
-
     logger.info(f"Created org2 user: {user.email}")
     return user
 
@@ -338,13 +322,6 @@ def non_admin_user(
 
     user = _register_and_authenticate_user(e2e_client, user, skip_registration=False)
     user.organization_id = UUID(org1["id"])
-
-    response = e2e_client.put(
-        "/api/cli/context",
-        headers=user.headers,
-        json={"default_org_id": org1["id"]},
-    )
-    assert response.status_code == 200, f"Set developer context failed: {response.text}"
 
     logger.info(f"Created non_admin_user: {user.email}")
     return user
@@ -384,13 +361,6 @@ def alice_user(
     user = _register_and_authenticate_user(e2e_client, user, skip_registration=False)
     user.organization_id = UUID(org1["id"])
 
-    response = e2e_client.put(
-        "/api/cli/context",
-        headers=user.headers,
-        json={"default_org_id": org1["id"]},
-    )
-    assert response.status_code == 200, f"Set developer context failed: {response.text}"
-
     logger.info(f"Created alice_user: {user.email}")
     return user
 
@@ -429,14 +399,52 @@ def bob_user(
     user = _register_and_authenticate_user(e2e_client, user, skip_registration=False)
     user.organization_id = UUID(org1["id"])
 
-    response = e2e_client.put(
-        "/api/cli/context",
-        headers=user.headers,
-        json={"default_org_id": org1["id"]},
-    )
-    assert response.status_code == 200, f"Set developer context failed: {response.text}"
-
     logger.info(f"Created bob_user: {user.email}")
+    return user
+
+
+# Seeded provider org. Created by migration 20260107_022300_add_provider_org
+# at a stable UUID so tests can reference it without recreating.
+PROVIDER_ORG_ID = UUID("00000000-0000-0000-0000-000000000002")
+
+
+@pytest.fixture(scope="session")
+def provider_org_user(
+    e2e_client: httpx.Client,
+    platform_admin: E2EUser,
+) -> E2EUser:
+    """A regular (non-superuser) user inside the seeded provider org.
+
+    This is the caller archetype the C2 bypass rule was added for —
+    e.g. a non-admin Covi employee. ``is_superuser=False`` plus
+    ``Organization.is_provider=True`` should grant the same scope-bypass
+    as a platform admin: target any org, target global, list cross-org.
+    """
+    user = E2EUser(
+        email="member@provider.gobifrost.com",
+        password="ProvMember123!",
+        name="Provider Member",
+        organization_id=PROVIDER_ORG_ID,
+    )
+
+    response = e2e_client.post(
+        "/api/users",
+        headers=platform_admin.headers,
+        json={
+            "email": user.email,
+            "name": user.name,
+            "organization_id": str(PROVIDER_ORG_ID),
+            "is_superuser": False,
+        },
+    )
+    assert response.status_code == 201, f"Create provider user failed: {response.text}"
+    user.user_id = UUID(response.json()["id"])
+
+    user = _register_and_authenticate_user(e2e_client, user, skip_registration=False)
+    user.organization_id = PROVIDER_ORG_ID
+    user.is_superuser = False
+
+    logger.info(f"Created provider_org_user: {user.email}")
     return user
 
 

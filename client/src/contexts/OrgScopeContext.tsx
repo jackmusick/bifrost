@@ -9,6 +9,12 @@ import {
 	ReactNode,
 } from "react";
 import { initializeBranding, applyBrandingTheme } from "@/lib/branding";
+import {
+	DEFAULT_TERMINOLOGY,
+	mergeTerminology,
+	TerminologyContext,
+	type Terminology,
+} from "@/lib/terminology";
 
 export interface OrgScope {
 	type: "global" | "organization";
@@ -24,6 +30,7 @@ interface OrgScopeContextType {
 	logoLoaded: boolean;
 	squareLogoUrl: string | null;
 	rectangleLogoUrl: string | null;
+	terminology: Terminology;
 	refreshBranding: () => void;
 }
 
@@ -53,6 +60,8 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 	const [rectangleLogoUrl, setRectangleLogoUrl] = useState<string | null>(
 		null,
 	);
+	const [terminology, setTerminology] =
+		useState<Terminology>(DEFAULT_TERMINOLOGY);
 	const [refreshTrigger, setRefreshTrigger] = useState(0);
 
 	// Function to trigger a branding refresh
@@ -78,6 +87,7 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 			setLogoLoaded(false);
 			setSquareLogoUrl(null);
 			setRectangleLogoUrl(null);
+			setTerminology(DEFAULT_TERMINOLOGY);
 
 			try {
 				// Fetch branding data (public endpoint, always GLOBAL)
@@ -98,6 +108,7 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 				const branding = await response.json();
 				const rectUrl = branding.rectangle_logo_url;
 				const sqUrl = branding.square_logo_url;
+				const nextTerminology = mergeTerminology(branding.terminology);
 
 				// Preload both logos if they exist
 				const preloadPromises: Promise<void>[] = [];
@@ -136,6 +147,7 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 				// Store logo URLs in context
 				setSquareLogoUrl(sqUrl || null);
 				setRectangleLogoUrl(rectUrl || null);
+				setTerminology(nextTerminology);
 
 				// Apply branding theme (colors to CSS) - no need to fetch again
 				applyBrandingTheme(branding);
@@ -168,14 +180,17 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 			logoLoaded,
 			squareLogoUrl,
 			rectangleLogoUrl,
+			terminology,
 			refreshBranding,
 		}),
-		[scope, setScope, isGlobalScope, brandingLoaded, logoLoaded, squareLogoUrl, rectangleLogoUrl, refreshBranding],
+		[scope, setScope, isGlobalScope, brandingLoaded, logoLoaded, squareLogoUrl, rectangleLogoUrl, terminology, refreshBranding],
 	);
 
 	return (
 		<OrgScopeContext.Provider value={value}>
-			{children}
+			<TerminologyContext.Provider value={terminology}>
+				{children}
+			</TerminologyContext.Provider>
 		</OrgScopeContext.Provider>
 	);
 }

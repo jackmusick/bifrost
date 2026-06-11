@@ -9,6 +9,8 @@ Provides real-time updates for:
 Uses Redis pub/sub for scalability across multiple API instances.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from dataclasses import dataclass, field
@@ -17,12 +19,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from fastapi import WebSocket
+
     from src.models.orm.agent_runs import AgentRun
 
-import redis.asyncio as redis
-from fastapi import WebSocket
-
 from src.config import get_settings
+from src.core.cache.redis_client import get_redis
 from src.core.log_safety import log_safe
 from src.core.redis_reconnect import ResilientPubSubListener
 
@@ -42,8 +44,6 @@ class ConnectionManager:
 
     # Active WebSocket connections per channel
     connections: dict[str, set[WebSocket]] = field(default_factory=dict)
-    # Redis connection for publishing
-    _redis: redis.Redis | None = None
     # Resilient pub/sub listener for receiving messages
     _pubsub_listener: ResilientPubSubListener | None = None
 
@@ -60,7 +60,7 @@ class ConnectionManager:
         # Ensure Redis listener is running for cross-container messages
         # This fixes a race condition where the scheduler publishes progress
         # before the API's Redis listener is started
-        if not self._redis:
+        if not self._pubsub_listener or not self._pubsub_listener.is_healthy():
             await self._init_redis()
 
         for channel in channels:
@@ -135,27 +135,23 @@ class ConnectionManager:
         Returns:
             bool: True if successfully published, False otherwise
         """
-        if not self._redis:
-            await self._init_redis()
-
-        if self._redis:
-            try:
-                await self._redis.publish(
+        try:
+            async with get_redis() as r:
+                await r.publish(
                     f"bifrost:{channel}",
-                    json.dumps(message)
+                    json.dumps(message),
                 )
-                return True
-            except Exception as e:
-                logger.warning(f"Failed to publish to Redis: {e}")
-                return False
-        return False
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to publish to Redis: {e}")
+            return False
 
     async def _init_redis(self) -> None:
-        """Initialize Redis connection and start listener."""
+        """Initialize the Redis listener."""
         settings = get_settings()
         try:
-            # Create Redis connection for publishing
-            self._redis = redis.from_url(settings.redis_url)
+            if self._pubsub_listener:
+                await self._pubsub_listener.stop()
 
             # Create resilient listener for receiving messages
             async def on_message(channel: str, data: dict) -> None:
@@ -172,15 +168,12 @@ class ConnectionManager:
             logger.info("Redis pub/sub initialized (with auto-reconnect)")
         except Exception as e:
             logger.warning(f"Failed to connect to Redis: {e}")
-            self._redis = None
+            self._pubsub_listener = None
 
     async def close(self) -> None:
         """Clean up connections."""
         if self._pubsub_listener:
             await self._pubsub_listener.stop()
-
-        if self._redis:
-            await self._redis.close()
 
 
 # Global connection manager instance
@@ -832,6 +825,19 @@ async def publish_pool_scaling(
 async def publish_reimport_request(job_id: str) -> None:
     """Publish a reimport request to the scheduler."""
     await manager._publish_to_redis("scheduler:reimport", {"action": "reimport", "job_id": job_id})
+
+
+async def publish_embedding_reindex_request(notification_id: str) -> None:
+    """Publish an embedding-reindex request to the scheduler.
+
+    The scheduler reads the saved embedding config and re-embeds every
+    knowledge_store row, pushing progress through the notification at
+    `notification_id`.
+    """
+    await manager._publish_to_redis(
+        "scheduler:embedding-reindex",
+        {"action": "embedding_reindex", "notification_id": notification_id},
+    )
 
 
 async def publish_pool_progress(

@@ -1,5 +1,21 @@
-import { useState, useMemo } from "react";
-import { Pencil, Plus, Trash2, UserCog, RefreshCw, ArrowUp, ArrowDown } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+	ArrowDown,
+	ArrowUp,
+	BookOpen,
+	Bot,
+	FileText,
+	LayoutGrid,
+	Pencil,
+	Plus,
+	RefreshCw,
+	Trash2,
+	UserCog,
+	Users,
+	Workflow,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -10,6 +26,7 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,19 +37,44 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SearchBox } from "@/components/search/SearchBox";
 import { useSearch } from "@/hooks/useSearch";
 import { useRoles, useDeleteRole } from "@/hooks/useRoles";
 import { RoleDialog } from "@/components/roles/RoleDialog";
-import { RoleDetailsDialog } from "@/components/roles/RoleDetailsDialog";
+
 import type { components } from "@/lib/v1";
 type Role = components["schemas"]["RolePublic"];
 
 type SortColumn = "name" | "created";
 type SortDirection = "asc" | "desc";
 
-function SortIcon({ column, sortColumn, sortDirection }: { column: SortColumn; sortColumn: SortColumn; sortDirection: SortDirection }) {
+const CHIP_DEFS: {
+	key: "users" | "forms" | "agents" | "apps" | "workflows" | "knowledge";
+	label: string;
+	icon: React.ComponentType<{ className?: string }>;
+}[] = [
+	{ key: "users", label: "Users", icon: Users },
+	{ key: "forms", label: "Forms", icon: FileText },
+	{ key: "agents", label: "Agents", icon: Bot },
+	{ key: "apps", label: "Apps", icon: LayoutGrid },
+	{ key: "workflows", label: "Workflows", icon: Workflow },
+	{ key: "knowledge", label: "Knowledge", icon: BookOpen },
+];
+
+function SortIcon({
+	column,
+	sortColumn,
+	sortDirection,
+}: {
+	column: SortColumn;
+	sortColumn: SortColumn;
+	sortDirection: SortDirection;
+}) {
 	if (sortColumn !== column) return null;
 	return sortDirection === "asc" ? (
 		<ArrowUp className="inline ml-1 h-3 w-3" />
@@ -44,24 +86,21 @@ function SortIcon({ column, sortColumn, sortDirection }: { column: SortColumn; s
 export function Roles() {
 	const [selectedRole, setSelectedRole] = useState<Role | undefined>();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
-	const [detailsRole, setDetailsRole] = useState<Role | undefined>();
-	const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 	const [roleToDelete, setRoleToDelete] = useState<Role | undefined>();
 	const [searchTerm, setSearchTerm] = useState("");
 	const [sortColumn, setSortColumn] = useState<SortColumn>("name");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
+	const navigate = useNavigate();
 	const { data: roles, isLoading, refetch } = useRoles();
 	const deleteRole = useDeleteRole();
 
-	// Apply search filter
 	const filteredRoles = useSearch(roles || [], searchTerm, [
 		"name",
 		"description",
 	]);
 
-	// Apply sorting
 	const sortedRoles = useMemo(() => {
 		if (!filteredRoles) return [];
 		return [...filteredRoles].sort((a, b) => {
@@ -101,31 +140,14 @@ export function Roles() {
 
 	const handleDelete = (role: Role) => {
 		setRoleToDelete(role);
-		setIsDeleteDialogOpen(true);
+		setIsDeleteOpen(true);
 	};
 
-	const handleConfirmDelete = async () => {
+	const handleConfirmDelete = () => {
 		if (!roleToDelete) return;
-		deleteRole.mutate({
-			params: { path: { role_id: roleToDelete.id } },
-		});
-		setIsDeleteDialogOpen(false);
+		deleteRole.mutate({ params: { path: { role_id: roleToDelete.id } } });
+		setIsDeleteOpen(false);
 		setRoleToDelete(undefined);
-	};
-
-	const handleViewDetails = (role: Role) => {
-		setDetailsRole(role);
-		setIsDetailsOpen(true);
-	};
-
-	const handleDialogClose = () => {
-		setIsDialogOpen(false);
-		setSelectedRole(undefined);
-	};
-
-	const handleDetailsClose = () => {
-		setIsDetailsOpen(false);
-		setDetailsRole(undefined);
 	};
 
 	return (
@@ -133,12 +155,11 @@ export function Roles() {
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-4xl font-extrabold tracking-tight">
-						Roles
-					</h1>
+					<h1 className="text-4xl font-extrabold tracking-tight">Roles</h1>
 					<p className="mt-2 text-muted-foreground">
-						Manage roles for organization users and control form
-						access
+						Roles grant access to users, forms, agents, apps, workflows, and
+						knowledge namespaces. Click a count chip to manage that consumer
+						type.
 					</p>
 				</div>
 				<div className="flex gap-2">
@@ -161,7 +182,7 @@ export function Roles() {
 				</div>
 			</div>
 
-			{/* Search and Filters */}
+			{/* Filters */}
 			<div className="flex items-center gap-4">
 				<SearchBox
 					value={searchTerm}
@@ -172,139 +193,104 @@ export function Roles() {
 			</div>
 
 			{/* Content */}
-			{isLoading ? (
-				<div className="space-y-2">
-					{[...Array(5)].map((_, i) => (
-						<Skeleton key={i} className="h-12 w-full" />
-					))}
-				</div>
-			) : sortedRoles && sortedRoles.length > 0 ? (
-				<div className="flex-1 min-h-0">
-					<DataTable className="max-h-full">
+			<div className="flex-1 min-h-0">
+				{isLoading ? (
+					<div className="space-y-2">
+						{[...Array(5)].map((_, i) => (
+							<Skeleton key={i} className="h-12 w-full" />
+						))}
+					</div>
+				) : sortedRoles.length === 0 ? (
+					<Card>
+						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+							<UserCog className="h-12 w-12 text-muted-foreground" />
+							<h3 className="mt-4 text-lg font-semibold">
+								{searchTerm
+									? "No roles match your search"
+									: "No roles found"}
+							</h3>
+							<p className="mt-2 text-sm text-muted-foreground">
+								{searchTerm
+									? "Try adjusting your search term or clear the filter"
+									: "Get started by creating your first role"}
+							</p>
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={handleAdd}
+								title="Create Role"
+								className="mt-4"
+							>
+								<Plus className="h-4 w-4" />
+							</Button>
+						</CardContent>
+					</Card>
+				) : (
+					<DataTable>
 						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead
-									className="cursor-pointer select-none"
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("name")}
 								>
 									Name
-									<SortIcon column="name" sortColumn={sortColumn} sortDirection={sortDirection} />
+									<SortIcon
+										column="name"
+										sortColumn={sortColumn}
+										sortDirection={sortDirection}
+									/>
 								</DataTableHead>
 								<DataTableHead>Description</DataTableHead>
+								<DataTableHead className="whitespace-nowrap">
+									Consumers
+								</DataTableHead>
 								<DataTableHead
 									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("created")}
 								>
 									Created
-									<SortIcon column="created" sortColumn={sortColumn} sortDirection={sortDirection} />
+									<SortIcon
+										column="created"
+										sortColumn={sortColumn}
+										sortDirection={sortDirection}
+									/>
 								</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap text-right">
+								<DataTableHead className="w-0 whitespace-nowrap text-right sticky right-0 bg-background">
 									Actions
 								</DataTableHead>
 							</DataTableRow>
 						</DataTableHeader>
 						<DataTableBody>
 							{sortedRoles.map((role) => (
-								<DataTableRow
+								<RoleRow
 									key={role.id}
-									clickable
-									onClick={() => handleViewDetails(role)}
-								>
-									<DataTableCell className="font-medium">
-										{role.name}
-									</DataTableCell>
-									<DataTableCell className="max-w-xs truncate text-muted-foreground">
-										{role.description || "-"}
-									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
-										{role.created_at
-											? new Date(
-													role.created_at,
-												).toLocaleDateString()
-											: "N/A"}
-									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-right">
-										<div className="flex justify-end gap-2">
-											<Button
-												variant="ghost"
-												size="icon"
-												onClick={(e) => {
-													e.stopPropagation();
-													handleEdit(role);
-												}}
-												title="Edit role"
-											>
-												<Pencil className="h-4 w-4" />
-											</Button>
-											<Button
-												variant="ghost"
-												size="icon"
-												onClick={(e) => {
-													e.stopPropagation();
-													handleDelete(role);
-												}}
-												title="Delete role"
-											>
-												<Trash2 className="h-4 w-4" />
-											</Button>
-										</div>
-									</DataTableCell>
-								</DataTableRow>
+									role={role}
+									onEdit={() => handleEdit(role)}
+									onDelete={() => handleDelete(role)}
+									onNavigate={(to) => navigate(to)}
+								/>
 							))}
 						</DataTableBody>
 					</DataTable>
-				</div>
-			) : (
-				// Empty State
-				<Card>
-					<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-						<UserCog className="h-12 w-12 text-muted-foreground" />
-						<h3 className="mt-4 text-lg font-semibold">
-							{searchTerm
-								? "No roles match your search"
-								: "No roles found"}
-						</h3>
-						<p className="mt-2 text-sm text-muted-foreground">
-							{searchTerm
-								? "Try adjusting your search term or clear the filter"
-								: "Get started by creating your first role"}
-						</p>
-						<Button
-							variant="outline"
-							size="icon"
-							onClick={handleAdd}
-							title="Create Role"
-							className="mt-4"
-						>
-							<Plus className="h-4 w-4" />
-						</Button>
-					</CardContent>
-				</Card>
-			)}
+				)}
+			</div>
 
 			<RoleDialog
 				role={selectedRole}
 				open={isDialogOpen}
-				onClose={handleDialogClose}
+				onClose={() => {
+					setIsDialogOpen(false);
+					setSelectedRole(undefined);
+				}}
 			/>
 
-			<RoleDetailsDialog
-				role={detailsRole}
-				open={isDetailsOpen}
-				onClose={handleDetailsClose}
-			/>
-
-			{/* Delete Confirmation Dialog */}
-			<AlertDialog
-				open={isDeleteDialogOpen}
-				onOpenChange={setIsDeleteDialogOpen}
-			>
+			<AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete Role</AlertDialogTitle>
 						<AlertDialogDescription>
-							Are you sure you want to delete the role "
-							{roleToDelete?.name}"? This action cannot be undone.
+							Are you sure you want to delete the role "{roleToDelete?.name}"?
+							This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -313,13 +299,103 @@ export function Roles() {
 							onClick={handleConfirmDelete}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
-							{deleteRole.isPending
-								? "Deleting..."
-								: "Delete Role"}
+							{deleteRole.isPending ? "Deleting..." : "Delete Role"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 		</div>
+	);
+}
+
+function RoleRow({
+	role,
+	onEdit,
+	onDelete,
+	onNavigate,
+}: {
+	role: Role;
+	onEdit: () => void;
+	onDelete: () => void;
+	onNavigate: (to: string) => void;
+}) {
+	const counts = role.consumer_counts;
+
+	return (
+		<DataTableRow
+			clickable
+			onClick={() => onNavigate(`/roles/${role.id}`)}
+			className="group/row"
+		>
+			<DataTableCell className="w-0 whitespace-nowrap font-medium">
+				<Link
+					to={`/roles/${role.id}`}
+					className="hover:underline"
+					onClick={(e) => e.stopPropagation()}
+				>
+					{role.name}
+				</Link>
+			</DataTableCell>
+			<DataTableCell className="max-w-xs truncate text-muted-foreground">
+				{role.description || "-"}
+			</DataTableCell>
+			<DataTableCell
+				className="whitespace-nowrap"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="flex flex-wrap gap-1">
+					{CHIP_DEFS.map(({ key, label, icon: Icon }) => {
+						const count = counts ? counts[key] : 0;
+						return (
+							<Tooltip key={key}>
+								<TooltipTrigger asChild>
+									<Link
+										to={`/roles/${role.id}/${key}`}
+										className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-muted hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+										aria-label={`${count} ${label.toLowerCase()} — open ${label.toLowerCase()} tab`}
+									>
+										<Icon className="h-3 w-3" />
+										<span className="font-medium">{count}</span>
+									</Link>
+								</TooltipTrigger>
+								<TooltipContent>{label}</TooltipContent>
+							</Tooltip>
+						);
+					})}
+				</div>
+			</DataTableCell>
+			<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
+				{role.created_at
+					? new Date(role.created_at).toLocaleDateString()
+					: "N/A"}
+			</DataTableCell>
+			<DataTableCell
+				className="w-0 whitespace-nowrap text-right sticky right-0 bg-card group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--muted)_50%)]"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="flex justify-end gap-1">
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-8 w-8"
+						onClick={onEdit}
+						aria-label={`Edit ${role.name}`}
+						title="Edit role"
+					>
+						<Pencil className="h-4 w-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-8 w-8"
+						onClick={onDelete}
+						aria-label={`Delete ${role.name}`}
+						title="Delete role"
+					>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				</div>
+			</DataTableCell>
+		</DataTableRow>
 	);
 }

@@ -30,7 +30,11 @@ on:
       - "**/*.svg"
       - "**/*.webp"
       - "**/*.ico"
+      - ".agents/**"
       - ".claude/**"
+      - ".claude-plugin/**"
+      - ".codex/**"
+      - ".codex-plugin/**"
       - "docs/**"
       - "LICENSE"
       - ".github/CODEOWNERS"
@@ -43,12 +47,21 @@ on:
       - ".prettierignore"
       - ".vscode/**"
       - ".idea/**"
+  # GitHub merge queue runs CI on a synthetic ref containing
+  # main + queued PRs stacked in queue order. Required status
+  # checks must fire on this event or the queue blocks forever
+  # waiting on absent statuses.
+  merge_group:
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  API_IMAGE: jackmusick/bifrost-api
-  CLIENT_IMAGE: jackmusick/bifrost-client
+  API_IMAGE: gobifrost/bifrost-api
+  CLIENT_IMAGE: gobifrost/bifrost-client
+  # Legacy image names under jackmusick — kept for dual-publish during namespace
+  # migration window. Remove after 2 stable releases or 60 days post-transfer.
+  LEGACY_API_IMAGE: jackmusick/bifrost-api
+  LEGACY_CLIENT_IMAGE: jackmusick/bifrost-client
 
 permissions:
   contents: read
@@ -58,11 +71,17 @@ jobs:
   # Lint & Type Check - Fast, gates all builds alongside unit tests
   # =============================================================================
   lint:
+    # Skip on push: main — the merge_group run already covered this
+    # commit. Still runs on PRs, queue, tag pushes, and workflow_dispatch.
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     name: Lint & Type Check
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Check GitHub Action pins
+        run: python3 api/scripts/check_github_action_pins.py
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -114,26 +133,84 @@ jobs:
         run: npm run lint
 
   # =============================================================================
+  # Client Unit Tests (Vitest) - Fast, runs on host Node — no Docker needed.
+  # Parallel to Unit Tests; does NOT become the critical path.
+  # =============================================================================
+  test-client-unit:
+    # Skip on push: main — covered by the merge_group run.
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    name: Client Unit Tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client deps
+        working-directory: client
+        run: npm ci
+
+      - name: Vitest
+        working-directory: client
+        run: npm test
+
+  # =============================================================================
   # Unit Tests - Fast, gates all builds
   # =============================================================================
   test-unit:
+    # Skip on push: main — covered by the merge_group run.
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     name: Unit Tests
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # Pre-build dev images via build-push-action for GHA layer caching.
+      # docker-compose.test.yml pins all api-stack services to bifrost-test-api-dev:latest
+      # and the client service to bifrost-test-client-dev:latest. When
+      # BIFROST_SKIP_BUILD=1, test.sh passes --no-build to compose so it reuses
+      # these local images instead of rebuilding (which would skip the GHA cache).
+      # Cache scope is shared with test-e2e so whichever job runs second gets warm hits.
+      - name: Build API dev image (cached)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ./api/Dockerfile.dev
+          load: true
+          tags: bifrost-test-api-dev:latest
+          cache-from: type=gha,scope=test-api-dev
+          cache-to: type=gha,scope=test-api-dev,mode=max
+
+      - name: Build client dev image (cached)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: ./client
+          file: ./client/Dockerfile.dev
+          load: true
+          tags: bifrost-test-client-dev:latest
+          cache-from: type=gha,scope=test-client-dev
+          cache-to: type=gha,scope=test-client-dev,mode=max
 
       - name: Run unit tests
+        env:
+          BIFROST_SKIP_BUILD: "1"
         run: |
           chmod +x test.sh
           ./test.sh stack up
           ./test.sh unit
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: ./coverage.xml
           flags: api
@@ -141,30 +218,92 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   # =============================================================================
-  # E2E Tests - Slow, only gates tag releases
+  # E2E Tests - Sharded across 2 parallel runners. Each shard boots its own
+  # isolated test stack (no xdist, no shared services between shards).
+  # scripts/e2e_shard.py deterministically allocates test files: heavies
+  # bin-packed first, then round-robin in sorted order — adding a file only
+  # moves files in shards downstream of the insertion point.
+  #
+  # The internal matrix job (test-e2e) uses shard names like
+  # "E2E Tests (shard 1/2)". The aggregate gate job below (test-e2e-gate)
+  # is named EXACTLY "E2E Tests" to match the required status check name —
+  # no ruleset edits needed.
   # =============================================================================
   test-e2e:
+    # Skip on push: main — covered by the merge_group run.
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
-    name: E2E Tests
+    name: E2E Tests (shard ${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
-      - name: Run E2E tests
+      # See test-unit for caching strategy notes.
+      - name: Build API dev image (cached)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ./api/Dockerfile.dev
+          load: true
+          tags: bifrost-test-api-dev:latest
+          cache-from: type=gha,scope=test-api-dev
+          cache-to: type=gha,scope=test-api-dev,mode=max
+
+      - name: Build client dev image (cached)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: ./client
+          file: ./client/Dockerfile.dev
+          load: true
+          tags: bifrost-test-client-dev:latest
+          cache-from: type=gha,scope=test-client-dev
+          cache-to: type=gha,scope=test-client-dev,mode=max
+
+      - name: Run E2E tests (shard ${{ matrix.shard }}/2)
+        env:
+          BIFROST_SKIP_BUILD: "1"
         run: |
           chmod +x test.sh
           ./test.sh stack up
-          ./test.sh e2e
+          mapfile -t shard_files < <(python3 scripts/e2e_shard.py --shard-id ${{ matrix.shard }} --total 2)
+          if [ ${#shard_files[@]} -eq 0 ]; then
+            echo "ERROR: shard ${{ matrix.shard }} resolved to zero files" >&2
+            exit 1
+          fi
+          echo "Shard ${{ matrix.shard }}/2: ${#shard_files[@]} files"
+          ./test.sh "${shard_files[@]}" -v --durations=50
+
+  # Aggregate gate — required check named "E2E Tests" (matches ruleset 15329014).
+  # Fails if any shard failed or was cancelled. Runs even when shards fail
+  # (if: always()) so branch protection always sees a conclusive result.
+  test-e2e-gate:
+    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    needs: [test-e2e]
+    runs-on: ubuntu-latest
+    name: E2E Tests
+    steps:
+      - name: Check shard results
+        run: |
+          if [ "${{ needs.test-e2e.result }}" != "success" ]; then
+            echo "One or more e2e shards failed or were cancelled (result: ${{ needs.test-e2e.result }})"
+            exit 1
+          fi
+          echo "All e2e shards passed."
 
   # =============================================================================
   # Dev Build - Every push to main, gated by unit tests only
   # =============================================================================
   build-dev:
-    if: github.ref == 'refs/heads/main'
-    needs: [test-unit, lint]
+    # Only fires on push: main — branch protection + merge queue
+    # already gated this commit, so no needs: here.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     name: Build Dev Images
     permissions:
@@ -175,33 +314,57 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
 
       - name: Compute version
         id: version
         run: |
-          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+          VERSION=$(./scripts/compute-dev-version.sh)
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
+      # Surface manifest drift to the job summary. Plugin manifests are updated
+      # at tag time (see bifrost-release skill) — between tags the `version`
+      # field reflects the last released version, not the current dev version.
+      # This step is informational only; it does not fail the build and does
+      # not commit anything back. See PR #246 for the rationale (branch
+      # protection + commit-back loop avoidance).
+      - name: Report plugin manifest drift
+        run: |
+          DEV_VERSION="${{ steps.version.outputs.version }}"
+          {
+            echo "## Plugin manifest versions"
+            echo ""
+            echo "- Computed dev version: \`${DEV_VERSION}\`"
+            for manifest in \
+              .claude-plugin/plugin.json \
+              .codex-plugin/plugin.json \
+              plugins/bifrost/.codex-plugin/plugin.json; do
+              manifest_version=$(jq -r '.version' "$manifest")
+              echo "- Manifest (${manifest}): \`${manifest_version}\`"
+            done
+            echo ""
+            echo "Manifests reflect the last tagged release; they advance at tag time via the bifrost-release skill."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Build and push API dev image
         id: build-api
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -232,7 +395,7 @@ jobs:
 
       - name: Build and push client dev image
         id: build-client
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ./client
           file: ./client/Dockerfile
@@ -261,6 +424,43 @@ jobs:
           subject-name: ghcr.io/${{ env.CLIENT_IMAGE }}
           subject-digest: ${{ steps.build-client.outputs.digest }}
           push-to-registry: true
+
+      # ---------------------------------------------------------------------------
+      # Transitional dual-publish to legacy ghcr.io/jackmusick/* namespace.
+      # This keeps Keel-polling clusters that pin the old image name converging
+      # during the migration window. Sunset: remove after 2 stable releases or
+      # 60 days post-transfer to gobifrost, whichever comes first.
+      # ---------------------------------------------------------------------------
+      - name: Dual-publish dev images to legacy jackmusick namespace
+        # Map secret to env var so job-level if-condition can test it
+        # (secrets cannot be referenced directly in job if-conditions).
+        env:
+          GHCR_LEGACY_TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN }}
+        if: ${{ env.GHCR_LEGACY_TOKEN != '' }}
+        run: |
+          echo "$GHCR_LEGACY_TOKEN" | docker login ghcr.io -u jackmusick --password-stdin
+
+          # Retag and push API dev images to legacy namespace
+          for tag in \
+            "${{ steps.version.outputs.version }}" \
+            "dev" \
+            "sha-${{ steps.version.outputs.short_sha }}"; do
+            docker pull ghcr.io/${{ env.API_IMAGE }}:${tag}
+            docker tag  ghcr.io/${{ env.API_IMAGE }}:${tag} ghcr.io/${{ env.LEGACY_API_IMAGE }}:${tag}
+            docker push ghcr.io/${{ env.LEGACY_API_IMAGE }}:${tag}
+          done
+
+          # Retag and push Client dev images to legacy namespace
+          for tag in \
+            "${{ steps.version.outputs.version }}" \
+            "dev" \
+            "sha-${{ steps.version.outputs.short_sha }}"; do
+            docker pull ghcr.io/${{ env.CLIENT_IMAGE }}:${tag}
+            docker tag  ghcr.io/${{ env.CLIENT_IMAGE }}:${tag} ghcr.io/${{ env.LEGACY_CLIENT_IMAGE }}:${tag}
+            docker push ghcr.io/${{ env.LEGACY_CLIENT_IMAGE }}:${tag}
+          done
+
+          docker logout ghcr.io
 
   # =============================================================================
   # Deploy Dry Run - Manual trigger only (workflow_dispatch from any branch).
@@ -324,7 +524,8 @@ jobs:
   # GitHub's built-in workflow-failure email (no extra wiring).
   # =============================================================================
   deploy-dev:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # Fires only after build-dev lands a new image on push: main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build-dev]
     runs-on: ubuntu-latest
     name: Deploy Dev to DigitalOcean
@@ -385,7 +586,7 @@ jobs:
   # =============================================================================
   build-api:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-unit, test-e2e, lint]
+    needs: [test-unit, test-e2e-gate, lint]
     runs-on: ubuntu-latest
     name: Build API Image
     permissions:
@@ -396,7 +597,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
 
@@ -406,22 +607,47 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+      # Hard guard: plugin manifest versions must match the tag, otherwise
+      # Claude Code and Codex plugin marketplaces can keep serving stale skill
+      # content to users who installed via this repo. The bifrost-release skill
+      # runs `scripts/update-plugin-version.sh <version>` locally before
+      # tagging, so when this fails the maintainer either forgot the skill step
+      # or the bump commit didn't make it onto the tagged ref.
+      - name: Verify plugin manifest matches tag
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          failed=0
+          for manifest in \
+            .claude-plugin/plugin.json \
+            .codex-plugin/plugin.json \
+            plugins/bifrost/.codex-plugin/plugin.json; do
+            manifest_version=$(jq -r '.version' "$manifest")
+            if [[ "$manifest_version" != "$TAG_VERSION" ]]; then
+              echo "::error::${manifest} version (${manifest_version}) does not match tag (${TAG_VERSION})."
+              failed=1
+            fi
+          done
+          if [[ "$failed" -ne 0 ]]; then
+            echo "::error::Run 'scripts/update-plugin-version.sh $TAG_VERSION' on main, commit, then re-tag."
+            exit 1
+          fi
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.API_IMAGE }}
           tags: |
@@ -436,7 +662,7 @@ jobs:
 
       - name: Build and push API image
         id: build-api
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -462,12 +688,30 @@ jobs:
           subject-digest: ${{ steps.build-api.outputs.digest }}
           push-to-registry: true
 
+      # ---------------------------------------------------------------------------
+      # Transitional dual-publish to legacy ghcr.io/jackmusick/* namespace.
+      # Sunset: remove after 2 stable releases or 60 days post-transfer.
+      # ---------------------------------------------------------------------------
+      - name: Dual-publish API release image to legacy jackmusick namespace
+        env:
+          GHCR_LEGACY_TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN }}
+        if: ${{ env.GHCR_LEGACY_TOKEN != '' }}
+        run: |
+          echo "$GHCR_LEGACY_TOKEN" | docker login ghcr.io -u jackmusick --password-stdin
+          for tag in $(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' '); do
+            legacy_tag=$(echo "$tag" | sed "s|ghcr.io/${{ env.API_IMAGE }}|ghcr.io/${{ env.LEGACY_API_IMAGE }}|")
+            docker pull "$tag"
+            docker tag  "$tag" "$legacy_tag"
+            docker push "$legacy_tag"
+          done
+          docker logout ghcr.io
+
   # =============================================================================
   # Build Client Image - Only on version tags, after tests pass
   # =============================================================================
   build-client:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test-unit, test-e2e, lint]
+    needs: [test-unit, test-e2e-gate, lint]
     runs-on: ubuntu-latest
     name: Build Client Image
     permissions:
@@ -478,7 +722,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
 
@@ -489,21 +733,21 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.CLIENT_IMAGE }}
           tags: |
@@ -518,7 +762,7 @@ jobs:
 
       - name: Build and push client image
         id: build-client
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ./client
           file: ./client/Dockerfile
@@ -545,6 +789,24 @@ jobs:
           subject-digest: ${{ steps.build-client.outputs.digest }}
           push-to-registry: true
 
+      # ---------------------------------------------------------------------------
+      # Transitional dual-publish to legacy ghcr.io/jackmusick/* namespace.
+      # Sunset: remove after 2 stable releases or 60 days post-transfer.
+      # ---------------------------------------------------------------------------
+      - name: Dual-publish client release image to legacy jackmusick namespace
+        env:
+          GHCR_LEGACY_TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN }}
+        if: ${{ env.GHCR_LEGACY_TOKEN != '' }}
+        run: |
+          echo "$GHCR_LEGACY_TOKEN" | docker login ghcr.io -u jackmusick --password-stdin
+          for tag in $(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' '); do
+            legacy_tag=$(echo "$tag" | sed "s|ghcr.io/${{ env.CLIENT_IMAGE }}|ghcr.io/${{ env.LEGACY_CLIENT_IMAGE }}|")
+            docker pull "$tag"
+            docker tag  "$tag" "$legacy_tag"
+            docker push "$legacy_tag"
+          done
+          docker logout ghcr.io
+
   # =============================================================================
   # Create GitHub Release - Only on version tags, after images are built.
   # Release assets are signed with Sigstore/cosign (keyless OIDC) and a SLSA
@@ -563,7 +825,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Get version from tag
         id: get_version
@@ -598,7 +860,7 @@ jobs:
           echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v2.4.1
 
@@ -647,12 +909,12 @@ jobs:
 
             **API:**
             ```bash
-            docker pull jackmusick/bifrost-api:${{ steps.get_version.outputs.version }}
+            docker pull ghcr.io/gobifrost/bifrost-api:${{ steps.get_version.outputs.version }}
             ```
 
             **Client:**
             ```bash
-            docker pull jackmusick/bifrost-client:${{ steps.get_version.outputs.version }}
+            docker pull ghcr.io/gobifrost/bifrost-client:${{ steps.get_version.outputs.version }}
             ```
 
             ### Type Stubs for IDEs
@@ -671,7 +933,7 @@ jobs:
             ```bash
             cosign verify-blob \
               --bundle bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz.sigstore \
-              --certificate-identity-regexp 'https://github\.com/jackmusick/bifrost/.*' \
+              --certificate-identity-regexp 'https://github\.com/gobifrost/bifrost/.*' \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com \
               bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz
             ```
@@ -680,7 +942,7 @@ jobs:
 
             ```bash
             gh attestation verify bifrost-${{ steps.get_version.outputs.version }}-source.tar.gz \
-              --owner jackmusick
+              --owner gobifrost
             ```
 
           draft: false

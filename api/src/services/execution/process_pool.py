@@ -1,22 +1,27 @@
 """
 Process Pool Manager for Execution Isolation.
 
-This module provides a pool of long-lived worker processes that can handle
-concurrent executions. Unlike the one-process-per-execution model, this
-approach reuses processes for multiple executions, improving efficiency.
+Each execution forks a fresh worker process from a long-lived template
+and the worker exits after returning its result. There is no warm pool;
+the only throttles are `max_workers` (concurrency cap) and a cgroup
+memory-pressure check on the way in.
 
 Key features:
-- Dynamic scaling between min_workers and max_workers
+- One-shot worker processes (fork → run one execution → exit)
+- Cap concurrent forks at `max_workers`; queued executions wait on a
+  condition variable that is notified when a worker exits
+- Memory-pressure admission control (cgroup working-set)
 - Automatic timeout handling with graceful shutdown (SIGTERM -> SIGKILL)
-- Crash detection and process replacement
+- Crash detection
 - Heartbeat publishing for UI visibility
-- Manual process recycling via API
+- Drain + template restart after pip install (so future forks pick up
+  newly installed packages); also exposed as a manual "recycle" RPC
 
 Architecture:
     ProcessPoolManager (runs in consumer process)
         |
-        +-- min_workers to max_workers processes
-        +-- Each process: work_queue (in) + result_queue (out)
+        +-- up to max_workers concurrent one-shot children
+        +-- Each child: work_queue (in) + result_queue (out)
         +-- Monitor loop checks health and timeouts
         +-- Result loop collects execution results
         +-- Heartbeat loop publishes status to Redis/WebSocket
@@ -43,10 +48,63 @@ import redis.asyncio as redis
 
 from src.config import get_settings
 from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
-from src.services.execution.simple_worker import install_requirements
+from src.models.contracts.notifications import NotificationCategory, NotificationCreate, NotificationStatus
+from src.services.execution.simple_worker import install_requirements, RequirementsInstallResult
+from src.services.notification_service import get_notification_service
 from src.services.execution.template_process import TemplateProcess
 
 logger = logging.getLogger(__name__)
+
+
+async def _notify_requirements_failures(result: RequirementsInstallResult) -> None:
+    """Publish a deduped admin notification when requirements failed to install.
+
+    No-op when the install fully succeeded. Best-effort: notification errors
+    are logged, never raised, so install/recycle is never blocked by it.
+    """
+    if result.ok:
+        return
+
+    names = [f.package for f in result.failed]
+    shown = ", ".join(names[:5])
+    if len(names) > 5:
+        shown += f" and {len(names) - 5} more"
+    title = "Workflow package install failed"
+    description = (
+        f"{len(result.failed)} package(s) failed to install on workers: "
+        f"{shown}. Workflows importing them will fail until fixed."
+    )
+    try:
+        service = get_notification_service()
+        # Dedup is best-effort: concurrent workers can race past this check and
+        # create duplicate notifications. The failure case is rare and duplicates
+        # are cheap to dismiss, so no distributed lock is warranted.
+        existing = await service.find_admin_notification_by_title(
+            title, NotificationCategory.PACKAGE_INSTALL
+        )
+        if existing is not None:
+            logger.info("[pool] requirements-failure notification already exists; skipping")
+            return
+        await service.create_notification(
+            user_id="system",
+            request=NotificationCreate(
+                category=NotificationCategory.PACKAGE_INSTALL,
+                title=title,
+                description=description[:500],
+                metadata={
+                    "failed": [
+                        {"package": f.package, "error": f.error[:500]}
+                        for f in result.failed
+                    ],
+                    "installed": result.installed,
+                },
+            ),
+            for_admins=True,
+            initial_status=NotificationStatus.FAILED,
+        )
+        logger.info(f"[pool] Notified admins of requirements install failures: {shown}")
+    except Exception as e:  # noqa: BLE001 - notification must never block the pool
+        logger.warning(f"[pool] Could not publish requirements-failure notification: {e}")
 
 
 def _get_installed_packages() -> list[dict[str, str]]:
@@ -74,13 +132,13 @@ class ProcessState(Enum):
     """
     State of a worker process in the pool.
 
-    States:
-    - IDLE: Ready to accept work
-    - BUSY: Currently executing
-    - KILLED: Process was terminated (pending removal)
+    Workers are one-shot — they only ever exist in BUSY (running their
+    single execution) or KILLED (terminating). IDLE is kept as a
+    no-longer-used value purely for any external consumer that may parse
+    the heartbeat shape; nothing in this module emits it.
     """
 
-    IDLE = "idle"
+    IDLE = "idle"  # deprecated; unused since on-demand-only refactor
     BUSY = "busy"
     KILLED = "killed"
 
@@ -137,7 +195,6 @@ class ProcessHandle:
     started_at: datetime
     current_execution: ExecutionInfo | None = None
     executions_completed: int = 0
-    pending_recycle: bool = False  # Mark for recycle after current execution
     # True once we have *attempted* to fire on_result for current_execution
     # (set before the await; stays True even if on_result raised). Reset when
     # a new execution is assigned. Used by the orphan sweep to detect handles
@@ -224,18 +281,15 @@ def _get_private_dirty_kb(pid: int) -> int:
 
 class ProcessPoolManager:
     """
-    Manages a pool of worker processes for execution isolation.
+    Manages a pool of one-shot worker processes for execution isolation.
 
-    The ProcessPoolManager:
-    1. Spawns min_workers processes on startup
-    2. Scales up to max_workers under load
-    3. Routes executions to IDLE processes
-    4. Monitors for timeouts and crashes
-    5. Publishes heartbeats for UI visibility
+    Each execution forks a fresh child from the template process and the
+    child exits after returning its result. There is no warm pool — the
+    `max_workers` cap is the only throttle, plus a memory-pressure check
+    on the way in.
 
     Usage:
         pool = ProcessPoolManager(
-            min_workers=2,
             max_workers=10,
             on_result=handle_result,
         )
@@ -250,12 +304,9 @@ class ProcessPoolManager:
 
     def __init__(
         self,
-        min_workers: int = 2,
         max_workers: int = 10,
         execution_timeout_seconds: int = 300,
         graceful_shutdown_seconds: int = 5,
-        recycle_after_executions: int = 0,
-        recycle_memory_mb: int = 0,
         heartbeat_interval_seconds: int = 10,
         registration_ttl_seconds: int = 30,
         on_result: ResultCallback | None = None,
@@ -264,22 +315,16 @@ class ProcessPoolManager:
         Initialize the process pool manager.
 
         Args:
-            min_workers: Minimum number of worker processes to maintain
-            max_workers: Maximum number of worker processes
+            max_workers: Maximum number of concurrent worker processes
             execution_timeout_seconds: Default execution timeout in seconds
             graceful_shutdown_seconds: Seconds to wait between SIGTERM and SIGKILL
-            recycle_after_executions: Recycle process after N executions (0 = never)
-            recycle_memory_mb: Recycle process when RSS exceeds this MB (0 = disabled)
             heartbeat_interval_seconds: Interval for heartbeat publications
             registration_ttl_seconds: TTL for worker registration in Redis
             on_result: Async callback for handling execution results
         """
-        self.min_workers = min_workers
         self.max_workers = max_workers
         self.execution_timeout_seconds = execution_timeout_seconds
         self.graceful_shutdown_seconds = graceful_shutdown_seconds
-        self.recycle_after_executions = recycle_after_executions
-        self.recycle_memory_mb = recycle_memory_mb
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
         self.registration_ttl_seconds = registration_ttl_seconds
         self.on_result = on_result
@@ -308,8 +353,10 @@ class ProcessPoolManager:
         # Redis connection
         self._redis: redis.Redis | None = None  # type: ignore[type-arg]
 
-        # Lock for idle process waiting
-        self._idle_condition = asyncio.Condition()
+        # Notified when a worker exits and frees a slot. Waiters in
+        # route_execution use this to wake up the moment a slot opens
+        # rather than spinning on a timeout.
+        self._slot_condition = asyncio.Condition()
 
         # Template process for fork-based workers
         self._template: TemplateProcess | None = None
@@ -363,55 +410,51 @@ class ProcessPoolManager:
 
     async def drain_and_restart_template(self, drain_timeout: float = 60.0) -> None:
         """
-        Drain all existing workers, restart the template process, then
-        respawn workers from the fresh template.
+        Drain in-flight executions and restart the template process so
+        subsequent forks see fresh sys.modules.
 
-        Called after pip install so children get a fresh sys.modules
-        that can see newly installed packages.
+        Called after pip install (and from the manual recycle RPCs).
+        While the restart lock is held, new routes block in
+        `route_execution`, so no work is lost — it just waits.
 
         Serialized via _restart_lock so concurrent package installs
         wait for the previous restart to complete rather than racing.
         """
         async with self._restart_lock:
-            # 1. Mark all for recycle (stops routing new work to them)
-            for handle in list(self.processes.values()):
-                handle.pending_recycle = True
-
-            # 2. Wait for busy processes to finish (bounded)
+            # Wait for in-flight one-shot workers to finish (bounded).
             deadline = time.monotonic() + drain_timeout
             while time.monotonic() < deadline:
-                busy = [h for h in self.processes.values() if h.state == ProcessState.BUSY]
-                if not busy:
+                if not self.processes:
                     break
                 await asyncio.sleep(0.2)
 
-            # 3. Terminate all remaining processes (don't spawn replacements yet)
+            # Terminate any survivors that didn't drain in time.
             for handle in list(self.processes.values()):
                 if handle.id in self.processes:
                     del self.processes[handle.id]
                 await self._terminate_process(handle)
 
-            # 4. Restart template with fresh sys.modules
+            # Wake anyone blocked on a slot — drain may have removed
+            # everything from self.processes while the route-side waiter
+            # was still parked.
+            await self._notify_slot_free()
+
+            # Restart template with fresh sys.modules — future forks
+            # (driven by route_execution) will see newly installed packages.
             await self.restart_template()
 
-            # 5. Respawn to min_workers
-            for _ in range(self.min_workers):
-                self._fork_process()
-
-    def _fork_process(self, persistent: bool | None = None) -> ProcessHandle:
+    def _fork_process(self) -> ProcessHandle:
         """
-        Create a new worker process by forking from the template.
+        Create a new one-shot worker process by forking from the template.
 
         Requires the template process to be running. The caller must
         ensure the pool has been started (and therefore _start_template
         has completed) before invoking this method.
 
-        Args:
-            persistent: If None, inferred from self.min_workers > 0.
-                        If True, child loops. If False, child runs once.
-
         Returns:
-            ProcessHandle instance for the new forked worker.
+            ProcessHandle for the new forked worker. State starts at BUSY
+            because every fork is claimed by the routing caller (there is
+            no warm pool / idle state).
 
         Raises:
             RuntimeError: If the template process is not alive.
@@ -422,23 +465,21 @@ class ProcessPoolManager:
                 "ProcessPoolManager.start() must complete before forking workers."
             )
 
-        if persistent is None:
-            persistent = self.min_workers > 0
-
         self._process_counter += 1
         process_id = f"process-{self._process_counter}"
 
-        # Fork from template (COW memory sharing)
+        # Fork from template (COW memory sharing). persistent=False is
+        # the only mode: child runs one execution then exits.
         child_pid, work_queue, result_queue = self._template.fork(
             worker_id=process_id,
-            persistent=persistent,
+            persistent=False,
         )
 
         handle = ProcessHandle(
             id=process_id,
             process=_PidWrapper(child_pid),
             pid=child_pid,
-            state=ProcessState.IDLE,
+            state=ProcessState.BUSY,
             work_queue=work_queue,
             result_queue=result_queue,
             started_at=datetime.now(timezone.utc),
@@ -447,7 +488,7 @@ class ProcessPoolManager:
         )
 
         self.processes[process_id] = handle
-        logger.info(f"Created worker {process_id} (PID={handle.pid}, persistent={persistent})")
+        logger.info(f"Created worker {process_id} (PID={handle.pid})")
         return handle
 
     async def start(self) -> None:
@@ -455,7 +496,7 @@ class ProcessPoolManager:
         Start the pool manager and spawn initial workers.
 
         This method:
-        1. Spawns min_workers processes
+        1. Starts the template process (so future forks are fast)
         2. Registers in Redis
         3. Starts background tasks (monitor, result, heartbeat loops)
         """
@@ -464,8 +505,7 @@ class ProcessPoolManager:
             return
 
         logger.info(
-            f"ProcessPoolManager starting with min_workers={self.min_workers}, "
-            f"max_workers={self.max_workers}"
+            f"ProcessPoolManager starting (max_workers={self.max_workers})"
         )
 
         self._started = True
@@ -473,17 +513,14 @@ class ProcessPoolManager:
         self._started_at = datetime.now(timezone.utc)
 
         # Install requirements once (shared filesystem — all child processes inherit)
-        await asyncio.to_thread(install_requirements)
+        install_result = await asyncio.to_thread(install_requirements)
+        await _notify_requirements_failures(install_result)
 
         # Compute requirements status for heartbeat reporting
         self._update_requirements_status()
 
         # Start template process (loads deps, ready to fork)
         await self._start_template()
-
-        # Spawn initial pool
-        for _ in range(self.min_workers):
-            self._fork_process()
 
         # Register in Redis
         await self._register_worker()
@@ -510,9 +547,7 @@ class ProcessPoolManager:
             name="pool-command-listener"
         )
 
-        logger.info(
-            f"ProcessPoolManager started with {len(self.processes)} workers"
-        )
+        logger.info("ProcessPoolManager started")
 
     async def stop(self) -> None:
         """
@@ -608,40 +643,25 @@ class ProcessPoolManager:
                 pass
             handle.process.join(timeout=1)
 
-    def _get_idle_process(self) -> ProcessHandle | None:
+    async def _wait_for_slot(self, timeout: float = 30.0) -> bool:
         """
-        Get an IDLE process from the pool.
+        Wait until `len(self.processes) < self.max_workers`.
 
-        Returns:
-            ProcessHandle with IDLE state, or None if no idle processes
+        Used by route_execution when the pool is saturated. Returns True
+        as soon as a slot opens (a worker exited and notified the
+        condition), or False if `timeout` seconds elapse first.
         """
-        for handle in self.processes.values():
-            # Skip processes that are pending recycle - they're about to be terminated
-            if handle.pending_recycle:
-                continue
-            if handle.state == ProcessState.IDLE and handle.is_alive:
-                return handle
-        return None
-
-    async def _wait_for_idle_process(self, timeout: float = 30.0) -> ProcessHandle | None:
-        """
-        Wait for an idle process to become available.
-
-        Args:
-            timeout: Maximum seconds to wait
-
-        Returns:
-            ProcessHandle with IDLE state, or None if timeout
-        """
-        async with self._idle_condition:
+        async with self._slot_condition:
             try:
                 await asyncio.wait_for(
-                    self._idle_condition.wait_for(lambda: self._get_idle_process() is not None),
-                    timeout=timeout
+                    self._slot_condition.wait_for(
+                        lambda: len(self.processes) < self.max_workers
+                    ),
+                    timeout=timeout,
                 )
-                return self._get_idle_process()
+                return True
             except asyncio.TimeoutError:
-                return None
+                return False
 
     async def route_execution(
         self,
@@ -649,10 +669,11 @@ class ProcessPoolManager:
         context: dict[str, Any],
     ) -> None:
         """
-        Route an execution to an idle process.
+        Fork a one-shot worker for this execution.
 
-        The context is written to Redis, and the execution_id is sent
-        to the process via the work queue.
+        Waits for a free slot under the `max_workers` cap if the pool is
+        saturated. The context is written to Redis, and the execution_id
+        is sent to the forked child via the work queue.
 
         Args:
             execution_id: Unique identifier for the execution
@@ -678,35 +699,30 @@ class ProcessPoolManager:
                 f"exceeds {settings.memory_pressure_threshold:.0%} threshold"
             )
 
-        # Find or create idle process
-        idle = self._get_idle_process()
-        if idle is None:
-            # Scale up if possible
-            if len(self.processes) < self.max_workers:
-                idle = self._fork_process()
-            else:
-                # Wait for a process to become idle
-                idle = await self._wait_for_idle_process()
-                if idle is None:
-                    raise RuntimeError("No idle process available after timeout")
+        # Wait for a slot under the max_workers cap. Worker exits notify
+        # _slot_condition, so this wakes immediately once a slot frees.
+        if len(self.processes) >= self.max_workers:
+            if not await self._wait_for_slot():
+                raise RuntimeError("No worker slot available after timeout")
+
+        # Fork the worker. _fork_process returns a handle already in BUSY.
+        handle = self._fork_process()
 
         # Get timeout from context or use default
         timeout = context.get("timeout_seconds", self.execution_timeout_seconds)
 
-        # Assign work
-        idle.state = ProcessState.BUSY
-        idle.current_execution = ExecutionInfo(
+        handle.current_execution = ExecutionInfo(
             execution_id=execution_id,
             started_at=datetime.now(timezone.utc),
             timeout_seconds=timeout,
         )
-        idle.result_reported = False
+        handle.result_reported = False
 
-        # Send to process
-        idle.work_queue.put_nowait(execution_id)
+        # Send execution_id to the child
+        handle.work_queue.put_nowait(execution_id)
 
         logger.info(
-            f"Routed {execution_id[:8]}... to {idle.id} "
+            f"Routed {execution_id[:8]}... to {handle.id} "
             f"(timeout={timeout}s)"
         )
 
@@ -760,7 +776,6 @@ class ProcessPoolManager:
 
                 await self._check_timeouts()
                 await self._check_process_health()
-                await self._maybe_scale_down()
 
                 # Periodic stale queue cleanup
                 now = _time.monotonic()
@@ -806,12 +821,12 @@ class ProcessPoolManager:
                 # Report timeout
                 await self._report_timeout(handle)
 
-                # Remove from pool
-                del self.processes[handle.id]
-
-                # Spawn replacement if below min_workers
-                if len(self.processes) < self.min_workers:
-                    self._fork_process()
+                # Remove from pool — one-shot workers don't get replaced;
+                # the next execution's route_execution will fork on demand.
+                # pop() not del: a peer (_handle_result) may have removed it
+                # during the _kill_process / _report_timeout awaits above.
+                self.processes.pop(handle.id, None)
+                await self._notify_slot_free()
 
     async def _kill_process(self, handle: ProcessHandle) -> None:
         """
@@ -981,77 +996,64 @@ class ProcessPoolManager:
 
     async def _handle_recycle_process_command(self, command: dict[str, Any]) -> None:
         """
-        Handle recycle_process command - recycle a specific process by PID.
+        Handle recycle_process command.
 
-        Args:
-            command: Command dict with 'pid' field
+        Workers are one-shot in this pool, so "recycle this specific PID"
+        has no per-PID meaning — by the time the command lands the child
+        may already have exited. We delegate to the same drain+restart
+        path used by recycle_all so the operator-visible behavior is
+        consistent: in-flight executions are allowed to finish, then the
+        template is restarted so subsequent forks see fresh sys.modules.
         """
         pid = command.get("pid")
         reason = command.get("reason", "API request")
-
-        if pid is None:
-            logger.warning("recycle_process command missing 'pid' field")
-            return
-
-        logger.info(f"Processing recycle_process command for PID={pid} (reason: {reason})")
-
-        success = await self.recycle_process(pid=pid)
-        if success:
-            logger.info(f"Successfully recycled process PID={pid}")
-        else:
-            logger.warning(f"Failed to recycle process PID={pid} (not found or busy)")
+        logger.info(
+            f"Processing recycle_process command for PID={pid} (reason: {reason}) "
+            f"— delegating to drain+restart"
+        )
+        await self._recycle_via_drain(reason=reason)
 
     async def _handle_recycle_all_command(self, command: dict[str, Any]) -> None:
         """
-        Handle recycle_all command - mark all processes for recycling.
-
-        Idle processes are recycled immediately with progress updates.
-        Busy processes are marked for recycling after their current execution.
+        Handle recycle_all command: drain in-flight executions and
+        restart the template so future forks see fresh sys.modules.
 
         Args:
             command: Command dict with optional 'reason' field
         """
         reason = command.get("reason", "API request")
         logger.info(f"Processing recycle_all command (reason: {reason})")
+        await self._recycle_via_drain(reason=reason)
 
-        # Install requirements before spawning replacement processes
-        # (recycle_all is typically triggered after a package install on the API container;
-        # the worker container needs to pip install from requirements.txt)
-        await asyncio.to_thread(install_requirements)
+    async def _recycle_via_drain(self, reason: str) -> None:
+        """
+        Shared recycle path: pip-install requirements, then drain
+        in-flight executions and restart the template process.
+
+        Used by both `recycle_process` and `recycle_all` RPC commands as
+        well as by the post-pip-install consumer.
+        """
+        # Pick up any requirements changes published to S3/Redis since
+        # last start (recycle is typically triggered after a package
+        # install on the API container).
+        install_result = await asyncio.to_thread(install_requirements)
+        await _notify_requirements_failures(install_result)
         self._update_requirements_status()
 
-        count, idle_handles = self.mark_for_recycle()
-        logger.info(f"Marked {count} processes for recycling ({len(idle_handles)} idle)")
+        in_flight = len(self.processes)
+        try:
+            from src.core.pubsub import publish_pool_scaling
 
-        # Publish initial scaling event for UI feedback
-        if count > 0:
-            try:
-                from src.core.pubsub import publish_pool_scaling
+            await publish_pool_scaling(
+                worker_id=self.worker_id,
+                action="recycle_all",
+                processes_affected=in_flight,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish recycle scaling event: {e}")
 
-                await publish_pool_scaling(
-                    worker_id=self.worker_id,
-                    action="recycle_all",
-                    processes_affected=count,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to publish recycle_all event: {e}")
-
-        # Recycle idle processes with progress updates
-        for i, handle in enumerate(idle_handles):
-            try:
-                from src.core.pubsub import publish_pool_progress
-                await publish_pool_progress(
-                    worker_id=self.worker_id,
-                    action="recycle_all",
-                    current=i + 1,
-                    total=count,
-                    message=f"Recycling process {i + 1} of {count}...",
-                )
-            except Exception as e:
-                logger.warning(f"Failed to publish progress: {e}")
-
-            # Recycle this idle process
-            await self._recycle_idle_process(handle)
+        await self.drain_and_restart_template()
+        logger.info(f"recycle_via_drain complete (reason: {reason}, drained {in_flight} processes)")
 
     async def _handle_cancel_request(self, execution_id: str) -> None:
         """
@@ -1076,10 +1078,11 @@ class ProcessPoolManager:
                 # Report cancellation
                 await self._report_cancellation(handle)
 
-                # Remove from pool and replace
-                del self.processes[handle.id]
-                if len(self.processes) < self.min_workers:
-                    self._fork_process()
+                # Remove from pool — one-shot worker, no replacement.
+                # pop() not del: a peer (_handle_result) may have removed it
+                # during the _kill_process / _report_cancellation awaits.
+                self.processes.pop(handle.id, None)
+                await self._notify_slot_free()
 
                 return
 
@@ -1126,7 +1129,12 @@ class ProcessPoolManager:
         """
         to_remove: list[str] = []
 
-        for process_id, handle in self.processes.items():
+        # Snapshot to a list — items() iterator is unsafe across the awaits
+        # below (peer coroutines like _handle_result mutate self.processes).
+        for process_id, handle in list(self.processes.items()):
+            # Peer may have already cleaned this id during a prior await.
+            if process_id not in self.processes:
+                continue
             if not handle.is_alive and handle.state != ProcessState.KILLED:
                 # Case A: unexpected crash
                 logger.warning(
@@ -1158,13 +1166,19 @@ class ProcessPoolManager:
                     await self._report_orphan(handle)
                 to_remove.append(process_id)
 
-        # Remove crashed/orphaned processes
-        for process_id in to_remove:
-            del self.processes[process_id]
-
-        # Spawn replacements to maintain min_workers
-        while len(self.processes) < self.min_workers:
-            self._fork_process()
+        # Remove crashed/orphaned processes. One-shot workers don't get
+        # replaced — the next execution's route_execution will fork.
+        # Use pop() not del because a peer (e.g. _handle_result) may have
+        # already removed the id during one of the awaits above. We still
+        # notify slot waiters if anything was removed here, since the
+        # peer-delete path also notifies and double-notify is harmless.
+        if to_remove:
+            removed_any = False
+            for process_id in to_remove:
+                if self.processes.pop(process_id, None) is not None:
+                    removed_any = True
+            if removed_any:
+                await self._notify_slot_free()
 
     async def _report_orphan(self, handle: ProcessHandle) -> None:
         """
@@ -1220,59 +1234,6 @@ class ProcessPoolManager:
         except Exception as e:
             logger.exception(f"Error reporting crash: {e}")
 
-    async def _maybe_scale_down(self) -> None:
-        """
-        Remove excess idle processes if above min_workers.
-
-        Removes the oldest idle processes first to maintain min_workers.
-        """
-        idle_processes = [
-            p for p in self.processes.values()
-            if p.state == ProcessState.IDLE and p.is_alive
-        ]
-
-        excess = len(self.processes) - self.min_workers
-        if excess <= 0:
-            return
-
-        # Sort by age (oldest first)
-        idle_processes.sort(key=lambda p: p.started_at)
-
-        # Remove oldest idle processes up to excess count
-        to_remove = idle_processes[:excess]
-
-        if not to_remove:
-            return
-
-        # Publish scaling event
-        try:
-            from src.core.pubsub import publish_pool_scaling
-            await publish_pool_scaling(
-                worker_id=self.worker_id,
-                action="scale_down",
-                processes_affected=len(to_remove),
-            )
-        except Exception as e:
-            logger.warning(f"Failed to publish scale_down event: {e}")
-
-        for i, handle in enumerate(to_remove):
-            # Publish progress
-            try:
-                from src.core.pubsub import publish_pool_progress
-                await publish_pool_progress(
-                    worker_id=self.worker_id,
-                    action="scale_down",
-                    current=i + 1,
-                    total=len(to_remove),
-                    message=f"Terminating process {i + 1} of {len(to_remove)}...",
-                )
-            except Exception as e:
-                logger.warning(f"Failed to publish progress: {e}")
-
-            logger.info(f"Scaling down: removing idle process {handle.id}")
-            await self._terminate_process(handle)
-            del self.processes[handle.id]
-
     async def _result_loop(self) -> None:
         """
         Collect results from all process result queues.
@@ -1307,7 +1268,10 @@ class ProcessPoolManager:
         result: dict[str, Any],
     ) -> None:
         """
-        Handle a result from a worker process.
+        Handle a result from a one-shot worker process.
+
+        The child has already exited (or is about to); remove the handle,
+        wake any waiters blocked on a free slot, then fire the callback.
 
         Args:
             handle: ProcessHandle that produced the result
@@ -1321,52 +1285,11 @@ class ProcessPoolManager:
         handle.current_execution = None
         handle.executions_completed += 1
 
-        # On-demand mode: child exits after one execution, just clean up
-        if self.min_workers == 0:
-            if handle.id in self.processes:
-                del self.processes[handle.id]
-            # Forward result to callback
-            if self.on_result:
-                try:
-                    await self.on_result(result)
-                except Exception as e:
-                    logger.exception(f"Error in result callback: {e}")
-            return
-
-        # Check if should recycle (pending flag or execution count threshold)
-        if handle.pending_recycle:
-            logger.info(f"Recycling process {handle.id} (pending recycle flag)")
-            await self._recycle_process(handle)
-            return
-
-        if self.recycle_after_executions > 0:
-            if handle.executions_completed >= self.recycle_after_executions:
-                logger.info(
-                    f"Recycling process {handle.id} after "
-                    f"{handle.executions_completed} executions"
-                )
-                await self._recycle_process(handle)
-                return
-
-        # Memory-based recycling (safety net for Python arena fragmentation)
-        if self.recycle_memory_mb > 0:
-            rss_bytes = result.get("process_rss_bytes", 0)
-            if rss_bytes > 0:
-                rss_mb = rss_bytes / (1024 * 1024)
-                if rss_mb > self.recycle_memory_mb:
-                    logger.info(
-                        f"Recycling {handle.id}: RSS {rss_mb:.0f}MB > "
-                        f"threshold {self.recycle_memory_mb}MB"
-                    )
-                    await self._recycle_process(handle)
-                    return
-
-        # Return to IDLE state
-        handle.state = ProcessState.IDLE
-
-        # Notify any waiters that an idle process is available
-        async with self._idle_condition:
-            self._idle_condition.notify_all()
+        # Remove the handle (frees a slot under max_workers) and wake any
+        # waiters in route_execution that were blocked on a free slot.
+        # pop() not check-then-del: race-safe against concurrent cleaners.
+        self.processes.pop(handle.id, None)
+        await self._notify_slot_free()
 
         # Forward result to callback
         if self.on_result:
@@ -1375,137 +1298,10 @@ class ProcessPoolManager:
             except Exception as e:
                 logger.exception(f"Error in result callback: {e}")
 
-    async def _recycle_process(self, handle: ProcessHandle) -> None:
-        """
-        Recycle a process by terminating and spawning replacement.
-
-        Args:
-            handle: ProcessHandle to recycle
-        """
-        # Check if already removed (race condition with multiple recycle paths)
-        if handle.id not in self.processes:
-            return
-
-        logger.info(
-            f"Recycling process {handle.id} after "
-            f"{handle.executions_completed} executions"
-        )
-
-        # Remove from processes dict FIRST to prevent routing to dying process
-        # A new process will be spawned with a fresh work queue
-        del self.processes[handle.id]
-
-        # Spawn replacement immediately so we maintain worker count
-        self._fork_process()
-
-        # Then terminate the old process (this includes grace period wait)
-        await self._terminate_process(handle)
-
-    async def recycle_process(self, pid: int | None = None) -> bool:
-        """
-        Manually recycle a process.
-
-        If pid is provided, recycles that specific process.
-        If pid is None, recycles any idle process.
-
-        Args:
-            pid: Process ID to recycle, or None for any idle
-
-        Returns:
-            True if recycle was triggered, False if not found
-        """
-        target: ProcessHandle | None = None
-
-        if pid is not None:
-            for p in self.processes.values():
-                if p.pid == pid:
-                    target = p
-                    break
-        else:
-            # Find any idle process
-            target = self._get_idle_process()
-
-        if target is None:
-            return False
-
-        if target.state == ProcessState.BUSY:
-            logger.warning(f"Cannot recycle busy process {target.id}")
-            return False
-
-        await self._terminate_process(target)
-        # The process might have been removed by the monitor loop during the
-        # graceful shutdown wait. Only delete if still present.
-        if target.id in self.processes:
-            del self.processes[target.id]
-        self._fork_process()
-
-        return True
-
-    async def _scale_down_process(self, handle: ProcessHandle) -> None:
-        """
-        Terminate a process as part of scale-down operation.
-
-        Only terminates idle processes. If the process becomes busy
-        before we can terminate it, skip it.
-
-        Args:
-            handle: ProcessHandle to terminate
-        """
-        if handle.state != ProcessState.IDLE:
-            logger.debug(f"Skipping scale-down of {handle.id} - no longer idle")
-            return
-
-        if handle.id not in self.processes:
-            return  # Already removed
-
-        logger.info(f"Scale-down: terminating process {handle.id}")
-
-        # Remove from processes dict
-        del self.processes[handle.id]
-
-        # Terminate the process
-        await self._terminate_process(handle)
-
-    def mark_for_recycle(self) -> tuple[int, list[ProcessHandle]]:
-        """
-        Mark all worker processes for recycling after their current execution.
-
-        Called after package installation so workers pick up newly installed
-        packages. Each process will be recycled (terminated + respawned) after
-        completing its current execution. Returns list of idle processes to
-        be recycled so caller can publish progress.
-
-        Returns:
-            Tuple of (total count, list of idle handles to recycle immediately)
-        """
-        idle_handles: list[ProcessHandle] = []
-        marked_for_later = 0
-
-        for handle in list(self.processes.values()):
-            if handle.state == ProcessState.IDLE:
-                # Idle process - mark for immediate recycle
-                handle.pending_recycle = True
-                idle_handles.append(handle)
-            else:
-                # Busy process - mark for recycle after current execution
-                handle.pending_recycle = True
-                marked_for_later += 1
-
-        logger.info(
-            f"Marked {len(self.processes)} processes for recycle "
-            f"({len(idle_handles)} immediate, {marked_for_later} after execution)"
-        )
-        return len(self.processes), idle_handles
-
-    async def _recycle_idle_process(self, handle: ProcessHandle) -> None:
-        """Recycle an idle process immediately."""
-        if handle.id not in self.processes:
-            return  # Already removed
-        if handle.state != ProcessState.IDLE:
-            return  # No longer idle, will be recycled after execution
-
-        logger.info(f"Recycling idle process {handle.id} (package install)")
-        await self._recycle_process(handle)
+    async def _notify_slot_free(self) -> None:
+        """Wake any tasks blocked in `_wait_for_slot`."""
+        async with self._slot_condition:
+            self._slot_condition.notify_all()
 
     async def _heartbeat_loop(self) -> None:
         """
@@ -1675,7 +1471,6 @@ class ProcessPoolManager:
                 "private_dirty_kb": private_dirty_kb,
                 "uptime_seconds": p.uptime_seconds,
                 "executions_completed": p.executions_completed,
-                "pending_recycle": p.pending_recycle,
             }
             if p.current_execution:
                 info["execution"] = {
@@ -1685,7 +1480,9 @@ class ProcessPoolManager:
                 }
             processes.append(info)
 
-        idle_count = len([p for p in self.processes.values() if p.state == ProcessState.IDLE])
+        # In on-demand mode every handle is BUSY or KILLED — no idle pool.
+        # Keep `idle_count` in the heartbeat shape for back-compat (always 0).
+        idle_count = 0
         busy_count = len([p for p in self.processes.values() if p.state == ProcessState.BUSY])
 
         memory_current, memory_max = get_cgroup_memory()
@@ -1780,12 +1577,9 @@ def get_process_pool() -> ProcessPoolManager:
     if _pool is None:
         settings = get_settings()
         _pool = ProcessPoolManager(
-            min_workers=0,  # On-demand (JIT) mode — no warm pool
             max_workers=settings.max_workers,
             execution_timeout_seconds=settings.execution_timeout_seconds,
             graceful_shutdown_seconds=settings.graceful_shutdown_seconds,
-            recycle_after_executions=settings.recycle_after_executions,
-            recycle_memory_mb=settings.recycle_memory_mb,
             heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
             registration_ttl_seconds=settings.worker_registration_ttl_seconds,
         )

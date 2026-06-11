@@ -25,7 +25,7 @@ from src.core.cache.keys import (
 from src.core.log_safety import log_safe
 from src.config import get_settings
 from src.core.auth import CurrentActiveUser, get_current_user_from_db
-from src.core.database import DbSession
+from src.core.db_deps import DbSession
 from src.core.security import create_access_token, create_refresh_token, generate_csrf_token
 from src.services.oauth_sso import OAuthError, OAuthService
 from src.services.user_provisioning import ensure_user_provisioned, get_user_roles
@@ -356,6 +356,8 @@ async def oauth_callback(
         # Existing OAuth user - update last login
         user = existing_user
         user.last_login = datetime.now(timezone.utc)
+        user.is_registered = True
+        user.is_verified = True
 
         # Update OAuth account
         await oauth_service.link_oauth_account(user, user_info, tokens)
@@ -375,6 +377,8 @@ async def oauth_callback(
             await oauth_service.link_oauth_account(user, user_info, tokens)
 
             user.last_login = datetime.now(timezone.utc)
+            user.is_registered = True
+            user.is_verified = True
             await db.commit()
 
         except ValueError as e:

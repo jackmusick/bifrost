@@ -21,6 +21,7 @@ from src.core.csrf import CSRFMiddleware
 from src.core.embed_middleware import EmbedScopeMiddleware
 from src.core.database import close_db, init_db
 from src.core.pubsub import manager as pubsub_manager
+from src.routers.health import close_health_check_clients
 from src.routers import (
     auth_router,
     mfa_router,
@@ -47,6 +48,7 @@ from src.routers import (
     oauth_connections_router,
     endpoints_router,
     cli_router,
+    cli_install_router,
     notifications_router,
     profile_router,
     agent_runs_router,
@@ -62,14 +64,13 @@ from src.routers import (
     usage_reports_router,
     ai_pricing_router,
     platform_models_router,
-    email_config_router,
-    email_sdk_router,
     oauth_config_router,
     tools_router,
     mcp_router,
     events_router,
     hooks_router,
     tables_router,
+    claims_router,
     knowledge_sources_router,
     app_embed_secrets_router,
     applications_router,
@@ -89,6 +90,7 @@ from src.routers import (
     mcp_connections_router,
     mcp_me_connections_router,
     mcp_oauth_callback_router,
+    sdk_modules_router,
 )
 
 # Configure logging
@@ -164,6 +166,7 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Shutting down Bifrost API...")
 
     await pubsub_manager.close()
+    await close_health_check_clients()
     await close_db()
     logger.info("Bifrost API shutdown complete")
 
@@ -544,6 +547,7 @@ def create_app() -> FastAPI:
     app.include_router(oauth_connections_router)
     app.include_router(endpoints_router)
     app.include_router(cli_router)
+    app.include_router(cli_install_router)
     app.include_router(notifications_router)
     app.include_router(profile_router)
     app.include_router(agents_router)
@@ -559,14 +563,13 @@ def create_app() -> FastAPI:
     app.include_router(usage_reports_router)
     app.include_router(ai_pricing_router)
     app.include_router(platform_models_router)
-    app.include_router(email_config_router)
-    app.include_router(email_sdk_router)
     app.include_router(oauth_config_router)
     app.include_router(tools_router)
     app.include_router(mcp_router)
     app.include_router(events_router)
     app.include_router(hooks_router)
     app.include_router(tables_router)
+    app.include_router(claims_router)
     app.include_router(knowledge_sources_router)
     app.include_router(app_embed_secrets_router)
     app.include_router(applications_router)
@@ -585,6 +588,7 @@ def create_app() -> FastAPI:
     app.include_router(mcp_connections_router)
     app.include_router(mcp_me_connections_router)
     app.include_router(mcp_oauth_callback_router)
+    app.include_router(sdk_modules_router)
 
     # Mount MCP OAuth routes at root level (required by RFC 8414/9728)
     # These must be registered BEFORE the FastMCP ASGI mount

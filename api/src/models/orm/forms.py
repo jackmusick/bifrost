@@ -84,6 +84,8 @@ class FormField(Base):
     form: Mapped["Form"] = relationship(back_populates="fields")
 
 
+# Execution-resolution entity — access via FormRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class Form(Base):
     """Form database table."""
 

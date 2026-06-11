@@ -75,7 +75,7 @@ async def mcp_bridge_env(e2e_api_url) -> AsyncIterator[str]:
     """Point the parity tools' HTTP bridge at the running API container.
 
     The bridge falls back to in-process ASGITransport without this — but
-    that won't share the real API's DB/Redis/MinIO state we need for
+    that won't share the real API's DB/Redis/object-storage state we need for
     end-to-end behaviour.
     """
     prev = os.environ.get("BIFROST_MCP_HTTP_BRIDGE_URL")
@@ -139,6 +139,20 @@ SIGNATURE_PARITY_SPECS: list[dict] = [
         "model_path": "src.models.contracts.config:ConfigUpdate",
         "tool_path": "src.services.mcp_server.tools.configs:update_config",
         "extra_args": {"config_ref"},
+        "field_renames": {},
+    },
+    {
+        "model_path": "src.models.contracts.claims:CustomClaimCreate",
+        "tool_path": "src.services.mcp_server.tools.claims:create_claim",
+        # `scope` is an org-targeting query param, not a DTO field — mirrors
+        # the same convention used by other org-scoped router endpoints.
+        "extra_args": {"scope"},
+        "field_renames": {},
+    },
+    {
+        "model_path": "src.models.contracts.claims:CustomClaimUpdate",
+        "tool_path": "src.services.mcp_server.tools.claims:update_claim",
+        "extra_args": {"name", "scope"},
         "field_renames": {},
     },
     {

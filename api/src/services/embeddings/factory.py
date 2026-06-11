@@ -20,7 +20,6 @@ from src.services.embeddings.base import (
     BaseEmbeddingClient,
     EmbeddingConfig,
 )
-from src.services.embeddings.openai_client import OpenAIEmbeddingClient
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +74,7 @@ async def get_embedding_config(session: AsyncSession) -> EmbeddingConfig:
                     api_key=api_key,
                     model=config_data.get("model", DEFAULT_EMBEDDING_MODEL),
                     dimensions=config_data.get("dimensions", EMBEDDING_DIMENSIONS),
+                    endpoint=config_data.get("endpoint"),
                 )
             except Exception as e:
                 logger.error(f"Failed to decrypt embedding API key: {e}")
@@ -93,12 +93,24 @@ async def get_embedding_config(session: AsyncSession) -> EmbeddingConfig:
     if llm_config and llm_config.value_json:
         config_data = llm_config.value_json
         provider = config_data.get("provider", "openai")
+        llm_endpoint = config_data.get("endpoint")
 
         if provider != "openai":
             raise ValueError(
-                "Knowledge store requires OpenAI for embeddings. "
-                "Either configure an OpenAI embedding key in AI Configuration, "
-                "or set your LLM provider to OpenAI."
+                "Knowledge store requires an OpenAI-compatible provider for embeddings. "
+                "Either configure a dedicated embedding key in AI Configuration, "
+                "or set your LLM provider to OpenAI (or an OpenAI-compatible endpoint)."
+            )
+
+        # Only fall back when the LLM is on stock OpenAI. For custom endpoints
+        # (OpenRouter, Azure, Ollama, etc.) we don't know what the right
+        # embedding model id is — `text-embedding-3-small` is OpenAI-only.
+        # Force the user to configure embeddings explicitly.
+        if llm_endpoint:
+            raise ValueError(
+                "LLM provider uses a custom endpoint; embeddings require a "
+                "dedicated configuration. Please configure embeddings in "
+                "System Settings > AI Configuration."
             )
 
         encrypted_api_key = config_data.get("encrypted_api_key")
@@ -117,6 +129,7 @@ async def get_embedding_config(session: AsyncSession) -> EmbeddingConfig:
                 api_key=api_key,
                 model=DEFAULT_EMBEDDING_MODEL,
                 dimensions=EMBEDDING_DIMENSIONS,
+                endpoint=None,
             )
         except Exception as e:
             logger.error(f"Failed to decrypt LLM API key for embeddings: {e}")
@@ -144,4 +157,8 @@ async def get_embedding_client(session: AsyncSession) -> BaseEmbeddingClient:
         ValueError: If configuration is invalid or missing
     """
     config = await get_embedding_config(session)
+    # Imported lazily so the openai SDK stays out of the worker/scheduler
+    # import closure (tests/unit/test_import_hygiene.py).
+    from src.services.embeddings.openai_client import OpenAIEmbeddingClient
+
     return OpenAIEmbeddingClient(config)

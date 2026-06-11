@@ -9,18 +9,20 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.orm.base import Base
+from src.models.orm.vector_type import Vector
 
 if TYPE_CHECKING:
     from src.models.orm.organizations import Organization
     from src.models.orm.users import User
 
 
+# Execution-resolution entity — access via KnowledgeRepository (OrgScopedRepository).
+# See api/src/repositories/README.md.
 class KnowledgeStore(Base):
     """
     Vector knowledge store for semantic search.
@@ -63,8 +65,13 @@ class KnowledgeStore(Base):
         "metadata", JSONB, nullable=False, default=dict
     )
 
-    # Vector embedding (1536 dimensions for text-embedding-3-small)
-    embedding: Mapped[list] = mapped_column(Vector(1536), nullable=False)
+    # Vector embedding — unconstrained dim so any embedding model works.
+    # Search relies on the *currently configured* embedder being the one used
+    # at store time (otherwise stored vectors live in a different vector space
+    # than the query, and similarity is meaningless even at matching dims).
+    # No fixed-dim ANN index because pgvector's HNSW/IVFFlat both require a
+    # known dimension; sequential scan is fine at our scale.
+    embedding: Mapped[list] = mapped_column(Vector(), nullable=False)
 
     # Audit
     created_at: Mapped[datetime] = mapped_column(
@@ -80,6 +87,19 @@ class KnowledgeStore(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Chunking — see migration knowledge_chunking_columns.
+    # Long content is split on store() into multiple rows sharing
+    # (namespace, organization_id, key). Single-chunk rows have
+    # chunk_index=0, chunk_count=1, which is byte-identical to pre-chunking
+    # storage. chunk_count is denormalized for cheap "is this a chunked doc"
+    # checks without an extra query.
+    chunk_index: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default=text("0")
+    )
+    chunk_count: Mapped[int] = mapped_column(
+        nullable=False, default=1, server_default=text("1")
+    )
+
     # Relationships
     organization: Mapped["Organization | None"] = relationship(
         "Organization", back_populates="knowledge_entries"
@@ -87,15 +107,23 @@ class KnowledgeStore(Base):
     creator: Mapped["User | None"] = relationship("User")
 
     __table_args__ = (
-        # Unique constraint on namespace + org + key (when key is provided)
-        # This enables upsert behavior for documents with keys
+        # Unique constraint on namespace + org + key + chunk_index (when key is provided)
+        # This enables upsert behavior for documents with keys, while allowing
+        # multiple chunk rows per key.
         UniqueConstraint(
-            "namespace", "organization_id", "key",
-            name="uq_knowledge_ns_org_key",
+            "namespace", "organization_id", "key", "chunk_index",
+            name="uq_knowledge_ns_org_key_chunk",
             postgresql_nulls_not_distinct=True,  # Treat NULL org_id as equal for uniqueness
         ),
         # Namespace + org lookup (for listing and searching)
         Index("ix_knowledge_ns_org", "namespace", "organization_id"),
+        # Lookup index for "find all chunks of this doc" — used by reindex
+        # grouping and search dedup. Restricted to non-null keys.
+        Index(
+            "ix_knowledge_ns_org_key",
+            "namespace", "organization_id", "key",
+            postgresql_where=text("key IS NOT NULL"),
+        ),
         # Metadata filtering (GIN index for JSONB) - uses column name "metadata" not attribute name
         Index("ix_knowledge_metadata", "metadata", postgresql_using="gin"),
         # Note: Vector index (IVFFlat) is created in migration since it requires

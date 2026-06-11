@@ -150,6 +150,21 @@ export interface PackageComplete {
 	message: string;
 }
 
+export interface PackageProgress {
+	action: "install" | "uninstall";
+	line: string;
+	total: number;
+	installing: number;
+	// FOLDED count: workers past the install step (installed + recycling +
+	// recycled). recycling/recycled below are raw — don't sum installed with
+	// them or you'll double-count.
+	installed: number;
+	recycling: number;
+	recycled: number;
+	failed: number;
+	failures: { worker: string; package: string | null; error: string | null }[];
+}
+
 export interface LocalRunnerStateUpdate {
 	file_path: string;
 	workflows: Array<{
@@ -166,14 +181,6 @@ export interface LocalRunnerStateUpdate {
 	selected_workflow: string | null;
 	pending: boolean;
 	execution_id: string | null;
-}
-
-// CLI Session state from backend - uses generated CLISessionResponse type
-import type { CLISessionResponse } from "@/services/cli";
-
-export interface CLISessionUpdate {
-	session_id: string;
-	state: CLISessionResponse | null;
 }
 
 // Event source update types for real-time event streaming
@@ -438,8 +445,18 @@ type WebSocketMessage =
 	| { type: "notification_created"; notification: NotificationPayload }
 	| { type: "notification_updated"; notification: NotificationPayload }
 	| { type: "notification_dismissed"; notification_id: string }
-	| { type: "log"; level: string; message: string }
-	| { type: "complete"; status: "success" | "error"; message: string }
+	| {
+			type: "progress";
+			action: "install" | "uninstall";
+			line: string;
+			total: number;
+			installing: number;
+			installed: number;
+			recycling: number;
+			recycled: number;
+			failed: number;
+			failures: { worker: string; package: string | null; error: string | null }[];
+	  }
 	| { type: "git_log"; jobId: string; level: string; message: string }
 	| { type: "git_progress"; jobId: string; phase: string; current: number; total: number; path?: string | null }
 	| { type: "git_complete"; jobId: string; status: "success" | "error"; message: string; [key: string]: unknown }
@@ -451,11 +468,6 @@ type WebSocketMessage =
 	| {
 			type: "local_runner_state_update";
 			state: LocalRunnerStateUpdate | null;
-	  }
-	| {
-			type: "cli_session_update";
-			session_id: string;
-			state: CLISessionUpdate["state"];
 	  }
 	| {
 			type: "event_created" | "event_updated";
@@ -491,8 +503,7 @@ type ExecutionUpdateCallback = (update: ExecutionUpdate) => void;
 type ExecutionLogCallback = (log: ExecutionLog) => void;
 type NewExecutionCallback = (execution: NewExecution) => void;
 type HistoryUpdateCallback = (update: HistoryUpdate) => void;
-type PackageLogCallback = (log: PackageLog) => void;
-type PackageCompleteCallback = (complete: PackageComplete) => void;
+type PackageProgressCallback = (p: PackageProgress) => void;
 // Git sync progress type
 export interface GitProgress {
 	phase: string;
@@ -513,7 +524,6 @@ type GitLogCallback = (log: PackageLog) => void;
 type GitProgressCallback = (progress: GitProgress) => void;
 type GitCompleteCallback = (complete: PackageComplete & Record<string, unknown>) => void;
 type LocalRunnerStateCallback = (state: LocalRunnerStateUpdate | null) => void;
-type CLISessionUpdateCallback = (update: CLISessionUpdate) => void;
 type EventSourceUpdateCallback = (update: EventSourceUpdate) => void;
 type ChatStreamCallback = (chunk: ChatStreamChunk) => void;
 type AppDraftUpdateCallback = (update: AppDraftUpdate) => void;
@@ -560,17 +570,12 @@ class WebSocketService {
 	>();
 	private newExecutionCallbacks = new Set<NewExecutionCallback>();
 	private historyUpdateCallbacks = new Set<HistoryUpdateCallback>();
-	private packageLogCallbacks = new Set<PackageLogCallback>();
-	private packageCompleteCallbacks = new Set<PackageCompleteCallback>();
+	private packageProgressCallbacks = new Set<PackageProgressCallback>();
 	private gitLogCallbacks = new Map<string, Set<GitLogCallback>>();
 	private gitProgressCallbacks = new Map<string, Set<GitProgressCallback>>();
 	private gitCompleteCallbacks = new Map<string, Set<GitCompleteCallback>>();
 	private gitOpCompleteCallbacks = new Map<string, Set<(complete: GitOpComplete) => void>>();
 	private localRunnerStateCallbacks = new Set<LocalRunnerStateCallback>();
-	private cliSessionUpdateCallbacks = new Map<
-		string,
-		Set<CLISessionUpdateCallback>
-	>();
 	private eventSourceUpdateCallbacks = new Map<
 		string,
 		Set<EventSourceUpdateCallback>
@@ -822,17 +827,20 @@ class WebSocketService {
 					.removeNotification(message.notification_id);
 				break;
 
-			case "log":
-				// Package installation log message
-				this.packageLogCallbacks.forEach((cb) =>
-					cb({ level: message.level, message: message.message }),
-				);
-				break;
-
-			case "complete":
-				// Package installation complete message
-				this.packageCompleteCallbacks.forEach((cb) =>
-					cb({ status: message.status, message: message.message }),
+			case "progress":
+				// Aggregated package-install progress (one rolling line across workers)
+				this.packageProgressCallbacks.forEach((cb) =>
+					cb({
+						action: message.action,
+						line: message.line,
+						total: message.total,
+						installing: message.installing,
+						installed: message.installed,
+						recycling: message.recycling,
+						recycled: message.recycled,
+						failed: message.failed,
+						failures: message.failures,
+					}),
 				);
 				break;
 
@@ -902,11 +910,6 @@ class WebSocketService {
 				this.localRunnerStateCallbacks.forEach((cb) =>
 					cb(message.state),
 				);
-				break;
-
-			case "cli_session_update":
-				// CLI session state update from backend
-				this.dispatchCLISessionUpdate(message);
 				break;
 
 			case "event_created":
@@ -992,23 +995,6 @@ class WebSocketService {
 
 	private dispatchPoolMessage(message: PoolMessage) {
 		this.poolMessageCallbacks.forEach((cb) => cb(message));
-	}
-
-	private dispatchCLISessionUpdate(message: {
-		type: "cli_session_update";
-		session_id: string;
-		state: CLISessionUpdate["state"];
-	}) {
-		const update: CLISessionUpdate = {
-			session_id: message.session_id,
-			state: message.state,
-		};
-
-		// Dispatch to session-specific callbacks
-		const callbacks = this.cliSessionUpdateCallbacks.get(
-			message.session_id,
-		);
-		callbacks?.forEach((cb) => cb(update));
 	}
 
 	private dispatchEventSourceUpdate(message: {
@@ -1285,22 +1271,12 @@ class WebSocketService {
 	}
 
 	/**
-	 * Subscribe to package installation logs
+	 * Subscribe to aggregated package-install progress events
 	 */
-	onPackageLog(callback: PackageLogCallback): () => void {
-		this.packageLogCallbacks.add(callback);
+	onPackageProgress(callback: PackageProgressCallback): () => void {
+		this.packageProgressCallbacks.add(callback);
 		return () => {
-			this.packageLogCallbacks.delete(callback);
-		};
-	}
-
-	/**
-	 * Subscribe to package installation completion
-	 */
-	onPackageComplete(callback: PackageCompleteCallback): () => void {
-		this.packageCompleteCallbacks.add(callback);
-		return () => {
-			this.packageCompleteCallbacks.delete(callback);
+			this.packageProgressCallbacks.delete(callback);
 		};
 	}
 
@@ -1423,27 +1399,6 @@ class WebSocketService {
 		this.localRunnerStateCallbacks.add(callback);
 		return () => {
 			this.localRunnerStateCallbacks.delete(callback);
-		};
-	}
-
-	/**
-	 * Subscribe to CLI session updates for a specific session
-	 */
-	onCLISessionUpdate(
-		sessionId: string,
-		callback: CLISessionUpdateCallback,
-	): () => void {
-		if (!this.cliSessionUpdateCallbacks.has(sessionId)) {
-			this.cliSessionUpdateCallbacks.set(sessionId, new Set());
-		}
-		this.cliSessionUpdateCallbacks.get(sessionId)!.add(callback);
-
-		// Return unsubscribe function
-		return () => {
-			this.cliSessionUpdateCallbacks.get(sessionId)?.delete(callback);
-			if (this.cliSessionUpdateCallbacks.get(sessionId)?.size === 0) {
-				this.cliSessionUpdateCallbacks.delete(sessionId);
-			}
 		};
 	}
 

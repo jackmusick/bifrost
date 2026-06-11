@@ -1,19 +1,16 @@
 import { useState, useMemo } from "react";
 import {
-	Shield,
-	Users as UsersIcon,
+	Crown,
 	RefreshCw,
 	UserCog,
-	Edit,
 	Plus,
-	Trash2,
-	Globe,
-	Building2,
 	Star,
+	Building2,
 	ArrowUp,
 	ArrowDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	DataTable,
 	DataTableBody,
@@ -22,7 +19,6 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -48,21 +44,53 @@ import {
 	useDeleteUser,
 	useUpdateUser,
 } from "@/hooks/useUsers";
+import { useUserSelection } from "@/hooks/useUserSelection";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrgScope } from "@/contexts/OrgScopeContext";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { CreateUserDialog } from "@/components/users/CreateUserDialog";
 import { EditUserDialog } from "@/components/users/EditUserDialog";
+import { UserActionsMenu } from "@/components/users/UserActionsMenu";
+import { RegistrationLinkDialog } from "@/components/users/RegistrationLinkDialog";
+import { UserStatusBadge } from "@/components/users/UserStatusBadge";
+import { BulkActionBar } from "@/components/users/BulkActionBar";
+import { UserEmailCell } from "@/components/users/UserEmailCell";
+import {
+	BulkMoveOrgDialog,
+	BulkReplaceRolesDialog,
+	BulkResultDialog,
+	BulkSetActiveDialog,
+} from "@/components/users/BulkUserDialogs";
+import {
+	useRegenerateInvite,
+	useResendInvite,
+	useRevokeInvite,
+	useSendInvite,
+} from "@/hooks/useUserInvites";
+import { useEventSources } from "@/services/events";
 import { toast } from "sonner";
-import type { components } from "@/lib/v1";
+import type { components, components as v1 } from "@/lib/v1";
 type User = components["schemas"]["UserPublic"];
 type Organization = components["schemas"]["OrganizationPublic"];
+type RegistrationLinkDialogState = {
+	userId: string;
+	email: string;
+	url: string;
+} | null;
 
-type SortColumn = "organization" | "name" | "email" | "type" | "created" | "last_login";
+type SortColumn = "name" | "email" | "status" | "created" | "last_login";
 type SortDirection = "asc" | "desc";
 
-function SortIcon({ column, sortColumn, sortDirection }: { column: SortColumn; sortColumn: SortColumn; sortDirection: SortDirection }) {
+function SortIcon({
+	column,
+	sortColumn,
+	sortDirection,
+}: {
+	column: SortColumn;
+	sortColumn: SortColumn;
+	sortDirection: SortDirection;
+}) {
 	if (sortColumn !== column) return null;
 	return sortDirection === "asc" ? (
 		<ArrowUp className="inline ml-1 h-3 w-3" />
@@ -84,11 +112,12 @@ export function Users() {
 	);
 	const [sortColumn, setSortColumn] = useState<SortColumn>("name");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+	const [registrationLinkDialog, setRegistrationLinkDialog] =
+		useState<RegistrationLinkDialogState>(null);
 
 	const { scope } = useOrgScope();
 	const { user: currentUser, isPlatformAdmin } = useAuth();
 
-	// Fetch users with scope filter (undefined = all, null = global only, UUID = specific org)
 	const {
 		data: users,
 		isLoading,
@@ -99,63 +128,81 @@ export function Users() {
 	);
 	const deleteMutation = useDeleteUser();
 	const updateMutation = useUpdateUser();
+	const resendMutation = useResendInvite();
+	const regenerateMutation = useRegenerateInvite();
+	const revokeMutation = useRevokeInvite();
+	const sendInviteMutation = useSendInvite();
+	const { data: eventSources } = useEventSources({
+		sourceType: "topic",
+		limit: 100,
+	});
+	const inviteAutomationConfigured =
+		eventSources?.items?.some(
+			(source) =>
+				source.is_active &&
+				source.event_type === "user.invited" &&
+				source.subscription_count > 0,
+		) ?? false;
 
-	// Fetch organizations for the org name lookup (platform admins only)
 	const { data: organizations } = useOrganizations({
 		enabled: isPlatformAdmin,
 	});
 
-	// Helper to get organization info from ID
 	const getOrgInfo = (
 		orgId: string | null | undefined,
 	): { name: string; isProvider: boolean } => {
 		if (!orgId) return { name: "Platform", isProvider: false };
 		const org = organizations?.find((o: Organization) => o.id === orgId);
-		return { name: org?.name || orgId, isProvider: org?.is_provider ?? false };
+		return {
+			name: org?.name || orgId,
+			isProvider: org?.is_provider ?? false,
+		};
 	};
 
-	// Apply search filter
 	const filteredUsers = useSearch(users || [], searchTerm, ["email", "name"]);
 
-	// Apply sorting
 	const sortedUsers = useMemo(() => {
 		if (!filteredUsers) return [];
 		return [...filteredUsers].sort((a, b) => {
 			const dir = sortDirection === "asc" ? 1 : -1;
 			switch (sortColumn) {
-				case "organization": {
-					const aOrg = a.organization_id
-						? (organizations?.find((o: Organization) => o.id === a.organization_id)?.name || a.organization_id)
-						: "Platform";
-					const bOrg = b.organization_id
-						? (organizations?.find((o: Organization) => o.id === b.organization_id)?.name || b.organization_id)
-						: "Platform";
-					return dir * aOrg.localeCompare(bOrg);
-				}
 				case "name":
-					return dir * (a.name || a.email || "").localeCompare(b.name || b.email || "");
+					return (
+						dir *
+						(a.name || a.email || "").localeCompare(
+							b.name || b.email || "",
+						)
+					);
 				case "email":
 					return dir * (a.email || "").localeCompare(b.email || "");
-				case "type": {
-					const aVal = a.is_superuser ? 1 : 0;
-					const bVal = b.is_superuser ? 1 : 0;
-					return dir * (aVal - bVal);
+				case "status": {
+					const aVal = a.invite_status ?? "active";
+					const bVal = b.invite_status ?? "active";
+					return dir * aVal.localeCompare(bVal);
 				}
 				case "created": {
-					const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
-					const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+					const aDate = a.created_at
+						? new Date(a.created_at).getTime()
+						: 0;
+					const bDate = b.created_at
+						? new Date(b.created_at).getTime()
+						: 0;
 					return dir * (aDate - bDate);
 				}
 				case "last_login": {
-					const aDate = a.last_login ? new Date(a.last_login).getTime() : 0;
-					const bDate = b.last_login ? new Date(b.last_login).getTime() : 0;
+					const aDate = a.last_login
+						? new Date(a.last_login).getTime()
+						: 0;
+					const bDate = b.last_login
+						? new Date(b.last_login).getTime()
+						: 0;
 					return dir * (aDate - bDate);
 				}
 				default:
 					return 0;
 			}
 		});
-	}, [filteredUsers, sortColumn, sortDirection, organizations]);
+	}, [filteredUsers, sortColumn, sortDirection]);
 
 	const handleSort = (column: SortColumn) => {
 		if (sortColumn === column) {
@@ -166,6 +213,48 @@ export function Users() {
 		}
 	};
 
+	// ===== Bulk selection + actions =====
+	const disabledSelectionIds = useMemo(
+		() => (currentUser ? [currentUser.id] : []),
+		[currentUser],
+	);
+	const selection = useUserSelection(sortedUsers, disabledSelectionIds);
+
+	type BulkMode = "move_org" | "replace_roles" | "disable" | "enable" | null;
+	const [bulkMode, setBulkMode] = useState<BulkMode>(null);
+	const [bulkResult, setBulkResult] = useState<
+		v1["schemas"]["BulkUserResponse"] | null
+	>(null);
+	const [bulkResultUsers, setBulkResultUsers] = useState<User[]>([]);
+
+	const activeMix: "all_active" | "all_inactive" | "mixed" = useMemo(() => {
+		const selected = selection.selectedItems;
+		if (selected.length === 0) return "all_active";
+		const anyActive = selected.some((u) => u.is_active);
+		const anyInactive = selected.some((u) => !u.is_active);
+		if (anyActive && anyInactive) return "mixed";
+		return anyActive ? "all_active" : "all_inactive";
+	}, [selection.selectedItems]);
+
+	const handlePartialFailure = (
+		result: v1["schemas"]["BulkUserResponse"],
+		opUsers: User[],
+	) => {
+		setBulkResult(result);
+		setBulkResultUsers(opUsers);
+	};
+
+	// Cancel/dismiss: just close the dialog, keep the selection so the user
+	// can pivot to a different action without re-ticking every row. Selection
+	// is cleared via `onSuccess` (below) only after a successful submit.
+	const closeBulk = () => {
+		setBulkMode(null);
+	};
+
+	const onBulkSuccess = () => {
+		selection.clear();
+	};
+
 	const handleEditUser = (user: User) => {
 		setSelectedUser(user);
 		setIsEditOpen(true);
@@ -173,11 +262,9 @@ export function Users() {
 
 	const handleToggleActive = (user: User) => {
 		if (user.is_active) {
-			// Disabling requires confirmation
 			setSelectedUser(user);
 			setIsDisableOpen(true);
 		} else {
-			// Enabling is instant
 			handleEnableUser(user);
 		}
 	};
@@ -259,22 +346,16 @@ export function Users() {
 		setSelectedUser(undefined);
 	};
 
-	const getUserTypeBadge = (isSuperuser: boolean) => {
-		return isSuperuser ? (
-			<Badge variant="default">
-				<Shield className="mr-1 h-3 w-3" />
-				Platform Admin
-			</Badge>
-		) : (
-			<Badge variant="secondary">
-				<UsersIcon className="mr-1 h-3 w-3" />
-				Organization User
-			</Badge>
-		);
-	};
-
 	const isSelf = (user: User) =>
 		!!(currentUser && user.id === currentUser.id);
+
+	const showRegistrationLink = (user: User, url: string) => {
+		setRegistrationLinkDialog({
+			userId: user.id,
+			email: user.email,
+			url,
+		});
+	};
 
 	return (
 		<div className="h-full flex flex-col space-y-6 max-w-7xl mx-auto">
@@ -355,177 +436,309 @@ export function Users() {
 					<DataTable>
 						<DataTableHeader>
 							<DataTableRow>
-								{isPlatformAdmin && (
-									<DataTableHead
-										className="w-0 whitespace-nowrap cursor-pointer select-none"
-										onClick={() => handleSort("organization")}
-									>
-										Organization
-										<SortIcon column="organization" sortColumn={sortColumn} sortDirection={sortDirection} />
-									</DataTableHead>
-								)}
+								<DataTableHead className="w-0 whitespace-nowrap">
+									<Checkbox
+										aria-label="Select all visible users"
+										checked={
+											selection.allVisibleSelected
+												? true
+												: selection.someVisibleSelected
+													? "indeterminate"
+													: false
+										}
+										onCheckedChange={() =>
+											selection.toggleAllVisible()
+										}
+									/>
+								</DataTableHead>
+								<DataTableHead className="w-0 whitespace-nowrap">
+									Organization
+								</DataTableHead>
 								<DataTableHead
-									className="cursor-pointer select-none"
+									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("name")}
 								>
 									Name
-									<SortIcon column="name" sortColumn={sortColumn} sortDirection={sortDirection} />
+									<SortIcon
+										column="name"
+										sortColumn={sortColumn}
+										sortDirection={sortDirection}
+									/>
 								</DataTableHead>
 								<DataTableHead
-									className="w-0 whitespace-nowrap cursor-pointer select-none"
+									className="cursor-pointer select-none"
 									onClick={() => handleSort("email")}
 								>
 									Email
-									<SortIcon column="email" sortColumn={sortColumn} sortDirection={sortDirection} />
+									<SortIcon
+										column="email"
+										sortColumn={sortColumn}
+										sortDirection={sortDirection}
+									/>
 								</DataTableHead>
 								<DataTableHead
 									className="w-0 whitespace-nowrap cursor-pointer select-none"
-									onClick={() => handleSort("type")}
+									onClick={() => handleSort("status")}
 								>
-									Type
-									<SortIcon column="type" sortColumn={sortColumn} sortDirection={sortDirection} />
+									Status
+									<SortIcon
+										column="status"
+										sortColumn={sortColumn}
+										sortDirection={sortDirection}
+									/>
 								</DataTableHead>
 								<DataTableHead
 									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("created")}
 								>
 									Created
-									<SortIcon column="created" sortColumn={sortColumn} sortDirection={sortDirection} />
+									<SortIcon
+										column="created"
+										sortColumn={sortColumn}
+										sortDirection={sortDirection}
+									/>
 								</DataTableHead>
 								<DataTableHead
 									className="w-0 whitespace-nowrap cursor-pointer select-none"
 									onClick={() => handleSort("last_login")}
 								>
 									Last Login
-									<SortIcon column="last_login" sortColumn={sortColumn} sortDirection={sortDirection} />
+									<SortIcon
+										column="last_login"
+										sortColumn={sortColumn}
+										sortDirection={sortDirection}
+									/>
 								</DataTableHead>
-								<DataTableHead className="w-0 whitespace-nowrap text-right"></DataTableHead>
+								<DataTableHead className="w-0 whitespace-nowrap text-right sticky right-0 bg-background"></DataTableHead>
 							</DataTableRow>
 						</DataTableHeader>
 						<DataTableBody>
-							{sortedUsers.map((user) => (
-								<DataTableRow
-									key={user.id}
-									clickable
-									onClick={() => handleEditUser(user)}
-									className={
-										!user.is_active
-											? "opacity-60"
-											: undefined
-									}
-								>
-									{isPlatformAdmin && (
-										<DataTableCell className="w-0 whitespace-nowrap">
-											{(() => {
-												const orgInfo = getOrgInfo(
-													user.organization_id,
-												);
-												return user.organization_id ? (
-													<Badge
-														variant="outline"
-														className="text-xs"
-													>
-														{orgInfo.isProvider ? (
-															<Star className="mr-1 h-3 w-3 text-amber-500 fill-amber-500" />
-														) : (
-															<Building2 className="mr-1 h-3 w-3" />
-														)}
-														{orgInfo.name}
-													</Badge>
-												) : (
-													<Badge
-														variant="default"
-														className="text-xs"
-													>
-														<Globe className="mr-1 h-3 w-3" />
-														Platform
-													</Badge>
-												);
-											})()}
-										</DataTableCell>
-									)}
-									<DataTableCell className="font-medium">
-										{user.name || user.email}
-									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-muted-foreground">
-										{user.email}
-									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap">
-										{getUserTypeBadge(user.is_superuser)}
-									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
-										{user.created_at
-											? new Date(
-													user.created_at,
-												).toLocaleDateString()
-											: "N/A"}
-									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
-										{user.last_login
-											? new Date(
-													user.last_login,
-												).toLocaleDateString()
-											: "Never"}
-									</DataTableCell>
-									<DataTableCell className="w-0 whitespace-nowrap text-right">
-										<div
-											className="flex items-center justify-end gap-2"
+							{sortedUsers.map((user) => {
+								const orgInfo = getOrgInfo(
+									user.organization_id,
+								);
+								return (
+									<DataTableRow
+										key={user.id}
+										clickable
+										onClick={() => handleEditUser(user)}
+										className={
+											"group/row" +
+											(!user.is_active
+												? " opacity-60"
+												: "")
+										}
+									>
+										<DataTableCell
+											className="w-0 whitespace-nowrap"
 											onClick={(e) => e.stopPropagation()}
 										>
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<div className="w-fit">
-														<Switch
-															checked={
-																user.is_active
-															}
-															onCheckedChange={() =>
-																handleToggleActive(
-																	user,
-																)
-															}
-															disabled={
-																isSelf(
-																	user,
-																) ||
-																updateMutation.isPending
-															}
-														/>
-													</div>
-												</TooltipTrigger>
-												<TooltipContent>
-													{isSelf(user)
-														? "You cannot disable your own account"
-														: user.is_active
-															? "Enabled — click to disable"
-															: "Disabled — click to enable"}
-												</TooltipContent>
-											</Tooltip>
-											<Button
-												variant="ghost"
-												size="icon"
-												onClick={() =>
-													handleEditUser(user)
+											{isSelf(user) ? (
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span>
+															<Checkbox
+																checked={false}
+																disabled
+																aria-label="Cannot select yourself"
+															/>
+														</span>
+													</TooltipTrigger>
+													<TooltipContent>
+														You can't include
+														yourself in a bulk
+														action
+													</TooltipContent>
+												</Tooltip>
+											) : (
+												<Checkbox
+													aria-label={`Select ${user.name || user.email}`}
+													checked={selection.isSelected(
+														user.id,
+													)}
+													onClick={(e) => {
+														selection.toggle(
+															user.id,
+															{
+																shiftKey:
+																	e.shiftKey,
+															},
+														);
+														e.preventDefault();
+													}}
+												/>
+											)}
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap text-sm">
+											<span className="inline-flex items-center gap-1">
+												{orgInfo.isProvider ? (
+													<Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+												) : (
+													<Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+												)}
+												<span>{orgInfo.name}</span>
+											</span>
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap">
+											<div className="flex items-center gap-1.5">
+												<span className="font-medium">
+													{user.name || user.email}
+												</span>
+												{user.is_superuser && (
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Crown className="h-4 w-4 shrink-0 text-amber-500 fill-amber-500" />
+														</TooltipTrigger>
+														<TooltipContent>
+															Platform Admin
+														</TooltipContent>
+													</Tooltip>
+												)}
+											</div>
+										</DataTableCell>
+										<DataTableCell
+											className="text-muted-foreground max-w-0"
+											onClick={(e) => e.stopPropagation()}
+										>
+											<UserEmailCell email={user.email} />
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap">
+											<UserStatusBadge
+												status={
+													user.invite_status ??
+													"active"
 												}
-												title="Edit user"
-											>
-												<Edit className="h-4 w-4" />
-											</Button>
-											<Button
-												variant="ghost"
-												size="icon"
-												onClick={() =>
+											/>
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
+											{user.created_at
+												? new Date(
+														user.created_at,
+													).toLocaleDateString()
+												: "N/A"}
+										</DataTableCell>
+										<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
+											{user.last_login
+												? new Date(
+														user.last_login,
+													).toLocaleDateString()
+												: "Never"}
+										</DataTableCell>
+										<DataTableCell
+											className="w-0 whitespace-nowrap text-right sticky right-0 bg-card group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--muted)_50%)]"
+											onClick={(e) => e.stopPropagation()}
+										>
+											<UserActionsMenu
+												status={
+													user.invite_status ??
+													"active"
+												}
+												isActive={user.is_active}
+												isSelf={isSelf(user)}
+												onResend={() =>
+													resendMutation.mutate(
+														user.id,
+														{
+															onSuccess: (
+																res,
+															) => {
+																toast.success(
+																	res.event_emitted
+																		? `Invite automation triggered for ${user.email}`
+																		: "Invite regenerated (no automations — copy link from regenerate)",
+																);
+															},
+															onError: (
+																e: unknown,
+															) =>
+																toast.error(
+																	e instanceof
+																		Error
+																		? e.message
+																		: "Failed to resend invite",
+																),
+														},
+													)
+												}
+												onRegenerate={() =>
+													regenerateMutation.mutate(
+														user.id,
+														{
+															onSuccess: (
+																res,
+															) => {
+																showRegistrationLink(
+																	user,
+																	res.registration_url,
+																);
+															},
+															onError: (
+																e: unknown,
+															) =>
+																toast.error(
+																	e instanceof
+																		Error
+																		? e.message
+																		: "Failed to regenerate link",
+																),
+														},
+													)
+												}
+												onCopyLink={() =>
+													regenerateMutation.mutate(
+														user.id,
+														{
+															onSuccess: (
+																res,
+															) => {
+																showRegistrationLink(
+																	user,
+																	res.registration_url,
+																);
+															},
+															onError: (
+																e: unknown,
+															) =>
+																toast.error(
+																	e instanceof
+																		Error
+																		? e.message
+																		: "Failed to copy link",
+																),
+														},
+													)
+												}
+												onRevoke={() =>
+													revokeMutation.mutate(
+														user.id,
+														{
+															onSuccess: () =>
+																toast.success(
+																	"Invite revoked",
+																),
+															onError: (
+																e: unknown,
+															) =>
+																toast.error(
+																	e instanceof
+																		Error
+																		? e.message
+																		: "Failed to revoke invite",
+																),
+														},
+													)
+												}
+												onToggleActive={() =>
+													handleToggleActive(user)
+												}
+												onDelete={() =>
 													handleDeleteUser(user)
 												}
-												title="Permanently delete"
-												disabled={isSelf(user)}
-											>
-												<Trash2 className="h-4 w-4 text-destructive" />
-											</Button>
-										</div>
-									</DataTableCell>
-								</DataTableRow>
-							))}
+											/>
+										</DataTableCell>
+									</DataTableRow>
+								);
+							})}
 						</DataTableBody>
 					</DataTable>
 				) : (
@@ -545,6 +758,53 @@ export function Users() {
 				)}
 			</div>
 
+			<BulkActionBar
+				count={selection.count}
+				activeMix={activeMix}
+				onClear={selection.clear}
+				onMoveOrg={() => setBulkMode("move_org")}
+				onReplaceRoles={() => setBulkMode("replace_roles")}
+				onDisable={() => setBulkMode("disable")}
+				onEnable={() => setBulkMode("enable")}
+			/>
+
+			<BulkMoveOrgDialog
+				open={bulkMode === "move_org"}
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkReplaceRolesDialog
+				open={bulkMode === "replace_roles"}
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkSetActiveDialog
+				open={bulkMode === "disable"}
+				mode="disable"
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkSetActiveDialog
+				open={bulkMode === "enable"}
+				mode="enable"
+				onOpenChange={(o) => !o && closeBulk()}
+				users={selection.selectedItems}
+				onPartialFailure={handlePartialFailure}
+				onSuccess={onBulkSuccess}
+			/>
+			<BulkResultDialog
+				open={bulkResult !== null}
+				onOpenChange={(o) => !o && setBulkResult(null)}
+				result={bulkResult}
+				users={bulkResultUsers}
+			/>
+
 			<CreateUserDialog
 				open={isCreateOpen}
 				onOpenChange={setIsCreateOpen}
@@ -554,6 +814,35 @@ export function Users() {
 				user={selectedUser}
 				open={isEditOpen}
 				onOpenChange={handleEditClose}
+			/>
+
+			<RegistrationLinkDialog
+				open={registrationLinkDialog !== null}
+				email={registrationLinkDialog?.email}
+				url={registrationLinkDialog?.url}
+				canSendEmail={inviteAutomationConfigured}
+				isSendingEmail={sendInviteMutation.isPending}
+				onSendEmail={async () => {
+					if (!registrationLinkDialog) return;
+					try {
+						await sendInviteMutation.mutateAsync({
+							userId: registrationLinkDialog.userId,
+							registrationUrl: registrationLinkDialog.url,
+						});
+						toast.success("Registration email sent");
+						setRegistrationLinkDialog(null);
+					} catch (error) {
+						toast.error("Failed to send registration email", {
+							description:
+								error instanceof Error
+									? error.message
+									: "Unknown error occurred",
+						});
+					}
+				}}
+				onOpenChange={(open) => {
+					if (!open) setRegistrationLinkDialog(null);
+				}}
 			/>
 
 			{/* Disable confirmation dialog */}

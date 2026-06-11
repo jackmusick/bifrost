@@ -3,8 +3,8 @@
 **Open-source automation platform for Integration Services** - Built to democratize best-in-class tooling before venture capital gets the chance to own something we're all incredibly passionate about.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![CodeQL](https://github.com/jackmusick/bifrost/actions/workflows/codeql.yml/badge.svg)](https://github.com/jackmusick/bifrost/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jackmusick/bifrost/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jackmusick/bifrost)
+[![CodeQL](https://github.com/gobifrost/bifrost/actions/workflows/codeql.yml/badge.svg)](https://github.com/gobifrost/bifrost/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/gobifrost/bifrost/badge)](https://securityscorecards.dev/viewer/?uri=github.com/gobifrost/bifrost)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12665/badge)](https://www.bestpractices.dev/projects/12665)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
@@ -111,8 +111,8 @@ The platform handles the hard parts - OAuth flows, credential encryption, multi-
 
 ```bash
 # Clone the repository
-git clone https://github.com/jackmusick/bifrost-api.git
-cd bifrost-api
+git clone https://github.com/gobifrost/bifrost.git
+cd bifrost
 
 # Run setup (creates .env with secure random secrets)
 ./setup.sh
@@ -146,7 +146,7 @@ The full stack runs in Docker with hot reload enabled for both API and client:
 ./debug.sh              # Start all services with hot reload
 ```
 
-This launches PostgreSQL, Redis, RabbitMQ, MinIO, the API, the client, the scheduler, and workers. Access the app at **http://localhost:3000** — Vite proxies `/api/*` to the API container, so you don't hit the API on a separate port.
+This launches PostgreSQL, Redis, RabbitMQ, SeaweedFS for S3-compatible object storage, the API, the client, the scheduler, and workers. Access the app at **http://localhost:3000** — Vite proxies `/api/*` to the API container, so you don't hit the API on a separate port.
 
 Changes to files in `api/src/`, `api/shared/`, and `client/src/` automatically reload — **do not restart containers for code changes.**
 
@@ -236,17 +236,17 @@ Bifrost release artifacts are signed with [Sigstore](https://www.sigstore.dev/) 
 **Verify a Docker image:**
 
 ```bash
-cosign verify ghcr.io/jackmusick/bifrost-api:TAG \
-  --certificate-identity-regexp "https://github.com/jackmusick/bifrost/.*" \
+cosign verify ghcr.io/gobifrost/bifrost-api:TAG \
+  --certificate-identity-regexp "https://github.com/gobifrost/bifrost/.*" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-(Same form for `ghcr.io/jackmusick/bifrost-client`.)
+(Same form for `ghcr.io/gobifrost/bifrost-client`.)
 
 **Inspect SLSA build provenance:**
 
 ```bash
-gh attestation verify ghcr.io/jackmusick/bifrost-api:TAG --owner jackmusick
+gh attestation verify ghcr.io/gobifrost/bifrost-api:TAG --owner gobifrost
 ```
 
 **Verify a source tarball** (attached to GitHub Releases):
@@ -254,7 +254,7 @@ gh attestation verify ghcr.io/jackmusick/bifrost-api:TAG --owner jackmusick
 ```bash
 cosign verify-blob \
   --bundle bifrost-VERSION-source.tar.gz.sigstore \
-  --certificate-identity-regexp "https://github.com/jackmusick/bifrost/.*" \
+  --certificate-identity-regexp "https://github.com/gobifrost/bifrost/.*" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   bifrost-VERSION-source.tar.gz
 ```

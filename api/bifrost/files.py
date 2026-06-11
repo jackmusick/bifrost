@@ -5,10 +5,14 @@ Provides async Python API for file operations with two storage modes:
 - local: Local filesystem (CWD, /tmp/bifrost/temp, /tmp/bifrost/uploads)
 - cloud: S3 storage (default)
 
-Location Options:
-- "workspace": Persistent workspace files (CWD in local mode, S3 bucket root in cloud mode)
+Location options:
+- "workspace": Persistent workspace files (CWD in local mode, _repo/ in cloud mode)
 - "temp": Temporary files (_tmp/ prefix in cloud, /tmp/bifrost/temp in local)
 - "uploads": Files uploaded via form file fields (uploads/ prefix in cloud, /tmp/bifrost/uploads in local)
+- Custom names like "reports" or "exports": scoped user-defined storage locations
+
+Internal bucket prefixes "_repo", "_tmp", and "_apps" are blocked as
+custom location names.
 
 Usage:
     from bifrost import files
@@ -34,8 +38,9 @@ from .client import get_client, raise_for_status_with_detail
 from ._context import resolve_scope
 
 Mode = Literal["local", "cloud"]
-# `location` is a free string. Reserved names: "workspace", "temp", "uploads".
-# Anything else is a freeform user-defined location (e.g. "reports", "exports").
+# `location` is a free string. Special names: "workspace", "temp", "uploads".
+# Anything else is a freeform user-defined location (e.g. "reports", "exports"),
+# except blocked internal prefixes such as "_repo", "_tmp", and "_apps".
 
 
 class files:
@@ -61,8 +66,9 @@ class files:
 
         Args:
             path: File path relative to location root
-            location: Storage location. Reserved: "workspace", "temp", "uploads".
-                Freeform names (e.g. "reports") are also allowed.
+            location: Storage location. Special: "workspace", "temp", "uploads".
+                Freeform names (e.g. "reports") are also allowed; internal
+                prefixes "_repo", "_tmp", and "_apps" are blocked.
             mode: Storage mode (local or cloud, default: cloud)
             scope: Org scope. Defaults to the current execution's org.
                 Provider orgs may pass an explicit scope to read from another org.
@@ -93,7 +99,7 @@ class files:
 
         Args:
             path: File path relative to location root
-            location: Storage location (reserved or freeform)
+            location: Storage location (special or freeform)
             mode: Storage mode (local or cloud, default: cloud)
             scope: Org scope; provider-org override allowed.
         """
@@ -121,7 +127,7 @@ class files:
         Args:
             path: File path relative to location root
             content: Text content to write
-            location: Storage location (reserved or freeform)
+            location: Storage location (special or freeform)
             mode: Storage mode (local or cloud, default: cloud)
             scope: Org scope; provider-org override allowed.
         """
@@ -147,7 +153,7 @@ class files:
         Args:
             path: File path relative to location root
             content: Binary content to write
-            location: Storage location (reserved or freeform)
+            location: Storage location (special or freeform)
             mode: Storage mode (local or cloud, default: cloud)
             scope: Org scope; provider-org override allowed.
         """
@@ -173,7 +179,7 @@ class files:
 
         Args:
             directory: Directory path relative to location root (default: root)
-            location: Storage location (workspace or temp)
+            location: Storage location (special or freeform)
             mode: Storage mode (local or cloud, default: cloud)
 
         Returns:
@@ -209,7 +215,7 @@ class files:
 
         Args:
             path: File path relative to location root
-            location: Storage location (reserved or freeform)
+            location: Storage location (special or freeform)
             mode: Storage mode (local or cloud, default: cloud)
             scope: Org scope; provider-org override allowed.
 
@@ -237,7 +243,7 @@ class files:
 
         Args:
             path: File path relative to location root
-            location: Storage location (reserved or freeform)
+            location: Storage location (special or freeform)
             mode: Storage mode (local or cloud, default: cloud)
             scope: Org scope; provider-org override allowed.
         """
@@ -292,6 +298,57 @@ class files:
                 "location": location,
                 "scope": effective_scope,
             }
+        )
+        raise_for_status_with_detail(response)
+        return response.json()
+
+    @staticmethod
+    async def search(
+        query: str,
+        case_sensitive: bool = False,
+        is_regex: bool = False,
+        include_pattern: str = "**/*",
+        max_results: int = 1000,
+    ) -> dict:
+        """
+        Search workspace file contents.
+
+        Note:
+            Unlike the other ``files`` methods, ``search`` has no ``scope`` parameter.
+            The server scopes results by the caller's identity; a provider-org cannot
+            cross-search another org's workspace through this endpoint.
+
+        Args:
+            query: Text or regex pattern to search for.
+            case_sensitive: Case-sensitive matching (default: False).
+            is_regex: Treat query as a regex (default: False; literal substring).
+            include_pattern: Glob restricting which files to search (default: ``**/*``).
+                The SDK does not expose the server's nullable form; callers always send
+                a pattern, defaulting to "match all files".
+            max_results: Maximum results returned (default: 1000, max: 10000).
+
+        Returns:
+            dict with keys: query, total_matches, files_searched, results,
+            truncated, search_time_ms. ``results`` is a list of dicts with
+            keys: file_path, line, column, match_text, context_before,
+            context_after.
+
+        Example:
+            >>> from bifrost import files
+            >>> hits = await files.search("TODO", include_pattern="**/*.py")
+            >>> for r in hits["results"]:
+            ...     print(f"{r['file_path']}:{r['line']}: {r['match_text']}")
+        """
+        client = get_client()
+        response = await client.post(
+            "/api/files/search",
+            json={
+                "query": query,
+                "case_sensitive": case_sensitive,
+                "is_regex": is_regex,
+                "include_pattern": include_pattern,
+                "max_results": max_results,
+            },
         )
         raise_for_status_with_detail(response)
         return response.json()

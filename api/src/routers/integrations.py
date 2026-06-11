@@ -8,7 +8,6 @@ Integrations combine OAuth providers, data providers, and configuration schemas.
 import logging
 import secrets
 from datetime import datetime, timezone
-from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -23,6 +22,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from src.models import (
     ConfigSchemaItem,
+    EntityIdSourceUpdateRequest,
     Integration,
     IntegrationCreate,
     IntegrationDetailResponse,
@@ -39,10 +39,19 @@ from src.models import (
     IntegrationTestRequest,
     IntegrationTestResponse,
     IntegrationUpdate,
+    MappingAuthorizeRequest,
+    MappingAuthorizeResponse,
     OAuthConfigSummary,
 )
 from src.models.orm import Config as ConfigModel
 from src.models.orm import IntegrationConfigSchema
+from src.models.orm import OAuthToken
+from src.services.oauth_provider import (
+    append_query_params,
+    get_url_resolution_defaults,
+    resolve_url_template,
+)
+from src.services.oauth_state import encode_state, remember_nonce
 
 logger = logging.getLogger(__name__)
 
@@ -737,6 +746,7 @@ async def get_integration(
             expires_at=token.expires_at if token else None,
             last_refresh_at=provider.last_token_refresh,
             has_refresh_token=token.encrypted_refresh_token is not None if token else False,
+            entity_id_source=provider.entity_id_source,
         )
 
     # Build mapping responses with org-specific overrides only (not merged with defaults)
@@ -746,17 +756,7 @@ async def get_integration(
     for m in integration.mappings:
         org_config = all_org_configs.get(m.organization_id, {}) if m.organization_id else {}
         mapping_responses.append(
-            IntegrationMappingResponse(
-                id=m.id,
-                integration_id=m.integration_id,
-                organization_id=m.organization_id,
-                entity_id=m.entity_id,
-                entity_name=m.entity_name,
-                oauth_token_id=m.oauth_token_id,
-                config=org_config if org_config else None,
-                created_at=m.created_at,
-                updated_at=m.updated_at,
-            )
+            await _mapping_to_response(ctx.db, m, config=org_config if org_config else None)
         )
 
     # Convert ORM config_schema items to Pydantic models
@@ -961,6 +961,40 @@ async def get_integration_config(
 # =============================================================================
 
 
+async def _mapping_to_response(
+    db,
+    m,  # IntegrationMapping ORM instance
+    config: dict | None = None,
+) -> IntegrationMappingResponse:
+    """Build IntegrationMappingResponse, hydrating per-token status."""
+    status_val = None
+    message = None
+    last_refresh = None
+    expires_at = None
+    if m.oauth_token_id:
+        token = await db.get(OAuthToken, m.oauth_token_id)
+        if token:
+            status_val = token.status
+            message = token.status_message
+            last_refresh = token.last_refresh_at
+            expires_at = token.expires_at
+    return IntegrationMappingResponse(
+        id=m.id,
+        integration_id=m.integration_id,
+        organization_id=m.organization_id,
+        entity_id=m.entity_id,
+        entity_name=m.entity_name,
+        oauth_token_id=m.oauth_token_id,
+        config=config,
+        connection_status=status_val,
+        connection_message=message,
+        last_refresh_at=last_refresh,
+        connection_expires_at=expires_at,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
+    )
+
+
 @router.post(
     "/{integration_id}/mappings",
     response_model=IntegrationMappingResponse,
@@ -1001,17 +1035,7 @@ async def create_mapping(
     # Get org-specific overrides only (not merged with defaults)
     org_config = await repo.get_org_config_overrides(integration_id, request.organization_id)
 
-    return IntegrationMappingResponse(
-        id=mapping.id,
-        integration_id=mapping.integration_id,
-        organization_id=mapping.organization_id,
-        entity_id=mapping.entity_id,
-        entity_name=mapping.entity_name,
-        oauth_token_id=mapping.oauth_token_id,
-        config=org_config if org_config else None,
-        created_at=mapping.created_at,
-        updated_at=mapping.updated_at,
-    )
+    return await _mapping_to_response(ctx.db, mapping, config=org_config if org_config else None)
 
 
 @router.get(
@@ -1038,20 +1062,7 @@ async def list_mappings(
 
     mappings = await repo.list_mappings_for_integration(integration_id)
 
-    items = [
-        IntegrationMappingResponse(
-            id=m.id,
-            integration_id=m.integration_id,
-            organization_id=m.organization_id,
-            entity_id=m.entity_id,
-            entity_name=m.entity_name,
-            oauth_token_id=m.oauth_token_id,
-            config=None,  # Not included in list response
-            created_at=m.created_at,
-            updated_at=m.updated_at,
-        )
-        for m in mappings
-    ]
+    items = [await _mapping_to_response(ctx.db, m) for m in mappings]
     return IntegrationMappingListResponse(items=items, total=len(items))
 
 
@@ -1080,17 +1091,7 @@ async def get_mapping(
     # Get org-specific overrides only (not merged with defaults)
     org_config = await repo.get_org_config_overrides(integration_id, mapping.organization_id)
 
-    return IntegrationMappingResponse(
-        id=mapping.id,
-        integration_id=mapping.integration_id,
-        organization_id=mapping.organization_id,
-        entity_id=mapping.entity_id,
-        entity_name=mapping.entity_name,
-        oauth_token_id=mapping.oauth_token_id,
-        config=org_config if org_config else None,
-        created_at=mapping.created_at,
-        updated_at=mapping.updated_at,
-    )
+    return await _mapping_to_response(ctx.db, mapping, config=org_config if org_config else None)
 
 
 @router.get(
@@ -1118,17 +1119,7 @@ async def get_mapping_by_org(
     # Get org-specific overrides only (not merged with defaults)
     org_config = await repo.get_org_config_overrides(integration_id, org_id)
 
-    return IntegrationMappingResponse(
-        id=mapping.id,
-        integration_id=mapping.integration_id,
-        organization_id=mapping.organization_id,
-        entity_id=mapping.entity_id,
-        entity_name=mapping.entity_name,
-        oauth_token_id=mapping.oauth_token_id,
-        config=org_config if org_config else None,
-        created_at=mapping.created_at,
-        updated_at=mapping.updated_at,
-    )
+    return await _mapping_to_response(ctx.db, mapping, config=org_config if org_config else None)
 
 
 @router.put(
@@ -1161,17 +1152,7 @@ async def update_mapping(
     # Get org-specific overrides only (not merged with defaults)
     org_config = await repo.get_org_config_overrides(integration_id, mapping.organization_id)
 
-    return IntegrationMappingResponse(
-        id=mapping.id,
-        integration_id=mapping.integration_id,
-        organization_id=mapping.organization_id,
-        entity_id=mapping.entity_id,
-        entity_name=mapping.entity_name,
-        oauth_token_id=mapping.oauth_token_id,
-        config=org_config if org_config else None,
-        created_at=mapping.created_at,
-        updated_at=mapping.updated_at,
-    )
+    return await _mapping_to_response(ctx.db, mapping, config=org_config if org_config else None)
 
 
 @router.post(
@@ -1264,6 +1245,255 @@ async def delete_mapping(
     logger.info(f"Deleted mapping {log_safe(mapping_id)} for integration {log_safe(integration_id)}")
 
 
+@router.post(
+    "/{integration_id}/mappings/{mapping_id}/oauth/authorize",
+    response_model=MappingAuthorizeResponse,
+    summary="Begin OAuth authorize flow for a mapping",
+    description="Returns the authorization URL with a signed state token carrying mapping_id (Platform admin only)",
+)
+async def authorize_mapping(
+    integration_id: UUID,
+    mapping_id: UUID,
+    request: MappingAuthorizeRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> MappingAuthorizeResponse:
+    """Begin the OAuth authorization flow for a specific integration mapping.
+
+    Returns an authorization URL containing a signed state token that carries
+    the mapping_id so the callback can attribute the resulting token to this mapping.
+    """
+    repo = IntegrationsRepository(ctx.db)
+    integration = await repo.get_integration_by_id(integration_id)
+    if not integration or not integration.oauth_provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration or its OAuth provider not found",
+        )
+    provider = integration.oauth_provider
+    if not provider.authorization_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This integration uses client_credentials flow and does not require user authorization",
+        )
+
+    mapping = await repo.get_mapping_by_id(integration_id, mapping_id)
+    if not mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mapping not found",
+        )
+
+    defaults = await get_url_resolution_defaults(ctx.db, provider)
+    resolved_url = resolve_url_template(url=provider.authorization_url, defaults=defaults)
+    state, nonce = encode_state(provider_id=provider.id, mapping_id=mapping_id)
+    await remember_nonce(nonce)
+    params = {
+        "client_id": provider.client_id,
+        "response_type": "code",
+        "state": state,
+        "scope": " ".join(provider.scopes) if provider.scopes else "",
+        "redirect_uri": request.redirect_uri,
+    }
+
+    logger.info(
+        f"Generated per-mapping OAuth authorization URL for mapping {log_safe(mapping_id)}, "
+        f"integration {log_safe(integration_id)}"
+    )
+
+    return MappingAuthorizeResponse(
+        authorization_url=append_query_params(resolved_url, params),
+    )
+
+
+@router.post(
+    "/{integration_id}/mappings/{mapping_id}/oauth/disconnect",
+    status_code=204,
+    summary="Disconnect a mapping's per-row OAuth connection",
+    description="Deletes the mapping's OAuth token and clears oauth_token_id. Fallback to integration-level token resumes (Platform admin only).",
+)
+async def disconnect_mapping(
+    integration_id: UUID,
+    mapping_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> None:
+    repo = IntegrationsRepository(ctx.db)
+    mapping = await repo.get_mapping_by_id(integration_id, mapping_id)
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+
+    integration = mapping.integration
+    organization = mapping.organization
+    external_account_id = mapping.entity_id
+    external_account_name = mapping.entity_name
+    token_id = mapping.oauth_token_id
+    mapping.oauth_token_id = None
+    await ctx.db.flush()
+
+    if token_id is not None:
+        token = await ctx.db.get(OAuthToken, token_id)
+        if token:
+            await ctx.db.delete(token)
+            await ctx.db.flush()
+
+    if token_id is not None:
+        try:
+            from src.services.events.builtins import emit_integration_disconnected
+
+            await emit_integration_disconnected(
+                integration_id=integration.id if integration else integration_id,
+                integration_name=integration.name if integration else None,
+                organization_id=mapping.organization_id,
+                organization_name=organization.name if organization else None,
+                connection_id=mapping.id,
+                external_account_id=external_account_id,
+                external_account_name=external_account_name,
+                actor_user_id=ctx.user.user_id,
+                actor_email=ctx.user.email,
+                actor_name=ctx.user.name,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to emit integration.disconnected: {e}", exc_info=True)
+
+
+@router.post(
+    "/{integration_id}/mappings/{mapping_id}/oauth/refresh",
+    response_model=IntegrationMappingResponse,
+    summary="Refresh a mapping's per-row OAuth token",
+    description=(
+        "Proactively refresh the OAuth access token linked to this mapping. "
+        "Uses the stored refresh token (authorization_code) or re-mints with "
+        "client credentials (client_credentials). Updates token.status and "
+        "token.last_refresh_at; provider.status is NOT touched (per-mapping "
+        "tokens don't poison the integration-level fallback's health). "
+        "Platform admin only."
+    ),
+)
+async def refresh_mapping_oauth(
+    integration_id: UUID,
+    mapping_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> IntegrationMappingResponse:
+    from src.services.oauth_provider import (
+        build_token_refresh_context,
+        refresh_oauth_token_http,
+    )
+
+    repo = IntegrationsRepository(ctx.db)
+    mapping = await repo.get_mapping_by_id(integration_id, mapping_id)
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    if not mapping.oauth_token_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Mapping has no per-row OAuth connection to refresh",
+        )
+
+    token = await ctx.db.get(OAuthToken, mapping.oauth_token_id)
+    if not token:
+        # The FK is set but the row is gone — clean up the dangling pointer.
+        mapping.oauth_token_id = None
+        await ctx.db.flush()
+        raise HTTPException(
+            status_code=404,
+            detail="OAuth token row not found (mapping link cleared)",
+        )
+
+    integration = await repo.get_integration_by_id(integration_id)
+    if not integration or not integration.oauth_provider:
+        raise HTTPException(status_code=400, detail="Integration has no OAuth provider")
+    provider = integration.oauth_provider
+
+    if provider.oauth_flow_type != "client_credentials" and not token.encrypted_refresh_token:
+        raise HTTPException(
+            status_code=400,
+            detail="No refresh token available — reconnect this mapping to acquire one",
+        )
+
+    td = await build_token_refresh_context(
+        db=ctx.db,
+        provider=provider,
+        token=token,
+        org_id=mapping.organization_id,
+    )
+    was_failed = token.status == "failed"
+    previous_success_at = token.last_refresh_at if token.status == "completed" else None
+    outcome = await refresh_oauth_token_http(td)
+
+    now = datetime.now(timezone.utc)
+    if outcome["success"]:
+        token.encrypted_access_token = outcome["encrypted_access_token"]
+        token.expires_at = outcome["expires_at"]
+        if outcome.get("encrypted_refresh_token"):
+            token.encrypted_refresh_token = outcome["encrypted_refresh_token"]
+        if outcome.get("scopes"):
+            token.scopes = outcome["scopes"]
+        token.status = "completed"
+        token.status_message = None
+        token.last_refresh_at = now
+        if was_failed:
+            try:
+                from src.services.events.builtins import emit_integration_refresh_recovered
+
+                await emit_integration_refresh_recovered(
+                    integration_id=integration.id,
+                    integration_name=integration.name,
+                    organization_id=mapping.organization_id,
+                    organization_name=mapping.organization.name if mapping.organization else None,
+                    connection_id=mapping.id,
+                    external_account_id=mapping.entity_id,
+                    external_account_name=mapping.entity_name,
+                    attempt=1,
+                    last_success_at=now,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to emit integration.refresh_recovered: {e}",
+                    exc_info=True,
+                )
+    else:
+        token.status = "failed"
+        token.status_message = (outcome.get("error", "Refresh failed"))[:200]
+        token.last_refresh_at = now
+        await ctx.db.flush()
+        try:
+            from src.services.events.builtins import emit_integration_refresh_failed
+
+            await emit_integration_refresh_failed(
+                integration_id=integration.id,
+                integration_name=integration.name,
+                organization_id=mapping.organization_id,
+                organization_name=mapping.organization.name if mapping.organization else None,
+                connection_id=mapping.id,
+                external_account_id=mapping.entity_id,
+                external_account_name=mapping.entity_name,
+                attempt=1,
+                last_success_at=previous_success_at,
+                error_code=outcome.get("error_code"),
+                error_message=token.status_message or "Refresh failed",
+                retryable=False,
+                reauth_required=True,
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to emit integration.refresh_failed: {e}",
+                exc_info=True,
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=token.status_message or "Refresh failed",
+        )
+
+    await ctx.db.flush()
+    logger.info(
+        f"Refreshed per-mapping OAuth token for mapping {log_safe(mapping_id)}"
+    )
+
+    return await _mapping_to_response(ctx.db, mapping)
+
+
 # =============================================================================
 # HTTP Endpoints - OAuth Configuration
 # =============================================================================
@@ -1352,7 +1582,7 @@ async def get_oauth_authorization_url(
         "redirect_uri": redirect_uri,
     }
 
-    authorization_url = f"{oauth_provider.authorization_url}?{urlencode(params)}"
+    authorization_url = append_query_params(oauth_provider.authorization_url, params)
 
     logger.info(
         f"Generated OAuth authorization URL for integration {log_safe(integration_id)}, "
@@ -1364,6 +1594,102 @@ async def get_oauth_authorization_url(
         state=state,
         message="Redirect user to authorization_url to complete OAuth flow",
     )
+
+
+@router.patch(
+    "/{integration_id}/oauth/entity_id_source",
+    summary="Set entity_id_source on the integration's OAuth provider",
+    description=(
+        "Persists the admin's picker selection. Optionally backfills a "
+        "specific mapping's entity_id (used when the picker fires inside "
+        "the OAuth popup of a per-mapping connect). Platform admin only."
+    ),
+)
+async def set_entity_id_source(
+    integration_id: UUID,
+    request: EntityIdSourceUpdateRequest,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> dict:
+    from src.models.orm import IntegrationMapping as _IM
+    from src.models.orm import OAuthProvider as _OP
+
+    if request.type not in {"url_param", "token_response_field", "id_token_claim"}:
+        raise HTTPException(status_code=400, detail=f"Invalid type: {request.type}")
+    if not request.key:
+        raise HTTPException(status_code=400, detail="key is required")
+
+    result = await ctx.db.execute(
+        select(_OP).where(_OP.integration_id == integration_id)
+    )
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration has no OAuth provider",
+        )
+
+    provider.entity_id_source = {"type": request.type, "key": request.key}
+
+    if request.apply_to_mapping_id and request.apply_value:
+        mapping = await ctx.db.get(_IM, request.apply_to_mapping_id)
+        if mapping and mapping.integration_id == integration_id and not mapping.entity_id:
+            mapping.entity_id = request.apply_value
+
+    await ctx.db.flush()
+    return {"entity_id_source": provider.entity_id_source}
+
+
+@router.delete(
+    "/{integration_id}/oauth/entity_id_source",
+    summary="Clear entity_id_source on the integration's OAuth provider",
+    description=(
+        "Resets the provider's entity_id_source to NULL. Picker will reappear "
+        "on next OAuth connect so the admin can pick a different source. "
+        "When clear_mappings=true, also clears entity_id on every mapping "
+        "under this integration so they re-capture on reconnect. "
+        "Platform admin only."
+    ),
+)
+async def clear_entity_id_source(
+    integration_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+    clear_mappings: bool = Query(
+        False,
+        description="When true, also clear entity_id on every mapping for this integration",
+    ),
+) -> dict:
+    from src.models.orm import IntegrationMapping as _IM
+    from src.models.orm import OAuthProvider as _OP
+
+    result = await ctx.db.execute(
+        select(_OP).where(_OP.integration_id == integration_id)
+    )
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration has no OAuth provider",
+        )
+
+    provider.entity_id_source = None
+    cleared_mapping_count = 0
+
+    if clear_mappings:
+        mappings_result = await ctx.db.execute(
+            select(_IM).where(_IM.integration_id == integration_id)
+        )
+        for mapping in mappings_result.scalars().all():
+            if mapping.entity_id:
+                mapping.entity_id = ""
+                cleared_mapping_count += 1
+
+    await ctx.db.flush()
+    return {
+        "entity_id_source": None,
+        "cleared_mapping_count": cleared_mapping_count,
+    }
 
 
 # =============================================================================

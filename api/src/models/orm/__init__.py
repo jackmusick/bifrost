@@ -23,7 +23,6 @@ from src.models.orm.base import Base
 from src.models.orm.branding import GlobalBranding
 from src.models.orm.cli import CLISession
 from src.models.orm.config import Config, SystemConfig
-from src.models.orm.developer import DeveloperContext
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, WebhookSource
 from src.models.orm.executions import Execution, ExecutionLog
 from src.models.orm.external_mcp import (
@@ -42,8 +41,10 @@ from src.models.orm.mfa import MFARecoveryCode, TrustedDevice, UserMFAMethod, Us
 from src.models.orm.oauth import OAuthProvider, OAuthToken
 from src.models.orm.organizations import Organization
 from src.models.orm.platform_models import ModelDeprecation, OrgModelAlias, PlatformModel
+from src.models.orm.custom_claims import CustomClaim
 from src.models.orm.tables import Document, Table
 from src.models.orm.users import Role, User, UserRole
+from src.models.orm.user_invites import UserInvite
 from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.workflows import Workflow
 from src.models.orm.workspaces import Workspace
@@ -63,6 +64,7 @@ __all__ = [
     "User",
     "Role",
     "UserRole",
+    "UserInvite",
     # Agent Runs
     "AgentRun",
     "AgentRunFlagConversation",
@@ -125,8 +127,6 @@ __all__ = [
     "FileIndex",
     # Worker Metrics
     "WorkerMetric",
-    # Developer
-    "DeveloperContext",
     # Events
     "EventSource",
     "WebhookSource",
@@ -148,4 +148,6 @@ __all__ = [
     "PlatformModel",
     "OrgModelAlias",
     "ModelDeprecation",
+    # Custom Claims
+    "CustomClaim",
 ]

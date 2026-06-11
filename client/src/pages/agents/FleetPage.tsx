@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { EntityLogo } from "@/components/EntityLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +48,7 @@ import { StatCard } from "@/components/agents/StatCard";
 import { SummaryBackfillButton } from "@/components/agents/SummaryBackfillButton";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { useAuth } from "@/contexts/AuthContext";
+import { term, useTerminology } from "@/lib/terminology";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import type { components } from "@/lib/v1";
 import {
@@ -85,6 +87,7 @@ export function FleetPage() {
 		undefined,
 	);
 	const { isPlatformAdmin } = useAuth();
+	const terminology = useTerminology();
 
 	// Fleet view shows paused agents too (they need to be visible to un-pause).
 	const { data: agents, isLoading: agentsLoading } = useAgents(
@@ -120,16 +123,18 @@ export function FleetPage() {
 	);
 
 	return (
-		<div className="mx-auto flex max-w-[1400px] flex-col gap-5 p-7">
+		<div className="mx-auto flex h-full max-w-[1400px] flex-col gap-4 md:gap-5">
 			{/* Header */}
-			<div className="flex items-start justify-between gap-4">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
 				<div>
-					<h1 className={TYPE_PAGE_TITLE}>Agents</h1>
+					<h1 className={TYPE_PAGE_TITLE}>
+						{term(terminology, "agent", "plural")}
+					</h1>
 					<p className={cn("mt-1", TYPE_BODY, TONE_MUTED)}>
 						{totalAgents} total · {activeCount} active · last 7 days
 					</p>
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex flex-wrap items-center gap-2">
 					<Button asChild variant="outline" size="sm">
 						<Link to="/history?type=agents">
 							<History className="h-3.5 w-3.5" /> All runs
@@ -138,7 +143,8 @@ export function FleetPage() {
 					{isPlatformAdmin ? <SummaryBackfillButton /> : null}
 					<Button asChild size="sm">
 						<Link to="/agents/new">
-							<Plus className="h-3.5 w-3.5" /> New agent
+							<Plus className="h-3.5 w-3.5" /> New{" "}
+							{term(terminology, "agent", "singularLower")}
 						</Link>
 					</Button>
 				</div>
@@ -153,89 +159,131 @@ export function FleetPage() {
 				/>
 			) : null}
 
-			{/* Fleet stats — 4 stats + red "Needs review" */}
+			{/* Fleet stats — compact on mobile, full card row on wider screens */}
 			{fleetLoading || !fleetStats ? (
-				<div
-					className={cn(
-						"grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5",
-						GAP_CARD,
-					)}
-				>
-					{[...Array(5)].map((_, i) => (
-						<Skeleton key={i} className="h-24 w-full" />
-					))}
-				</div>
+				<>
+					<div
+						data-testid="mobile-fleet-metrics"
+						className={cn(
+							CARD_SURFACE,
+							"grid grid-cols-3 gap-2 px-3 py-2 md:hidden",
+						)}
+					>
+						{[...Array(3)].map((_, i) => (
+							<Skeleton key={i} className="h-9 w-full" />
+						))}
+					</div>
+					<div
+						data-testid="desktop-fleet-stats"
+						className={cn(
+							"hidden grid-cols-1 sm:grid-cols-2 md:grid lg:grid-cols-4 xl:grid-cols-5",
+							GAP_CARD,
+						)}
+					>
+						{[...Array(5)].map((_, i) => (
+							<Skeleton key={i} className="h-24 w-full" />
+						))}
+					</div>
+				</>
 			) : (
-				<div
-					className={cn(
-						"grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5",
-						GAP_CARD,
-					)}
-				>
-					<StatCard
-						label="Runs (7d)"
-						value={formatNumber(fleetStats.total_runs)}
-						delta={
-							fleetStats.total_runs > 0
-								? "Across active agents"
-								: "No runs yet"
-						}
-					/>
-					<StatCard
-						label="Success rate"
-						value={`${Math.round((fleetStats.avg_success_rate ?? 0) * 100)}%`}
-						delta="Across active agents"
-					/>
-					<StatCard
-						label="Spend (7d)"
-						value={formatCost(fleetStats.total_cost_7d)}
-						delta={
-							fleetStats.total_runs > 0
-								? `${formatCost(
-										Number(fleetStats.total_cost_7d) / 7,
-									)}/day avg`
-								: "—"
-						}
-					/>
-					<StatCard
-						label="Active agents"
-						value={formatNumber(fleetStats.active_agents)}
-						delta={`of ${totalAgents} total`}
-					/>
-					<StatCard
-						label="Needs review"
-						value={formatNumber(fleetStats.needs_review)}
-						alert={fleetStats.needs_review > 0}
-						icon={
-							fleetStats.needs_review > 0 ? (
-								<AlertTriangle className="h-[11px] w-[11px]" />
-							) : undefined
-						}
-						delta={
-							fleetStats.needs_review > 0
-								? "runs marked — click to open"
-								: "All runs reviewed"
-						}
-						deltaTone={fleetStats.needs_review > 0 ? "down" : "up"}
-					/>
-				</div>
+				<>
+					<div
+						data-testid="mobile-fleet-metrics"
+						className={cn(
+							CARD_SURFACE,
+							"grid grid-cols-3 gap-2 px-3 py-2 md:hidden",
+						)}
+					>
+						<CompactMetric
+							label="Runs"
+							value={`${formatNumber(fleetStats.total_runs)} runs`}
+						/>
+						<CompactMetric
+							label="Success"
+							value={`${Math.round((fleetStats.avg_success_rate ?? 0) * 100)}% success`}
+						/>
+						<CompactMetric
+							label="Review"
+							value={
+								fleetStats.needs_review > 0
+									? `${formatNumber(fleetStats.needs_review)} flagged`
+									: "Clear"
+							}
+							alert={fleetStats.needs_review > 0}
+						/>
+					</div>
+					<div
+						data-testid="desktop-fleet-stats"
+						className={cn(
+							"hidden grid-cols-1 sm:grid-cols-2 md:grid lg:grid-cols-4 xl:grid-cols-5",
+							GAP_CARD,
+						)}
+					>
+						<StatCard
+							label="Runs (7d)"
+							value={formatNumber(fleetStats.total_runs)}
+							delta={
+								fleetStats.total_runs > 0
+									? `Across active ${term(terminology, "agent", "pluralLower")}`
+									: "No runs yet"
+							}
+						/>
+						<StatCard
+							label="Success rate"
+							value={`${Math.round((fleetStats.avg_success_rate ?? 0) * 100)}%`}
+							delta={`Across active ${term(terminology, "agent", "pluralLower")}`}
+						/>
+						<StatCard
+							label="Spend (7d)"
+							value={formatCost(fleetStats.total_cost_7d)}
+							delta={
+								fleetStats.total_runs > 0
+									? `${formatCost(
+											Number(fleetStats.total_cost_7d) / 7,
+										)}/day avg`
+									: "—"
+							}
+						/>
+						<StatCard
+							label={`Active ${term(terminology, "agent", "pluralLower")}`}
+							value={formatNumber(fleetStats.active_agents)}
+							delta={`of ${totalAgents} total`}
+						/>
+						<StatCard
+							label="Needs review"
+							value={formatNumber(fleetStats.needs_review)}
+							alert={fleetStats.needs_review > 0}
+							icon={
+								fleetStats.needs_review > 0 ? (
+									<AlertTriangle className="h-[11px] w-[11px]" />
+								) : undefined
+							}
+							delta={
+								fleetStats.needs_review > 0
+									? "runs marked — click to open"
+									: "All runs reviewed"
+							}
+							deltaTone={fleetStats.needs_review > 0 ? "down" : "up"}
+						/>
+					</div>
+				</>
 			)}
 
 			{/* Search + view toggle */}
-			<div className="flex items-center justify-between gap-3">
-				<div className="flex flex-1 items-center gap-3">
-					<div className="relative max-w-md flex-1">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+					<div className="relative w-full sm:max-w-md sm:flex-1">
 						<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
 						<Input
-							aria-label="Search agents"
-							placeholder="Search agents…"
+							aria-label={`Search ${term(terminology, "agent", "pluralLower")}`}
+							placeholder={`Search ${term(terminology, "agent", "pluralLower")}...`}
 							value={query}
 							onChange={(e) => setQuery(e.target.value)}
 							className="h-8 pl-8 text-[13px]"
 						/>
 					</div>
 					{isPlatformAdmin && (
-						<div className="w-64">
+						<div className="w-full sm:w-64">
 							<OrganizationSelect
 								value={filterOrgId}
 								onChange={setFilterOrgId}
@@ -279,63 +327,96 @@ export function FleetPage() {
 			</div>
 
 			{/* Content */}
-			{agentsLoading ? (
-				view === "grid" ? (
+			<div className="flex-1 min-h-0 overflow-auto">
+				{agentsLoading ? (
+					view === "grid" ? (
+						<div className={cn("grid md:grid-cols-2 xl:grid-cols-3", GAP_CARD)}>
+							{[...Array(6)].map((_, i) => (
+								<Skeleton key={i} className="h-52 w-full" />
+							))}
+						</div>
+					) : (
+						<div className="space-y-2">
+							{[...Array(3)].map((_, i) => (
+								<Skeleton key={i} className="h-12 w-full" />
+							))}
+						</div>
+					)
+				) : filtered.length === 0 ? (
+					<EmptyState hasQuery={query.trim().length > 0} />
+				) : view === "grid" ? (
 					<div className={cn("grid md:grid-cols-2 xl:grid-cols-3", GAP_CARD)}>
-						{[...Array(6)].map((_, i) => (
-							<Skeleton key={i} className="h-52 w-full" />
+						{filtered.map((agent) => (
+							<AgentGridCard
+								key={agent.id}
+								agent={agent}
+								showOrg={isPlatformAdmin}
+								orgName={getOrgName(agent.organization_id)}
+							/>
 						))}
 					</div>
 				) : (
-					<div className="space-y-2">
-						{[...Array(3)].map((_, i) => (
-							<Skeleton key={i} className="h-12 w-full" />
-						))}
-					</div>
-				)
-			) : filtered.length === 0 ? (
-				<EmptyState hasQuery={query.trim().length > 0} />
-			) : view === "grid" ? (
-				<div className={cn("grid md:grid-cols-2 xl:grid-cols-3", GAP_CARD)}>
-					{filtered.map((agent) => (
-						<AgentGridCard
-							key={agent.id}
-							agent={agent}
-							showOrg={isPlatformAdmin}
-							orgName={getOrgName(agent.organization_id)}
-						/>
-					))}
-				</div>
-			) : (
-				<AgentTable
-					agents={filtered}
-					showOrg={isPlatformAdmin}
-					getOrgName={getOrgName}
-				/>
-			)}
+					<AgentTable
+						agents={filtered}
+						showOrg={isPlatformAdmin}
+						getOrgName={getOrgName}
+					/>
+				)}
+			</div>
 		</div>
 	);
 }
 
 function EmptyState({ hasQuery }: { hasQuery: boolean }) {
+	const terminology = useTerminology();
+
 	return (
 		<div className={cn(CARD_SURFACE, "py-12 text-center")}>
 			<Bot className="mx-auto h-10 w-10 text-muted-foreground" />
 			<h3 className="mt-3 text-[15px] font-semibold">
-				{hasQuery ? "No agents match your search" : "No agents yet"}
+				{hasQuery
+					? `No ${term(terminology, "agent", "pluralLower")} match your search`
+					: `No ${term(terminology, "agent", "pluralLower")} yet`}
 			</h3>
 			<p className={cn("mt-1", TYPE_MUTED)}>
 				{hasQuery
 					? "Try adjusting your search."
-					: "Get started by creating your first AI agent."}
+					: `Get started by creating your first AI ${term(terminology, "agent", "singularLower")}.`}
 			</p>
 			{!hasQuery ? (
 				<Button asChild variant="outline" size="sm" className="mt-4">
 					<Link to="/agents/new">
-						<Plus className="h-3.5 w-3.5" /> New agent
+						<Plus className="h-3.5 w-3.5" /> New{" "}
+						{term(terminology, "agent", "singularLower")}
 					</Link>
 				</Button>
 			) : null}
+		</div>
+	);
+}
+
+function CompactMetric({
+	label,
+	value,
+	alert,
+}: {
+	label: string;
+	value: string;
+	alert?: boolean;
+}) {
+	return (
+		<div className="min-w-0">
+			<div className="truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+				{label}
+			</div>
+			<div
+				className={cn(
+					"mt-0.5 truncate text-[13px] font-semibold leading-tight tabular-nums",
+					alert && "text-rose-500",
+				)}
+			>
+				{value}
+			</div>
 		</div>
 	);
 }
@@ -382,7 +463,14 @@ function AgentGridCard({
 			<div className="border-b px-4 pb-3 pt-3.5">
 				<div className="flex items-start justify-between gap-3">
 					<div className="flex min-w-0 items-center gap-2">
-						<Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+						<EntityLogo
+							entityType="agent"
+							entityId={agent.id}
+							logo={agent.logo ?? null}
+							fallback={<Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+							size={20}
+							className="h-5 w-5 rounded shrink-0 object-cover"
+						/>
 						<span className={cn("truncate", TYPE_CARD_TITLE)}>
 							{agent.name}
 						</span>

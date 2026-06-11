@@ -14,6 +14,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.models.orm.base import Base
 
 
+# Identity entity — write-only from execution path, not name-cascade resolved.
+# See api/src/repositories/README.md.
 class AuditLog(Base):
     """Audit log for tracking user actions."""
 

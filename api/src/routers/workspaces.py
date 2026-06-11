@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from src.core.auth import CurrentActiveUser
-from src.core.database import DbSession
+from src.core.db_deps import DbSession
 from src.models.contracts.workspaces import (
     WorkspaceCreate,
     WorkspacePublic,

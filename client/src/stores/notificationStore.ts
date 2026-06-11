@@ -19,6 +19,7 @@ export type NotificationCategory =
 	| "github_sync"
 	| "file_upload"
 	| "package_install"
+	| "embedding_reindex"
 	| "system";
 
 // Status matching backend NotificationStatus enum

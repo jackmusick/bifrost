@@ -6,12 +6,12 @@
  */
 
 import {
-	useLocation,
 	useMatch,
 	useResolvedPath,
 	Outlet,
 	useOutletContext,
 } from "react-router-dom";
+import { useLocation } from "./useLocation";
 import { useWorkflowQuery } from "./useWorkflowQuery";
 import { useWorkflowMutation } from "./useWorkflowMutation";
 import { useParams } from "./useParams";
