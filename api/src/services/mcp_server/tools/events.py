@@ -25,6 +25,26 @@ def _build_callback_url(source_id: UUID) -> str:
     return f"/api/hooks/{source_id}"
 
 
+def _source_in_scope(context: Any, source_org_id: UUID | None) -> bool:
+    """Whether the MCP caller may touch an event source in ``source_org_id``.
+
+    EXT-1 NEW-2 — by-id reads/writes must respect the caller's org scope:
+    - platform admin: any source.
+    - regular org user: own org OR global.
+    - external (non-bypass): own org ONLY (no global tier).
+    A cross-org source is out of scope for any non-bypass caller.
+    """
+    if getattr(context, "is_platform_admin", False):
+        return True
+    ctx_org = getattr(context, "org_id", None)
+    if isinstance(ctx_org, str) and ctx_org:
+        ctx_org = UUID(ctx_org)
+    if source_org_id is not None:
+        return source_org_id == ctx_org
+    # Global source: allowed only for a non-external principal.
+    return not bool(getattr(context, "is_external", False))
+
+
 async def list_event_sources(
     context: Any,
     source_type: str | None = None,
@@ -48,7 +68,27 @@ async def list_event_sources(
                     f"Invalid source_type: {source_type}. Valid values: webhook, schedule, topic"
                 )
 
-        org_id = UUID(organization_id) if organization_id else None
+        is_admin = bool(getattr(context, "is_platform_admin", False))
+        is_external = bool(getattr(context, "is_external", False))
+        ctx_org = getattr(context, "org_id", None)
+        if isinstance(ctx_org, str) and ctx_org:
+            ctx_org = UUID(ctx_org)
+
+        # Org scoping (EXT-1 NEW-2): a non-bypass caller may ONLY list their own
+        # org's sources — never a caller-supplied foreign org, and externals get
+        # no global tier. A platform admin may target any org via organization_id.
+        if is_admin:
+            org_id = UUID(organization_id) if organization_id else None
+            include_global = org_id is None
+        else:
+            org_id = ctx_org
+            include_global = not is_external
+            if org_id is None and is_external:
+                # External with no org: no source is in reach (the repo's
+                # no-org branch would otherwise return global-only).
+                return success_result(
+                    "No event sources found", {"sources": [], "count": 0}
+                )
 
         async with get_tool_db(context) as db:
             repo = EventSourceRepository(db)
@@ -57,7 +97,7 @@ async def list_event_sources(
             sources = await repo.get_by_organization(
                 organization_id=org_id,
                 source_type=source_type_enum,
-                include_global=org_id is None,
+                include_global=include_global,
                 limit=limit,
             )
 
@@ -149,7 +189,24 @@ async def create_event_source(
         user_email = getattr(context, "user_email", "") or getattr(context, "email", "mcp")
 
         async with get_tool_db(context) as db:
-            org_uuid = UUID(organization_id) if organization_id else None
+            # Org scoping (EXT-1 NEW-2): a non-admin caller may only create
+            # sources in their OWN org — never a caller-supplied foreign org or
+            # global. A platform admin may target any org (or global).
+            if getattr(context, "is_platform_admin", False):
+                org_uuid = UUID(organization_id) if organization_id else None
+            else:
+                ctx_org = getattr(context, "org_id", None)
+                if isinstance(ctx_org, str) and ctx_org:
+                    ctx_org = UUID(ctx_org)
+                if ctx_org is None:
+                    return error_result(
+                        "Cannot create an event source without an organization scope"
+                    )
+                if organization_id and UUID(organization_id) != ctx_org:
+                    return error_result(
+                        "Cannot create event sources in another organization"
+                    )
+                org_uuid = ctx_org
 
             # Upsert logic: if workflow_id provided, check for existing matching source
             existing_source = None
@@ -166,10 +223,19 @@ async def create_event_source(
                         EventSource.is_active.is_(True),
                     )
                 )
+                # Exact-scope existence check for the create TARGET (not a read
+                # cascade). org_uuid is None only when a platform admin targets
+                # global — non-admins were forced to their own org above, so the
+                # global arm is admin-only.
                 if org_uuid:
                     query = query.where(EventSource.organization_id == org_uuid)
-                else:
+                elif getattr(context, "is_platform_admin", False):
                     query = query.where(EventSource.organization_id.is_(None))
+                else:
+                    # Unreachable (non-admins have a forced org), defensive.
+                    return error_result(
+                        "Cannot resolve event source in global scope"
+                    )
 
                 result = await db.execute(query)
                 existing_source = result.unique().scalar_one_or_none()
@@ -349,6 +415,12 @@ async def get_event_source(
             if not source:
                 return error_result(f"Event source not found: {source_id}")
 
+            # Org gate (EXT-1 NEW-2): a by-id touch must respect the caller's
+            # scope — 404-style denial for out-of-scope sources (don't reveal
+            # existence cross-org / global-to-external).
+            if not _source_in_scope(context, source.organization_id):
+                return error_result(f"Event source not found: {source_id}")
+
             sub_repo = EventSubscriptionRepository(db)
             subscription_count = await sub_repo.count_by_source(source.id, active_only=True)
 
@@ -413,6 +485,12 @@ async def update_event_source(
             source = await repo.get_by_id_with_details(UUID(source_id))
 
             if not source:
+                return error_result(f"Event source not found: {source_id}")
+
+            # Org gate (EXT-1 NEW-2): a by-id touch must respect the caller's
+            # scope — 404-style denial for out-of-scope sources (don't reveal
+            # existence cross-org / global-to-external).
+            if not _source_in_scope(context, source.organization_id):
                 return error_result(f"Event source not found: {source_id}")
 
             # Update basic fields
@@ -490,6 +568,12 @@ async def delete_event_source(
             source = await repo.get_by_id_with_details(UUID(source_id))
 
             if not source:
+                return error_result(f"Event source not found: {source_id}")
+
+            # Org gate (EXT-1 NEW-2): a by-id touch must respect the caller's
+            # scope — 404-style denial for out-of-scope sources (don't reveal
+            # existence cross-org / global-to-external).
+            if not _source_in_scope(context, source.organization_id):
                 return error_result(f"Event source not found: {source_id}")
 
             # Unsubscribe webhooks

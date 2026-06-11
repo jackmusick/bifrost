@@ -418,6 +418,10 @@ _EXEC_RESOLUTION_MODELS = {
     "MCPConnection",
     "OAuthProvider",
     "OAuthToken",
+    # EventSource: a plain BaseRepository, but its MCP tools (events.py) are
+    # user-reachable and hand-rolled org/global filters → cross-org/global leak
+    # (EXT-1 NEW-2). Included so the path-lint covers regressions there.
+    "EventSource",
 }
 
 # Files reachable by a CurrentActiveUser principal where an inline
@@ -435,7 +439,9 @@ _PATH_GLOBAL_ARM_ALLOWLIST: dict[str, str] = {
     "routers/workflows.py": "list_workflows is CurrentSuperuser-only",
     "routers/solutions.py": "solution mgmt endpoints are CurrentSuperuser-only",
     "routers/integrations.py": "integration config endpoints are CurrentSuperuser-only",
-    "routers/tables.py": "_resolve_solution_table_by_name: install-scoped solution-app lookup, not an org cascade",
+    # NOTE: routers/tables.py is NO LONGER whole-file exempt (EXT-1 NEW-3) — the
+    # _resolve_solution_table_by_name global arm is now polarity-guarded by
+    # is_external, so the path-lint recognizes it directly.
 }
 
 
@@ -464,10 +470,19 @@ def test_user_reachable_paths_dont_hand_roll_global_arm():
                 continue
             tree = ast.parse(text)
             idents = _identifiers_in_module(tree)
+            # User-reachable surfaces: a REST endpoint authing CurrentActiveUser/
+            # Context, OR an MCP tool (authenticates as the user). MCP tools live
+            # under services/mcp_server/tools/ and read scope off ``context``
+            # (often via ``getattr(context, …)``), so the literal-text checks
+            # alone miss them — include the whole MCP-tools directory.
+            is_mcp_tool = "services/mcp_server/tools/" in rel.replace("\\", "/")
             user_reachable = (
                 bool({"CurrentActiveUser", "Context"} & idents)
                 or "context.is_external" in text
                 or "context.is_platform_admin" in text
+                or 'getattr(context, "is_external"' in text
+                or 'getattr(context, "is_platform_admin"' in text
+                or is_mcp_tool
             )
             if not user_reachable:
                 continue
