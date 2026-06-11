@@ -12,6 +12,7 @@ from uuid import UUID
 from fastmcp.tools import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools._org_scope import apply_mcp_org_scope
 from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
@@ -375,40 +376,44 @@ async def get_form(
             # Build query
             query = select(FormORM).options(selectinload(FormORM.fields))
 
+            is_external = bool(getattr(context, "is_external", False))
+
             if form_id:
-                # ID-based lookup: IDs are unique, so cascade filter is safe
+                # ID-based lookup: IDs are unique, so cascade filter is safe.
                 try:
                     uuid_id = UUID_TYPE(form_id)
                 except ValueError:
                     return error_result(f"'{form_id}' is not a valid UUID")
                 query = query.where(FormORM.id == uuid_id)
-                # Apply org scoping for non-admins (cascade filter for ID lookups)
-                if not context.is_platform_admin and context.org_id:
-                    from sqlalchemy import or_
-                    org_uuid = UUID_TYPE(str(context.org_id))
-                    query = query.where(
-                        or_(
-                            FormORM.organization_id == org_uuid,
-                            FormORM.organization_id.is_(None)  # Global forms
-                        )
-                    )
+                # Org cascade (external-aware): externals get no global tier.
+                query = apply_mcp_org_scope(query, FormORM, context)
             else:
                 # Name-based lookup: use prioritized lookup (org-specific > global)
                 query = query.where(FormORM.name == form_name)
                 if not context.is_platform_admin and context.org_id:
-                    from sqlalchemy import or_
                     org_uuid = UUID_TYPE(str(context.org_id))
-                    query = query.where(
-                        or_(
-                            FormORM.organization_id == org_uuid,
-                            FormORM.organization_id.is_(None)  # Global forms
+                    if is_external:
+                        # External: own org only, no global prioritization.
+                        query = query.where(
+                            FormORM.organization_id == org_uuid
+                        ).limit(1)
+                    else:
+                        from sqlalchemy import or_
+                        query = query.where(
+                            or_(
+                                FormORM.organization_id == org_uuid,
+                                FormORM.organization_id.is_(None)  # Global forms
+                            )
                         )
-                    )
-                    # Prioritize org-specific over global (nulls come last)
-                    query = query.order_by(FormORM.organization_id.desc().nulls_last()).limit(1)
+                        # Prioritize org-specific over global (nulls come last)
+                        query = query.order_by(FormORM.organization_id.desc().nulls_last()).limit(1)
                 elif not context.is_platform_admin:
-                    # No org context - only global forms
-                    query = query.where(FormORM.organization_id.is_(None))
+                    # No org context: external sees nothing; others get global.
+                    if is_external:
+                        from sqlalchemy import false
+                        query = query.where(false())
+                    else:
+                        query = query.where(FormORM.organization_id.is_(None))
 
             result = await db.execute(query)
             form = result.scalar_one_or_none()

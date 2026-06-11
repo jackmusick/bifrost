@@ -19,6 +19,7 @@ from fastmcp.tools import ToolResult
 from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.services.mcp_server.tool_result import error_result, success_result
 from src.services.mcp_server.tools._http_bridge import call_rest
+from src.services.mcp_server.tools._org_scope import apply_mcp_org_scope
 from src.services.mcp_server.tools.db import get_tool_db
 
 logger = logging.getLogger(__name__)
@@ -74,11 +75,8 @@ async def list_apps(context: Any) -> ToolResult:
         async with get_tool_db(context) as db:
             query = select(Application)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query.order_by(Application.name))
             apps = result.scalars().all()
@@ -288,11 +286,8 @@ async def get_app(
             else:
                 query = query.where(Application.slug == app_slug)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
             if app_id:
@@ -364,11 +359,8 @@ async def update_app(
         async with get_tool_db(context) as db:
             query = select(Application).where(Application.id == app_uuid)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
             app = result.scalar_one_or_none()
@@ -1059,11 +1051,8 @@ async def get_app_dependencies(
             else:
                 query = select(Application).where(Application.slug == app_slug)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
             if app_id:
@@ -1140,11 +1129,8 @@ async def update_app_dependencies(
     try:
         async with get_tool_db(context) as db:
             query = select(Application).where(Application.id == app_uuid)
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
             app = result.scalar_one_or_none()
