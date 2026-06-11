@@ -896,7 +896,7 @@ function KnowledgeAssignDrawer({
 					</SheetDescription>
 				</SheetHeader>
 
-				<div className="px-4 space-y-3">
+				<div className="px-6 space-y-3">
 					<label className="block text-sm">
 						<span className="block mb-1 text-muted-foreground">Namespace</span>
 						<Input

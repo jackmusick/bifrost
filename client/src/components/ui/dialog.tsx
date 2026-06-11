@@ -61,7 +61,15 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 duration-100 outline-none sm:max-w-md dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // Sizing as plain (unprefixed) classes so consumer className
+          // overrides like `max-w-2xl` / `max-w-[90vw]` resolve through
+          // tailwind-merge instead of silently losing to a media-scoped
+          // `sm:max-w-*` default — same rule as sheet.tsx. The viewport
+          // gutter lives on `w-[calc(100%-2rem)]` (the `w-` group) rather
+          // than a `max-w-*` so a consumer max-w override keeps it.
+          // `max-h-[90vh] overflow-y-auto` is the default internal scroll;
+          // consumers that bring their own max-h / overflow win via merge.
+          "fixed top-1/2 left-1/2 z-50 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-6 overflow-y-auto rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 duration-100 outline-none dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

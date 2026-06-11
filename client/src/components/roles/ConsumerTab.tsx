@@ -399,7 +399,7 @@ function AssignDrawer({
 					</SheetDescription>
 				</SheetHeader>
 
-				<div className="px-4 space-y-2">
+				<div className="px-6 pb-4 space-y-2">
 					<SearchBox
 						value={search}
 						onChange={setSearch}
@@ -414,7 +414,7 @@ function AssignDrawer({
 					</label>
 				</div>
 
-				<div className="flex-1 overflow-y-auto px-4 pb-2">
+				<div className="flex-1 overflow-y-auto px-6 pb-2">
 					{candidatesLoading ? (
 						<div className="space-y-2 mt-2">
 							{[...Array(6)].map((_, i) => (

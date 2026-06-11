@@ -38,20 +38,18 @@ function CommandDialog({
   description = "Search for a command to run...",
   children,
   className,
-  showCloseButton = false,
+  showCloseButton = true,
+  commandProps,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
   className?: string
   showCloseButton?: boolean
+  commandProps?: React.ComponentProps<typeof Command>
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn(
           "top-1/3 translate-y-0 overflow-hidden rounded-3xl! p-0",
@@ -59,7 +57,17 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/* sr-only header must live INSIDE DialogContent so it only exists
+            in the a11y tree while the dialog is open. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {/* Auto-wrap children in <Command> — this is a published contract:
+            already-built v2 app bundles (via lib/bifrost-runtime.ts) pass
+            CommandInput/CommandList directly as children and rely on this
+            wrapper for the cmdk context. Do not remove. */}
+        <Command {...commandProps}>{children}</Command>
       </DialogContent>
     </Dialog>
   )

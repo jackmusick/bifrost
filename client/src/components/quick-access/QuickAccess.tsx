@@ -11,7 +11,6 @@ import {
 	type SearchResult as ApiSearchResult,
 } from "@/services/searchService";
 import {
-	Command,
 	CommandDialog,
 	CommandGroup,
 	CommandInput,
@@ -226,84 +225,85 @@ export function QuickAccess({ isOpen, onClose }: QuickAccessProps) {
 			title="Quick access"
 			description="Search forms, workflows, and scripts"
 			className="sm:max-w-2xl"
+			showCloseButton={false}
+			// CommandDialog wraps children in <Command> itself; results come
+			// server-ranked, so disable cmdk's own filtering on that wrapper.
+			commandProps={{ shouldFilter: false }}
 		>
-			{/* Results come server-ranked; keep their order */}
-			<Command shouldFilter={false}>
-				<div className="relative">
-					<CommandInput
-						placeholder="Search forms, workflows, and scripts..."
-						value={query}
-						onValueChange={setQuery}
-					/>
-					{isSearching && (
-						<Loader2 className="absolute top-1/2 right-4 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-					)}
-				</div>
+			<div className="relative">
+				<CommandInput
+					placeholder="Search forms, workflows, and scripts..."
+					value={query}
+					onValueChange={setQuery}
+				/>
+				{isSearching && (
+					<Loader2 className="absolute top-1/2 right-4 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+				)}
+			</div>
 
-				<CommandList className="max-h-[400px]">
-					{results.length === 0 &&
-						query.trim() !== "" &&
-						!isSearching && (
-							<div className="px-4 py-8 text-center text-sm text-muted-foreground">
-								No results found
-							</div>
-						)}
-
-					{results.length === 0 && query.trim() === "" && (
-						<div className="px-4 py-8 text-center">
-							<Search className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-							<p className="text-sm text-muted-foreground">
-								Search for forms, workflows, and scripts
-							</p>
-							<p className="text-xs text-muted-foreground mt-2">
-								Use ↑↓ to navigate, Enter to select, Esc to
-								close
-							</p>
+			<CommandList className="max-h-[400px]">
+				{results.length === 0 &&
+					query.trim() !== "" &&
+					!isSearching && (
+						<div className="px-4 py-8 text-center text-sm text-muted-foreground">
+							No results found
 						</div>
 					)}
 
-					{results.length > 0 && (
-						<CommandGroup>
-							{results.map((result, index) => (
-								<CommandItem
-									key={`${result.type}-${result.name}-${index}`}
-									value={`${result.type}-${result.name}-${index}`}
-									onSelect={() => handleSelect(result)}
-									className="items-start gap-3 px-3 py-2.5"
-								>
-									<div className="mt-0.5 text-muted-foreground">
-										{getIcon(result.type)}
-									</div>
-									<div className="flex-1 min-w-0">
-										<div className="flex items-center gap-2">
-											<span className="font-medium text-sm">
-												{result.name}
-											</span>
-											<span className="text-xs text-muted-foreground capitalize">
-												{result.type}
-											</span>
-										</div>
-										{result.description && (
-											<p className="text-xs text-muted-foreground mt-1 truncate">
-												{result.description}
-											</p>
-										)}
-									</div>
-								</CommandItem>
-							))}
-						</CommandGroup>
-					)}
-				</CommandList>
-
-				{/* Footer hint */}
-				{results.length > 0 && (
-					<div className="px-4 py-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-						<span>↑↓ to navigate</span>
-						<span>Enter to select</span>
-						<span>Esc to close</span>
+				{results.length === 0 && query.trim() === "" && (
+					<div className="px-4 py-8 text-center">
+						<Search className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+						<p className="text-sm text-muted-foreground">
+							Search for forms, workflows, and scripts
+						</p>
+						<p className="text-xs text-muted-foreground mt-2">
+							Use ↑↓ to navigate, Enter to select, Esc to
+							close
+						</p>
 					</div>
 				)}
-			</Command>
+
+				{results.length > 0 && (
+					<CommandGroup>
+						{results.map((result, index) => (
+							<CommandItem
+								key={`${result.type}-${result.name}-${index}`}
+								value={`${result.type}-${result.name}-${index}`}
+								onSelect={() => handleSelect(result)}
+								className="items-start gap-3 px-3 py-2.5"
+							>
+								<div className="mt-0.5 text-muted-foreground">
+									{getIcon(result.type)}
+								</div>
+								<div className="flex-1 min-w-0">
+									<div className="flex items-center gap-2">
+										<span className="font-medium text-sm">
+											{result.name}
+										</span>
+										<span className="text-xs text-muted-foreground capitalize">
+											{result.type}
+										</span>
+									</div>
+									{result.description && (
+										<p className="text-xs text-muted-foreground mt-1 truncate">
+											{result.description}
+										</p>
+									)}
+								</div>
+							</CommandItem>
+						))}
+					</CommandGroup>
+				)}
+			</CommandList>
+
+			{/* Footer hint */}
+			{results.length > 0 && (
+				<div className="px-4 py-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
+					<span>↑↓ to navigate</span>
+					<span>Enter to select</span>
+					<span>Esc to close</span>
+				</div>
+			)}
 		</CommandDialog>
 	);
 }
