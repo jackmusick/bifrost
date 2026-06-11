@@ -1,11 +1,13 @@
 """
 External-user claim resolution (EXT-1).
 
-``User.is_external`` marks portal/guest users whose visibility is restricted
-to their own org tier (no global entities, no ``access_level="authenticated"``
-entitlement). The restriction applies only to EXTERNAL, NON-BYPASS principals,
-where bypass is the canonical scope-bypass rule from
-``api/src/repositories/README.md``:
+``User.is_external`` marks portal/guest users. The flag is enforced at the
+access-level gate only: externals are excluded from
+``access_level="authenticated"`` entities, admitted by ``"everyone"`` and by
+explicit role grants; org→global cascade is unchanged (see
+``api/src/repositories/README.md``, "External users live at gate 3 only").
+The restriction applies only to EXTERNAL, NON-BYPASS principals, where bypass
+is the canonical scope-bypass rule from the same README:
 
     bypass = is_platform_admin OR is_provider_org
 
