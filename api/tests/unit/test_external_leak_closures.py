@@ -20,8 +20,6 @@ from uuid import uuid4
 import pytest
 
 from src.core.org_filter import OrgFilterType, resolve_org_filter
-from src.models import Workflow
-from src.models.orm.workflow_roles import WorkflowRole
 from src.repositories.data_providers import DataProviderRepository
 from src.repositories.knowledge import KnowledgeRepository
 from src.repositories.workflows import WorkflowRepository
