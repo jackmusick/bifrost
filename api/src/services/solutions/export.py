@@ -52,8 +52,9 @@ _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
 # Bundle-transport fields that are NOT part of an app's manifest entry — the
 # files land in the app's source dir, the logos as real files referenced by
-# the ``logo:`` key.
-_APP_TRANSPORT_FIELDS = ("src_files", "bin_files", "logo_b64", "logo_content_type")
+# the ``logo:`` key. ``dist_files`` (the prebuilt fast-path) is build OUTPUT,
+# never part of a workspace.
+_APP_TRANSPORT_FIELDS = ("src_files", "bin_files", "dist_files", "logo_b64", "logo_content_type")
 
 
 def _safe_dir(name: str) -> str:
