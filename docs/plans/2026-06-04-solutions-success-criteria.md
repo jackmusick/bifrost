@@ -340,3 +340,60 @@ live drive are shipped on this branch.
   (the RTM staff-lockout class of bug; friction log #13).
 - SDK tarball cache keyed on source mtime/hash, killing the docker-exec +
   api-restart dev dance (friction log #14).
+
+---
+
+## 10. RTM Portal punch list + Grant Templates (2026-06-12, in-flight)
+
+RTM Portal lives in `~/GitHub/bifrost-workspace/solutions/rtm-portal`; deploys to
+THIS worktree's debug stack (port mode, `http://localhost:37791`, also
+`http://development.netbird.cloud:37791`). CLI scratch venv:
+`/tmp/bifrost-cli-rtm-port`. Drive scripts: `/tmp/rtm-drive/`, shots `/tmp/rtm-shots/`.
+Demo logins: `dee@rtm-demo.com` / `RtmDemo2026x` (RTM admin), architect@/jim.wagner@
+same password (externals), `dev@gobifrost.com` / `password` (platform).
+
+### DONE — v0.7.0 (committed to bifrost-workspace `64e37bc`, deployed, drive-verified)
+
+- Documents: cascading Building + Floor filters (floor labels carry building when
+  no building picked); verified excludes (2 docs → 1 on Floor 1, 0 on Floor 4).
+- Document cards: click-to-view PDF, share/edit/archive icon group top-right,
+  Download DWF standalone; responsive (stacked action row on phones).
+- Shell: sidebar → horizontal nav strip ≤820px (`ShellStyles` in App.tsx).
+- ToggleChip inline-flex fix (icon-above-text wrap); GrantMatrix at scale
+  (campus filter >5, doc-type filter >10 + capped scrolling chip panel,
+  searchable add-campus Combobox); grants keyed by facility_id not index.
+- Groups question answered: C# Groups were NOT migrated (replaced by per-user
+  grants) → Jack wants **Grant Templates** as the migration path (below).
+
+### IN-FLIGHT — Grant Templates v0.8.0 (built + deployed, E2E drive FAILING at step 1)
+
+Design (locked with Jack): template = named doc-type set + access level
+(C# `Group` parity; `legacy_id` for GroupId migration). Reference + materialize:
+`portal_access` rows get `template_id` stamp, content stays materialized so the
+claims/policy chain is untouched; **editing a template re-materializes all
+members** (mass maintenance). Per-user custom grants remain the option. Template
+delete refused while in use. Template-first UX (CreateUser preselects first template).
+
+Built (all in rtm-portal workspace, NOT yet committed):
+- `.bifrost/tables.yaml`: + `grant_templates` table (uuid baea47c3-…), + `template_id`
+  col on portal_access.
+- `modules/rtm_portal.py`: `get_template`, `apply_template`, write_grants stamps template_id.
+- `functions/manage_portal_user.py`: `template_id` param on create/set_grants.
+- `functions/manage_grant_template.py` (NEW, uuid a6d187b9-… in workflows.yaml):
+  create/update(+re-materialize members)/delete(refuse-if-members).
+- Client: `staff/GrantTemplates.tsx` (admin CRUD page, member counts, nav
+  `/staff/templates`); GrantMatrix.tsx refactor (exported `DocTypePicker`,
+  `TemplateCampusList`, shared `AddCampusPicker`); Users.tsx template-first
+  GrantEditor in both modals + template badge on user cards.
+- tsc clean, vite build clean, deployed (16 workflows upserted).
+
+**BLOCKER:** drive `/tmp/rtm-drive/templates-verify.mjs` fails at create-template —
+red error banner ("workflow executi…"), and the worker logs show NO
+manage_grant_template execution → fails at the API submit layer, before the
+engine. Suspects: app-scoped path-ref resolution for a workflow ADDED to an
+existing install, or workflow-entity access gating for a non-superuser (dee).
+NEXT: capture exact error (re-run probe `/tmp/rtm-drive/tpl-error.mjs` or
+`bifrost run functions/manage_grant_template.py::main` from the solution dir as
+dev), fix, re-run templates-verify.mjs (expects architect Riverside docs 2 → 3
+after template edit), screenshot, bump bifrost.solution.yaml → 0.8.0, commit
+to bifrost-workspace.
