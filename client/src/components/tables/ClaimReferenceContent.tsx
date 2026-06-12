@@ -11,7 +11,7 @@ export function ClaimReferenceContent() {
 
 			<section className="space-y-2">
 				<h4 className="font-medium">Claim query</h4>
-				<pre className="rounded-md bg-muted p-3 text-xs overflow-x-auto">
+				<pre className="rounded-md bg-muted p-3 text-xs overflow-x-auto ring-1 ring-foreground/5">
 					{`name: allowed_campus_ids
 type: list
 query:
@@ -24,7 +24,7 @@ query:
 
 			<section className="space-y-2">
 				<h4 className="font-medium">Policy reference</h4>
-				<pre className="rounded-md bg-muted p-3 text-xs overflow-x-auto">
+				<pre className="rounded-md bg-muted p-3 text-xs overflow-x-auto ring-1 ring-foreground/5">
 					{`in: [{ row: campus_id }, { claims: allowed_campus_ids }]`}
 				</pre>
 			</section>

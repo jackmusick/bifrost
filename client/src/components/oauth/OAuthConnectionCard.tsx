@@ -285,14 +285,14 @@ export function OAuthConnectionCard({
 				{/* Status Message - only show for non-completed statuses */}
 				{connection.status_message &&
 					connection.status !== "completed" && (
-						<div className="text-sm text-muted-foreground bg-muted p-2 rounded-md">
+						<div className="text-sm text-muted-foreground rounded-md bg-muted p-2 ring-1 ring-foreground/5">
 							{connection.status_message}
 						</div>
 					)}
 
 				{/* Expiration Warning */}
 				{connection.status === "completed" && isTokenExpired && (
-					<div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 p-2 rounded-md">
+					<div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400 rounded-md bg-red-50 p-2 ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-900/50">
 						<AlertCircle className="h-4 w-4 mt-0.5" />
 						<span>
 							Token expired. Reconnect to continue using this
@@ -304,7 +304,7 @@ export function OAuthConnectionCard({
 				{connection.status === "completed" &&
 					!isTokenExpired &&
 					expirationWarning && (
-						<div className="flex items-start gap-2 text-sm text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900/50 p-2 rounded-md">
+						<div className="flex items-start gap-2 text-sm text-yellow-600 dark:text-yellow-400 rounded-md bg-yellow-50 p-2 ring-1 ring-yellow-200 dark:bg-yellow-950/30 dark:ring-yellow-900/50">
 							<AlertCircle className="h-4 w-4 mt-0.5" />
 							<span>Token expires soon</span>
 						</div>

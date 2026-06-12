@@ -46,13 +46,13 @@ export function HelpSlideout({
 			</Button>
 			<SheetContent
 				side="right"
-				className="w-[420px] sm:w-[480px] overflow-y-auto"
+				className="w-[420px] sm:w-[480px] sm:max-w-[480px] overflow-y-auto"
 				aria-label={title}
 			>
 				<SheetHeader>
 					<SheetTitle>{title}</SheetTitle>
 				</SheetHeader>
-				<div className="space-y-6 px-4 pb-6">{children}</div>
+				<div className="space-y-6 px-6 pb-6">{children}</div>
 			</SheetContent>
 		</Sheet>
 	);

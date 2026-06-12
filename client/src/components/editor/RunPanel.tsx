@@ -862,7 +862,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 				{detectedItem.type === "script" && (
 					<>
 						<div className="m-3 mb-0">
-							<div className="border rounded flex items-center gap-3 p-2 bg-muted/30">
+							<div className="rounded-md ring-1 ring-foreground/5 flex items-center gap-3 p-2 bg-muted/50">
 								<button
 									onClick={handleExecuteScript}
 									disabled={isLoading}

@@ -112,7 +112,7 @@ export function CustomClaimEditor({
 							type: event.target.value as CustomClaim["type"],
 						})
 					}
-					className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+					className="h-8 w-full rounded-2xl border border-transparent bg-input/50 px-2.5 text-sm transition-[color,box-shadow] duration-200 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					<option value="list">list</option>
 					<option value="scalar">scalar</option>

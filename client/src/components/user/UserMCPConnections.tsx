@@ -240,7 +240,7 @@ export function UserMCPConnections() {
 							))}
 						</div>
 					) : rows.length === 0 ? (
-						<div className="border rounded-md py-12 text-center">
+						<div className="rounded-lg py-12 text-center ring-1 ring-foreground/5">
 							<Plug className="h-10 w-10 mx-auto text-muted-foreground" />
 							<h3 className="mt-3 font-semibold">No connections available</h3>
 							<p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">

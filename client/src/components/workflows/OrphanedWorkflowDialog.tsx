@@ -289,7 +289,7 @@ export function OrphanedWorkflowDialog({
 
 				<div className="space-y-4">
 					{/* Workflow Info */}
-					<div className="text-sm space-y-1.5 bg-muted/50 rounded-lg p-3">
+					<div className="text-sm space-y-1.5 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
 						<div className="flex items-center justify-between">
 							<span className="text-muted-foreground">
 								Workflow:
@@ -339,7 +339,7 @@ export function OrphanedWorkflowDialog({
 					)}
 
 					{/* Replace Option */}
-					<div className="border rounded-lg p-4 space-y-3">
+					<div className="rounded-lg bg-muted/50 p-4 space-y-3 ring-1 ring-foreground/5">
 						<div className="flex items-center gap-2">
 							<ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
 							<h4 className="font-medium">
@@ -418,7 +418,7 @@ export function OrphanedWorkflowDialog({
 					</div>
 
 					{/* Recreate File Option */}
-					<div className="border rounded-lg p-4 space-y-3">
+					<div className="rounded-lg bg-muted/50 p-4 space-y-3 ring-1 ring-foreground/5">
 						<div className="flex items-center gap-2">
 							<RefreshCw className="h-4 w-4 text-muted-foreground" />
 							<h4 className="font-medium">Recreate file</h4>
@@ -446,7 +446,7 @@ export function OrphanedWorkflowDialog({
 					</div>
 
 					{/* Deactivate Option */}
-					<div className="border border-destructive/30 rounded-lg p-4 space-y-3">
+					<div className="rounded-lg bg-destructive/5 p-4 space-y-3 ring-1 ring-destructive/30">
 						<div className="flex items-center gap-2">
 							<XCircle className="h-4 w-4 text-destructive" />
 							<h4 className="font-medium">Deactivate</h4>

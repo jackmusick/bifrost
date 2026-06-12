@@ -25,7 +25,7 @@ export function FlaggedRunCard({ run }: FlaggedRunCardProps) {
 	const title = run.asked || run.did || "Run";
 
 	return (
-		<div className="rounded-md border bg-card">
+		<div className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10">
 			<button
 				type="button"
 				data-testid="flagged-run-toggle"

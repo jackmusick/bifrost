@@ -88,7 +88,7 @@ function FolderRow({
 			onClick={() => onSelect(node.path)}
 			onDoubleClick={() => onToggle(node.path)}
 			className={cn(
-				"flex items-center w-full py-1 px-2 text-sm transition-colors text-left rounded",
+				"flex items-center w-full py-1 px-2 text-sm transition-colors text-left rounded-md",
 				selected ? "bg-primary/10 text-primary" : "hover:bg-muted/50",
 			)}
 			style={{ paddingLeft: `${level * 12 + 4}px` }}
@@ -234,7 +234,7 @@ function FolderPicker({
 	const rootLoading = loadingPaths.has("") && !childrenByPath[""];
 
 	return (
-		<div className="border rounded-md max-h-64 overflow-auto p-1 bg-muted/20">
+		<div className="rounded-md ring-1 ring-foreground/5 max-h-64 overflow-auto p-1 bg-muted/50">
 			{rootLoading ? (
 				<div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
 					<Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -288,7 +288,7 @@ function ValidationResultsPanel({
 	return (
 		<div className="space-y-3">
 			{sections.map((section) => (
-				<div key={section.title} className="border rounded-md">
+				<div key={section.title} className="overflow-hidden rounded-md ring-1 ring-foreground/5">
 					<div
 						className={cn(
 							"px-3 py-2 text-sm font-medium border-b flex items-center gap-2",

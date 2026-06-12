@@ -6,9 +6,11 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { classify, tableColumns } from "./prettyShape";
 
 interface PrettyInputDisplayProps {
-	inputData: Record<string, unknown>;
+	inputData: Record<string, unknown> | unknown[];
 	showToggle?: boolean;
 	defaultView?: "pretty" | "tree";
 }
@@ -48,9 +50,9 @@ function snakeCaseToTitleCase(str: string): string {
 }
 
 /**
- * Format value for display
+ * Format a scalar value for display
  */
-function formatValue(value: unknown): { display: string; badge?: string } {
+function formatScalar(value: unknown): { display: string; badge?: string } {
 	if (value === null) {
 		return { display: "null", badge: "null" };
 	}
@@ -97,15 +99,175 @@ function formatValue(value: unknown): { display: string; badge?: string } {
 		}
 	}
 
-	if (Array.isArray(value)) {
-		return { display: value.join(", "), badge: `array (${value.length})` };
-	}
-
-	if (typeof value === "object") {
-		return { display: JSON.stringify(value, null, 2), badge: "object" };
-	}
-
 	return { display: String(value) };
+}
+
+/** Badge text for a top-level row, derived from the value's shape. */
+function badgeFor(value: unknown): string | undefined {
+	if (Array.isArray(value)) {
+		return `array (${value.length})`;
+	}
+	if (typeof value === "object" && value !== null) {
+		// Nested rows speak for themselves; only badge the JSON fallback.
+		return classify(value) === "flat-object" ? undefined : "object";
+	}
+	return formatScalar(value).badge;
+}
+
+/** Syntax-highlighted JSON block — the ladder's last resort. */
+function JsonBlock({ value }: { value: unknown }) {
+	return (
+		<SyntaxHighlighter
+			language="json"
+			style={oneDark}
+			customStyle={{
+				margin: "0.25rem 0 0 0",
+				borderRadius: "0.375rem",
+				fontSize: "0.75rem",
+				maxHeight: "16rem",
+				maxWidth: "100%",
+				overflow: "auto",
+			}}
+		>
+			{JSON.stringify(value, null, 2)}
+		</SyntaxHighlighter>
+	);
+}
+
+/** Quiet in-panel mini table for arrays of same-shaped flat objects. */
+function MiniTable({
+	items,
+	className,
+}: {
+	items: Array<Record<string, unknown>>;
+	className?: string;
+}) {
+	const columns = tableColumns(items);
+	if (columns === null) return <JsonBlock value={items} />;
+
+	return (
+		<div
+			className={cn(
+				"overflow-x-auto rounded-md ring-1 ring-foreground/5",
+				className,
+			)}
+		>
+			<table className="w-full text-sm">
+				<thead>
+					<tr className="bg-muted">
+						{columns.map((col) => (
+							<th
+								key={col}
+								className="px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground"
+							>
+								{snakeCaseToTitleCase(col)}
+							</th>
+						))}
+					</tr>
+				</thead>
+				<tbody className="divide-y divide-border/60">
+					{items.map((item, i) => (
+						<tr key={i}>
+							{columns.map((col) => {
+								const cell = item[col];
+								return (
+									<td
+										key={col}
+										className="px-2.5 py-1.5 align-top break-words"
+									>
+										{cell === null || cell === undefined ? (
+											<span className="text-muted-foreground/60">
+												—
+											</span>
+										) : (
+											formatScalar(cell).display
+										)}
+									</td>
+								);
+							})}
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
+/** Nested label/value rows — the form idiom, one level deeper per depth. */
+function ObjectRows({
+	data,
+	depth,
+}: {
+	data: Record<string, unknown>;
+	depth: number;
+}) {
+	const entries = Object.entries(data);
+	if (entries.length === 0) {
+		return <p className="italic text-muted-foreground/70">Empty object</p>;
+	}
+
+	return (
+		<div className="mt-1 space-y-1.5 border-l border-border/60 pl-3">
+			{entries.map(([key, value]) => (
+				<div key={key}>
+					<label className="text-xs font-medium text-foreground/80">
+						{snakeCaseToTitleCase(key)}
+					</label>
+					<div className="text-sm text-muted-foreground">
+						<ValueContent value={value} depth={depth + 1} />
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
+/**
+ * Render a value by the ladder: scalar row → nested rows → inline list →
+ * mini table → JSON block (last resort).
+ */
+function ValueContent({ value, depth }: { value: unknown; depth: number }) {
+	const shape = classify(value, depth);
+
+	switch (shape) {
+		case "scalar":
+			return (
+				<p className="whitespace-pre-wrap break-all">
+					{formatScalar(value).display}
+				</p>
+			);
+		case "scalar-array": {
+			const items = value as unknown[];
+			if (items.length === 0) {
+				return (
+					<p className="italic text-muted-foreground/70">
+						Empty list
+					</p>
+				);
+			}
+			return (
+				<p className="whitespace-pre-wrap break-words">
+					{items.map((v) => formatScalar(v).display).join(", ")}
+				</p>
+			);
+		}
+		case "flat-object":
+			return (
+				<ObjectRows
+					data={value as Record<string, unknown>}
+					depth={depth}
+				/>
+			);
+		case "object-table":
+			return (
+				<MiniTable
+					items={value as Array<Record<string, unknown>>}
+					className="mt-1"
+				/>
+			);
+		case "json":
+			return <JsonBlock value={value} />;
+	}
 }
 
 export function PrettyInputDisplay({
@@ -132,25 +294,26 @@ export function PrettyInputDisplay({
 	// Tree view
 	if (view === "tree") {
 		return (
-			<div className="space-y-4">
+			<div className="space-y-2">
 				<div className="flex items-center justify-between">
 					{showToggle ? (
-						<p className="text-sm text-muted-foreground">
+						<p className="text-xs text-muted-foreground">
 							Viewing tree structure
 						</p>
 					) : (
 						<div />
 					)}
-					<div className="flex gap-2">
+					<div className="flex gap-1.5">
 						<Button
 							variant="outline"
 							size="sm"
+							className="h-7 px-2.5 text-xs"
 							onClick={handleCopy}
 						>
 							{copied ? (
-								<Check className="mr-2 h-4 w-4" />
+								<Check className="mr-1.5 h-3.5 w-3.5" />
 							) : (
-								<Copy className="mr-2 h-4 w-4" />
+								<Copy className="mr-1.5 h-3.5 w-3.5" />
 							)}
 							{copied ? "Copied!" : "Copy"}
 						</Button>
@@ -158,63 +321,94 @@ export function PrettyInputDisplay({
 							<Button
 								variant="outline"
 								size="sm"
+								className="h-7 px-2.5 text-xs"
 								onClick={() => setView("pretty")}
 							>
-								<Eye className="mr-2 h-4 w-4" />
+								<Eye className="mr-1.5 h-3.5 w-3.5" />
 								Pretty View
 							</Button>
 						)}
 					</div>
 				</div>
-				<div className="rounded-lg border p-4 bg-muted/30">
-					<VariablesTreeView data={inputData} />
+				<div className="rounded-lg ring-1 ring-foreground/5 p-3 bg-muted/50">
+					<VariablesTreeView
+						data={inputData as Record<string, unknown>}
+					/>
 				</div>
 			</div>
 		);
 	}
 
 	// Pretty view
+	const isTopLevelArray = Array.isArray(inputData);
 	const entries = Object.entries(inputData);
 
 	if (entries.length === 0) {
 		return (
 			<div className="text-center text-muted-foreground py-8">
-				No input parameters
+				{isTopLevelArray ? "No items" : "No input parameters"}
+			</div>
+		);
+	}
+
+	const countLine = isTopLevelArray
+		? `${inputData.length} item${inputData.length !== 1 ? "s" : ""}`
+		: `Viewing ${entries.length} parameter${entries.length !== 1 ? "s" : ""}`;
+
+	const toggleBar = showToggle && (
+		<div className="flex items-center justify-between">
+			<p className="text-xs text-muted-foreground">{countLine}</p>
+			<Button
+				variant="outline"
+				size="sm"
+				className="h-7 px-2.5 text-xs"
+				onClick={() => setView("tree")}
+			>
+				<TreeDeciduous className="mr-1.5 h-3.5 w-3.5" />
+				Tree View
+			</Button>
+		</div>
+	);
+
+	// Top-level array: frame honestly ("5 items") and render the array itself
+	// by the ladder — a table-shaped array becomes the table directly.
+	if (isTopLevelArray) {
+		const shape = classify(inputData);
+		return (
+			<div className="space-y-2">
+				{toggleBar}
+				{shape === "object-table" ? (
+					<MiniTable
+						items={inputData as Array<Record<string, unknown>>}
+						className="rounded-lg bg-muted/50 ring-foreground/5"
+					/>
+				) : shape === "scalar-array" ? (
+					<div className="rounded-lg ring-1 ring-foreground/5 bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground">
+						<ValueContent value={inputData} depth={0} />
+					</div>
+				) : (
+					<JsonBlock value={inputData} />
+				)}
 			</div>
 		);
 	}
 
 	return (
-		<div className="space-y-4">
-			{showToggle && (
-				<div className="flex items-center justify-between">
-					<p className="text-sm text-muted-foreground">
-						Viewing {entries.length} parameter
-						{entries.length !== 1 ? "s" : ""}
-					</p>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => setView("tree")}
-					>
-						<TreeDeciduous className="mr-2 h-4 w-4" />
-						Tree View
-					</Button>
-				</div>
-			)}
+		<div className="space-y-2">
+			{toggleBar}
 
-			<div className="divide-y divide-border rounded-lg border">
+			<div className="divide-y divide-border/60 overflow-hidden rounded-lg ring-1 ring-foreground/5 bg-muted/50">
 				{entries.map(([key, value]) => {
 					const friendlyLabel = snakeCaseToTitleCase(key);
-					const { display, badge } = formatValue(value);
+					const badge = badgeFor(value);
 
 					return (
 						<div
 							key={key}
-							className="flex items-start gap-4 p-4 hover:bg-muted/50 transition-colors"
+							className="flex items-start gap-4 px-3 py-2.5 hover:bg-muted/50 transition-colors"
 						>
 							<div className="flex-1 min-w-0">
-								<div className="flex items-center gap-2 mb-1">
+								<div className="flex items-center gap-2 mb-0.5">
 									<label className="text-sm font-medium">
 										{friendlyLabel}
 									</label>
@@ -228,27 +422,7 @@ export function PrettyInputDisplay({
 									)}
 								</div>
 								<div className="text-sm text-muted-foreground break-words">
-									{typeof value === "object" &&
-									!Array.isArray(value) ? (
-										<SyntaxHighlighter
-											language="json"
-											style={oneDark}
-											customStyle={{
-												margin: 0,
-												borderRadius: "0.25rem",
-												fontSize: "0.75rem",
-												maxHeight: "8rem",
-												maxWidth: "100%",
-												overflowX: "auto",
-											}}
-										>
-											{display}
-										</SyntaxHighlighter>
-									) : (
-										<p className="whitespace-pre-wrap break-all">
-											{display}
-										</p>
-									)}
+									<ValueContent value={value} depth={0} />
 								</div>
 							</div>
 						</div>

@@ -177,7 +177,7 @@ export function WorkflowTable({
 						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead
-									className="cursor-pointer select-none hover:bg-muted/50"
+									className="cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("name")}
 								>
 									<div className="flex items-center gap-1">
@@ -186,7 +186,7 @@ export function WorkflowTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("executions")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -195,7 +195,7 @@ export function WorkflowTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("tokens")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -204,7 +204,7 @@ export function WorkflowTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("cost")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -213,7 +213,7 @@ export function WorkflowTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("cpu")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -222,7 +222,7 @@ export function WorkflowTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("memory")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -361,7 +361,7 @@ export function ConversationTable({
 						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead
-									className="cursor-pointer select-none hover:bg-muted/50"
+									className="cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("title")}
 								>
 									<div className="flex items-center gap-1">
@@ -370,7 +370,7 @@ export function ConversationTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("messages")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -379,7 +379,7 @@ export function ConversationTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("tokens")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -388,7 +388,7 @@ export function ConversationTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("cost")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -523,7 +523,7 @@ export function OrganizationTable({
 						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead
-									className="cursor-pointer select-none hover:bg-muted/50"
+									className="cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("name")}
 								>
 									<div className="flex items-center gap-1">
@@ -532,7 +532,7 @@ export function OrganizationTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("executions")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -541,7 +541,7 @@ export function OrganizationTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("conversations")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -550,7 +550,7 @@ export function OrganizationTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("tokens")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -559,7 +559,7 @@ export function OrganizationTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("cost")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -704,7 +704,7 @@ export function KnowledgeStorageTable({
 						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead
-									className="cursor-pointer select-none hover:bg-muted/50"
+									className="cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("org")}
 								>
 									<div className="flex items-center gap-1">
@@ -713,7 +713,7 @@ export function KnowledgeStorageTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="cursor-pointer select-none hover:bg-muted/50"
+									className="cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("namespace")}
 								>
 									<div className="flex items-center gap-1">
@@ -722,7 +722,7 @@ export function KnowledgeStorageTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("documents")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -731,7 +731,7 @@ export function KnowledgeStorageTable({
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("size")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -835,7 +835,7 @@ export function AgentTable({ agents, isLoading }: AgentTableProps) {
 						<DataTableHeader>
 							<DataTableRow>
 								<DataTableHead
-									className="cursor-pointer select-none hover:bg-muted/50"
+									className="cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("name")}
 								>
 									<div className="flex items-center gap-1">
@@ -844,7 +844,7 @@ export function AgentTable({ agents, isLoading }: AgentTableProps) {
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("runs")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -853,7 +853,7 @@ export function AgentTable({ agents, isLoading }: AgentTableProps) {
 									</div>
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("tokens")}
 								>
 									<div className="flex items-center justify-end gap-1">
@@ -865,7 +865,7 @@ export function AgentTable({ agents, isLoading }: AgentTableProps) {
 									Output Tokens
 								</DataTableHead>
 								<DataTableHead
-									className="text-right cursor-pointer select-none hover:bg-muted/50"
+									className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
 									onClick={() => toggleSort("cost")}
 								>
 									<div className="flex items-center justify-end gap-1">

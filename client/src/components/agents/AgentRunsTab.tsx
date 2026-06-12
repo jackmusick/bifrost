@@ -232,7 +232,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 						<Skeleton className="h-20 w-full" />
 					</>
 				) : runs.length === 0 ? (
-					<p className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">
+					<p className="rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 py-8 text-center text-sm text-muted-foreground">
 						No runs match this filter.
 					</p>
 				) : (

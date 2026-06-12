@@ -97,7 +97,7 @@ export function TodoList({ todos, className }: TodoListProps) {
 	return (
 		<div
 			className={cn(
-				"border rounded-lg bg-card overflow-hidden max-w-2xl",
+				"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 overflow-hidden max-w-2xl",
 				className,
 			)}
 		>

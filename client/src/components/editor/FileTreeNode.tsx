@@ -183,7 +183,7 @@ export function FileTreeNode({
 			{isRenaming ? (
 				// Inline rename editor
 				<div
-					className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50"
+					className="flex items-center gap-2 rounded-md px-2 py-1 bg-muted/50"
 					style={{ paddingLeft: `${level * 12 + 8}px` }}
 				>
 					{isFolder ? (
@@ -260,7 +260,7 @@ export function FileTreeNode({
 							}
 						}}
 						className={cn(
-							"flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors outline-none",
+							"flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors outline-none",
 							isSelected && !isDragOver
 								? "bg-accent text-accent-foreground"
 								: "",
@@ -309,7 +309,7 @@ export function FileTreeNode({
 			{/* Inline new item editor (shown when creating in this folder) */}
 			{creatingItem && creatingInFolder === file.path && (
 				<div
-					className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50 mt-1"
+					className="flex items-center gap-2 rounded-md px-2 py-1 bg-muted/50 mt-1"
 					style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
 				>
 					<div className="w-4" />

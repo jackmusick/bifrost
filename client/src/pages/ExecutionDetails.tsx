@@ -33,10 +33,11 @@ import {
 	ExecutionCancelDialog,
 	ExecutionRerunDialog,
 	ExecutionMetadataBar,
-	ExecutionStatusBadge,
+	RunStatusBadge,
 	PrettyInputDisplay,
 	type LogEntry,
 } from "@/components/execution";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { components } from "@/lib/v1";
 import {
 	mergeLogsWithDedup,
@@ -44,7 +45,9 @@ import {
 } from "@/lib/executionLogs";
 import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
+import type { StreamingLog } from "@/stores/executionStreamStore";
 
 type ExecutionStatus =
 	| components["schemas"]["ExecutionStatus"]
@@ -60,6 +63,19 @@ type WorkflowExecutionResponse =
 interface WorkflowsMetadataResponse {
 	workflows: WorkflowMetadata[];
 	dataProviders: unknown[];
+}
+
+// Stable empty array so the merged-logs memo doesn't recompute every
+// render while no stream is attached.
+const NO_STREAMING_LOGS: StreamingLog[] = [];
+
+/** Copy with the secure/insecure-context-aware helper; only toast success when it worked. */
+async function copyWithToast(text: string, successMessage: string) {
+	if (await copyToClipboard(text)) {
+		toast.success(successMessage);
+	} else {
+		toast.error("Failed to copy to clipboard");
+	}
 }
 
 interface ExecutionDetailsProps {
@@ -111,7 +127,7 @@ export function ExecutionDetails({
 	const streamState = useExecutionStreamStore((state) =>
 		executionId ? state.streams[executionId] : undefined,
 	);
-	const streamingLogs = streamState?.streamingLogs ?? [];
+	const streamingLogs = streamState?.streamingLogs ?? NO_STREAMING_LOGS;
 
 	// Reset fallback when execution ID changes (important for rerun
 	// navigation). Adjust during render with a previous-ID sentinel rather
@@ -391,8 +407,10 @@ export function ExecutionDetails({
 		}
 	};
 
-	// Compute merged logs for the logs panel
-	const mergedLogs = (() => {
+	// Merged logs for the logs panel — memoized so ExecutionLogsPanel's
+	// traceback-coalescing memo keeps a stable input (rebuilding this array
+	// every render made coalescing O(n²) while streaming).
+	const mergedLogs = useMemo(() => {
 		const existingLogs = (logsData as ExecutionLogEntry[]) || [];
 		if (
 			executionStatus === "Running" ||
@@ -402,17 +420,34 @@ export function ExecutionDetails({
 			return mergeLogsWithDedup(existingLogs, streamingLogs);
 		}
 		return existingLogs;
-	})();
+	}, [logsData, streamingLogs, executionStatus]);
+
+	// Skeleton mirroring the drawer layout: identity header, a content
+	// block, and log lines — holds the layout instead of collapsing to a
+	// centered spinner.
+	const embeddedSkeleton = (
+		<div className="p-4 space-y-4" data-testid="execution-details-skeleton">
+			<div className="space-y-2">
+				<div className="flex items-center gap-2">
+					<Skeleton className="h-5 w-48" />
+					<Skeleton className="h-5 w-20 rounded-full" />
+				</div>
+				<Skeleton className="h-3 w-72" />
+			</div>
+			<Skeleton className="h-28 w-full" />
+			<div className="space-y-2">
+				<Skeleton className="h-3 w-full" />
+				<Skeleton className="h-3 w-5/6" />
+				<Skeleton className="h-3 w-4/5" />
+			</div>
+		</div>
+	);
 
 	// Show "waiting" state when we came from trigger and haven't received data yet
 	// This happens before shouldFetchExecution becomes true (waiting for WebSocket or 5s fallback)
 	if (!shouldFetchExecution && !execution) {
 		if (embedded) {
-			return (
-				<div className="flex items-center justify-center h-full p-8">
-					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-				</div>
-			);
+			return embeddedSkeleton;
 		}
 		return <PageLoader message="Waiting for execution to start..." />;
 	}
@@ -420,11 +455,7 @@ export function ExecutionDetails({
 	// Show loading state during initial load
 	if (isLoading) {
 		if (embedded) {
-			return (
-				<div className="flex items-center justify-center h-full p-8">
-					<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-				</div>
-			);
+			return embeddedSkeleton;
 		}
 		return <PageLoader message="Loading execution details..." />;
 	}
@@ -538,7 +569,7 @@ export function ExecutionDetails({
 				{actionsContainer &&
 					createPortal(actionButtons, actionsContainer)}
 
-				<div className="p-4 space-y-3">
+				<div className="p-4 space-y-4">
 					{/* Compact metadata header */}
 					<ExecutionMetadataBar
 						workflowName={execution.workflow_name}
@@ -553,14 +584,28 @@ export function ExecutionDetails({
 						requiredMemoryMb={streamState?.requiredMemoryMb}
 					/>
 
-					{/* Error message */}
+					{/* Error message — the triage answer; loud, copyable */}
 					{execution.error_message && (
-						<div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+						<div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
 							<div className="flex items-start gap-2">
 								<XCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
-								<pre className="text-sm whitespace-pre-wrap font-mono text-destructive/90 overflow-x-auto">
+								<pre className="flex-1 text-sm whitespace-pre-wrap break-words font-mono text-destructive/90">
 									{execution.error_message}
 								</pre>
+								<Button
+									variant="ghost"
+									size="icon"
+									className="h-6 w-6 flex-shrink-0 text-destructive/70 hover:text-destructive"
+									onClick={() =>
+										void copyWithToast(
+											execution.error_message ?? "",
+											"Error copied",
+										)
+									}
+									title="Copy error"
+								>
+									<Copy className="h-3.5 w-3.5" />
+								</Button>
 							</div>
 						</div>
 					)}
@@ -577,8 +622,8 @@ export function ExecutionDetails({
 
 					{/* Input data */}
 					{execution.input_data && (
-						<div className="space-y-2">
-							<h4 className="text-sm font-medium text-muted-foreground">
+						<section>
+							<h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 								Input Parameters
 							</h4>
 							<PrettyInputDisplay
@@ -588,7 +633,7 @@ export function ExecutionDetails({
 								showToggle={true}
 								defaultView="pretty"
 							/>
-						</div>
+						</section>
 					)}
 
 					{/* Logs */}
@@ -599,7 +644,6 @@ export function ExecutionDetails({
 						isLoading={isLoadingLogs}
 						isPlatformAdmin={isPlatformAdmin}
 						maxHeight="50vh"
-						embedded
 					/>
 
 					{/* Extra details — collapsible */}
@@ -611,10 +655,6 @@ export function ExecutionDetails({
 							</CollapsibleTrigger>
 							<CollapsibleContent className="space-y-4 pt-2">
 								<ExecutionSidebar
-									status={
-										execution.status as ExecutionStatus
-									}
-									workflowName={execution.workflow_name}
 									executedByName={
 										execution.executed_by_name
 									}
@@ -635,7 +675,6 @@ export function ExecutionDetails({
 									durationMs={execution.duration_ms}
 									aiUsage={execution.ai_usage}
 									aiTotals={execution.ai_totals}
-									errorMessage={execution.error_message}
 									executionContext={
 										execution.execution_context
 									}
@@ -680,10 +719,10 @@ export function ExecutionDetails({
 							>
 								<ArrowLeft className="h-4 w-4" />
 							</Button>
-							<h1 className="text-lg font-semibold tracking-tight truncate">
+							<h1 className="font-mono text-lg font-semibold tracking-tight truncate">
 								{execution.workflow_name}
 							</h1>
-							<ExecutionStatusBadge
+							<RunStatusBadge
 								status={executionStatus as string}
 								queuePosition={streamState?.queuePosition}
 								waitReason={streamState?.waitReason}
@@ -742,10 +781,12 @@ export function ExecutionDetails({
 									variant="ghost"
 									size="icon"
 									className="h-7 w-7"
-									onClick={() => {
-										navigator.clipboard.writeText(execution.execution_id);
-										toast.success("Execution ID copied");
-									}}
+									onClick={() =>
+										void copyWithToast(
+											execution.execution_id,
+											"Execution ID copied",
+										)
+									}
 									title="Copy execution ID"
 								>
 									<Copy className="h-3.5 w-3.5" />
@@ -761,8 +802,52 @@ export function ExecutionDetails({
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 					{/* Left Column - Main Content (2/3 width) */}
 					<div className="lg:col-span-2 space-y-6">
-						{/* Result Section */}
-						{isComplete && (
+						{/* Error — the forensic answer leads the page, full
+						    width in the primary column, copyable. */}
+						{execution.error_message && (
+							<motion.div
+								initial={{ opacity: 0, y: 20 }}
+								animate={{ opacity: 1, y: 0 }}
+								transition={{ duration: 0.3 }}
+								data-testid="execution-error-banner"
+							>
+								<div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+									<div className="flex items-start gap-3">
+										<XCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+										<div className="flex-1 min-w-0">
+											<p className="text-sm font-semibold text-destructive">
+												This run failed
+											</p>
+											<pre className="mt-1 text-sm whitespace-pre-wrap break-words font-mono text-destructive/90">
+												{execution.error_message}
+											</pre>
+										</div>
+										<Button
+											variant="ghost"
+											size="icon"
+											className="h-7 w-7 flex-shrink-0 text-destructive/70 hover:text-destructive"
+											onClick={() =>
+												void copyWithToast(
+													execution.error_message ??
+														"",
+													"Error copied",
+												)
+											}
+											title="Copy error"
+										>
+											<Copy className="h-4 w-4" />
+										</Button>
+									</div>
+								</div>
+							</motion.div>
+						)}
+
+						{/* Result Section — only when there is (or can be) a
+						    result; a failed run with no result renders the
+						    error banner instead of "No result returned". */}
+						{isComplete &&
+							(execution.result != null ||
+								executionStatus === "Success") && (
 							<motion.div
 								initial={{ opacity: 0, y: 20 }}
 								animate={{ opacity: 1, y: 0 }}
@@ -796,8 +881,6 @@ export function ExecutionDetails({
 
 					{/* Right Column - Sidebar (1/3 width) */}
 					<ExecutionSidebar
-						status={execution.status as ExecutionStatus}
-						workflowName={execution.workflow_name}
 						executedByName={execution.executed_by_name}
 						orgName={execution.org_name}
 						scheduledAt={execution.scheduled_at}
@@ -813,13 +896,6 @@ export function ExecutionDetails({
 						durationMs={execution.duration_ms}
 						aiUsage={execution.ai_usage}
 						aiTotals={execution.ai_totals}
-						streamState={streamState ? {
-							queuePosition: streamState.queuePosition,
-							waitReason: streamState.waitReason,
-							availableMemoryMb: streamState.availableMemoryMb,
-							requiredMemoryMb: streamState.requiredMemoryMb,
-						} : undefined}
-						errorMessage={execution.error_message}
 						executionContext={execution.execution_context}
 					/>
 				</div>

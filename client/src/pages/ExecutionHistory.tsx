@@ -1,18 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
 	CheckCircle,
 	XCircle,
 	Loader2,
-	Clock,
 	RefreshCw,
 	History as HistoryIcon,
 	Globe,
-	Building2,
 	Eraser,
 	AlertCircle,
-	Info,
-	Eye,
+	SearchX,
+	ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,18 +22,23 @@ import {
 	DataTableRow,
 	DataTableFooter,
 } from "@/components/ui/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { LogsView } from "./ExecutionHistory/components/LogsView";
 import { ExecutionDrawer } from "./ExecutionHistory/components/ExecutionDrawer";
+import { RunStatusBadge } from "@/components/execution";
 import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+	formatRunDuration,
+	formatRunTime,
+	groupExecutionsByDay,
+	runAnchorDate,
+	summarizeRuns,
+} from "./ExecutionHistory/components/historyView";
+import { FAILURE_STATUSES } from "@/lib/execution-buckets";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -60,7 +63,6 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ExecutionStatusBadge } from "@/components/execution/ExecutionStatusBadge";
 import { useExecutions, cancelExecution } from "@/hooks/useExecutions";
 import { useExecutionHistory } from "@/hooks/useExecutionStream";
 import { WorkflowSelector } from "@/components/forms/WorkflowSelector";
@@ -92,6 +94,15 @@ type ExecutionStatus =
 	| "Cancelling"
 	| "Cancelled";
 
+/** Statuses with a tab on this page — accepted via the `?status=` param. */
+const STATUS_TABS: ExecutionStatus[] = [
+	"Success",
+	"Running",
+	"Failed",
+	"Pending",
+	"Scheduled",
+];
+
 interface StuckExecution {
 	execution_id: string;
 	workflow_name: string;
@@ -118,9 +129,27 @@ export function ExecutionHistory() {
 	const [workflowIdFilter, setWorkflowIdFilter] = useState(
 		searchParams.get("workflow") || "",
 	);
-	const [statusFilter, setStatusFilter] = useState<ExecutionStatus | "all">(
-		"all",
-	);
+	// `?status=` is the single source of truth for the status tab — derived
+	// from the URL and written back through setSearchParams (same pattern as
+	// `historyType` below), so tab changes survive refresh/back and Clear
+	// filters can't leave a stale param behind.
+	const statusParam = searchParams.get("status")?.toLowerCase();
+	const statusFilter: ExecutionStatus | "all" =
+		STATUS_TABS.find((s) => s.toLowerCase() === statusParam) ?? "all";
+	const setStatusFilter = (value: ExecutionStatus | "all") => {
+		setSearchParams(
+			(prev) => {
+				const next = new URLSearchParams(prev);
+				if (value === "all") {
+					next.delete("status");
+				} else {
+					next.set("status", value);
+				}
+				return next;
+			},
+			{ replace: true },
+		);
+	};
 	const [searchTerm, setSearchTerm] = useState("");
 	const [dateRange, setDateRange] = useState<DateRange | undefined>();
 	const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
@@ -177,10 +206,18 @@ export function ExecutionHistory() {
 		return org?.name || orgId;
 	};
 
-	// Build filters including date range and local executions toggle
+	// Build filters including date range and local executions toggle.
+	// The Failed tab means the whole failure group (Failed, Timeout, Stuck,
+	// CompletedWithErrors) — the same set the dashboard's "N failed" link
+	// counts — so it sends the comma-separated group to the server's
+	// match-any status filter instead of a single exact status.
 	const filters = useMemo(() => {
-		const baseFilters: Record<string, string | boolean> =
-			statusFilter !== "all" ? { status: statusFilter as string } : {};
+		const baseFilters: Record<string, string | boolean> = {};
+		if (statusFilter === "Failed") {
+			baseFilters.status = Array.from(FAILURE_STATUSES).join(",");
+		} else if (statusFilter !== "all") {
+			baseFilters.status = statusFilter;
+		}
 
 		// Add excludeLocal filter (inverse of showLocal)
 		baseFilters.excludeLocal = !showLocal;
@@ -215,6 +252,7 @@ export function ExecutionHistory() {
 	const {
 		data: response,
 		isFetching,
+		isError,
 		refetch,
 	} = useExecutions(
 		isPlatformAdmin ? filterOrgId : undefined,
@@ -229,78 +267,6 @@ export function ExecutionHistory() {
 	);
 	const nextToken = response?.continuation_token || null;
 	const hasMore = nextToken !== null;
-
-	const getStatusBadge = (status: ExecutionStatus) => {
-		switch (status) {
-			case "Success":
-				return (
-					<Badge variant="default" className="bg-green-500">
-						<CheckCircle className="mr-1 h-3 w-3" />
-						Completed
-					</Badge>
-				);
-			case "Failed":
-				return (
-					<Badge variant="destructive">
-						<XCircle className="mr-1 h-3 w-3" />
-						Failed
-					</Badge>
-				);
-			case "Running":
-				return (
-					<Badge variant="secondary">
-						<Loader2 className="mr-1 h-3 w-3 animate-spin" />
-						Running
-					</Badge>
-				);
-			case "Pending":
-				return (
-					<Badge variant="outline">
-						<Clock className="mr-1 h-3 w-3" />
-						Pending
-					</Badge>
-				);
-			case "Cancelling":
-				return (
-					<Badge
-						variant="secondary"
-						className="bg-orange-500 text-white"
-					>
-						<Loader2 className="mr-1 h-3 w-3 animate-spin" />
-						Cancelling
-					</Badge>
-				);
-			case "Cancelled":
-				return (
-					<Badge
-						variant="outline"
-						className="border-gray-500 text-gray-600 dark:text-gray-400"
-					>
-						<XCircle className="mr-1 h-3 w-3" />
-						Cancelled
-					</Badge>
-				);
-			case "Timeout":
-				return (
-					<Badge variant="destructive">
-						<XCircle className="mr-1 h-3 w-3" />
-						Timeout
-					</Badge>
-				);
-			case "CompletedWithErrors":
-				return (
-					<Badge
-						variant="outline"
-						className="border-yellow-500 text-yellow-600 dark:text-yellow-500"
-					>
-						<AlertCircle className="mr-1 h-3 w-3" />
-						Completed with Errors
-					</Badge>
-				);
-			default:
-				return <Badge variant="outline">Unknown</Badge>;
-		}
-	};
 
 	const handleViewDetails = (execution_id: string) => {
 		setDrawerExecutionId(execution_id);
@@ -418,14 +384,12 @@ export function ExecutionHistory() {
 	};
 
 	// Apply search filter
-	const searchFilteredExecutions = useSearch(executions || [], searchTerm, [
+	const filteredExecutions = useSearch(executions, searchTerm, [
 		"workflow_name",
 		"executed_by_name",
 		"execution_id",
 		(exec) => exec.status,
 	]);
-
-	const filteredExecutions = searchFilteredExecutions;
 
 	// Pagination handlers
 	const handleNextPage = () => {
@@ -477,6 +441,44 @@ export function ExecutionHistory() {
 			}
 		}
 	}
+
+	// Whether any narrowing filter is active — drives which empty state shows.
+	const hasActiveFilters =
+		searchTerm !== "" ||
+		statusFilter !== "all" ||
+		dateRange !== undefined ||
+		(isPlatformAdmin && (workflowIdFilter !== "" || filterOrgId !== undefined));
+
+	const handleClearFilters = () => {
+		setSearchTerm("");
+		setDateRange(undefined);
+		setFilterOrgId(undefined);
+		setWorkflowIdFilter("");
+		setSearchParams(
+			(prev) => {
+				const next = new URLSearchParams(prev);
+				next.delete("workflow");
+				next.delete("status");
+				return next;
+			},
+			{ replace: true },
+		);
+	};
+
+	// Header rollup: page-level run counts. Honest about scope — these are
+	// the runs currently loaded, with "more available" when paginated.
+	const rollup = useMemo(() => summarizeRuns(executions), [executions]);
+
+	// Day groups preserve server (newest-first) order.
+	const dayGroups = useMemo(
+		() => groupExecutionsByDay(filteredExecutions),
+		[filteredExecutions],
+	);
+
+	// One source of truth for the column count (admins get the Org column).
+	const columnCount = isPlatformAdmin ? 7 : 6;
+
+	const showPaginationFooter = hasMore || pageStack.length > 0;
 
 	return (
 		<div className="h-full flex flex-col space-y-6">
@@ -650,6 +652,7 @@ export function ExecutionHistory() {
 						size="icon"
 						onClick={() => refetch()}
 						disabled={isFetching}
+						title="Refresh"
 					>
 						<RefreshCw
 							className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
@@ -657,16 +660,35 @@ export function ExecutionHistory() {
 					</Button>
 				</div>
 			</div>
-			<p className="-mt-4 text-muted-foreground">
-				{historyType === "agents"
-					? "View agent run history across the fleet"
-					: "View and track workflow execution history"}
-				{historyType === "workflows" && executions.length > 0 && (
-					<span className="ml-2">
-						· Showing {executions.length} execution
-						{executions.length !== 1 ? "s" : ""}
-						{hasMore && " (more available)"}
-					</span>
+			{/* Summary line: the rollup an operator actually scans for. */}
+			<p
+				className="-mt-4 text-sm text-muted-foreground"
+				data-testid="history-summary"
+			>
+				{historyType === "agents" ? (
+					"View agent run history across the fleet"
+				) : rollup.total > 0 ? (
+					<>
+						{rollup.total} run{rollup.total !== 1 ? "s" : ""}
+						{rollup.succeeded > 0 && (
+							<> · {rollup.succeeded} succeeded</>
+						)}
+						{rollup.failed > 0 && (
+							<>
+								{" · "}
+								<span className="font-medium text-destructive">
+									{rollup.failed} failed
+								</span>
+							</>
+						)}
+						{rollup.running > 0 && <> · {rollup.running} in progress</>}
+						{rollup.scheduled > 0 && (
+							<> · {rollup.scheduled} scheduled</>
+						)}
+						{hasMore && <> · more available</>}
+					</>
+				) : (
+					"Every workflow run — manual, scheduled, or form-triggered"
 				)}
 			</p>
 
@@ -674,32 +696,16 @@ export function ExecutionHistory() {
 
 			{historyType === "workflows" ? (
 			<>
-			{/* Search and Filters */}
-			<div className="flex items-center gap-4">
-				{isPlatformAdmin && (
-					<div className="flex items-center gap-2">
-						<Switch
-							id="view-mode"
-							checked={viewMode === "logs"}
-							onCheckedChange={(checked) =>
-								setViewMode(checked ? "logs" : "executions")
-							}
-						/>
-						<Label
-							htmlFor="view-mode"
-							className="text-sm font-normal cursor-pointer whitespace-nowrap"
-						>
-							Logs View
-						</Label>
-					</div>
-				)}
+			{/* Filters: search first and widest, entity filters grouped,
+			    mode/debug toggles demoted to the end of the row. */}
+			<div className="flex items-center gap-3">
 				<SearchBox
 					value={searchTerm}
 					onChange={setSearchTerm}
 					placeholder={viewMode === "logs"
 						? "Search by workflow name..."
 						: "Search by workflow name, user, or execution ID..."}
-					className="flex-1 max-w-2xl"
+					className="flex-1 max-w-md"
 				/>
 				{isPlatformAdmin && (
 					<WorkflowSelector
@@ -723,30 +729,8 @@ export function ExecutionHistory() {
 						className="w-48"
 					/>
 				)}
-				<DateRangePicker
-					dateRange={dateRange}
-					onDateRangeChange={setDateRange}
-				/>
-				{/* Show Local Executions - only for executions view */}
-				{viewMode === "executions" && (
-					<div className="flex items-center gap-2">
-						<Checkbox
-							id="show-local"
-							checked={showLocal}
-							onCheckedChange={(checked) =>
-								setShowLocal(checked === true)
-							}
-						/>
-						<Label
-							htmlFor="show-local"
-							className="text-sm font-normal cursor-pointer whitespace-nowrap"
-						>
-							Show Local Executions
-						</Label>
-					</div>
-				)}
 				{isPlatformAdmin && (
-					<div className="w-64">
+					<div className="w-56">
 						<OrganizationSelect
 							value={filterOrgId}
 							onChange={setFilterOrgId}
@@ -756,6 +740,55 @@ export function ExecutionHistory() {
 						/>
 					</div>
 				)}
+				<DateRangePicker
+					dateRange={dateRange}
+					onDateRangeChange={setDateRange}
+				/>
+				<div className="ml-auto flex items-center gap-3">
+					{/* Show Local Executions - only for executions view */}
+					{viewMode === "executions" && (
+						<div className="flex items-center gap-2">
+							<Checkbox
+								id="show-local"
+								checked={showLocal}
+								onCheckedChange={(checked) =>
+									setShowLocal(checked === true)
+								}
+							/>
+							<Label
+								htmlFor="show-local"
+								className="text-sm font-normal cursor-pointer whitespace-nowrap text-muted-foreground"
+							>
+								Show local
+							</Label>
+						</div>
+					)}
+					{isPlatformAdmin && (
+						<>
+							<Separator
+								orientation="vertical"
+								className="h-5"
+							/>
+							<div className="flex items-center gap-2">
+								<Switch
+									id="view-mode"
+									checked={viewMode === "logs"}
+									onCheckedChange={(checked) =>
+										setViewMode(
+											checked ? "logs" : "executions",
+										)
+									}
+								/>
+								<Label
+									htmlFor="view-mode"
+									className="text-sm font-normal cursor-pointer whitespace-nowrap text-muted-foreground"
+								>
+									Logs view
+								</Label>
+							</div>
+						</>
+					)}
+				</div>
 			</div>
 
 			{/* Status/Level Tabs and Content */}
@@ -785,7 +818,7 @@ export function ExecutionHistory() {
 				</Tabs>
 			) : (
 				<Tabs
-					defaultValue="all"
+					value={statusFilter}
 					onValueChange={(v) =>
 						setStatusFilter(v as ExecutionStatus | "all")
 					}
@@ -804,9 +837,48 @@ export function ExecutionHistory() {
 					value={statusFilter}
 					className="mt-4 flex-1 min-h-0"
 				>
-					{isFetching && !executions.length ? (
-						<div className="flex items-center justify-center py-12">
-							<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+					{isError ? (
+						<div
+							className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-16 text-center"
+							data-testid="history-error"
+						>
+							<AlertCircle className="h-10 w-10 text-destructive" />
+							<h3 className="mt-4 text-lg font-semibold">
+								Couldn't load execution history
+							</h3>
+							<p className="mt-2 text-sm text-muted-foreground">
+								Something went wrong fetching runs. Your data
+								is safe — try again.
+							</p>
+							<Button
+								variant="outline"
+								className="mt-4"
+								onClick={() => refetch()}
+							>
+								<RefreshCw className="mr-2 h-4 w-4" />
+								Try again
+							</Button>
+						</div>
+					) : isFetching && !executions.length ? (
+						<div
+							className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10"
+							data-testid="history-loading"
+						>
+							<div className="border-b px-4 py-3">
+								<Skeleton className="h-4 w-44" />
+							</div>
+							{Array.from({ length: 8 }).map((_, i) => (
+								<div
+									key={i}
+									className="flex items-center gap-6 border-b px-4 py-4 last:border-0"
+								>
+									<Skeleton className="h-4 w-48" />
+									<Skeleton className="h-5 w-24 rounded-full" />
+									<Skeleton className="h-4 w-28" />
+									<Skeleton className="ml-auto h-4 w-20" />
+									<Skeleton className="h-4 w-12" />
+								</div>
+							))}
 						</div>
 					) : filteredExecutions.length > 0 ? (
 						<DataTable>
@@ -819,290 +891,290 @@ export function ExecutionHistory() {
 									)}
 									<DataTableHead>Workflow</DataTableHead>
 									<DataTableHead>Status</DataTableHead>
-									<DataTableHead>Executed By</DataTableHead>
-									<DataTableHead>Started At</DataTableHead>
-									<DataTableHead>Completed At</DataTableHead>
-									<DataTableHead>Duration</DataTableHead>
+									<DataTableHead>Run by</DataTableHead>
+									<DataTableHead>Started</DataTableHead>
+									<DataTableHead className="text-right">
+										Duration
+									</DataTableHead>
 									<DataTableHead className="text-right"></DataTableHead>
 								</DataTableRow>
 							</DataTableHeader>
 							<DataTableBody>
-								{filteredExecutions.map((execution) => {
-									const duration =
-										execution.completed_at &&
-										execution.started_at
-											? Math.round(
-													(new Date(
-														execution.completed_at,
-													).getTime() -
-														new Date(
-															execution.started_at,
-														).getTime()) /
-														1000,
-												)
-											: null;
-
-									// Use actual org_id from execution to determine scope
-									const isGlobalExecution = !execution.org_id;
-
-									// Apply optimistic flip: if the user just
-									// confirmed cancel on this row, render it
-									// as Cancelled until refetch converges.
-									const displayStatus =
-										optimisticCancelledIds.has(
-											execution.execution_id,
-										)
-											? "Cancelled"
-											: execution.status;
-									const isScheduled = displayStatus ===
-										"Scheduled";
-
-									return (
+								{dayGroups.map((group) => (
+									<Fragment key={group.key}>
 										<DataTableRow
-											key={execution.execution_id}
-											data-testid="execution-row"
-											data-execution-id={
-												execution.execution_id
-											}
-											clickable
-											href={`/history/${execution.execution_id}`}
-											onClick={(e) => {
-												if (e.metaKey || e.ctrlKey || e.button === 1) return;
-												handleViewDetails(
-													execution.execution_id,
-												);
-											}}
+											className="border-b hover:bg-transparent"
+											data-testid="history-day-row"
 										>
-											{isPlatformAdmin && (
-												<DataTableCell>
-													{isGlobalExecution ? (
-														<Badge
-															variant="default"
-															className="text-xs"
-														>
-															<Globe className="mr-1 h-3 w-3" />
-															Global
-														</Badge>
-													) : (
-														<Badge
-															variant="outline"
-															className="text-xs"
-														>
-															<Building2 className="mr-1 h-3 w-3" />
-															{getOrgName(
-																execution.org_id,
-															)}
-														</Badge>
-													)}
-												</DataTableCell>
-											)}
 											<DataTableCell
-												className="font-mono text-sm"
-												data-testid="execution-workflow-cell"
+												colSpan={columnCount}
+												className="bg-muted/40 dark:bg-background/50 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
 											>
-												<div className="flex items-center gap-2">
-													{execution.workflow_name}
-												</div>
+												{group.label}
 											</DataTableCell>
-											<DataTableCell>
-												<div className="flex items-center gap-2">
-													{isScheduled ||
+										</DataTableRow>
+										{group.executions.map((execution) => {
+											// Apply optimistic flip: if the user just
+											// confirmed cancel on this row, render it
+											// as Cancelled until refetch converges.
+											const displayStatus =
+												optimisticCancelledIds.has(
+													execution.execution_id,
+												)
+													? "Cancelled"
+													: execution.status;
+											const isScheduled = displayStatus ===
+												"Scheduled";
+											const isGlobalExecution =
+												!execution.org_id;
+											const anchor = runAnchorDate(execution);
+											const anchorIso =
+												execution.started_at ??
+												execution.scheduled_at ??
+												execution.completed_at;
+											const duration = formatRunDuration(
+												execution.started_at,
+												execution.completed_at,
+											);
+											const hasErrorDetail =
+												!!execution.error_message &&
+												(displayStatus === "Failed" ||
+													displayStatus === "Timeout" ||
 													displayStatus ===
-														"Cancelled" ? (
-														<ExecutionStatusBadge
-															status={
-																displayStatus
-															}
+														"CompletedWithErrors");
+
+											return (
+												<DataTableRow
+													key={execution.execution_id}
+													data-testid="execution-row"
+													data-execution-id={
+														execution.execution_id
+													}
+													clickable
+													href={`/history/${execution.execution_id}`}
+													onClick={(e) => {
+														if (e.metaKey || e.ctrlKey || e.button === 1) return;
+														handleViewDetails(
+															execution.execution_id,
+														);
+													}}
+												>
+													{isPlatformAdmin && (
+														<DataTableCell className="text-sm text-muted-foreground">
+															{isGlobalExecution ? (
+																<span className="inline-flex items-center gap-1.5">
+																	<Globe className="h-3.5 w-3.5" />
+																	Global
+																</span>
+															) : (
+																getOrgName(
+																	execution.org_id,
+																)
+															)}
+														</DataTableCell>
+													)}
+													<DataTableCell
+														className="max-w-md"
+														data-testid="execution-workflow-cell"
+													>
+														<div className="truncate font-mono text-sm font-medium">
+															{execution.workflow_name}
+														</div>
+														{hasErrorDetail && (
+															<div
+																className="mt-0.5 truncate text-xs text-destructive/90"
+																title={
+																	execution.error_message ??
+																	undefined
+																}
+															>
+																{
+																	execution.error_message
+																}
+															</div>
+														)}
+													</DataTableCell>
+													<DataTableCell>
+														<RunStatusBadge
+															status={displayStatus}
 															scheduledAt={
 																execution.scheduled_at
 															}
 														/>
-													) : (
-														getStatusBadge(
-															displayStatus,
-														)
-													)}
-													{execution.error_message && (
-														<TooltipProvider>
-															<Tooltip>
-																<TooltipTrigger
-																	asChild
-																>
-																	<Info className="h-4 w-4 text-destructive cursor-help" />
-																</TooltipTrigger>
-																<TooltipContent
-																	side="right"
-																	className="max-w-md bg-popover text-popover-foreground"
-																>
-																	<p className="text-sm">
-																		{
-																			execution.error_message
-																		}
-																	</p>
-																</TooltipContent>
-															</Tooltip>
-														</TooltipProvider>
-													)}
-												</div>
-											</DataTableCell>
-											<DataTableCell>
-												{execution.executed_by_name}
-											</DataTableCell>
-											<DataTableCell className="text-sm">
-												{execution.started_at
-													? formatDate(
-															execution.started_at,
-														)
-													: "-"}
-											</DataTableCell>
-											<DataTableCell className="text-sm">
-												{execution.completed_at
-													? formatDate(
-															execution.completed_at,
-														)
-													: "-"}
-											</DataTableCell>
-											<DataTableCell className="text-sm text-muted-foreground">
-												{duration !== null
-													? `${duration}s`
-													: "-"}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												<div className="flex items-center justify-end gap-1">
-													{(execution.status ===
-														"Running" ||
-														execution.status ===
-															"Pending") && (
-														<Button
-															variant="ghost"
-															size="icon"
-															onClick={(e) => {
-																e.stopPropagation();
-																handleCancelExecution(
-																	execution.execution_id,
-																	execution.workflow_name,
-																);
-															}}
-															title="Cancel Execution"
-														>
-															<XCircle className="h-4 w-4" />
-														</Button>
-													)}
-													{isScheduled && (
-														<Button
-															variant="ghost"
-															size="icon"
-															onClick={(e) => {
-																e.stopPropagation();
-																setScheduledCancelTarget(
-																	{
-																		execution_id:
-																			execution.execution_id,
-																		workflow_name:
-																			execution.workflow_name,
-																		scheduled_at:
-																			execution.scheduled_at,
-																	},
-																);
-															}}
-															title="Cancel scheduled execution"
-														>
-															<XCircle className="h-4 w-4" />
-														</Button>
-													)}
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={(e) => {
-															e.stopPropagation();
-															handleViewDetails(
-																execution.execution_id,
-															);
-														}}
-														title="View Details"
+													</DataTableCell>
+													<DataTableCell className="text-sm text-muted-foreground">
+														{execution.executed_by_name}
+													</DataTableCell>
+													<DataTableCell
+														className="whitespace-nowrap text-sm text-muted-foreground"
+														title={
+															anchor
+																? formatDate(anchor)
+																: undefined
+														}
 													>
-														<Eye className="h-4 w-4" />
-													</Button>
-												</div>
-											</DataTableCell>
-										</DataTableRow>
-									);
-								})}
+														{anchorIso
+															? formatRunTime(
+																	anchorIso,
+																)
+															: "—"}
+													</DataTableCell>
+													<DataTableCell className="whitespace-nowrap text-right text-sm tabular-nums text-muted-foreground">
+														{duration ?? "—"}
+													</DataTableCell>
+													<DataTableCell className="w-px text-right">
+														<div className="flex items-center justify-end gap-1">
+															{(execution.status ===
+																"Running" ||
+																execution.status ===
+																	"Pending") && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		handleCancelExecution(
+																			execution.execution_id,
+																			execution.workflow_name,
+																		);
+																	}}
+																	title="Cancel Execution"
+																>
+																	<XCircle className="h-4 w-4" />
+																</Button>
+															)}
+															{isScheduled && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		setScheduledCancelTarget(
+																			{
+																				execution_id:
+																					execution.execution_id,
+																				workflow_name:
+																					execution.workflow_name,
+																				scheduled_at:
+																					execution.scheduled_at,
+																			},
+																		);
+																	}}
+																	title="Cancel scheduled execution"
+																>
+																	<XCircle className="h-4 w-4" />
+																</Button>
+															)}
+															<ChevronRight
+																className="h-4 w-4 text-muted-foreground/50"
+																aria-hidden="true"
+															/>
+														</div>
+													</DataTableCell>
+												</DataTableRow>
+											);
+										})}
+									</Fragment>
+								))}
 							</DataTableBody>
-							<DataTableFooter>
-								<DataTableRow>
-									<DataTableCell
-										colSpan={isGlobalScope ? 8 : 7}
-										className="p-0"
-									>
-										<div className="px-6 py-4 flex items-center justify-center">
-											<Pagination>
-												<PaginationContent>
-													<PaginationItem>
-														<PaginationPrevious
-															onClick={(e) => {
-																e.preventDefault();
-																handlePreviousPage();
-															}}
-															className={
-																pageStack.length ===
-																	0 ||
-																isFetching
-																	? "pointer-events-none opacity-50"
-																	: "cursor-pointer"
-															}
-															aria-disabled={
-																pageStack.length ===
-																	0 ||
-																isFetching
-															}
-														/>
-													</PaginationItem>
-													<PaginationItem>
-														<PaginationLink
-															isActive
-														>
-															{pageStack.length +
-																1}
-														</PaginationLink>
-													</PaginationItem>
-													<PaginationItem>
-														<PaginationNext
-															onClick={(e) => {
-																e.preventDefault();
-																handleNextPage();
-															}}
-															className={
-																!hasMore ||
-																isFetching
-																	? "pointer-events-none opacity-50"
-																	: "cursor-pointer"
-															}
-															aria-disabled={
-																!hasMore ||
-																isFetching
-															}
-														/>
-													</PaginationItem>
-												</PaginationContent>
-											</Pagination>
-										</div>
-									</DataTableCell>
-								</DataTableRow>
-							</DataTableFooter>
+							{showPaginationFooter && (
+								<DataTableFooter>
+									<DataTableRow>
+										<DataTableCell
+											colSpan={columnCount}
+											className="p-0"
+										>
+											<div className="px-6 py-3 flex items-center justify-center">
+												<Pagination>
+													<PaginationContent>
+														<PaginationItem>
+															<PaginationPrevious
+																onClick={(e) => {
+																	e.preventDefault();
+																	handlePreviousPage();
+																}}
+																className={
+																	pageStack.length ===
+																		0 ||
+																	isFetching
+																		? "pointer-events-none opacity-50"
+																		: "cursor-pointer"
+																}
+																aria-disabled={
+																	pageStack.length ===
+																		0 ||
+																	isFetching
+																}
+															/>
+														</PaginationItem>
+														<PaginationItem>
+															<PaginationLink
+																isActive
+															>
+																{pageStack.length +
+																	1}
+															</PaginationLink>
+														</PaginationItem>
+														<PaginationItem>
+															<PaginationNext
+																onClick={(e) => {
+																	e.preventDefault();
+																	handleNextPage();
+																}}
+																className={
+																	!hasMore ||
+																	isFetching
+																		? "pointer-events-none opacity-50"
+																		: "cursor-pointer"
+																}
+																aria-disabled={
+																	!hasMore ||
+																	isFetching
+																}
+															/>
+														</PaginationItem>
+													</PaginationContent>
+												</Pagination>
+											</div>
+										</DataTableCell>
+									</DataTableRow>
+								</DataTableFooter>
+							)}
 						</DataTable>
-					) : (
-						<div className="flex flex-col items-center justify-center py-12 text-center">
-							<HistoryIcon className="h-12 w-12 text-muted-foreground" />
+					) : hasActiveFilters ? (
+						<div
+							className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-16 text-center"
+							data-testid="history-empty-filtered"
+						>
+							<SearchX className="h-10 w-10 text-muted-foreground" />
 							<h3 className="mt-4 text-lg font-semibold">
-								{searchTerm
-									? "No executions match your search"
-									: "No executions found"}
+								No runs match your filters
 							</h3>
 							<p className="mt-2 text-sm text-muted-foreground">
-								{searchTerm
-									? "Try adjusting your search term or clear the filter"
-									: "Execute a workflow to see it appear here"}
+								Try widening the date range or clearing the
+								search and status filters.
+							</p>
+							<Button
+								variant="outline"
+								className="mt-4"
+								onClick={handleClearFilters}
+							>
+								Clear filters
+							</Button>
+						</div>
+					) : (
+						<div
+							className="flex flex-col items-center justify-center rounded-2xl border border-dashed py-16 text-center"
+							data-testid="history-empty"
+						>
+							<HistoryIcon className="h-10 w-10 text-muted-foreground" />
+							<h3 className="mt-4 text-lg font-semibold">
+								No runs yet
+							</h3>
+							<p className="mt-2 max-w-sm text-sm text-muted-foreground">
+								When a workflow runs — manually, on a
+								schedule, or from a form — it shows up here
+								with its status and timing.
 							</p>
 						</div>
 					)}

@@ -395,7 +395,7 @@ function CreateIntegrationForm({
 							{configSchema.map((field, index) => (
 								<div
 									key={index}
-									className="flex gap-2 items-start p-3 border rounded-md"
+									className="flex gap-2 items-start rounded-md bg-muted/50 p-3 ring-1 ring-foreground/5"
 								>
 									<div className="flex-1 space-y-2">
 										<Input

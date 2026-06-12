@@ -396,7 +396,7 @@ function ScopeOption({
 	return (
 		<Label
 			htmlFor={id}
-			className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
+			className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 transition-colors ${
 				selected ? "border-primary bg-primary/5" : "hover:bg-accent/40"
 			} ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
 		>
@@ -433,7 +433,7 @@ interface EstimateLineProps {
 function EstimateLine({ preview, pending, scope, agentId }: EstimateLineProps) {
 	if (pending && !preview) {
 		return (
-			<div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+			<div className="flex items-center gap-2 rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 text-xs text-muted-foreground">
 				<Loader2 className="h-3 w-3 animate-spin" />
 				Computing estimate…
 			</div>
@@ -444,13 +444,13 @@ function EstimateLine({ preview, pending, scope, agentId }: EstimateLineProps) {
 	void _;
 	if (preview.eligible === 0) {
 		return (
-			<div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+			<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 text-xs text-muted-foreground">
 				Nothing to do for this scope.
 			</div>
 		);
 	}
 	return (
-		<div className="rounded-md border bg-muted/40 px-3 py-2 text-xs">
+		<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 text-xs">
 			Will resummarize{" "}
 			<strong className="font-medium">{preview.eligible}</strong>{" "}
 			{agentId ? "runs for this agent" : "runs platform-wide"}. Estimated
@@ -599,7 +599,7 @@ function SummaryBackfillProgress({
 
 	return (
 		<div
-			className="inline-flex min-w-[280px] items-center gap-3 rounded-md border bg-card px-3 py-2 text-xs"
+			className="inline-flex min-w-[280px] items-center gap-3 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 px-3 py-2 text-xs"
 			data-testid="summary-backfill-progress"
 			data-status={snapshot.status}
 		>

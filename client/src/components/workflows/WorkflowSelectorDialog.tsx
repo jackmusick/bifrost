@@ -294,7 +294,7 @@ export function WorkflowSelectorDialog({
 				<div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
 					{/* Left panel: Entity roles (context) */}
 					{entityRoles.length > 0 && (
-						<div className="w-48 flex-shrink-0 border rounded-lg p-3 bg-muted/30">
+						<div className="w-48 flex-shrink-0 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
 							<div className="flex items-center gap-2 mb-3">
 								<Shield className="h-4 w-4 text-muted-foreground" />
 								<span className="text-sm font-medium">Entity Roles</span>
@@ -321,7 +321,7 @@ export function WorkflowSelectorDialog({
 					)}
 
 					{/* Right panel: Workflow list */}
-					<div className="flex-1 min-w-0 flex flex-col border rounded-lg overflow-hidden">
+					<div className="flex-1 min-w-0 flex flex-col rounded-lg overflow-hidden ring-1 ring-foreground/5">
 						{/* Search */}
 						<div className="p-3 border-b bg-muted/20">
 							<div className="relative">
@@ -382,7 +382,7 @@ export function WorkflowSelectorDialog({
 				<DialogFooter className="flex-shrink-0 flex-col sm:flex-row gap-2 items-start sm:items-center">
 					{/* Auto-assign checkbox (only shown when there are entity roles and mismatches) */}
 					{entityRoles.length > 0 && selectedMismatchCount > 0 && (
-						<div className="flex-1 flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg mr-auto">
+						<div className="flex-1 flex items-start gap-3 p-3 rounded-lg bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-800 mr-auto">
 							<AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
 							<div className="flex-1 min-w-0">
 								<p className="text-sm text-amber-800 dark:text-amber-200">

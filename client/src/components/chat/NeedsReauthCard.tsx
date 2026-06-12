@@ -152,7 +152,7 @@ export function NeedsReauthCard({
 
 	return (
 		<div
-			className="my-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/30"
+			className="my-2 rounded-2xl bg-amber-50 shadow-sm ring-1 ring-amber-300 p-3 text-sm dark:bg-amber-950/30"
 			data-testid="needs-reauth-card"
 		>
 			<div className="flex items-center gap-2 font-semibold text-amber-900 dark:text-amber-200">

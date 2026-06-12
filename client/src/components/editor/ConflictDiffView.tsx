@@ -56,7 +56,7 @@ export function ConflictDiffView({
 
 	return (
 		<>
-			<div className="flex flex-col h-full bg-background rounded-lg border">
+			<div className="flex flex-col h-full bg-background rounded-lg ring-1 ring-foreground/5">
 				<div className="flex items-center justify-between p-4 border-b">
 					<div>
 						<h3 className="text-lg font-semibold">

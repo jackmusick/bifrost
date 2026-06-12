@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { Building2, Check, ChevronsUpDown, Globe, Star } from "lucide-react";
+import { Building2, ChevronsUpDown, Globe, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -154,6 +154,7 @@ export function OrganizationSelect({
 									<CommandItem
 										value={ALL_VALUE}
 										keywords={["all"]}
+										data-checked={value === undefined}
 										onSelect={() => handleSelect(ALL_VALUE)}
 									>
 										<div className="flex flex-col flex-1">
@@ -162,14 +163,6 @@ export function OrganizationSelect({
 												Show all organizations
 											</span>
 										</div>
-										<Check
-											className={cn(
-												"ml-auto h-4 w-4",
-												value === undefined
-													? "opacity-100"
-													: "opacity-0",
-											)}
-										/>
 									</CommandItem>
 								</CommandGroup>
 								<CommandSeparator />
@@ -182,6 +175,7 @@ export function OrganizationSelect({
 									<CommandItem
 										value={GLOBAL_VALUE}
 										keywords={["global", "all organizations"]}
+										data-checked={value === null}
 										onSelect={() => handleSelect(GLOBAL_VALUE)}
 									>
 										<Globe className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -191,14 +185,6 @@ export function OrganizationSelect({
 												Available to all organizations
 											</span>
 										</div>
-										<Check
-											className={cn(
-												"ml-auto h-4 w-4",
-												value === null
-													? "opacity-100"
-													: "opacity-0",
-											)}
-										/>
 									</CommandItem>
 								</CommandGroup>
 								<CommandSeparator />
@@ -216,6 +202,7 @@ export function OrganizationSelect({
 											key={org.id}
 											value={org.id}
 											keywords={keywords}
+											data-checked={value === org.id}
 											onSelect={() => handleSelect(org.id)}
 										>
 											{org.is_provider ? (
@@ -238,14 +225,6 @@ export function OrganizationSelect({
 													</span>
 												)}
 											</div>
-											<Check
-												className={cn(
-													"ml-auto h-4 w-4",
-													value === org.id
-														? "opacity-100"
-														: "opacity-0",
-												)}
-											/>
 										</CommandItem>
 									);
 								})

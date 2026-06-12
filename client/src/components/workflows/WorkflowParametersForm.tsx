@@ -135,7 +135,7 @@ export function WorkflowParametersForm({
 		switch (param.type) {
 			case "bool":
 				return (
-					<div className="flex flex-row items-center justify-between rounded-lg border p-3">
+					<div className="flex flex-row items-center justify-between rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
 						<div className="space-y-0.5">
 							<Label
 								htmlFor={param.name ?? "checkbox"}
@@ -221,7 +221,7 @@ export function WorkflowParametersForm({
 						</Label>
 						<textarea
 							id={param.name ?? "json"}
-							className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+							className="flex min-h-[80px] w-full rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm transition-[color,box-shadow] duration-200 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
 							value={
 								typeof value === "string"
 									? value
@@ -270,7 +270,7 @@ export function WorkflowParametersForm({
 						</Label>
 						<textarea
 							id={param.name ?? "list"}
-							className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+							className="flex min-h-[80px] w-full rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm transition-[color,box-shadow] duration-200 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
 							value={
 								typeof value === "string"
 									? value

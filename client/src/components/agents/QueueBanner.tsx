@@ -11,6 +11,7 @@
 import { Sparkles, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface QueueBannerProps {
@@ -53,7 +54,7 @@ export function QueueBanner({
 	return (
 		<div
 			className={cn(
-				"flex items-center justify-between gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3",
+				"flex items-center justify-between gap-3 rounded-2xl bg-rose-500/10 shadow-sm ring-1 ring-rose-500/30 px-4 py-3",
 				className,
 			)}
 			data-slot="queue-banner"
@@ -75,30 +76,30 @@ export function QueueBanner({
 			</div>
 			<div className="flex shrink-0 items-center gap-2">
 				{actionHref ? (
-					<Link
-						to={actionHref}
-						className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-					>
-						{actionContent}
-					</Link>
+					<Button size="sm" className="text-xs" asChild>
+						<Link to={actionHref}>{actionContent}</Link>
+					</Button>
 				) : onAction ? (
-					<button
+					<Button
 						type="button"
+						size="sm"
+						className="text-xs"
 						onClick={onAction}
-						className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
 					>
 						{actionContent}
-					</button>
+					</Button>
 				) : null}
 				{onDismiss ? (
-					<button
+					<Button
 						type="button"
+						variant="ghost"
+						size="icon-sm"
 						onClick={onDismiss}
 						aria-label="Dismiss"
-						className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+						className="text-muted-foreground"
 					>
 						<X size={14} />
-					</button>
+					</Button>
 				) : null}
 			</div>
 		</div>

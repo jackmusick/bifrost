@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -101,7 +102,7 @@ function ToolCallRow({ tool, args, duration_ms }: ToolCallRowProps) {
 	const expandable = !empty;
 
 	return (
-		<div className="overflow-hidden rounded border bg-card text-xs">
+		<div className="overflow-hidden rounded-md bg-muted/50 ring-1 ring-foreground/5 text-xs">
 			<button
 				type="button"
 				onClick={() => expandable && setOpen((v) => !v)}
@@ -137,7 +138,7 @@ function ToolCallRow({ tool, args, duration_ms }: ToolCallRowProps) {
 				</span>
 			</button>
 			{expandable && open ? (
-				<div className="max-h-[240px] overflow-y-auto border-t bg-muted/30 px-3 py-2">
+				<div className="max-h-[240px] overflow-y-auto border-t bg-muted px-3 py-2">
 					<JsonTree value={args} />
 				</div>
 			) : null}
@@ -220,10 +221,10 @@ export function RunReviewPanel({
 						className={cn(
 							// fade-in so the banner doesn't pop when the
 							// websocket flips summary_status to generating.
-							"flex items-center justify-between gap-3 rounded-md border px-3 py-2 animate-in fade-in duration-200",
+							"flex items-center justify-between gap-3 rounded-md ring-1 px-3 py-2 animate-in fade-in duration-200",
 							summaryStatus === "failed"
-								? "border-rose-500/30 bg-rose-500/10"
-								: "bg-muted/40",
+								? "ring-rose-500/30 bg-rose-500/10"
+								: "ring-foreground/5 bg-muted/50",
 							compact ? "text-xs" : "text-[13px]",
 						)}
 					>
@@ -256,7 +257,7 @@ export function RunReviewPanel({
 								}
 								onClick={handleRegenerate}
 								className={cn(
-									"inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs font-medium transition-colors",
+									"inline-flex items-center gap-1.5 rounded-2xl border bg-background px-2.5 py-1 text-xs font-medium transition-colors",
 									isPlatformAdmin && !regenSummary.isPending
 										? "hover:bg-accent"
 										: "cursor-not-allowed opacity-60",
@@ -276,7 +277,7 @@ export function RunReviewPanel({
 				>
 					<div
 						className={cn(
-							"rounded-md border bg-muted/40 px-3 py-2 whitespace-pre-wrap break-words",
+							"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 whitespace-pre-wrap break-words",
 							compact ? "text-xs" : "text-sm",
 						)}
 					>
@@ -295,7 +296,7 @@ export function RunReviewPanel({
 					>
 						<div
 							className={cn(
-								"rounded-md border bg-muted/40 px-3 py-2",
+								"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2",
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
@@ -349,7 +350,7 @@ export function RunReviewPanel({
 					>
 						<div
 							className={cn(
-								"rounded-md border bg-muted/40 px-3 py-2 whitespace-pre-wrap break-words",
+								"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 whitespace-pre-wrap break-words",
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
@@ -376,7 +377,7 @@ export function RunReviewPanel({
 					>
 						<div
 							className={cn(
-								"rounded-md border border-transparent bg-rose-500/10 px-3 py-2 whitespace-pre-wrap break-words",
+								"rounded-md bg-rose-500/10 px-3 py-2 whitespace-pre-wrap break-words",
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
@@ -395,7 +396,7 @@ export function RunReviewPanel({
 					<Section label="Summary error" compact={compact} plain>
 						<div
 							className={cn(
-								"rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-700 dark:text-rose-300 whitespace-pre-wrap break-words",
+								"rounded-md bg-rose-500/10 ring-1 ring-rose-500/30 px-3 py-2 text-rose-700 dark:text-rose-300 whitespace-pre-wrap break-words",
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
@@ -424,7 +425,7 @@ export function RunReviewPanel({
 						"flex items-center gap-2 bg-muted/40",
 						variant === "drawer"
 							? "border-t px-4 py-3 flex-col items-stretch"
-							: "mx-5 mb-5 rounded-md border px-3 py-2.5",
+							: "mx-5 mb-5 rounded-md ring-1 ring-foreground/5 px-3 py-2.5",
 						compact && "flex-col items-stretch gap-2",
 					)}
 					data-slot="verdict-bar"
@@ -439,7 +440,7 @@ export function RunReviewPanel({
 								onVerdict(verdict === "up" ? null : "up")
 							}
 							className={cn(
-								"inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+								"inline-flex items-center gap-1.5 rounded-2xl border px-2.5 py-1 text-xs font-medium transition-colors",
 								verdict === "up"
 									? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
 									: "bg-background hover:bg-accent",
@@ -455,7 +456,7 @@ export function RunReviewPanel({
 								onVerdict(verdict === "down" ? null : "down")
 							}
 							className={cn(
-								"inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+								"inline-flex items-center gap-1.5 rounded-2xl border px-2.5 py-1 text-xs font-medium transition-colors",
 								verdict === "down"
 									? "border-rose-500 bg-rose-500/15 text-rose-700 dark:text-rose-300"
 									: "bg-background hover:bg-accent",
@@ -470,7 +471,7 @@ export function RunReviewPanel({
 							compact ? "ml-0" : "ml-4 max-w-[500px]",
 						)}
 					>
-						<input
+						<Input
 							type="text"
 							placeholder={
 								verdict === "down"
@@ -479,7 +480,6 @@ export function RunReviewPanel({
 							}
 							value={note}
 							onChange={(e) => onNote(e.target.value)}
-							className="w-full rounded-md border bg-background px-2.5 py-1 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
 						/>
 					</div>
 				</div>
@@ -546,7 +546,7 @@ interface RawDisclosureProps {
 function RawDisclosure({ label, text, compact }: RawDisclosureProps) {
 	const [open, setOpen] = useState(false);
 	return (
-		<div className="rounded-md border bg-card">
+		<div className="overflow-hidden rounded-md bg-muted/50 ring-1 ring-foreground/5">
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
@@ -569,7 +569,7 @@ function RawDisclosure({ label, text, compact }: RawDisclosureProps) {
 			{open ? (
 				<pre
 					className={cn(
-						"max-h-[240px] overflow-auto border-t bg-muted/30 px-3 py-2 font-mono whitespace-pre-wrap break-words",
+						"max-h-[240px] overflow-auto border-t bg-muted px-3 py-2 font-mono whitespace-pre-wrap break-words",
 						compact ? "text-[11px]" : "text-xs",
 					)}
 				>

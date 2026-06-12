@@ -274,7 +274,7 @@ export function GenerateSDKDialog({
 
 				{/* OAuth - no extra fields, just info */}
 				{authType === "oauth" && (
-					<div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+					<div className="text-sm text-muted-foreground rounded-md bg-muted/50 p-3 ring-1 ring-foreground/5">
 						OAuth authentication will use the integration's
 						configured OAuth provider. Make sure you've connected
 						the OAuth flow before using the SDK.
@@ -352,7 +352,7 @@ export function GenerateSDKDialog({
 							<div className="space-y-2">
 								<Label>Usage Example</Label>
 								<div className="relative">
-									<pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
+									<pre className="rounded-md bg-muted p-3 text-xs overflow-x-auto ring-1 ring-foreground/5">
 										<code>{result.usage_example}</code>
 									</pre>
 									<Button

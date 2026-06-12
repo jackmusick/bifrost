@@ -44,18 +44,16 @@ test.describe("Execution History", () => {
 			page.getByRole("heading", { name: /history|executions/i }).first(),
 		).toBeVisible({ timeout: 10000 });
 
-		// Either we have executions or an empty state
-		const executionContent = page.locator(
-			"[data-testid='execution-row'], [data-testid='execution-card']",
-		);
-
-		const hasExecutions = await executionContent.count().catch(() => 0);
-		const hasEmptyState = await page
-			.getByText(/no executions|empty|run a workflow/i)
-			.isVisible()
-			.catch(() => false);
-
-		expect(hasExecutions > 0 || hasEmptyState).toBe(true);
+		// Either we have executions or an empty state. The rebuilt history
+		// page exposes explicit testids for both empty variants ("No runs
+		// yet" / "No runs match your filters").
+		await expect(
+			page
+				.locator(
+					"[data-testid='execution-row'], [data-testid='history-empty'], [data-testid='history-empty-filtered']",
+				)
+				.first(),
+		).toBeVisible({ timeout: 10000 });
 	});
 
 	test("should show execution status badges", async ({ page }) => {
@@ -92,10 +90,17 @@ test.describe("Execution Details", () => {
 		).toBeVisible({ timeout: 10000 });
 
 		if (await openFirstExecution(page)) {
-			// Should navigate to execution details
+			// Should navigate to execution details: the page header renders
+			// the workflow name as the h1 alongside its status badge. (The
+			// old "Execution Status" label predates the details rebuild and
+			// only became reachable once the history table gained
+			// data-testid='execution-row' on this branch.)
 			await expect(
-				page.getByText("Execution Status", { exact: true }).first(),
+				page.getByRole("heading", { level: 1 }).first(),
 			).toBeVisible({ timeout: 5000 });
+			await expect(
+				page.locator("[data-slot='badge']").first(),
+			).toBeVisible();
 		}
 	});
 

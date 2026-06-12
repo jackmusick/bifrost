@@ -1,11 +1,4 @@
 import { motion, AnimatePresence } from "framer-motion";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	CardDescription,
-} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PrettyInputDisplay } from "./PrettyInputDisplay";
 import { SafeHTMLRenderer } from "./SafeHTMLRenderer";
@@ -19,7 +12,7 @@ interface ExecutionResultPanelProps {
 	workflowName?: string;
 	/** Whether the result is still loading */
 	isLoading?: boolean;
-	/** Optional className for the card */
+	/** Optional className for the section */
 	className?: string;
 }
 
@@ -39,7 +32,7 @@ export function ExecutionResultPanel({
 		) {
 			return (
 				<PrettyInputDisplay
-					inputData={result as Record<string, unknown>}
+					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
 					defaultView="pretty"
 				/>
@@ -63,7 +56,7 @@ export function ExecutionResultPanel({
 		// Text result type
 		if (resultType === "text" && typeof result === "string") {
 			return (
-				<pre className="whitespace-pre-wrap font-mono text-sm bg-muted p-4 rounded">
+				<pre className="whitespace-pre-wrap font-mono text-xs rounded-lg bg-muted/50 ring-1 ring-foreground/5 px-3 py-2.5">
 					{result}
 				</pre>
 			);
@@ -73,7 +66,7 @@ export function ExecutionResultPanel({
 		if (!resultType && typeof result === "object" && result !== null) {
 			return (
 				<PrettyInputDisplay
-					inputData={result as Record<string, unknown>}
+					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
 					defaultView="pretty"
 				/>
@@ -83,7 +76,7 @@ export function ExecutionResultPanel({
 		// String without explicit type
 		if (!resultType && typeof result === "string") {
 			return (
-				<pre className="whitespace-pre-wrap font-mono text-sm bg-muted p-4 rounded">
+				<pre className="whitespace-pre-wrap font-mono text-xs rounded-lg bg-muted/50 ring-1 ring-foreground/5 px-3 py-2.5">
 					{result}
 				</pre>
 			);
@@ -92,7 +85,7 @@ export function ExecutionResultPanel({
 		// Primitive values
 		if (result !== null && result !== undefined) {
 			return (
-				<pre className="whitespace-pre-wrap font-mono text-sm bg-muted p-4 rounded">
+				<pre className="whitespace-pre-wrap font-mono text-xs rounded-lg bg-muted/50 ring-1 ring-foreground/5 px-3 py-2.5">
 					{String(result)}
 				</pre>
 			);
@@ -101,15 +94,9 @@ export function ExecutionResultPanel({
 		return null;
 	};
 
-	return (
-		<Card className={className}>
-			<CardHeader>
-				<CardTitle>Result</CardTitle>
-				<CardDescription>Workflow execution result</CardDescription>
-			</CardHeader>
-			<CardContent>
-				<AnimatePresence mode="wait">
-					{isLoading ? (
+	const body = (
+		<AnimatePresence mode="wait">
+			{isLoading ? (
 						<motion.div
 							key="loading"
 							initial={{ opacity: 0 }}
@@ -144,8 +131,17 @@ export function ExecutionResultPanel({
 							{renderResult()}
 						</motion.div>
 					)}
-				</AnimatePresence>
-			</CardContent>
-		</Card>
+		</AnimatePresence>
+	);
+
+	// Inspector section idiom: compact small-caps header, content carries its
+	// own single step-1 surface (PrettyInputDisplay group / pre block).
+	return (
+		<section className={className}>
+			<h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+				Result
+			</h4>
+			{body}
+		</section>
 	);
 }

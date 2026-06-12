@@ -79,7 +79,7 @@ export function ChangesList({
 								<button
 									key={file.path}
 									onClick={() => onFileClick(file)}
-									className="flex items-center gap-2 w-full px-2 py-1 rounded text-xs hover:bg-muted/50 transition-colors"
+									className="flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs hover:bg-muted/50 transition-colors"
 								>
 									{getStatusIcon(file.status)}
 									<span className="truncate text-left flex-1">

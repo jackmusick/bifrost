@@ -170,7 +170,7 @@ export function UserDetailsDialog({
 													(roleId: string) => (
 														<div
 															key={roleId}
-															className="flex items-center justify-between rounded-lg border p-3"
+															className="flex items-center justify-between rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5"
 														>
 															<div>
 																<p className="font-medium">
@@ -231,7 +231,7 @@ export function UserDetailsDialog({
 														(formId: string) => (
 															<div
 																key={formId}
-																className="rounded-lg border p-3"
+																className="rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5"
 															>
 																<p className="font-medium">
 																	{formId}
@@ -265,7 +265,7 @@ export function UserDetailsDialog({
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+								<div className="rounded-lg bg-blue-50 p-4 ring-1 ring-blue-200 dark:bg-blue-950 dark:ring-blue-800">
 									<p className="text-sm font-medium text-blue-900 dark:text-blue-100">
 										Full Platform Access
 									</p>

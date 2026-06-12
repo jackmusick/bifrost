@@ -27,7 +27,7 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { Shield, AlertCircle, Loader2, AlertTriangle, Check, ChevronsUpDown, X } from "lucide-react";
+import { Shield, AlertCircle, Loader2, AlertTriangle, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateUser, useUserRoles } from "@/hooks/useUsers";
@@ -308,7 +308,7 @@ function EditUserDialogContent({
 					/>
 				</div>
 
-				<div className="flex items-center justify-between rounded-lg border p-4">
+				<div className="flex items-center justify-between rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5">
 					<div className="space-y-0.5">
 						<Label htmlFor="active">Account Status</Label>
 						<p className="text-xs text-muted-foreground">
@@ -440,6 +440,7 @@ function EditUserDialogContent({
 													key={role.id}
 													value={role.id}
 													keywords={[role.name]}
+													data-checked={selectedRoleIds.has(role.id)}
 													onSelect={() => toggleRole(role.id)}
 												>
 													<div className="flex flex-col flex-1">
@@ -450,14 +451,6 @@ function EditUserDialogContent({
 															</span>
 														)}
 													</div>
-													<Check
-														className={cn(
-															"ml-auto h-4 w-4",
-															selectedRoleIds.has(role.id)
-																? "opacity-100"
-																: "opacity-0",
-														)}
-													/>
 												</CommandItem>
 											))}
 										</CommandGroup>

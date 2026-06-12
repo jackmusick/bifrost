@@ -321,7 +321,7 @@ export function FileUploadField({
 					{uploadingFiles.map((uploadingFile) => (
 						<div
 							key={uploadingFile.id}
-							className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg"
+							className="flex items-center gap-3 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5"
 						>
 							{uploadingFile.status === "uploading" ? (
 								<Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
@@ -391,7 +391,7 @@ export function FileUploadField({
 					{completedFiles.map((completedFile) => (
 						<div
 							key={completedFile.path}
-							className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg"
+							className="flex items-center gap-3 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5"
 						>
 							<File className="h-4 w-4 text-muted-foreground shrink-0" />
 							<div className="flex-1 min-w-0">

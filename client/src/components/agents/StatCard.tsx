@@ -63,8 +63,9 @@ export function StatCard({
 			className={cn(
 				CARD_SURFACE,
 				"px-4 py-3.5 transition-colors",
-				alert && "border-rose-500/40",
-				interactive && "cursor-pointer hover:border-border/80",
+				alert && "ring-rose-500/40 dark:ring-rose-500/40",
+				interactive &&
+					"cursor-pointer hover:ring-foreground/10 dark:hover:ring-foreground/15",
 				className,
 			)}
 			data-slot="stat-card"

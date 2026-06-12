@@ -1,14 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Info, Sparkles, XCircle } from "lucide-react";
+import { ChevronDown, Info, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -24,27 +17,20 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PrettyInputDisplay } from "./PrettyInputDisplay";
-import { ExecutionStatusBadge, ExecutionStatusIcon } from "./ExecutionStatusBadge";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 import {
 	formatDate,
+	formatRelativeTime,
 	formatBytes,
 	formatNumber,
 	formatCost,
+	formatDuration,
 } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
-type ExecutionStatus =
-	| components["schemas"]["ExecutionStatus"]
-	| "Cancelling"
-	| "Cancelled";
 type AIUsagePublicSimple = components["schemas"]["AIUsagePublicSimple"];
 
 interface ExecutionSidebarProps {
-	/** Current execution status */
-	status: ExecutionStatus;
-	/** Workflow name */
-	workflowName: string;
 	/** Who executed the workflow */
 	executedByName?: string | null;
 	/** Organization name (effective scope) */
@@ -81,24 +67,49 @@ interface ExecutionSidebarProps {
 		total_cost?: string | number | null;
 		total_duration_ms?: number | null;
 	} | null;
-	/** Stream state for pending status badge details */
-	streamState?: {
-		queuePosition?: number;
-		waitReason?: string;
-		availableMemoryMb?: number;
-		requiredMemoryMb?: number;
-	};
-	/** Error message from the execution */
-	errorMessage?: string | null;
 	/** Persisted execution context (admin only) */
 	executionContext?: Record<string, unknown> | null;
-	/** When true, only render AI usage, metrics, variables, and execution context — skip status, workflow info, input, and error sections */
+	/** When true, only render AI usage, metrics, variables, and execution context — skip details and input sections */
 	extrasOnly?: boolean;
 }
 
+/**
+ * Inspector section idiom shared with the result/logs panels: a compact
+ * small-caps header (with optional muted description and trailing action),
+ * then content that carries a single step-1 surface.
+ */
+function InspectorSection({
+	title,
+	description,
+	action,
+	children,
+}: {
+	title: string;
+	description?: string;
+	action?: ReactNode;
+	children: ReactNode;
+}) {
+	return (
+		<section>
+			<div className="mb-1.5 flex items-start justify-between gap-2">
+				<div className="min-w-0">
+					<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+						{title}
+					</h4>
+					{description && (
+						<p className="mt-0.5 text-xs text-muted-foreground/80">
+							{description}
+						</p>
+					)}
+				</div>
+				{action}
+			</div>
+			{children}
+		</section>
+	);
+}
+
 export function ExecutionSidebar({
-	status,
-	workflowName,
 	executedByName,
 	orgName,
 	scheduledAt,
@@ -114,8 +125,6 @@ export function ExecutionSidebar({
 	durationMs,
 	aiUsage,
 	aiTotals,
-	streamState,
-	errorMessage,
 	executionContext,
 	extrasOnly = false,
 }: ExecutionSidebarProps) {
@@ -146,138 +155,91 @@ export function ExecutionSidebar({
 		return Array.from(groups.values());
 	}, [aiUsage]);
 
-	const isLoadingVariables = isLoading;
-
 	return (
-		<div className="space-y-6">
+		<div className="space-y-5">
 			{!extrasOnly && (
 				<>
-					{/* Status Card */}
-					<Card>
-						<CardHeader>
-							<CardTitle>Execution Status</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="flex flex-col items-center justify-center py-4 text-center">
-								<ExecutionStatusIcon status={status} />
-								<div className="mt-4">
-									<ExecutionStatusBadge
-										status={status}
-										queuePosition={streamState?.queuePosition}
-										waitReason={streamState?.waitReason}
-										availableMemoryMb={streamState?.availableMemoryMb}
-										requiredMemoryMb={streamState?.requiredMemoryMb}
-									/>
-								</div>
+					{/* Details — dense definition list: one step-1 surface,
+					    hairline-separated rows. The workflow name and status
+					    live in the page header; repeating them here was pure
+					    duplication. */}
+					<InspectorSection title="Details">
+						<dl className="divide-y divide-border/60 overflow-hidden rounded-lg bg-muted/50 ring-1 ring-foreground/5 text-sm">
+							<div className="flex items-baseline justify-between gap-4 px-3 py-2">
+								<dt className="text-muted-foreground">
+									Run by
+								</dt>
+								<dd className="text-right">
+									{executedByName || "Unknown"}
+								</dd>
 							</div>
-						</CardContent>
-					</Card>
-
-					{/* Error Section */}
-					{errorMessage && (
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.3 }}
-						>
-							<Card className="border-destructive">
-								<CardHeader>
-									<CardTitle className="flex items-center gap-2 text-destructive">
-										<XCircle className="h-5 w-5" />
-										Error
-									</CardTitle>
-									<CardDescription>
-										Workflow execution failed
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<pre className="text-sm whitespace-pre-wrap break-words font-mono bg-destructive/10 p-4 rounded-md overflow-x-auto">
-										{errorMessage}
-									</pre>
-								</CardContent>
-							</Card>
-						</motion.div>
-					)}
-
-					{/* Workflow Information Card */}
-					<Card>
-						<CardHeader>
-							<CardTitle>Workflow Information</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							<div>
-								<p className="text-sm font-medium text-muted-foreground">
-									Workflow Name
-								</p>
-								<p className="font-mono text-sm mt-1">
-									{workflowName}
-								</p>
-							</div>
-							<div>
-								<p className="text-sm font-medium text-muted-foreground">
-									Executed By
-								</p>
-								<p className="text-sm mt-1">
-									{executedByName}
-								</p>
-							</div>
-							<div>
-								<p className="text-sm font-medium text-muted-foreground">
-									Effective Scope
-								</p>
-								<p className="text-sm mt-1">
+							<div className="flex items-baseline justify-between gap-4 px-3 py-2">
+								<dt className="text-muted-foreground">
+									Scope
+								</dt>
+								<dd className="text-right">
 									{orgName || "Global"}
-								</p>
+								</dd>
 							</div>
 							{scheduledAt && (
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">
-										Scheduled For
-									</p>
-									<p className="text-sm mt-1">
+								<div className="flex items-baseline justify-between gap-4 px-3 py-2">
+									<dt className="text-muted-foreground">
+										Scheduled for
+									</dt>
+									<dd className="text-right">
 										{formatDate(scheduledAt)}
-									</p>
+									</dd>
 								</div>
 							)}
-							<div>
-								<p className="text-sm font-medium text-muted-foreground">
-									Started At
-								</p>
-								<p className="text-sm mt-1">
+							<div className="flex items-baseline justify-between gap-4 px-3 py-2">
+								<dt className="text-muted-foreground">
+									Started
+								</dt>
+								<dd
+									className="text-right"
+									{...(startedAt
+										? { title: formatDate(startedAt) }
+										: {})}
+								>
 									{startedAt
-										? formatDate(startedAt)
-										: "N/A"}
-								</p>
+										? formatRelativeTime(startedAt)
+										: "Not started"}
+								</dd>
 							</div>
 							{completedAt && (
-								<div>
-									<p className="text-sm font-medium text-muted-foreground">
-										Completed At
-									</p>
-									<p className="text-sm mt-1">
-										{formatDate(completedAt)}
-									</p>
+								<div className="flex items-baseline justify-between gap-4 px-3 py-2">
+									<dt className="text-muted-foreground">
+										Completed
+									</dt>
+									<dd
+										className="text-right"
+										title={formatDate(completedAt)}
+									>
+										{formatRelativeTime(completedAt)}
+									</dd>
 								</div>
 							)}
-						</CardContent>
-					</Card>
+							{durationMs != null && (
+								<div className="flex items-baseline justify-between gap-4 px-3 py-2">
+									<dt className="text-muted-foreground">
+										Duration
+									</dt>
+									<dd className="text-right font-mono tabular-nums">
+										{formatDuration(durationMs)}
+									</dd>
+								</div>
+							)}
+						</dl>
+					</InspectorSection>
 
 					{/* Input Parameters - All users */}
-					<Card>
-						<CardHeader>
-							<CardTitle>Input Parameters</CardTitle>
-							<CardDescription>
-								Workflow parameters that were passed in
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<PrettyInputDisplay
-								inputData={inputData as Record<string, unknown>}
-								showToggle={true}
-								defaultView="pretty"
-							/>
-						</CardContent>
-					</Card>
+					<InspectorSection title="Input Parameters">
+						<PrettyInputDisplay
+							inputData={inputData as Record<string, unknown>}
+							showToggle={true}
+							defaultView="pretty"
+						/>
+					</InspectorSection>
 				</>
 			)}
 
@@ -288,27 +250,22 @@ export function ExecutionSidebar({
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.3, delay: 0.1 }}
 				>
-					<Card>
-						<CardHeader>
-							<div className="flex items-center justify-between">
-								<div>
-									<CardTitle>Execution Context</CardTitle>
-									<CardDescription>
-										The context object available to this workflow (admin only)
-									</CardDescription>
-								</div>
-								<Popover>
-									<PopoverTrigger asChild>
-										<Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
-											<Info className="h-4 w-4" />
-										</Button>
-									</PopoverTrigger>
-									<PopoverContent side="left" align="start" className="w-auto max-w-sm p-0 border-none">
-										<SyntaxHighlighter
-											language="python"
-											style={oneDark}
-											customStyle={{ margin: 0, borderRadius: "0.375rem", fontSize: "0.75rem" }}
-										>
+					<InspectorSection
+						title="Execution Context"
+						description="The context object available to this workflow (admin only)"
+						action={
+							<Popover>
+								<PopoverTrigger asChild>
+									<Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
+										<Info className="h-4 w-4" />
+									</Button>
+								</PopoverTrigger>
+								<PopoverContent side="left" align="start" className="w-auto max-w-sm p-0 border-none">
+									<SyntaxHighlighter
+										language="python"
+										style={oneDark}
+										customStyle={{ margin: 0, borderRadius: "0.375rem", fontSize: "0.75rem" }}
+									>
 {`from bifrost import context
 
 context.parameters       # input params + _event
@@ -316,17 +273,17 @@ context.parameters["_event"]  # webhook metadata
 context.org_id           # organization scope
 context.email            # caller email
 context.roi.time_saved   # ROI tracking`}
-										</SyntaxHighlighter>
-									</PopoverContent>
-								</Popover>
-							</div>
-						</CardHeader>
-						<CardContent>
+									</SyntaxHighlighter>
+								</PopoverContent>
+							</Popover>
+						}
+					>
+						<div className="rounded-lg bg-muted/50 ring-1 ring-foreground/5 p-3">
 							<VariablesTreeView
 								data={executionContext as Record<string, unknown>}
 							/>
-						</CardContent>
-					</Card>
+						</div>
+					</InspectorSection>
 				</motion.div>
 			)}
 
@@ -337,17 +294,13 @@ context.roi.time_saved   # ROI tracking`}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.3, delay: 0.2 }}
 				>
-					<Card>
-						<CardHeader>
-							<CardTitle>Runtime Variables</CardTitle>
-							<CardDescription>
-								Variables captured from script
-								namespace (admin only)
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
+					<InspectorSection
+						title="Runtime Variables"
+						description="Variables captured from script namespace (admin only)"
+					>
+						<div className="rounded-lg bg-muted/50 ring-1 ring-foreground/5 p-3">
 							<AnimatePresence mode="wait">
-								{isLoadingVariables ? (
+								{isLoading ? (
 									<motion.div
 										key="loading"
 										initial={{ opacity: 0 }}
@@ -399,8 +352,8 @@ context.roi.time_saved   # ROI tracking`}
 									</motion.div>
 								)}
 							</AnimatePresence>
-						</CardContent>
-					</Card>
+						</div>
+					</InspectorSection>
 				</motion.div>
 			)}
 
@@ -416,14 +369,11 @@ context.roi.time_saved   # ROI tracking`}
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ duration: 0.3, delay: 0.2 }}
 					>
-						<Card>
-							<CardHeader className="pb-3">
-								<CardTitle>Usage</CardTitle>
-								<CardDescription>
-									Execution metrics and costs
-								</CardDescription>
-							</CardHeader>
-							<CardContent className="space-y-4">
+						<InspectorSection
+							title="Usage"
+							description="Execution metrics and costs"
+						>
+							<div className="rounded-lg bg-muted/50 ring-1 ring-foreground/5 p-3 space-y-3">
 								{/* Compute Resources - Platform admins only */}
 								{isPlatformAdmin &&
 									(peakMemoryBytes ||
@@ -449,22 +399,6 @@ context.roi.time_saved   # ROI tracking`}
 													<p className="text-sm font-mono">
 														{cpuTotalSeconds.toFixed(
 															3,
-														)}
-														s
-													</p>
-												</div>
-											)}
-											{durationMs && (
-												<div>
-													<p className="text-sm font-medium text-muted-foreground">
-														Duration
-													</p>
-													<p className="text-sm font-mono">
-														{(
-															durationMs /
-															1000
-														).toFixed(
-															2,
 														)}
 														s
 													</p>
@@ -652,8 +586,8 @@ context.roi.time_saved   # ROI tracking`}
 											</CollapsibleContent>
 										</Collapsible>
 									)}
-							</CardContent>
-						</Card>
+							</div>
+						</InspectorSection>
 					</motion.div>
 				)}
 		</div>

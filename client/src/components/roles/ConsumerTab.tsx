@@ -176,7 +176,7 @@ export function ConsumerTab({
 					))}
 				</div>
 			) : items.length === 0 ? (
-				<div className="text-sm text-muted-foreground py-8 text-center border rounded">
+				<div className="text-sm text-muted-foreground py-8 text-center rounded-lg ring-1 ring-foreground/5">
 					{emptyHint}
 				</div>
 			) : (
@@ -253,7 +253,7 @@ export function ConsumerTab({
 				<div
 					role="region"
 					aria-label={`Selected ${consumerLabel}`}
-					className="sticky bottom-2 flex items-center gap-3 rounded-lg border bg-popover px-4 py-2 shadow-lg"
+					className="sticky bottom-2 flex items-center gap-3 rounded-2xl bg-popover px-4 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
 				>
 					<span className="text-sm font-medium">
 						{effectiveSelected.size} selected
@@ -399,7 +399,7 @@ function AssignDrawer({
 					</SheetDescription>
 				</SheetHeader>
 
-				<div className="px-4 space-y-2">
+				<div className="px-6 pb-4 space-y-2">
 					<SearchBox
 						value={search}
 						onChange={setSearch}
@@ -414,7 +414,7 @@ function AssignDrawer({
 					</label>
 				</div>
 
-				<div className="flex-1 overflow-y-auto px-4 pb-2">
+				<div className="flex-1 overflow-y-auto px-6 pb-2">
 					{candidatesLoading ? (
 						<div className="space-y-2 mt-2">
 							{[...Array(6)].map((_, i) => (
@@ -426,7 +426,7 @@ function AssignDrawer({
 							No {consumerLabel} available to assign.
 						</div>
 					) : (
-						<div className="border rounded divide-y">
+						<div className="overflow-hidden rounded-lg ring-1 ring-foreground/5 divide-y">
 							{filtered.map((c) => {
 								const isAssigned = assignedIds.has(c.id);
 								return (

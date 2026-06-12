@@ -56,7 +56,7 @@ const DataTable = React.forwardRef<
 		<div
 			ref={ref}
 			className={cn(
-				"border rounded-lg overflow-hidden bg-card",
+				"overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10",
 				"flex flex-col min-h-0 max-h-full",
 				className,
 			)}
@@ -86,7 +86,10 @@ const DataTableHeader = React.forwardRef<
 	<thead
 		ref={ref}
 		className={cn(
-			"sticky top-0 bg-background z-10 [&_tr]:border-b",
+			// Chrome band: base `background` (near-black in dark, white in light)
+			// against the lighter `card` body — see "the elevation ladder" in
+			// docs/research/ui-history-diagnosis.md.
+			"sticky top-0 z-10 bg-background [&_tr]:border-b",
 			className,
 		)}
 		{...props}
@@ -113,6 +116,7 @@ const DataTableFooter = React.forwardRef<
 	<tfoot
 		ref={ref}
 		className={cn(
+			// Chrome band — same `background` step as DataTableHeader.
 			"bg-background font-medium [&>tr]:last:border-b-0",
 			className,
 		)}
@@ -153,7 +157,7 @@ const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 			<tr
 				ref={ref}
 				className={cn(
-					"border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+					"border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
 					(clickable || href) && "cursor-pointer",
 					className,
 				)}
@@ -173,7 +177,7 @@ const DataTableHead = React.forwardRef<
 	<th
 		ref={ref}
 		className={cn(
-			"h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+			"h-10 px-4 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
 			className,
 		)}
 		{...props}
@@ -188,7 +192,7 @@ const DataTableCell = React.forwardRef<
 	<td
 		ref={ref}
 		className={cn(
-			"p-4 align-middle [&:has([role=checkbox])]:pr-0",
+			"px-4 py-3 align-middle [&:has([role=checkbox])]:pr-0",
 			className,
 		)}
 		{...props}

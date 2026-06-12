@@ -90,7 +90,7 @@ function UserRolesDialogContent({
 
 			<div className="space-y-4">
 				{user.is_superuser ? (
-					<div className="flex items-center justify-center p-8 rounded-lg border border-yellow-200 bg-yellow-50">
+					<div className="flex items-center justify-center p-8 rounded-lg bg-yellow-50 ring-1 ring-yellow-200">
 						<div className="text-center text-yellow-900">
 							<Shield className="h-8 w-8 mx-auto mb-2 text-yellow-600" />
 							<h3 className="font-semibold mb-2">
@@ -119,7 +119,7 @@ function UserRolesDialogContent({
 									return (
 										<div
 											key={role.id}
-											className="flex items-start space-x-3 rounded-lg border p-4 hover:bg-accent/50 transition-colors"
+											className="flex items-start space-x-3 rounded-lg p-4 ring-1 ring-foreground/5 hover:bg-accent/50 transition-colors"
 										>
 											<Checkbox
 												id={role.id}

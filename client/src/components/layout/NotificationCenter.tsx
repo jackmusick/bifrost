@@ -182,7 +182,7 @@ function ProgressNotificationItem({
 	return (
 		<div
 			className={cn(
-				"flex items-start gap-3 p-3 rounded-lg border",
+				"flex items-start gap-3 p-3 rounded-lg ring-1 ring-foreground/5",
 				statusConfig.bgColor,
 			)}
 		>
@@ -290,7 +290,7 @@ function AlertNotificationItem({
 	return (
 		<div
 			className={cn(
-				"flex items-start gap-3 p-3 rounded-lg border",
+				"flex items-start gap-3 p-3 rounded-lg ring-1 ring-foreground/5",
 				config.bgColor,
 			)}
 		>

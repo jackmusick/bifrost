@@ -2,8 +2,10 @@
  * Component tests for PrettyInputDisplay.
  *
  * Covers: empty-state, snake_case → Title Case label rendering, value-type
- * badges (null / boolean / number / url / date / array / object), copy
- * button, and the Pretty ↔ Tree view toggle.
+ * badges (null / boolean / number / url / date / array), copy button, the
+ * Pretty ↔ Tree view toggle, and the structure-driven ladder renderings:
+ * nested rows for flat objects, mini tables for uniform object arrays,
+ * honest top-level-array framing, and the JSON fallback for deep/mixed data.
  */
 
 import { describe, it, expect, vi, beforeEach, MockInstance } from "vitest";
@@ -97,6 +99,168 @@ describe("PrettyInputDisplay — label and value formatting", () => {
 			<PrettyInputDisplay inputData={{ items: ["a", "b", "c"] }} />,
 		);
 		expect(screen.getByText(/array \(3\)/)).toBeInTheDocument();
+	});
+
+	it("renders scalar arrays as a compact comma list", () => {
+		renderWithProviders(
+			<PrettyInputDisplay inputData={{ items: ["a", "b", "c"] }} />,
+		);
+		expect(screen.getByText("a, b, c")).toBeInTheDocument();
+	});
+});
+
+describe("PrettyInputDisplay — nested object rows", () => {
+	it("renders a flat object value as nested label/value rows, not JSON", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={{
+					site: { site_name: "HQ", floor_count: 3 },
+				}}
+			/>,
+		);
+		expect(screen.getByText("Site")).toBeInTheDocument();
+		expect(screen.getByText("Site Name")).toBeInTheDocument();
+		expect(screen.getByText("HQ")).toBeInTheDocument();
+		expect(screen.getByText("Floor Count")).toBeInTheDocument();
+		expect(screen.getByText("3")).toBeInTheDocument();
+		// No "object" badge and no raw JSON braces for renderable objects.
+		expect(screen.queryByText("object")).not.toBeInTheDocument();
+		expect(screen.queryByText(/"site_name"/)).not.toBeInTheDocument();
+	});
+
+	it("recurses through nested objects within the depth budget", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={{
+					config: { network: { vlan_id: 42 } },
+				}}
+			/>,
+		);
+		expect(screen.getByText("Network")).toBeInTheDocument();
+		expect(screen.getByText("Vlan ID")).toBeInTheDocument();
+		expect(screen.getByText("42")).toBeInTheDocument();
+	});
+
+	it("renders an empty object value as an explicit empty marker", () => {
+		renderWithProviders(<PrettyInputDisplay inputData={{ meta: {} }} />);
+		expect(screen.getByText("Empty object")).toBeInTheDocument();
+	});
+
+	it("falls back to a JSON block (with object badge) for too-deep data", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={{
+					deep: { a: { b: { c: { d: "leaf" } } } },
+				}}
+			/>,
+		);
+		expect(screen.getByText("object")).toBeInTheDocument();
+		// SyntaxHighlighter splits tokens, so match the key fragment.
+		expect(screen.getByText(/"a"/)).toBeInTheDocument();
+	});
+});
+
+describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
+	const licenses = [
+		{ label: "Microsoft 365 E3", value: "m365_e3" },
+		{ label: "Defender for Endpoint P2", value: "defender_p2" },
+	];
+
+	it("renders an array of same-shaped flat objects as a table", () => {
+		renderWithProviders(
+			<PrettyInputDisplay inputData={{ licenses }} />,
+		);
+		const table = screen.getByRole("table");
+		expect(table).toBeInTheDocument();
+		expect(
+			screen.getByRole("columnheader", { name: "Label" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("columnheader", { name: "Value" }),
+		).toBeInTheDocument();
+		expect(screen.getByText("Microsoft 365 E3")).toBeInTheDocument();
+		expect(screen.getByText("defender_p2")).toBeInTheDocument();
+	});
+
+	it("renders missing cells in mostly-uniform arrays as an em dash", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={{
+					rows: [
+						{ a: "1", b: "x" },
+						{ a: "2", b: "y" },
+						{ a: "3", b: "z" },
+						{ a: "4", b: "w" },
+						{ a: "5" },
+					],
+				}}
+			/>,
+		);
+		expect(screen.getByText("—")).toBeInTheDocument();
+	});
+
+	it("falls back to JSON when array items are not table-shaped", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={{
+					mixed: [{ a: { nested: true } }, { a: "scalar" }],
+				}}
+			/>,
+		);
+		expect(screen.queryByRole("table")).not.toBeInTheDocument();
+		expect(screen.getByText(/"nested"/)).toBeInTheDocument();
+	});
+});
+
+describe("PrettyInputDisplay — top-level arrays", () => {
+	const licenses = [
+		{ label: "Microsoft 365 E3", value: "m365_e3" },
+		{ label: "Defender for Endpoint P2", value: "defender_p2" },
+		{ label: "Huntress Managed EDR", value: "huntress_edr" },
+	];
+
+	it("frames a top-level array as 'N items', not parameters", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={licenses}
+				showToggle={true}
+				defaultView="pretty"
+			/>,
+		);
+		expect(screen.getByText("3 items")).toBeInTheDocument();
+		expect(screen.queryByText(/viewing 3 parameters/i)).not.toBeInTheDocument();
+		// No numeric 0..n key labels.
+		expect(screen.queryByText("0")).not.toBeInTheDocument();
+	});
+
+	it("renders a table-shaped top-level array directly as a table", () => {
+		renderWithProviders(<PrettyInputDisplay inputData={licenses} />);
+		expect(screen.getByRole("table")).toBeInTheDocument();
+		expect(screen.getByText("Huntress Managed EDR")).toBeInTheDocument();
+	});
+
+	it("renders a top-level scalar array as a comma list", () => {
+		renderWithProviders(
+			<PrettyInputDisplay
+				inputData={["alpha", "beta"]}
+				showToggle={true}
+			/>,
+		);
+		expect(screen.getByText("2 items")).toBeInTheDocument();
+		expect(screen.getByText("alpha, beta")).toBeInTheDocument();
+	});
+
+	it("renders an empty top-level array as 'No items'", () => {
+		renderWithProviders(<PrettyInputDisplay inputData={[]} />);
+		expect(screen.getByText("No items")).toBeInTheDocument();
+	});
+
+	it("falls back to JSON for a mixed top-level array", () => {
+		renderWithProviders(
+			<PrettyInputDisplay inputData={[{ a: 1 }, "loose", [2]]} />,
+		);
+		expect(screen.queryByRole("table")).not.toBeInTheDocument();
+		expect(screen.getByText(/"loose"/)).toBeInTheDocument();
 	});
 });
 

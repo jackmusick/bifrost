@@ -1,14 +1,14 @@
 /**
  * Component tests for ExecutionLogsPanel.
  *
- * The panel renders three distinct "modes" (running / complete / unknown)
- * and an embedded variant, each with its own empty-state copy and copy-
- * button affordance. We cover:
+ * The panel is a single framed "inspector" surface (header band + log list)
+ * whose empty-state copy varies by status bucket (running / complete /
+ * unknown). We cover:
  *   - empty-state copy per status bucket
  *   - logs render in order (including order preservation when logs are
  *     appended via re-render, simulating streaming updates)
  *   - the copy button writes a formatted blob to the clipboard
- *   - the embedded variant shows a Live badge while streaming is running
+ *   - the Live badge shows while streaming is running and connected
  */
 
 import { describe, it, expect, vi, beforeEach, MockInstance } from "vitest";
@@ -99,7 +99,7 @@ describe("ExecutionLogsPanel — rendering logs", () => {
 		expect(positions).toEqual([...positions].sort((a, b) => a - b));
 	});
 
-	it("hides DEBUG-only subtitle when the viewer is a platform admin", () => {
+	it("hides the level-filter note when the viewer is a platform admin", () => {
 		renderWithProviders(
 			<ExecutionLogsPanel
 				status="Success"
@@ -108,7 +108,7 @@ describe("ExecutionLogsPanel — rendering logs", () => {
 			/>,
 		);
 		expect(
-			screen.queryByText(/info, warning, error only/i),
+			screen.queryByText(/INFO and above/i),
 		).not.toBeInTheDocument();
 	});
 
@@ -121,7 +121,7 @@ describe("ExecutionLogsPanel — rendering logs", () => {
 			/>,
 		);
 		expect(
-			screen.getByText(/info, warning, error only/i),
+			screen.getByText(/INFO and above/i),
 		).toBeInTheDocument();
 	});
 });
@@ -150,18 +150,17 @@ describe("ExecutionLogsPanel — copy button", () => {
 	});
 });
 
-describe("ExecutionLogsPanel — embedded variant", () => {
+describe("ExecutionLogsPanel — live streaming header", () => {
 	it("renders a Live badge while streaming is connected", () => {
 		renderWithProviders(
 			<ExecutionLogsPanel
 				status="Running"
 				isConnected={true}
-				embedded={true}
 				logs={[log("INFO", "streaming")]}
 			/>,
 		);
 		expect(screen.getByText(/live/i)).toBeInTheDocument();
-		// The embedded header labels the region with "Logs".
+		// The header band labels the region with "Logs".
 		const header = screen.getByText("Logs");
 		expect(header).toBeInTheDocument();
 		// And the streamed message body is present.
@@ -175,10 +174,63 @@ describe("ExecutionLogsPanel — embedded variant", () => {
 			<ExecutionLogsPanel
 				status="Running"
 				isConnected={false}
-				embedded={true}
 				logs={[]}
 			/>,
 		);
 		expect(screen.queryByText(/live/i)).not.toBeInTheDocument();
+	});
+});
+
+describe("ExecutionLogsPanel — traceback coalescing", () => {
+	it("coalesces consecutive TRACEBACK lines into one block", () => {
+		renderWithProviders(
+			<ExecutionLogsPanel
+				status="Failed"
+				logs={[
+					log("INFO", "starting"),
+					log("TRACEBACK", "Traceback (most recent call last):"),
+					log("TRACEBACK", '  File "wf.py", line 3, in run'),
+					log("TRACEBACK", "RuntimeError: boom"),
+				]}
+			/>,
+		);
+		const blocks = screen.getAllByTestId("log-traceback-block");
+		expect(blocks).toHaveLength(1);
+		// The block contains all three lines joined.
+		expect(blocks[0]).toHaveTextContent("Traceback (most recent call last):");
+		expect(blocks[0]).toHaveTextContent("RuntimeError: boom");
+		// The repeated level label renders exactly once (exact node match —
+		// the message text also contains the word "Traceback").
+		expect(within(blocks[0]).getAllByText("traceback")).toHaveLength(1);
+	});
+
+	it("starts a new block when tracebacks are separated by other levels", () => {
+		renderWithProviders(
+			<ExecutionLogsPanel
+				status="Failed"
+				logs={[
+					log("TRACEBACK", "first"),
+					log("ERROR", "between"),
+					log("TRACEBACK", "second"),
+				]}
+			/>,
+		);
+		expect(screen.getAllByTestId("log-traceback-block")).toHaveLength(2);
+	});
+});
+
+describe("ExecutionLogsPanel — header affordances", () => {
+	it("shows a copy button and line count in the header band", async () => {
+		const { user } = renderWithProviders(
+			<ExecutionLogsPanel
+				status="Success"
+				logs={[log("INFO", "one"), log("INFO", "two")]}
+			/>,
+		);
+		expect(screen.getByText(/2 lines/i)).toBeInTheDocument();
+		await user.click(screen.getByTitle(/copy logs/i));
+		expect(writeTextSpy).toHaveBeenCalledWith(
+			expect.stringContaining("one"),
+		);
 	});
 });

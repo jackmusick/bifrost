@@ -107,12 +107,13 @@ test.describe("Execution Realtime Streaming", () => {
 			.waitFor({ state: "visible", timeout: 30000 });
 
 		// Assertion 4: the final result panel renders once complete. The
-		// ExecutionResultPanel card shows "Workflow execution result" as its
-		// description (a unique string, so safe against other Result labels).
+		// ExecutionResultPanel section is headed by an exact "Result" heading
+		// (the restyle replaced the old "Workflow execution result" card
+		// description with a small-caps <h4>Result</h4> section header).
 		// PrettyInputDisplay converts the JSON keys to Title Case, so "lines"
 		// becomes "Lines" — finding it confirms the result payload rendered.
 		await expect(
-			page.getByText("Workflow execution result"),
+			page.getByRole("heading", { name: "Result", exact: true }),
 		).toBeVisible({ timeout: 10000 });
 		await expect(page.getByText("Lines", { exact: true })).toBeVisible();
 

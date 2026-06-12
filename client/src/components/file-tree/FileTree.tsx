@@ -634,7 +634,7 @@ export function FileTree({
 					<div className="space-y-1 p-2">
 						{/* Inline new item editor at root */}
 						{creatingItem && !creatingInFolder && (
-							<div className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50">
+							<div className="flex items-center gap-2 rounded-lg px-2 py-1 bg-muted/50">
 								<div className="w-4" />
 								{isProcessing ? (
 									<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
@@ -821,7 +821,7 @@ const FileTreeItem = memo(function FileTreeItem({
 			{isRenaming ? (
 				// Inline rename editor
 				<div
-					className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50"
+					className="flex items-center gap-2 rounded-lg px-2 py-1 bg-muted/50"
 					style={{ paddingLeft: `${level * 12 + 8}px` }}
 				>
 					{isFolder ? (
@@ -879,7 +879,7 @@ const FileTreeItem = memo(function FileTreeItem({
 								}
 							}}
 							className={cn(
-								"flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm transition-colors outline-none",
+								"flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-sm transition-colors outline-none",
 								isSelected && !isDragOver ? "bg-accent text-accent-foreground" : "",
 								!isDragOver && !isSelected ? "hover:bg-muted" : "",
 								isDragOver && isFolder && "bg-primary/30 border-2 border-primary",
@@ -973,7 +973,7 @@ const FileTreeItem = memo(function FileTreeItem({
 			{/* Inline new item editor (shown when creating in this folder) */}
 			{creatingItem && creatingInFolder === file.path && (
 				<div
-					className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50 mt-1"
+					className="flex items-center gap-2 rounded-lg px-2 py-1 bg-muted/50 mt-1"
 					style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
 				>
 					<div className="w-4" />

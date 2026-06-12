@@ -216,9 +216,9 @@ function ToolMentionChip({ name, call }: ToolMentionChipProps) {
 								>
 									<div
 										className={cn(
-											"max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 text-[11px] whitespace-pre-wrap break-words",
+											"max-h-[180px] overflow-y-auto rounded-md bg-muted/50 ring-1 ring-foreground/5 px-2 py-1.5 text-[11px] whitespace-pre-wrap break-words",
 											call!.is_error
-												? "border-rose-500/30 text-rose-700 dark:text-rose-300"
+												? "ring-rose-500/30 text-rose-700 dark:text-rose-300"
 												: "",
 										)}
 									>
@@ -257,13 +257,13 @@ function JsonBlock({ value }: { value: unknown }) {
 	}
 	if (typeof value === "string") {
 		return (
-			<pre className="max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words">
+			<pre className="max-h-[180px] overflow-y-auto rounded-md bg-muted/50 ring-1 ring-foreground/5 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words">
 				{value}
 			</pre>
 		);
 	}
 	return (
-		<div className="max-h-[180px] overflow-y-auto rounded border bg-muted/30 px-2 py-1.5">
+		<div className="max-h-[180px] overflow-y-auto rounded-md bg-muted/50 ring-1 ring-foreground/5 px-2 py-1.5">
 			<JsonTree value={value} />
 		</div>
 	);

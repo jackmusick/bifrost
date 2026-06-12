@@ -121,3 +121,15 @@ describe("ExecutionResultPanel — renderer dispatch", () => {
 		expect(pre.tagName.toLowerCase()).toBe("pre");
 	});
 });
+
+describe("ExecutionResultPanel — section header", () => {
+	it("renders the small-caps section label", async () => {
+		await renderPanel({
+			result: { ok: true },
+			resultType: "json",
+		});
+		const heading = screen.getByRole("heading", { name: /result/i });
+		expect(heading.tagName).toBe("H4");
+		expect(screen.getByLabelText("pretty-input-stub")).toBeInTheDocument();
+	});
+});

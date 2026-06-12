@@ -91,10 +91,10 @@ export function IntegrationTestPanel({
 					{/* Test Result Display */}
 					{testResult && (
 						<div
-							className={`p-4 rounded-lg border ${
+							className={`p-4 rounded-lg ring-1 ${
 								testResult.success
-									? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
-									: "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
+									? "bg-green-50 dark:bg-green-950 ring-green-200 dark:ring-green-800"
+									: "bg-red-50 dark:bg-red-950 ring-red-200 dark:ring-red-800"
 							}`}
 						>
 							<div className="flex items-start gap-2">

@@ -258,7 +258,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
                 {secrets.map((secret) => (
                   <div
                     key={secret.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                    className={`flex items-center justify-between p-3 rounded-lg ring-1 ring-foreground/5 ${
                       secret.is_active
                         ? "border-l-4 border-l-green-500"
                         : "border-l-4 border-l-gray-300 opacity-60"
@@ -308,7 +308,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
             {isCreateOpen && (
               <form
                 onSubmit={handleCreate}
-                className="space-y-3 rounded-lg border p-4 bg-muted/50"
+                className="space-y-3 rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5"
               >
                 <div className="space-y-2">
                   <Label htmlFor="embed-secret-name">Name</Label>
@@ -377,7 +377,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 
             {/* One-time secret reveal */}
             {revealedSecret && (
-              <div className="relative rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 pr-10 space-y-3">
+              <div className="relative rounded-lg bg-amber-500/10 p-4 pr-10 space-y-3 ring-1 ring-amber-500/30">
                 <button
                   type="button"
                   className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
@@ -392,7 +392,7 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <code className="flex-1 rounded bg-black/30 px-3 py-2 font-mono text-sm select-all truncate">
+                  <code className="flex-1 rounded-md bg-black/30 px-3 py-2 font-mono text-sm select-all truncate">
                     {revealedSecret.raw_secret}
                   </code>
                   <Button

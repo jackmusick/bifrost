@@ -27,7 +27,7 @@ export function WindowDockItem({
       exit="exit"
       transition={windowTransition}
       onClick={onRestore}
-      className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 shadow-lg hover:bg-muted hover:scale-[1.02] transition-all duration-150"
+      className="flex items-center gap-2 rounded-2xl bg-background px-3 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10 hover:bg-muted hover:scale-[1.02] transition-all duration-150"
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
     >

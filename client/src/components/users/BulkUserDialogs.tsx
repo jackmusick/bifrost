@@ -313,7 +313,7 @@ export function BulkResultDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="max-h-80 overflow-y-auto border rounded divide-y">
+				<div className="max-h-80 overflow-y-auto rounded-lg ring-1 ring-foreground/5 divide-y">
 					{result.failed.map((f) => {
 						const u = userById.get(f.user_id);
 						return (

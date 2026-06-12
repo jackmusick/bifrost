@@ -229,7 +229,7 @@ function TimelineRow({
 	const hasDetail = !!vm.primaryDetail || !!vm.secondaryDetail;
 	const Icon = vm.icon;
 	return (
-		<li className="rounded border bg-card">
+		<li className="overflow-hidden rounded-md bg-muted/50 ring-1 ring-foreground/5">
 			<button
 				type="button"
 				onClick={() => hasDetail && setOpen((v) => !v)}
@@ -301,7 +301,7 @@ function TimelineRow({
 function DetailBlock({ detail }: { detail: DetailRender }) {
 	if (detail.kind === "json") {
 		return (
-			<div className="max-h-[280px] overflow-y-auto rounded bg-muted/30 px-2 py-1.5">
+			<div className="max-h-[280px] overflow-y-auto rounded-md bg-muted ring-1 ring-foreground/5 px-2 py-1.5">
 				<JsonTree value={detail.value} />
 			</div>
 		);
@@ -311,13 +311,13 @@ function DetailBlock({ detail }: { detail: DetailRender }) {
 	const parsed = tryParseJson(detail.value);
 	if (parsed !== UNPARSEABLE) {
 		return (
-			<div className="max-h-[280px] overflow-y-auto rounded bg-muted/30 px-2 py-1.5">
+			<div className="max-h-[280px] overflow-y-auto rounded-md bg-muted ring-1 ring-foreground/5 px-2 py-1.5">
 				<JsonTree value={parsed} />
 			</div>
 		);
 	}
 	return (
-		<pre className="max-h-[280px] overflow-y-auto rounded bg-muted/30 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words">
+		<pre className="max-h-[280px] overflow-y-auto rounded-md bg-muted ring-1 ring-foreground/5 px-2 py-1.5 font-mono text-[11px] whitespace-pre-wrap break-words">
 			{detail.value}
 		</pre>
 	);

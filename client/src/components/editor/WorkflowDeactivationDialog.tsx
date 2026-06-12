@@ -231,10 +231,10 @@ export function WorkflowDeactivationDialog({
 						return (
 							<div
 								key={pd.id}
-								className={`border rounded-lg p-4 space-y-3 ${
+								className={`rounded-lg ring-1 p-4 space-y-3 ${
 									currentAction
-										? "border-primary/30 bg-primary/5"
-										: ""
+										? "ring-primary/30 bg-primary/5"
+										: "ring-foreground/5"
 								}`}
 							>
 								{/* Header row */}

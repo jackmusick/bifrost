@@ -247,7 +247,7 @@ function FileTab({
 							e.stopPropagation();
 							onClose();
 						}}
-						className="flex-shrink-0 rounded p-0.5 hover:bg-muted-foreground/20 opacity-0 group-hover:opacity-100 transition-opacity"
+						className="flex-shrink-0 rounded-md p-0.5 hover:bg-muted-foreground/20 opacity-0 group-hover:opacity-100 transition-opacity"
 						title="Close"
 					>
 						<X className="h-3 w-3" />

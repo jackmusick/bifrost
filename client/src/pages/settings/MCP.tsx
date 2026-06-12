@@ -39,13 +39,11 @@ import {
 	AlertCircle,
 	Plug,
 	X,
-	Check,
 	ChevronsUpDown,
 	RotateCcw,
 	Copy,
 } from "lucide-react";
 import { $api } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 type MCPToolInfo = components["schemas"]["MCPToolInfo"];
@@ -213,7 +211,7 @@ export function MCP() {
 			)}
 
 			{/* MCP Server URL */}
-			<div className="rounded-lg border bg-muted/50 p-3">
+			<div className="rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
 				<div className="flex items-center justify-between">
 					<div>
 						<p className="text-sm font-medium">MCP Server URL</p>
@@ -346,23 +344,13 @@ export function MCP() {
 												<CommandItem
 													key={tool.id}
 													value={tool.id}
+													data-checked={(allowedToolIds || []).includes(tool.id)}
 													onSelect={() =>
 														toggleAllowedTool(
 															tool.id,
 														)
 													}
 												>
-													<Check
-														className={cn(
-															"mr-2 h-4 w-4",
-															(
-																allowedToolIds ||
-																[]
-															).includes(tool.id)
-																? "opacity-100"
-																: "opacity-0",
-														)}
-													/>
 													<span className="font-mono text-sm">
 														{tool.id}
 													</span>
@@ -446,22 +434,13 @@ export function MCP() {
 												<CommandItem
 													key={tool.id}
 													value={tool.id}
+													data-checked={blockedToolIds.includes(tool.id)}
 													onSelect={() =>
 														toggleBlockedTool(
 															tool.id,
 														)
 													}
 												>
-													<Check
-														className={cn(
-															"mr-2 h-4 w-4",
-															blockedToolIds.includes(
-																tool.id,
-															)
-																? "opacity-100"
-																: "opacity-0",
-														)}
-													/>
 													<span className="font-mono text-sm">
 														{tool.id}
 													</span>

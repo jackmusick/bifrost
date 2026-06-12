@@ -62,7 +62,7 @@ export function DeleteConfirmDialog({
 							return (
 								<div
 									key={entity.id}
-									className="flex items-center gap-2 p-2 rounded border"
+									className="flex items-center gap-2 p-2 rounded-md bg-muted/50 ring-1 ring-foreground/5"
 								>
 									<Badge variant="outline" className={cn(config.color)}>
 										{config.label}

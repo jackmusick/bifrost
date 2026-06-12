@@ -189,8 +189,8 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 					<Link
 						to={`/agents/${agentId}/review`}
 						className={cn(
-							"block overflow-hidden bg-card border-rose-500/40 transition-colors hover:border-rose-500/70",
 							CARD_SURFACE,
+							"block overflow-hidden transition-colors ring-rose-500/40 hover:ring-rose-500/70 dark:ring-rose-500/40 dark:hover:ring-rose-500/70",
 						)}
 					>
 						<div className="border-b border-rose-500/20 px-4 py-3">
@@ -224,8 +224,8 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 					<Link
 						to={`/agents/${agentId}/review`}
 						className={cn(
-							"block overflow-hidden transition-colors hover:border-border/80",
 							CARD_SURFACE,
+							"block overflow-hidden transition-colors hover:ring-foreground/10 dark:hover:ring-foreground/15",
 						)}
 					>
 						<div className={CARD_HEADER}>
@@ -238,7 +238,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 							<div className="text-muted-foreground">
 								Completed runs awaiting a verdict
 							</div>
-							<div className="mt-1 w-full rounded-md border bg-muted/60 px-3 py-1.5 text-center text-[12.5px]">
+							<div className="mt-1 w-full rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-1.5 text-center text-[12.5px]">
 								Open review flipbook →
 							</div>
 						</div>

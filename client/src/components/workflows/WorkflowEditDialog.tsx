@@ -55,7 +55,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -677,31 +676,19 @@ export function WorkflowEditDialog({
 															<CommandItem
 																key={role.id}
 																value={role.name || ""}
+																data-checked={selectedRoleIds.includes(role.id)}
 																onSelect={() => handleRoleToggle(role.id)}
 															>
-																<div className="flex items-center gap-2 flex-1">
-																	<Checkbox
-																		checked={selectedRoleIds.includes(role.id)}
-																	/>
-																	<div className="flex flex-col">
-																		<span className="font-medium">
-																			{role.name}
+																<div className="flex flex-col flex-1">
+																	<span className="font-medium">
+																		{role.name}
+																	</span>
+																	{role.description && (
+																		<span className="text-xs text-muted-foreground">
+																			{role.description}
 																		</span>
-																		{role.description && (
-																			<span className="text-xs text-muted-foreground">
-																				{role.description}
-																			</span>
-																		)}
-																	</div>
-																</div>
-																<Check
-																	className={cn(
-																		"ml-auto h-4 w-4",
-																		selectedRoleIds.includes(role.id)
-																			? "opacity-100"
-																			: "opacity-0"
 																	)}
-																/>
+																</div>
 															</CommandItem>
 														))}
 													</CommandGroup>
@@ -711,7 +698,7 @@ export function WorkflowEditDialog({
 									</Popover>
 
 									{selectedRoleIds.length > 0 && (
-										<div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
+										<div className="flex flex-wrap gap-2 rounded-md bg-muted/50 p-2 ring-1 ring-foreground/5">
 											{selectedRoleIds.map((roleId) => {
 												const role = roles?.find(
 													(r: RolePublic) => r.id === roleId
@@ -913,7 +900,7 @@ export function WorkflowEditDialog({
 									<div className="space-y-2">
 										<Label>Example Request</Label>
 										<div className="relative">
-											<pre className="p-4 bg-muted rounded-md text-xs overflow-x-auto">
+											<pre className="rounded-md bg-muted p-4 text-xs overflow-x-auto ring-1 ring-foreground/5">
 												<code>{curlExample}</code>
 											</pre>
 											<Button

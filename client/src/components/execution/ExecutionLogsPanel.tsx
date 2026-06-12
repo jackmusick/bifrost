@@ -1,14 +1,7 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Copy, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-	CardDescription,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { components } from "@/lib/v1";
@@ -32,21 +25,53 @@ interface ExecutionLogsPanelProps {
 	isLoading?: boolean;
 	/** Whether the user is a platform admin (shows DEBUG logs) */
 	isPlatformAdmin?: boolean;
-	/** Optional className for the card */
+	/** Optional className for the panel */
 	className?: string;
 	/** Maximum height for the logs container */
 	maxHeight?: string;
-	/** Render without Card wrapper (for embedding in other panels) */
-	embedded?: boolean;
 }
 
 const levelColors: Record<string, string> = {
-	debug: "text-gray-500",
-	info: "text-blue-600",
-	warning: "text-yellow-600",
-	error: "text-red-600",
-	traceback: "text-orange-600",
+	debug: "text-muted-foreground",
+	info: "text-blue-600 dark:text-blue-400",
+	warning: "text-yellow-600 dark:text-yellow-500",
+	error: "text-red-600 dark:text-red-400",
+	traceback: "text-orange-600 dark:text-orange-400",
 };
+
+/**
+ * A renderable unit: either a single log line, or a run of consecutive
+ * TRACEBACK lines coalesced into one block. A Python traceback arrives
+ * as N separate log entries; rendering it as N rows (each repeating
+ * timestamp + level) destroys scannability — it is ONE artifact.
+ */
+type LogRenderItem =
+	| { kind: "line"; log: LogEntry }
+	| { kind: "traceback"; timestamp?: string | null; lines: string[] };
+
+export function coalesceTracebacks(logs: LogEntry[]): LogRenderItem[] {
+	const items: LogRenderItem[] = [];
+	for (const log of logs) {
+		const isTraceback = log.level?.toLowerCase() === "traceback";
+		const last = items[items.length - 1];
+		if (isTraceback && last?.kind === "traceback") {
+			last.lines.push(log.message || "");
+		} else if (isTraceback) {
+			items.push({
+				kind: "traceback",
+				timestamp: log.timestamp,
+				lines: [log.message || ""],
+			});
+		} else {
+			items.push({ kind: "line", log });
+		}
+	}
+	return items;
+}
+
+function formatLogTime(timestamp?: string | null): string {
+	return timestamp ? new Date(timestamp).toLocaleTimeString() : "";
+}
 
 export function ExecutionLogsPanel({
 	logs = [],
@@ -56,7 +81,6 @@ export function ExecutionLogsPanel({
 	isPlatformAdmin = false,
 	className,
 	maxHeight = "600px",
-	embedded = false,
 }: ExecutionLogsPanelProps) {
 	const logsContainerRef = useRef<HTMLDivElement>(null);
 	const [autoScroll, setAutoScroll] = useState(true);
@@ -71,17 +95,18 @@ export function ExecutionLogsPanel({
 		status === "Timeout" ||
 		status === "Cancelled";
 
-	// Parent (ExecutionDetails) already merges API + streaming logs via mergeLogsWithDedup
-	const displayLogs = useMemo(() => logs, [logs]);
+	// Parent (ExecutionDetails) already merges API + streaming logs via
+	// mergeLogsWithDedup and memoizes the array, so `logs` is a stable input.
+	const renderItems = useMemo(() => coalesceTracebacks(logs), [logs]);
 
 	// Auto-scroll to bottom when new logs arrive.
 	// Uses scrollTop instead of scrollIntoView to avoid scrolling the outer page.
 	useEffect(() => {
 		const container = logsContainerRef.current;
-		if (autoScroll && container && displayLogs.length > 0) {
+		if (autoScroll && container && logs.length > 0) {
 			container.scrollTop = container.scrollHeight;
 		}
-	}, [displayLogs.length, autoScroll]);
+	}, [logs.length, autoScroll]);
 
 	// Handle scroll to detect if user has scrolled up (pause auto-scroll)
 	const handleLogsScroll = useCallback(() => {
@@ -98,11 +123,9 @@ export function ExecutionLogsPanel({
 	}, []);
 
 	const handleCopyLogs = useCallback(() => {
-		const text = displayLogs
+		const text = logs
 			.map((log) => {
-				const time = log.timestamp
-					? new Date(log.timestamp).toLocaleTimeString()
-					: "";
+				const time = formatLogTime(log.timestamp);
 				const level = (log.level || "INFO").toUpperCase();
 				return `${time}  ${level}  ${log.message || ""}`;
 			})
@@ -111,30 +134,67 @@ export function ExecutionLogsPanel({
 			setCopied(true);
 			setTimeout(() => setCopied(false), 2000);
 		});
-	}, [displayLogs]);
+	}, [logs]);
 
-	const renderLogEntry = (log: LogEntry, index: number) => {
+	const copyButton = logs.length > 0 && (
+		<Button
+			variant="ghost"
+			size="icon"
+			className="h-7 w-7"
+			onClick={handleCopyLogs}
+			title="Copy logs"
+		>
+			{copied ? (
+				<Check className="h-3.5 w-3.5 text-green-500" />
+			) : (
+				<Copy className="h-3.5 w-3.5" />
+			)}
+		</Button>
+	);
+
+	const renderItem = (item: LogRenderItem, index: number) => {
+		if (item.kind === "traceback") {
+			return (
+				<div
+					key={index}
+					className="flex gap-3 rounded px-2 py-1 text-xs font-mono hover:bg-muted/40"
+					data-testid="log-traceback-block"
+				>
+					<span className="whitespace-nowrap tabular-nums text-muted-foreground">
+						{formatLogTime(item.timestamp)}
+					</span>
+					<span
+						className={`min-w-[70px] font-semibold uppercase ${levelColors.traceback}`}
+					>
+						traceback
+					</span>
+					<pre className="flex-1 whitespace-pre-wrap break-words">
+						{item.lines.join("\n")}
+					</pre>
+				</div>
+			);
+		}
+
+		const log = item.log;
 		const level = log.level?.toLowerCase() || "info";
-		const levelColor = levelColors[level] || "text-gray-600";
+		const levelColor = levelColors[level] || "text-muted-foreground";
 		// data field only exists on ExecutionLogPublic, not StreamingLog
 		const data = "data" in log ? log.data : undefined;
 
 		return (
 			<div
 				key={index}
-				className="flex gap-3 text-sm font-mono border-b pb-2 last:border-0"
+				className="flex gap-3 rounded px-2 py-1 text-xs font-mono hover:bg-muted/40"
 			>
-				<span className="text-muted-foreground whitespace-nowrap">
-					{log.timestamp
-						? new Date(log.timestamp).toLocaleTimeString()
-						: ""}
+				<span className="whitespace-nowrap tabular-nums text-muted-foreground">
+					{formatLogTime(log.timestamp)}
 				</span>
 				<span
-					className={`font-semibold uppercase min-w-[60px] ${levelColor}`}
+					className={`min-w-[70px] font-semibold uppercase ${levelColor}`}
 				>
 					{log.level}
 				</span>
-				<span className="flex-1 whitespace-pre-wrap">
+				<span className="flex-1 whitespace-pre-wrap break-words">
 					{log.message}
 				</span>
 				{data && Object.keys(data).length > 0 && (
@@ -142,7 +202,7 @@ export function ExecutionLogsPanel({
 						<summary className="cursor-pointer text-muted-foreground">
 							data
 						</summary>
-						<pre className="mt-1 p-2 bg-muted rounded">
+						<pre className="mt-1 p-2 rounded-md bg-muted">
 							{JSON.stringify(data, null, 2)}
 						</pre>
 					</details>
@@ -151,191 +211,69 @@ export function ExecutionLogsPanel({
 		);
 	};
 
-	// Embedded content (no Card wrapper)
-	const renderEmbeddedContent = () => {
-		const logsContent =
-			displayLogs.length === 0 && !isLoading ? (
-				<div className="text-center text-muted-foreground py-8">
-					{isRunning
-						? "Waiting for logs..."
-						: isComplete
-							? "No logs captured"
-							: "No execution in progress"}
-				</div>
-			) : isLoading && displayLogs.length === 0 ? (
-				<div className="text-center text-muted-foreground py-8">
-					<Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-					Loading logs...
-				</div>
-			) : (
-				<div
-					ref={logsContainerRef}
-					onScroll={handleLogsScroll}
-					className="space-y-2 overflow-y-auto p-4"
-					style={{ maxHeight }}
-				>
-					{displayLogs.map(renderLogEntry)}
-				</div>
-			);
+	const renderLogList = () => (
+		<div
+			ref={logsContainerRef}
+			onScroll={handleLogsScroll}
+			className="overflow-y-auto py-1"
+			style={{ maxHeight }}
+		>
+			{renderItems.map(renderItem)}
+		</div>
+	);
 
-		return (
-			<div className={className}>
-				{/* Header */}
-				<div className="px-4 py-2 border-b bg-muted/30">
-					<div className="flex items-center gap-2">
-						<span className="text-sm font-medium">Logs</span>
-						{isConnected && isRunning && (
-							<Badge variant="secondary" className="text-xs">
-								<Loader2 className="mr-1 h-3 w-3 animate-spin" />
-								Live
-							</Badge>
-						)}
-					</div>
-					<p className="text-xs text-muted-foreground">
-						Python logger output
-						{!isPlatformAdmin && " (INFO, WARNING, ERROR only)"}
-					</p>
-				</div>
-				{/* Content */}
-				{logsContent}
+	const lineCount = logs.length;
+	const countLabel = `${lineCount} line${lineCount !== 1 ? "s" : ""}`;
+
+	// Inspector panel: one step-1 surface framed by a hairline ring, with a
+	// step-2 header band — same idiom in the drawer and the details page.
+	const logsContent =
+		logs.length === 0 && !isLoading ? (
+			<div className="text-center text-sm text-muted-foreground py-8">
+				{isRunning
+					? "Waiting for logs..."
+					: isComplete
+						? "No logs captured"
+						: "No execution in progress"}
 			</div>
+		) : isLoading && logs.length === 0 ? (
+			<div className="space-y-2 p-4">
+				<Skeleton className="h-3 w-full" />
+				<Skeleton className="h-3 w-5/6" />
+				<Skeleton className="h-3 w-4/5" />
+			</div>
+		) : (
+			renderLogList()
 		);
-	};
 
-	// Use embedded rendering if requested
-	if (embedded) {
-		return renderEmbeddedContent();
-	}
-
-	// Running state - show logs as they stream in
-	if (isRunning) {
-		return (
-			<Card className={className}>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle className="flex items-center gap-2">
-							Logs
-							{isConnected && (
-								<Badge variant="secondary" className="text-xs">
-									<Loader2 className="mr-1 h-3 w-3 animate-spin" />
-									Live
-								</Badge>
-							)}
-						</CardTitle>
-						{displayLogs.length > 0 && (
-							<Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCopyLogs}>
-								{copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-							</Button>
-						)}
-					</div>
-					<CardDescription>
-						Python logger output from workflow execution
-						{!isPlatformAdmin && " (INFO, WARNING, ERROR only)"}
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					{displayLogs.length === 0 && !isLoading ? (
-						<div className="text-center text-muted-foreground py-8">
-							Waiting for logs...
-						</div>
-					) : isLoading && displayLogs.length === 0 ? (
-						<div className="text-center text-muted-foreground py-8">
-							<Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-							Loading logs...
-						</div>
-					) : (
-						<div
-							ref={logsContainerRef}
-							onScroll={handleLogsScroll}
-							className="space-y-2 overflow-y-auto"
-							style={{ maxHeight }}
-						>
-							{displayLogs.map(renderLogEntry)}
-								</div>
-					)}
-				</CardContent>
-			</Card>
-		);
-	}
-
-	// Complete state - show persisted logs
-	if (isComplete) {
-		return (
-			<Card className={className}>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Logs</CardTitle>
-						{logs.length > 0 && (
-							<Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCopyLogs}>
-								{copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-							</Button>
-						)}
-					</div>
-					<CardDescription>
-						Python logger output from workflow execution
-						{!isPlatformAdmin && " (INFO, WARNING, ERROR only)"}
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<AnimatePresence mode="wait">
-						{isLoading ? (
-							<motion.div
-								key="loading"
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								transition={{ duration: 0.2 }}
-								className="space-y-2"
-							>
-								<Skeleton className="h-4 w-full" />
-								<Skeleton className="h-4 w-5/6" />
-								<Skeleton className="h-4 w-4/5" />
-							</motion.div>
-						) : logs.length === 0 ? (
-							<motion.div
-								key="empty"
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								transition={{ duration: 0.2 }}
-								className="text-center text-muted-foreground py-8"
-							>
-								No logs captured
-							</motion.div>
-						) : (
-							<motion.div
-								key="content"
-								initial={{ opacity: 0 }}
-								animate={{ opacity: 1 }}
-								exit={{ opacity: 0 }}
-								transition={{ duration: 0.2 }}
-								ref={logsContainerRef}
-								className="space-y-2 overflow-y-auto"
-								style={{ maxHeight }}
-							>
-								{logs.map(renderLogEntry)}
-							</motion.div>
-						)}
-					</AnimatePresence>
-				</CardContent>
-			</Card>
-		);
-	}
-
-	// Default/unknown state
 	return (
-		<Card className={className}>
-			<CardHeader>
-				<CardTitle>Logs</CardTitle>
-				<CardDescription>
-					Python logger output from workflow execution
-				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				<div className="text-center text-muted-foreground py-8">
-					No execution in progress
+		<div
+			className={cn(
+				"overflow-hidden rounded-lg bg-muted/50 ring-1 ring-foreground/5",
+				className,
+			)}
+		>
+			{/* Header band (step-2) */}
+			<div className="flex items-center justify-between border-b border-border/50 bg-muted px-3 py-1.5">
+				<div className="flex items-center gap-2">
+					<span className="text-sm font-medium">Logs</span>
+					{lineCount > 0 && (
+						<span className="text-xs text-muted-foreground">
+							{countLabel}
+							{!isPlatformAdmin && " · INFO and above"}
+						</span>
+					)}
+					{isConnected && isRunning && (
+						<Badge variant="secondary" className="text-xs">
+							<Loader2 className="mr-1 h-3 w-3 animate-spin" />
+							Live
+						</Badge>
+					)}
 				</div>
-			</CardContent>
-		</Card>
+				{copyButton}
+			</div>
+			{/* Content */}
+			{logsContent}
+		</div>
 	);
 }

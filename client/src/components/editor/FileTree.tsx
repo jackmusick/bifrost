@@ -254,7 +254,7 @@ export function FileTree() {
 					<div className="space-y-1 p-2">
 						{/* Inline new item editor */}
 						{creatingItem && !creatingInFolder && (
-							<div className="flex items-center gap-2 rounded px-2 py-1 bg-muted/50">
+							<div className="flex items-center gap-2 rounded-md px-2 py-1 bg-muted/50">
 								<div className="w-4" />
 								{isProcessing ? (
 									<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
@@ -446,7 +446,7 @@ export function FileTree() {
 						{preflightResult?.issues.map((issue, idx) => (
 							<div
 								key={`issue-${idx}`}
-								className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm"
+								className="flex items-start gap-2 rounded-md bg-destructive/5 ring-1 ring-destructive/30 p-2 text-sm"
 							>
 								<XCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
 								<div className="flex-1 min-w-0">
@@ -471,7 +471,7 @@ export function FileTree() {
 							return (
 								<div
 									key={`warn-${idx}`}
-									className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-sm"
+									className="flex items-start gap-2 rounded-md bg-amber-500/5 ring-1 ring-amber-500/30 p-2 text-sm"
 								>
 									<AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" />
 									<div className="flex-1 min-w-0">

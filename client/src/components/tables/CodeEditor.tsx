@@ -50,7 +50,7 @@ export function CodeEditor({
 
 	return (
 		<div
-			className="border rounded-md overflow-hidden"
+			className="overflow-hidden rounded-md ring-1 ring-foreground/5"
 			style={{ height }}
 			data-testid={testId}
 		>

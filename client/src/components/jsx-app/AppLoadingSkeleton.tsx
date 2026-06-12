@@ -45,7 +45,7 @@ export function AppLoadingSkeleton({
 						{[70, 85, 60, 95, 75].map((width, i) => (
 							<div
 								key={i}
-								className="flex items-center gap-3 px-3 py-2.5 rounded-md"
+								className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
 							>
 								<Skeleton className="h-4 w-4 rounded" />
 								<Skeleton
@@ -77,7 +77,7 @@ export function AppLoadingSkeleton({
 						{[...Array(3)].map((_, i) => (
 							<div
 								key={i}
-								className="bg-card border rounded-lg p-4"
+								className="rounded-2xl bg-card p-4 shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10"
 							>
 								<div className="flex items-center gap-3">
 									<Skeleton className="h-10 w-10 rounded-lg" />
@@ -91,7 +91,7 @@ export function AppLoadingSkeleton({
 					</div>
 
 					{/* Content area */}
-					<div className="bg-card border rounded-lg">
+					<div className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10">
 						{/* Card header */}
 						<div className="p-4 border-b">
 							<div className="flex items-center justify-between">
@@ -99,7 +99,7 @@ export function AppLoadingSkeleton({
 									<Skeleton className="h-5 w-24 mb-1" />
 									<Skeleton className="h-3 w-16" />
 								</div>
-								<Skeleton className="h-9 w-24 rounded-md" />
+								<Skeleton className="h-8 w-24" />
 							</div>
 						</div>
 
@@ -125,7 +125,7 @@ export function AppLoadingSkeleton({
 
 			{/* Loading indicator overlay */}
 			<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-				<div className="bg-background/90 backdrop-blur-sm rounded-lg px-6 py-4 shadow-lg flex items-center gap-3">
+				<div className="bg-background/90 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10 flex items-center gap-3">
 					<div className="relative">
 						<div className="h-5 w-5 rounded-full border-2 border-primary/30" />
 						<div className="absolute inset-0 h-5 w-5 rounded-full border-2 border-transparent border-t-primary animate-spin" />

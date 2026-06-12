@@ -411,11 +411,11 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 	if (loadError) {
 		return (
 			<div className="flex items-center justify-center h-full min-h-[200px] p-4">
-				<div className="p-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg max-w-lg">
+				<div className="p-6 rounded-lg bg-red-50 ring-1 ring-red-200 dark:bg-red-950/20 dark:ring-red-800 max-w-lg">
 					<h2 className="text-lg font-semibold text-red-700 dark:text-red-400">
 						Bundle Load Error
 					</h2>
-					<pre className="mt-3 p-3 bg-red-100 dark:bg-red-900/30 rounded text-sm text-red-800 dark:text-red-200 overflow-auto whitespace-pre-wrap">
+					<pre className="mt-3 p-3 bg-red-100 dark:bg-red-900/30 rounded-md text-sm text-red-800 dark:text-red-200 overflow-auto whitespace-pre-wrap">
 						{loadError}
 					</pre>
 				</div>
@@ -539,7 +539,7 @@ function BundleStyles({ href }: { href: string }) {
  */
 function AutoMigrateNotice({ onDismiss }: { onDismiss: () => void }) {
 	return (
-		<div className="absolute top-3 right-3 left-3 z-50 rounded-lg border border-blue-300 bg-blue-50 shadow-lg dark:border-blue-700 dark:bg-blue-950/90">
+		<div className="absolute top-3 right-3 left-3 z-50 rounded-2xl bg-blue-50 shadow-lg ring-1 ring-blue-300 dark:bg-blue-950/90 dark:ring-blue-700">
 			<div className="flex items-start gap-3 p-3">
 				<div className="flex-1">
 					<div className="mb-1 flex items-center justify-between">
@@ -582,7 +582,7 @@ function BuildErrorBanner({
 	onDismiss: () => void;
 }) {
 	return (
-		<div className="absolute top-3 right-3 left-3 z-50 rounded-lg border border-red-300 bg-red-50 shadow-lg dark:border-red-700 dark:bg-red-950/90">
+		<div className="absolute top-3 right-3 left-3 z-50 rounded-2xl bg-red-50 shadow-lg ring-1 ring-red-300 dark:bg-red-950/90 dark:ring-red-700">
 			<div className="flex items-start gap-3 p-3">
 				<div className="flex-1">
 					<div className="mb-1 flex items-center justify-between">

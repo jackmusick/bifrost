@@ -18,6 +18,7 @@ import {
 import type { MouseEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatNumber, formatRelativeTime } from "@/lib/utils";
 import type { components } from "@/lib/v1";
@@ -111,7 +112,7 @@ export function RunCard({
 	return (
 		<div
 			className={cn(
-				"rounded-lg border bg-card transition-colors",
+				"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 transition-colors dark:ring-foreground/10",
 				onOpen && "hover:bg-accent/50",
 			)}
 			data-slot="run-card"
@@ -260,7 +261,7 @@ export function RunCard({
 		</div>
 		{showNoteInput ? (
 			<div className="border-t px-3 py-2">
-				<input
+				<Input
 					type="text"
 					aria-label="What should it have done?"
 					placeholder="What should it have done?"
@@ -277,7 +278,7 @@ export function RunCard({
 						const prev = run.verdict_note ?? "";
 						if (next !== prev) onNote?.(run.id, next);
 					}}
-					className="w-full rounded-md border bg-background px-2.5 py-1 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+					className="h-7 text-xs"
 					data-testid="run-card-note-input"
 				/>
 			</div>

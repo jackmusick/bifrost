@@ -312,7 +312,7 @@ export function ToolExecutionCard({
 		return (
 			<div
 				className={cn(
-					"border rounded-lg bg-card overflow-hidden",
+					"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 overflow-hidden",
 					className,
 				)}
 			>
@@ -332,9 +332,9 @@ export function ToolExecutionCard({
 	return (
 		<div
 			className={cn(
-				"border rounded-lg bg-card overflow-hidden",
-				status === "running" && "border-blue-500/50",
-				status === "failed" && "border-destructive/50",
+				"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 overflow-hidden",
+				status === "running" && "ring-blue-500/50 dark:ring-blue-500/50",
+				status === "failed" && "ring-destructive/50 dark:ring-destructive/50",
 				className,
 			)}
 		>

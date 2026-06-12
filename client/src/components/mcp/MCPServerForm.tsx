@@ -370,7 +370,7 @@ export function MCPServerForm({ onSuccess, onCancel }: MCPServerFormProps = {}) 
 				)}
 
 				{showDiscoveryPanel && (
-					<div className="rounded-md border bg-muted/30 p-4 space-y-3">
+					<div className="rounded-md bg-muted/50 p-4 space-y-3 ring-1 ring-foreground/5">
 						<div className="flex items-center justify-between">
 							<div className="text-sm font-semibold">
 								OAuth metadata{" "}
@@ -409,7 +409,7 @@ export function MCPServerForm({ onSuccess, onCancel }: MCPServerFormProps = {}) 
 								onChange={(e) =>
 									setFlowType(e.target.value as OAuthFlowType)
 								}
-								className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+								className="h-8 w-full rounded-2xl border border-transparent bg-input/50 px-2.5 text-sm transition-[color,box-shadow] duration-200 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
 							>
 								<option value="authorization_code">
 									Authorization Code — user signs in at the vendor

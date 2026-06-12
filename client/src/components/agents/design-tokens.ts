@@ -79,8 +79,8 @@ export const GAP_VALUE_DELTA = "gap-1";
 // Radius
 // ──────────────────────────────────────────────────────────────────────────
 
-/** 10px — primary card radius (`.card { border-radius: 10px }`) */
-export const RADIUS_CARD = "rounded-[10px]";
+/** 16px — primary card radius (matches the ui/ card chrome family) */
+export const RADIUS_CARD = "rounded-2xl";
 
 /** 8px — secondary elements (verdict bar, tool step, advanced details) */
 export const RADIUS_INNER = "rounded-lg";
@@ -92,12 +92,12 @@ export const RADIUS_BUTTON = "rounded-md";
 // Card surface — the repeated base container
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Base card surface: 10px radius + border + card bg. Add padding separately. */
-export const CARD_SURFACE = `${RADIUS_CARD} border bg-card`;
+/** Base card surface: card chrome (radius + card bg + shadow + hairline ring). Add padding separately. */
+export const CARD_SURFACE = `${RADIUS_CARD} bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10`;
 
-/** Hoverable card — lifts 1px on hover, warms border. */
+/** Hoverable card — lifts 1px on hover, warms the ring. */
 export const CARD_HOVER =
-	"transition-colors hover:border-border/80 hover:-translate-y-px";
+	"transition-all hover:ring-foreground/10 dark:hover:ring-foreground/15 hover:-translate-y-px";
 
 /** Card header strip — 14px/16px vertical/horizontal, border-b. */
 export const CARD_HEADER = "border-b px-4 py-3";

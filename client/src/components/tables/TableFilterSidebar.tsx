@@ -71,18 +71,18 @@ function FiltersSection({
 	const [isExpanded, setIsExpanded] = useState(true);
 
 	return (
-		<div className="border-b">
+		<div>
 			<button
 				onClick={() => setIsExpanded(!isExpanded)}
-				className="flex items-center justify-between w-full py-3 pl-3 pr-6 hover:bg-muted/50 transition-colors text-left"
+				className="flex w-full items-center justify-between py-3 pl-4 pr-4 text-left transition-colors hover:bg-muted/50"
 			>
 				<div className="flex items-center gap-2">
 					{isExpanded ? (
-						<ChevronDown className="h-4 w-4 text-muted-foreground" />
+						<ChevronDown className="size-4 text-muted-foreground" />
 					) : (
-						<ChevronRight className="h-4 w-4 text-muted-foreground" />
+						<ChevronRight className="size-4 text-muted-foreground" />
 					)}
-					<Filter className="h-4 w-4 text-muted-foreground" />
+					<Filter className="size-4 text-muted-foreground" />
 					<span className="font-medium text-sm">Query Filters</span>
 				</div>
 				<Badge variant="secondary" className="text-xs">
@@ -91,9 +91,9 @@ function FiltersSection({
 			</button>
 
 			{isExpanded && (
-				<div className="pb-3 px-3">
+				<div className="px-3 pb-3">
 					{conditions.length === 0 ? (
-						<div className="py-2 text-xs text-muted-foreground italic text-center">
+						<div className="py-2 text-center text-xs italic text-muted-foreground">
 							No filters applied
 						</div>
 					) : (
@@ -101,7 +101,7 @@ function FiltersSection({
 							{conditions.map((condition) => (
 								<div
 									key={condition.id}
-									className="flex flex-col gap-1.5 p-2 bg-muted/30 rounded-md"
+									className="flex flex-col gap-1.5 rounded-xl bg-muted/50 p-2 ring-1 ring-foreground/5"
 								>
 									<div className="flex items-center gap-1">
 										<Input
@@ -112,7 +112,7 @@ function FiltersSection({
 													field: e.target.value,
 												})
 											}
-											className="h-7 text-xs flex-1"
+											className="flex-1"
 										/>
 										<Button
 											variant="ghost"
@@ -120,9 +120,9 @@ function FiltersSection({
 											onClick={() =>
 												onRemove(condition.id)
 											}
-											className="h-7 w-7 shrink-0"
+											className="shrink-0 text-muted-foreground"
 										>
-											<Trash2 className="h-3 w-3" />
+											<Trash2 className="size-3.5" />
 										</Button>
 									</div>
 									<div className="flex items-center gap-1">
@@ -136,7 +136,7 @@ function FiltersSection({
 												})
 											}
 										>
-											<SelectTrigger className="h-7 text-xs w-[100px]">
+											<SelectTrigger className="w-[104px]">
 												<SelectValue />
 											</SelectTrigger>
 											<SelectContent>
@@ -144,7 +144,6 @@ function FiltersSection({
 													<SelectItem
 														key={op.value}
 														value={op.value}
-														className="text-xs"
 													>
 														{op.label}
 													</SelectItem>
@@ -163,20 +162,14 @@ function FiltersSection({
 													})
 												}
 											>
-												<SelectTrigger className="h-7 text-xs flex-1">
+												<SelectTrigger className="flex-1">
 													<SelectValue />
 												</SelectTrigger>
 												<SelectContent>
-													<SelectItem
-														value="true"
-														className="text-xs"
-													>
+													<SelectItem value="true">
 														true
 													</SelectItem>
-													<SelectItem
-														value="false"
-														className="text-xs"
-													>
+													<SelectItem value="false">
 														false
 													</SelectItem>
 												</SelectContent>
@@ -190,7 +183,7 @@ function FiltersSection({
 														value: e.target.value,
 													})
 												}
-												className="h-7 text-xs flex-1"
+												className="flex-1"
 											/>
 										)}
 									</div>
@@ -202,9 +195,9 @@ function FiltersSection({
 						variant="outline"
 						size="sm"
 						onClick={onAdd}
-						className="w-full mt-2 h-7 text-xs"
+						className="mt-2 w-full"
 					>
-						<Plus className="h-3 w-3 mr-1" />
+						<Plus />
 						Add Filter
 					</Button>
 				</div>
@@ -310,34 +303,32 @@ export function TableFilterSidebar({
 	return (
 		<div
 			className={cn(
-				"flex flex-col border rounded-lg bg-card h-full",
+				"flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10",
 				className,
 			)}
 		>
 			{/* Header */}
-			<div className="flex items-center justify-between p-3 border-b">
-				<span className="font-semibold text-sm">Filters</span>
+			<div className="flex items-center justify-between border-b px-4 py-3">
+				<span className="font-medium text-sm">Filters</span>
 				<div className="flex items-center gap-1">
 					{hasActiveFilters && (
 						<Button
 							variant="ghost"
-							size="sm"
+							size="xs"
 							onClick={handleClear}
-							className="h-6 px-2 text-xs"
 						>
-							<X className="h-3 w-3 mr-1" />
+							<X />
 							Clear
 						</Button>
 					)}
 					{onClose && (
 						<Button
 							variant="ghost"
-							size="icon"
+							size="icon-xs"
 							onClick={onClose}
-							className="h-6 w-6"
 							title="Hide filters"
 						>
-							<PanelLeftClose className="h-4 w-4" />
+							<PanelLeftClose className="size-4" />
 						</Button>
 					)}
 				</div>
@@ -345,7 +336,7 @@ export function TableFilterSidebar({
 
 			{/* Active Filter Indicator */}
 			{hasActiveFilters && (
-				<div className="px-3 py-2 bg-primary/5 border-b">
+				<div className="border-b bg-primary/5 px-4 py-2">
 					<div className="text-xs text-muted-foreground">
 						Active filters applied
 					</div>
@@ -364,12 +355,9 @@ export function TableFilterSidebar({
 
 			{/* Apply Button */}
 			{hasConditions && (
-				<div className="p-3 border-t">
-					<Button
-						onClick={handleApply}
-						className="w-full h-8 text-sm"
-					>
-						<Search className="h-4 w-4 mr-2" />
+				<div className="border-t p-3">
+					<Button onClick={handleApply} className="w-full">
+						<Search />
 						Apply Filters
 					</Button>
 				</div>

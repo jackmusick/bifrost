@@ -286,7 +286,7 @@ export function KnowledgeDocumentDrawer({
 						)}
 
 						{/* Editor */}
-						<div className="flex-1 min-h-0 border rounded-md overflow-hidden">
+						<div className="flex-1 min-h-0 overflow-hidden rounded-md ring-1 ring-foreground/5">
 							<TiptapEditor
 								content={content}
 								onChange={setContent}
