@@ -106,6 +106,28 @@ export async function deleteSolution(
 	return data;
 }
 
+/**
+ * Download the install's workspace zip (the exact bundle its last write
+ * produced). Returns the blob + the server-chosen filename so the caller can
+ * trigger a browser download.
+ */
+export async function exportSolution(
+	solutionId: string,
+): Promise<{ blob: Blob; filename: string }> {
+	const response = await authFetch(`/api/solutions/${solutionId}/export`);
+	if (!response.ok) {
+		throw new Error(
+			await parseUploadError(response, "Failed to export solution"),
+		);
+	}
+	const disposition = response.headers.get("Content-Disposition") ?? "";
+	const match = /filename="([^"]+)"/.exec(disposition);
+	return {
+		blob: await response.blob(),
+		filename: match?.[1] ?? `solution-${solutionId}.zip`,
+	};
+}
+
 async function parseUploadError(
 	response: Response,
 	fallback: string,

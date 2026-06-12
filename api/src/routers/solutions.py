@@ -129,6 +129,44 @@ async def get_solution_logo(
 
 
 @router.get(
+    "/{solution_id}/export",
+    summary="Download the install's workspace zip (admin only)",
+    responses={
+        200: {"content": {"application/zip": {}}},
+        404: {"description": "Install not found, or it predates export support"},
+    },
+)
+async def export_solution(
+    solution_id: UUID, ctx: Context, user: CurrentSuperuser
+) -> Response:
+    """The exact workspace bundle the install's last write produced — the same
+    shape ``bifrost solution deploy`` / the zip install consume, so the export
+    is directly re-installable (or re-deployable from a local checkout). Every
+    writer persists it post-commit; an install last written before export
+    support has no stored bundle until its next deploy/sync."""
+    from src.services.solutions.export import SolutionExportStore
+
+    sol = await ctx.db.get(SolutionORM, solution_id)
+    if sol is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solution not found")
+    data = await SolutionExportStore().read(solution_id)
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "No stored bundle for this install — it was last written before "
+                "export support. Deploy or sync it once to produce one."
+            ),
+        )
+    filename = f"{sol.slug}-{sol.version or 'unversioned'}.zip"
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
     "/{solution_id}/entities",
     response_model=SolutionEntities,
     summary="Get an install + everything it owns (admin only)",
@@ -461,6 +499,9 @@ async def delete_solution(
             builder = SolutionAppBuilder()
             for app_id in app_ids:
                 await builder.delete_dist(app_id)
+            from src.services.solutions.export import SolutionExportStore
+
+            await SolutionExportStore().delete(solution_id)
     except SolutionWriteLockHeld as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

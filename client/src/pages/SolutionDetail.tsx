@@ -29,6 +29,7 @@ import {
 	AlertTriangle,
 	Pencil,
 	Trash2,
+	Download,
 	Loader2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,7 @@ import { CreateEditSolution } from "@/components/solutions/CreateEditSolution";
 import {
 	getSolutionEntities,
 	deleteSolution,
+	exportSolution,
 	setSolutionConfig,
 } from "@/services/solutions";
 import type { components } from "@/lib/v1";
@@ -267,6 +269,25 @@ export function SolutionDetail() {
 
 	const sol = data?.solution;
 
+	const exportMut = useMutation({
+		mutationFn: () => exportSolution(solutionId!),
+		onSuccess: ({ blob, filename }) => {
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		},
+		onError: (err: unknown) => {
+			toast.error("Failed to export", {
+				description: err instanceof Error ? err.message : "Unknown error",
+			});
+		},
+	});
+
 	const deleteMut = useMutation({
 		mutationFn: () => deleteSolution(solutionId!),
 		onSuccess: (summary) => {
@@ -385,6 +406,19 @@ export function SolutionDetail() {
 							</div>
 						</div>
 						<div className="flex shrink-0 gap-2">
+							<Button
+								variant="outline"
+								data-testid="export-solution"
+								disabled={exportMut.isPending}
+								onClick={() => exportMut.mutate()}
+							>
+								{exportMut.isPending ? (
+									<Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+								) : (
+									<Download className="mr-1.5 h-4 w-4" />
+								)}
+								Export
+							</Button>
 							<Button
 								variant="outline"
 								data-testid="edit-solution"

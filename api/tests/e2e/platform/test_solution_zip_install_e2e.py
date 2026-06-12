@@ -275,3 +275,87 @@ async def test_zip_preview_returns_upgrade_diff_for_existing_install(
     # ...and the fresh-slug preview created nothing either.
     listing2 = e2e_client.get("/api/solutions", headers=headers)
     assert [s for s in listing2.json()["solutions"] if s["slug"] == fresh_slug] == []
+
+
+async def test_export_round_trips_the_installed_bundle(e2e_client, platform_admin):
+    """GET /{id}/export returns the workspace zip the install's last write
+    produced — re-parseable AND re-installable (the full round trip):
+
+    install zip v1 → export → the export previews identically → installing the
+    EXPORT as a new slug-scoped... (same slug+scope resolves to the same
+    install) → re-INSTALLING the export onto the same install succeeds as a
+    no-op full replace."""
+    headers = platform_admin.headers
+    upload_headers = {
+        k: v for k, v in headers.items() if k.lower() != "content-type"
+    }
+    slug = f"zip-exp-{uuid.uuid4().hex[:8]}"
+    data = _make_zip(slug, "1.0.0")
+
+    inst = e2e_client.post(
+        "/api/solutions/install",
+        headers=upload_headers,
+        files={"file": (f"{slug}.zip", data, "application/zip")},
+        data={"config_values": '{"API_KEY": "sk_x"}'},
+    )
+    assert inst.status_code in (200, 201), inst.text
+    sid = inst.json()["id"]
+
+    # EXPORT: the stored bundle, as a workspace zip.
+    exp = e2e_client.get(f"/api/solutions/{sid}/export", headers=headers)
+    assert exp.status_code == 200, exp.text
+    assert exp.headers["content-type"] == "application/zip"
+    assert f'filename="{slug}-1.0.0.zip"' in exp.headers.get("content-disposition", "")
+    export_bytes = exp.content
+
+    # The export parses to the same workspace (preview round trip).
+    pv = e2e_client.post(
+        "/api/solutions/install/preview",
+        headers=upload_headers,
+        files={"file": (f"{slug}.zip", export_bytes, "application/zip")},
+    )
+    assert pv.status_code == 200, pv.text
+    body = pv.json()
+    assert body["slug"] == slug
+    assert body["version"] == "1.0.0"
+    assert len(body["workflows"]) == 1
+    assert any(c["key"] == "API_KEY" for c in body["config_schemas"])
+    # The preview matched it back to the SAME install (original manifest ids).
+    assert body["existing_install"] is not None
+    assert body["existing_install"]["id"] == sid
+
+    # Re-INSTALL the export onto the same install: a no-op full replace.
+    reinst = e2e_client.post(
+        "/api/solutions/install",
+        headers=upload_headers,
+        files={"file": (f"{slug}.zip", export_bytes, "application/zip")},
+    )
+    assert reinst.status_code in (200, 201), reinst.text
+    assert reinst.json()["id"] == sid
+
+    ent = e2e_client.get(f"/api/solutions/{sid}/entities", headers=headers)
+    assert ent.status_code == 200, ent.text
+    entities = ent.json()
+    assert len(entities["workflows"]) == 1
+    # Config VALUE survived the export re-install (values are instance-owned,
+    # never carried in a bundle).
+    api_key = next((c for c in entities["configs"] if c["key"] == "API_KEY"), None)
+    assert api_key is not None and api_key["value_set"] is True
+
+
+async def test_export_404_before_first_deploy(e2e_client, platform_admin):
+    """An install created but never deployed has no stored bundle — 404 with a
+    pointed detail, not an empty zip."""
+    headers = platform_admin.headers
+    slug = f"zip-noexp-{uuid.uuid4().hex[:8]}"
+    create = e2e_client.post("/api/solutions", headers=headers, json={
+        "slug": slug,
+        "name": slug.upper(),
+        "scope": "global",
+    })
+    assert create.status_code in (200, 201), create.text
+    sid = create.json()["id"]
+
+    exp = e2e_client.get(f"/api/solutions/{sid}/export", headers=headers)
+    assert exp.status_code == 404, exp.text
+    assert "No stored bundle" in exp.json()["detail"]

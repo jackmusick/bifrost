@@ -3725,22 +3725,22 @@ export interface paths {
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        get: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        get: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        put: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        put: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        post: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        post: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         /**
          * Execute workflow via API key
          * @description Execute an endpoint-enabled workflow using an API key for authentication
          */
-        delete: operations["execute_endpoint_api_endpoints__workflow_id__post"];
+        delete: operations["execute_endpoint_api_endpoints__workflow_id__get"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7178,6 +7178,30 @@ export interface paths {
          *     endpoint.
          */
         get: operations["get_solution_logo_api_solutions__solution_id__logo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the install's workspace zip (admin only)
+         * @description The exact workspace bundle the install's last write produced — the same
+         *     shape ``bifrost solution deploy`` / the zip install consume, so the export
+         *     is directly re-installable (or re-deployable from a local checkout). Every
+         *     writer persists it post-commit; an install last written before export
+         *     support has no stored bundle until its next deploy/sync.
+         */
+        get: operations["export_solution_api_solutions__solution_id__export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -28887,7 +28911,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -28920,7 +28944,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -28953,7 +28977,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -28986,7 +29010,7 @@ export interface operations {
             };
         };
     };
-    execute_endpoint_api_endpoints__workflow_id__post: {
+    execute_endpoint_api_endpoints__workflow_id__get: {
         parameters: {
             query?: never;
             header: {
@@ -35215,6 +35239,45 @@ export interface operations {
                 };
             };
             /** @description No icon set */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_solution_api_solutions__solution_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Install not found, or it predates export support */
             404: {
                 headers: {
                     [name: string]: unknown;
