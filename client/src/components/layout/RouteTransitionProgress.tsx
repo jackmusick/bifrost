@@ -33,6 +33,19 @@ function shouldTrackClick(event: MouseEvent): boolean {
 	}
 
 	const currentUrl = new URL(window.location.href);
+
+	// Navigation that stays inside a mounted application (/apps/<id>/...) is
+	// handled by the app's own router — the platform router never observes it,
+	// so the bar would start and never finish.
+	const appMount = currentUrl.pathname.match(/^\/apps\/[^/]+/)?.[0];
+	if (
+		appMount &&
+		(targetUrl.pathname === appMount ||
+			targetUrl.pathname.startsWith(`${appMount}/`))
+	) {
+		return false;
+	}
+
 	return (
 		targetUrl.pathname !== currentUrl.pathname ||
 		targetUrl.search !== currentUrl.search
