@@ -53,23 +53,23 @@ _LOGO_ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/sv
 _LOGO_MAX_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
-def _decode_app_logo(slug: str, mapp: dict[str, Any]) -> tuple[bytes | None, str | None]:
-    """Validate + decode a manifest app logo into (data, content_type).
+def _decode_logo(
+    label: str, b64: str | None, content_type: str | None
+) -> tuple[bytes | None, str | None]:
+    """Validate + decode a manifest-declared logo into (data, content_type).
 
-    The collector carries ``logo_b64`` + ``logo_content_type`` when the app
-    manifest declares a ``logo:`` path. Returns (None, None) when no logo is
-    declared — deploy then CLEARS any prior logo (deploy is the publish, so a
-    logo dropped from the manifest is dropped from the app). Applies the same
-    content-type allow-list, size cap, and SVG sanitization as the interactive
-    upload endpoint, so a bundle can't smuggle an oversized or scriptable SVG.
+    Returns (None, None) when no logo is declared — deploy then CLEARS any
+    prior logo (deploy is the publish, so a logo dropped from the manifest is
+    dropped from the row). Applies the same content-type allow-list, size cap,
+    and SVG sanitization as the interactive upload endpoint, so a bundle can't
+    smuggle an oversized or scriptable SVG. Used for both app logos and the
+    solution-level icon.
     """
-    b64 = mapp.get("logo_b64")
     if not b64:
         return None, None
-    content_type = mapp.get("logo_content_type")
     if content_type not in _LOGO_ALLOWED_CONTENT_TYPES:
         raise SolutionDeployConflict(
-            f"app '{slug}': logo content type {content_type!r} not allowed "
+            f"{label}: logo content type {content_type!r} not allowed "
             f"(png, jpeg, or svg)"
         )
     import base64 as _b64
@@ -77,7 +77,7 @@ def _decode_app_logo(slug: str, mapp: dict[str, Any]) -> tuple[bytes | None, str
     data = _b64.b64decode(b64)
     if len(data) > _LOGO_MAX_SIZE:
         raise SolutionDeployConflict(
-            f"app '{slug}': logo exceeds {_LOGO_MAX_SIZE // 1024 // 1024} MB"
+            f"{label}: logo exceeds {_LOGO_MAX_SIZE // 1024 // 1024} MB"
         )
     if content_type == "image/svg+xml":
         from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
@@ -85,7 +85,7 @@ def _decode_app_logo(slug: str, mapp: dict[str, Any]) -> tuple[bytes | None, str
         try:
             data = sanitize_svg(data)
         except SvgSanitizationError as exc:
-            raise SolutionDeployConflict(f"app '{slug}': invalid SVG logo: {exc}")
+            raise SolutionDeployConflict(f"{label}: invalid SVG logo: {exc}")
     return data, content_type
 
 
@@ -250,6 +250,10 @@ class SolutionBundle:
     # The bundle's declared version (bifrost.solution.yaml ``version:``).
     # Recorded on the install by deploy; gates downgrades (Task 20).
     version: str | None = None
+    # Solution-level icon (bifrost.solution.yaml ``logo:``), carried base64.
+    # Deploy-owned: present => stamped on the install, absent => cleared.
+    logo_b64: str | None = None
+    logo_content_type: str | None = None
 
 
 class SolutionDeployer:
@@ -326,6 +330,14 @@ class SolutionDeployer:
         if bundle.version is not None and bundle.version != solution.version:
             solution.upgraded_from_version = solution.version
             solution.version = bundle.version
+
+        # ── Solution-level icon — deploy-owned exactly like the app logo:
+        # declared in the bundle => set, absent => cleared.
+        sol_logo, sol_logo_ct = _decode_logo(
+            f"solution '{solution.slug}'", bundle.logo_b64, bundle.logo_content_type
+        )
+        solution.logo_data = sol_logo
+        solution.logo_content_type = sol_logo_ct
 
         # ── COMPILE app dists to memory NOW (pre-commit) — a vite/npm failure
         #    raises here and rolls back the whole deploy, no S3 touched. ───────
@@ -916,7 +928,9 @@ class SolutionDeployer:
             # like the upload endpoint, then stamp the row. Deploy is the publish,
             # so the logo is deploy-owned: present => set, absent => cleared,
             # keeping deploy idempotent/round-tripping.
-            logo_data, logo_ct = _decode_app_logo(slug, mapp)
+            logo_data, logo_ct = _decode_logo(
+                f"app '{slug}'", mapp.get("logo_b64"), mapp.get("logo_content_type")
+            )
             values["logo_data"] = logo_data
             values["logo_content_type"] = logo_ct
 

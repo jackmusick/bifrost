@@ -69,6 +69,8 @@ class PreviewResult:
     name: str | None = None
     scope: str | None = None
     version: str | None = None
+    # Descriptor ``logo:`` path (workspace-relative); read by _build_bundle.
+    logo: str | None = None
     workflows: list[dict[str, Any]] = field(default_factory=list)
     tables: list[dict[str, Any]] = field(default_factory=list)
     apps: list[dict[str, Any]] = field(default_factory=list)
@@ -110,16 +112,19 @@ def _parse_workspace(workspace: Path) -> PreviewResult:
     name: str | None = None
     scope: str | None = None
     version: str | None = None
+    logo: str | None = None
     if is_solution_workspace(workspace):
         descriptor = load_descriptor(workspace)
         slug, name, scope = descriptor.slug, descriptor.name, descriptor.scope
         version = descriptor.version
+        logo = descriptor.logo
 
     return PreviewResult(
         slug=slug,
         name=name,
         scope=scope,
         version=version,
+        logo=logo,
         workflows=_collect_workflows(workspace),
         tables=_collect_tables(workspace),
         apps=_collect_apps(workspace),
@@ -213,7 +218,18 @@ def _build_bundle(solution: Solution, preview: PreviewResult, workspace: Path) -
 
     ``preview`` already holds the manifest entities; only the Python source has
     to be read here (it is not part of the parse-only preview shape)."""
-    from bifrost.commands.solution import _collect_python_files
+    import base64
+
+    from bifrost.commands.solution import _LOGO_CONTENT_TYPES, _collect_python_files
+
+    logo_b64: str | None = None
+    logo_content_type: str | None = None
+    if preview.logo:
+        logo_file = workspace / preview.logo
+        if not logo_file.is_file():
+            raise ValueError(f"solution logo file not found in zip: {preview.logo}")
+        logo_b64 = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+        logo_content_type = _LOGO_CONTENT_TYPES.get(logo_file.suffix.lower())
 
     return SolutionBundle(
         solution=solution,
@@ -225,6 +241,8 @@ def _build_bundle(solution: Solution, preview: PreviewResult, workspace: Path) -
         agents=preview.agents,
         config_schemas=preview.config_schemas,
         version=preview.version,
+        logo_b64=logo_b64,
+        logo_content_type=logo_content_type,
     )
 
 

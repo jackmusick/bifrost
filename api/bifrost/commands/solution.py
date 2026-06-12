@@ -766,6 +766,20 @@ def deploy_cmd(path: str, solution_id: str | None, force: bool) -> None:
         )
     descriptor = load_descriptor(workspace)
 
+    # Solution-level icon: `logo:` in bifrost.solution.yaml points at an image
+    # relative to the workspace root; carried base64 for deploy to stamp on the
+    # install (shown on the /solutions catalog). Errors loudly when missing.
+    solution_logo_b64: str | None = None
+    solution_logo_content_type: str | None = None
+    if descriptor.logo:
+        import base64
+
+        logo_file = workspace / descriptor.logo
+        if not logo_file.is_file():
+            raise click.ClickException(f"solution logo file not found at {logo_file}")
+        solution_logo_b64 = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+        solution_logo_content_type = _LOGO_CONTENT_TYPES.get(logo_file.suffix.lower())
+
     python_files = _collect_python_files(workspace)
     workflows = _collect_workflows(workspace)
     tables = _collect_tables(workspace)
@@ -838,6 +852,8 @@ def deploy_cmd(path: str, solution_id: str | None, force: bool) -> None:
             "agents": agents,
             "config_schemas": config_schemas,
             "version": descriptor.version,
+            "logo_b64": solution_logo_b64,
+            "logo_content_type": solution_logo_content_type,
             "force": force,
         })
         if deploy.status_code == 409 and "older than installed" in deploy.text:

@@ -36,6 +36,7 @@ import {
 	DataTableRow,
 } from "@/components/ui/data-table";
 import { SearchBox } from "@/components/search/SearchBox";
+import { EntityLogo } from "@/components/EntityLogo";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import {
 	CreateEditSolution,
@@ -270,7 +271,15 @@ export function Solutions() {
 							>
 								<div className="flex items-start justify-between gap-3 border-b px-4 py-3">
 									<div className="flex min-w-0 items-center gap-2">
-										<Boxes className="h-4 w-4 shrink-0 text-muted-foreground" />
+										<EntityLogo
+											entityType="solution"
+											entityId={sol.id}
+											fallback={
+												<Boxes className="h-4 w-4 shrink-0 text-muted-foreground" />
+											}
+											size={20}
+											className="h-5 w-5 rounded object-cover shrink-0"
+										/>
 										<div className="min-w-0">
 											<div className="truncate text-[14.5px] font-semibold">
 												{sol.name}
@@ -312,7 +321,15 @@ export function Solutions() {
 								>
 									<DataTableCell className="font-medium">
 										<span className="flex items-center gap-2">
-											<Boxes className="h-4 w-4 shrink-0 text-muted-foreground" />
+											<EntityLogo
+												entityType="solution"
+												entityId={sol.id}
+												fallback={
+													<Boxes className="h-4 w-4 shrink-0 text-muted-foreground" />
+												}
+												size={16}
+												className="h-4 w-4 rounded object-cover shrink-0"
+											/>
 											{sol.name}
 										</span>
 									</DataTableCell>

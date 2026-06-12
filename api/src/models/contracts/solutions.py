@@ -220,6 +220,11 @@ class SolutionDeployRequest(BaseModel):
     # Recorded on the install; an older version than installed is refused
     # unless ``force`` is set (Task 20 downgrade gate).
     version: str | None = None
+    # Solution-level icon declared by ``logo:`` in bifrost.solution.yaml,
+    # carried base64 by the CLI; deploy validates and stamps it on the install
+    # (absent => cleared).
+    logo_b64: str | None = None
+    logo_content_type: str | None = None
     force: bool = False
 
 

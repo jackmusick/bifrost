@@ -42,6 +42,9 @@ class SolutionDescriptor(BaseModel):
     global_repo_access: bool = False
     git_connected: bool = False
     git_repo_url: str | None = None
+    # Path to a solution icon image (png/jpeg/svg) relative to the workspace
+    # root, e.g. "assets/icon.svg". Shown on the /solutions catalog cards.
+    logo: str | None = None
 
 
 def _descriptor_path(path: Path | str) -> Path:

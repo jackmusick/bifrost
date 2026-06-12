@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile, status
 from fastapi import Form as FastapiForm
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -103,6 +103,29 @@ async def get_solution(solution_id: UUID, ctx: Context, user: CurrentSuperuser) 
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solution not found")
     return SolutionDTO.model_validate(row)
+
+
+@router.get(
+    "/{solution_id}/logo",
+    summary="Get Solution icon",
+    responses={
+        200: {"content": {"image/png": {}, "image/jpeg": {}, "image/svg+xml": {}}},
+        404: {"description": "No icon set"},
+    },
+)
+async def get_solution_logo(
+    solution_id: UUID, ctx: Context, user: CurrentSuperuser
+) -> Response:
+    """The solution-level icon (bifrost.solution.yaml ``logo:``), shown on the
+    /solutions catalog cards. Bytes only — mirrors the application logo
+    endpoint."""
+    row = await ctx.db.get(SolutionORM, solution_id)
+    if row is None or not row.logo_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Icon not set")
+    return Response(
+        content=row.logo_data,
+        media_type=row.logo_content_type or "application/octet-stream",
+    )
 
 
 @router.get(
@@ -491,6 +514,8 @@ async def deploy_solution(
                     agents=body.agents,
                     config_schemas=body.config_schemas,
                     version=body.version,
+                    logo_b64=body.logo_b64,
+                    logo_content_type=body.logo_content_type,
                 ),
                 force=body.force,
             )

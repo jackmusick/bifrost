@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useEntityLogoVersion } from "./entityLogoVersions";
 
 export type EntityLogoProps = {
-	entityType: "app" | "agent";
+	entityType: "app" | "agent" | "solution";
 	entityId: string;
 	fallback: ReactNode;
 	size: number;
@@ -21,6 +21,7 @@ export type EntityLogoProps = {
 const PATHS: Record<EntityLogoProps["entityType"], string> = {
 	app: "/api/applications",
 	agent: "/api/agents",
+	solution: "/api/solutions",
 };
 
 export function EntityLogo({

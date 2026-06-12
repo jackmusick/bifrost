@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, LargeBinary, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.orm.base import Base
@@ -96,6 +96,12 @@ class Solution(Base):
         Boolean, default=False, server_default=text("false")
     )
     git_repo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True, default=None)
+
+    # Solution-level icon shown on the /solutions catalog (mirrors the app-logo
+    # plumbing): declared by ``logo:`` in bifrost.solution.yaml, validated and
+    # stamped by deploy (present => set, absent => cleared).
+    logo_data: Mapped[bytes | None] = mapped_column(LargeBinary, default=None)
+    logo_content_type: Mapped[str | None] = mapped_column(String(100), default=None)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
