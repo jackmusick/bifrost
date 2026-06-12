@@ -148,10 +148,13 @@ export function BifrostProvider({
     applyThemeClass(theme);
   }, [theme]);
   // Follow the host if it drives the theme prop (platform-controlled mounts).
-  useEffect(() => {
+  // Derive-during-render (the React-sanctioned "previous prop" pattern) — an
+  // effect-based sync would cascade an extra render per host theme change.
+  const [prevThemeProp, setPrevThemeProp] = useState(themeProp);
+  if (themeProp !== prevThemeProp) {
+    setPrevThemeProp(themeProp);
     if (themeProp && themeProp !== theme) setThemeState(themeProp);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeProp]);
+  }
 
   const setTheme = useCallback(
     (next: Theme) => {
