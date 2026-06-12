@@ -193,6 +193,10 @@ class ManifestApp(BaseModel):
     )
     access_level: str | None = Field(default=None, description="role_based | authenticated | everyone | public")
     app_model: str = Field(default="inline_v1", description="Render model: inline_v1 | standalone_v2")
+    logo: str | None = Field(
+        default=None,
+        description="Path to a logo image (png/jpeg/svg) relative to the app dir, e.g. 'public/logo.svg'. Shown in BifrostHeader.",
+    )
 
 
 # -- New entity types for manifest expansion --

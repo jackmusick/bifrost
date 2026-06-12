@@ -186,16 +186,26 @@ export function BifrostHeader({ title, logo, action, className }: BifrostHeaderP
     };
   }, [authedFetch]);
 
-  // Fetch the deployed app's logo when not explicitly provided.
+  // Fetch the deployed app's logo when not explicitly provided. Use the
+  // dedicated /logo image endpoint (readable by anyone who can mount the app,
+  // incl. external/portal users) rather than the role-gated metadata endpoint
+  // that 404s for them. Authed fetch → blob → object URL (an <img src> can't
+  // carry the bearer header itself).
   useEffect(() => {
     if (logo !== undefined || !appId) return;
     let cancelled = false;
-    authedFetch(`/api/applications/${appId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => !cancelled && d?.logo && setFetchedLogo(d.logo))
+    let objectUrl: string | null = null;
+    authedFetch(`/api/applications/${appId}/logo`)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((blob) => {
+        if (cancelled || !blob) return;
+        objectUrl = URL.createObjectURL(blob);
+        setFetchedLogo(objectUrl);
+      })
       .catch(() => {});
     return () => {
       cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [authedFetch, appId, logo]);
 

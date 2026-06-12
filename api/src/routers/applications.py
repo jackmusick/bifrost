@@ -951,8 +951,16 @@ async def get_application_logo(
     app_id: UUID,
     ctx: Context,
 ) -> Response:
-    application = await get_application_by_id_or_404(ctx, app_id)
-    if not application.logo_data:
+    # The logo is non-sensitive chrome shown in the app header. Resolve the row
+    # by id WITHOUT the consumer-access gate that get_application_by_id_or_404
+    # applies: any authenticated user who can MOUNT the app (it's served to
+    # them) must be able to see its logo — including external/portal users, for
+    # whom the role-scoped metadata lookup 404s. Only the logo bytes + type are
+    # returned, nothing else about the app.
+    application = (
+        await ctx.db.execute(select(Application).where(Application.id == app_id))
+    ).scalar_one_or_none()
+    if application is None or not application.logo_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Logo not set",

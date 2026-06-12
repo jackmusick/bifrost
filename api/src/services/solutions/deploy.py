@@ -48,6 +48,45 @@ from src.services.sync_ops import Upsert
 
 logger = logging.getLogger(__name__)
 
+# App-logo limits — mirror the upload endpoint (applications.py).
+_LOGO_ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/svg+xml"}
+_LOGO_MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def _decode_app_logo(slug: str, mapp: dict[str, Any]) -> tuple[bytes | None, str | None]:
+    """Validate + decode a manifest app logo into (data, content_type).
+
+    The collector carries ``logo_b64`` + ``logo_content_type`` when the app
+    manifest declares a ``logo:`` path. Returns (None, None) when no logo is
+    declared — deploy then CLEARS any prior logo (deploy is the publish, so a
+    logo dropped from the manifest is dropped from the app). Applies the same
+    content-type allow-list, size cap, and SVG sanitization as the interactive
+    upload endpoint, so a bundle can't smuggle an oversized or scriptable SVG.
+    """
+    b64 = mapp.get("logo_b64")
+    if not b64:
+        return None, None
+    content_type = mapp.get("logo_content_type")
+    if content_type not in _LOGO_ALLOWED_CONTENT_TYPES:
+        raise SolutionDeployConflict(
+            f"app '{slug}': logo content type {content_type!r} not allowed "
+            f"(png, jpeg, or svg)"
+        )
+    import base64 as _b64
+
+    data = _b64.b64decode(b64)
+    if len(data) > _LOGO_MAX_SIZE:
+        raise SolutionDeployConflict(
+            f"app '{slug}': logo exceeds {_LOGO_MAX_SIZE // 1024 // 1024} MB"
+        )
+    if content_type == "image/svg+xml":
+        from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
+
+        try:
+            data = sanitize_svg(data)
+        except SvgSanitizationError as exc:
+            raise SolutionDeployConflict(f"app '{slug}': invalid SVG logo: {exc}")
+    return data, content_type
 
 
 def solution_entity_id(install_id: UUID, manifest_id: UUID) -> UUID:
@@ -871,6 +910,15 @@ class SolutionDeployer:
             }
             if mapp.get("access_level") is not None:
                 values["access_level"] = mapp["access_level"]
+            # App LOGO declared in the manifest (`logo:` path), carried by the
+            # collector as base64 (the only way a solution-managed app gets a
+            # logo — the upload endpoint is blocked for it). Validate + sanitize
+            # like the upload endpoint, then stamp the row. Deploy is the publish,
+            # so the logo is deploy-owned: present => set, absent => cleared,
+            # keeping deploy idempotent/round-tripping.
+            logo_data, logo_ct = _decode_app_logo(slug, mapp)
+            values["logo_data"] = logo_data
+            values["logo_content_type"] = logo_ct
 
             await Upsert(
                 model=Application, id=app_id, values=values, match_on="id"

@@ -598,6 +598,14 @@ _APP_SKIP_DIRS = {
     "node_modules", "dist", "build", ".vite", ".git", ".next", ".turbo",
     "coverage", ".cache", "out",
 }
+# Content types for an app `logo:` file (manifest → deploy → Application row).
+# Mirrors the server's LOGO_ALLOWED_CONTENT_TYPES; the deployer re-validates.
+_LOGO_CONTENT_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".svg": "image/svg+xml",
+}
 
 
 def _collect_apps(workspace: pathlib.Path) -> list[dict]:
@@ -644,6 +652,25 @@ def _collect_apps(workspace: pathlib.Path) -> list[dict]:
                     src_files[rel] = f.read_text(encoding="utf-8")
                 else:
                     bin_files[rel] = base64.b64encode(f.read_bytes()).decode("ascii")
+
+        # App LOGO: the manifest may point `logo:` at an image file relative to
+        # the app dir (e.g. "public/logo.svg"). Read + carry it base64 so the
+        # deploy can stamp it on the Application row — the only way a Solution
+        # app can ship a logo (the upload endpoint is blocked for solution-
+        # managed apps). The deployer sanitizes/limits; we just read.
+        logo_b64: str | None = None
+        logo_content_type: str | None = None
+        logo_path = body.get("logo")
+        if logo_path:
+            logo_file = app_dir / logo_path
+            if logo_file.is_file():
+                logo_b64 = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+                logo_content_type = _LOGO_CONTENT_TYPES.get(logo_file.suffix.lower())
+            else:
+                raise click.ClickException(
+                    f"app '{key}': logo file not found at {logo_file}"
+                )
+
         entries.append({
             "id": body.get("id", key),
             "slug": body.get("slug") or key,
@@ -659,6 +686,8 @@ def _collect_apps(workspace: pathlib.Path) -> list[dict]:
             # both raw UUIDs and portable names; the deployer prefers names.
             "roles": body.get("roles") or [],
             "role_names": body.get("role_names"),
+            "logo_b64": logo_b64,
+            "logo_content_type": logo_content_type,
             "src_files": src_files,
             "bin_files": bin_files,
         })
