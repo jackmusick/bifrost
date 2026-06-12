@@ -1,0 +1,364 @@
+/**
+ * Solutions Page
+ *
+ * Operator home for managing Solution installs. Mirrors the Applications page
+ * conventions: grid/table view toggle, search, and the standard Organization
+ * filter at the top. Installing goes through the CreateEditSolution dialog
+ * (opened by the + button, or prefilled by dropping a .zip anywhere on the
+ * page). Uninstall lives on the individual Solution page.
+ */
+
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import {
+	Boxes,
+	Building2,
+	GitBranch,
+	Globe,
+	HardDriveUpload,
+	LayoutGrid,
+	Plus,
+	Table as TableIcon,
+	Upload,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
+} from "@/components/ui/data-table";
+import { SearchBox } from "@/components/search/SearchBox";
+import { EntityLogo } from "@/components/EntityLogo";
+import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import {
+	CreateEditSolution,
+	type CreateEditSolutionMode,
+} from "@/components/solutions/CreateEditSolution";
+import { useSearch } from "@/hooks/useSearch";
+import { useOrganizations } from "@/hooks/useOrganizations";
+import { listSolutions, type Solution } from "@/services/solutions";
+
+export function Solutions() {
+	const navigate = useNavigate();
+	const dragDepth = useRef(0);
+
+	const [isDragging, setIsDragging] = useState(false);
+	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+	const [searchTerm, setSearchTerm] = useState("");
+	// undefined = all organizations, null = global only, string = one org.
+	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
+		undefined,
+	);
+	const [dialogMode, setDialogMode] = useState<CreateEditSolutionMode | null>(
+		null,
+	);
+
+	const { data: organizations } = useOrganizations();
+
+	const {
+		data: solutionsData,
+		isLoading,
+		error: listError,
+	} = useQuery({
+		queryKey: ["solutions"],
+		queryFn: () => listSolutions(),
+	});
+	const solutions = solutionsData?.solutions ?? [];
+
+	const getOrgName = (orgId: string | null | undefined): string => {
+		if (!orgId) return "Global";
+		const org = organizations?.find((o) => o.id === orgId);
+		return org?.name ?? orgId;
+	};
+
+	const scopeFiltered =
+		filterOrgId === undefined
+			? solutions
+			: solutions.filter(
+					(sol) => (sol.organization_id ?? null) === filterOrgId,
+				);
+	const filtered = useSearch(scopeFiltered, searchTerm, ["name", "slug"]);
+
+	// Whole-page drag-and-drop: dropping a .zip opens the install dialog
+	// prefilled with that file.
+	function handleDragEnter(e: React.DragEvent) {
+		if (!e.dataTransfer?.types?.includes("Files")) return;
+		e.preventDefault();
+		dragDepth.current += 1;
+		setIsDragging(true);
+	}
+	function handleDragOver(e: React.DragEvent) {
+		if (!e.dataTransfer?.types?.includes("Files")) return;
+		e.preventDefault();
+	}
+	function handleDragLeave(e: React.DragEvent) {
+		e.preventDefault();
+		dragDepth.current = Math.max(0, dragDepth.current - 1);
+		if (dragDepth.current === 0) setIsDragging(false);
+	}
+	function handleDrop(e: React.DragEvent) {
+		e.preventDefault();
+		dragDepth.current = 0;
+		setIsDragging(false);
+		const file = e.dataTransfer?.files?.[0];
+		if (file) setDialogMode({ kind: "create", file });
+	}
+
+	function sourceBadge(sol: Solution) {
+		return (
+			<Badge variant="secondary" className="gap-1">
+				{sol.git_connected ? (
+					<GitBranch className="h-3 w-3" />
+				) : (
+					<HardDriveUpload className="h-3 w-3" />
+				)}
+				{sol.git_connected ? "Git" : "Manual"}
+			</Badge>
+		);
+	}
+
+	function orgBadge(sol: Solution) {
+		return (
+			<Badge
+				variant={sol.organization_id ? "outline" : "default"}
+				className="gap-1"
+			>
+				{sol.organization_id ? (
+					<Building2 className="h-3 w-3" />
+				) : (
+					<Globe className="h-3 w-3" />
+				)}
+				{getOrgName(sol.organization_id)}
+			</Badge>
+		);
+	}
+
+	return (
+		<div
+			data-testid="install-dropzone"
+			onDragEnter={handleDragEnter}
+			onDragOver={handleDragOver}
+			onDragLeave={handleDragLeave}
+			onDrop={handleDrop}
+			className="relative h-full flex flex-col space-y-6 max-w-7xl mx-auto"
+		>
+			{/* Drag overlay */}
+			{isDragging && (
+				<div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/80 backdrop-blur-sm">
+					<div className="flex flex-col items-center gap-3 text-primary">
+						<Upload className="h-10 w-10" />
+						<p className="text-lg font-semibold">
+							Drop a Solution .zip to install
+						</p>
+					</div>
+				</div>
+			)}
+
+			{/* Header */}
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<div>
+					<h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+						Solutions
+					</h1>
+					<p className="mt-2 text-muted-foreground">
+						Installed Solution packages
+					</p>
+				</div>
+				<div className="flex flex-wrap gap-2">
+					<ToggleGroup
+						type="single"
+						value={viewMode}
+						onValueChange={(value: string) =>
+							value && setViewMode(value as "grid" | "table")
+						}
+					>
+						<ToggleGroupItem value="grid" aria-label="Grid view" size="sm">
+							<LayoutGrid className="h-4 w-4" />
+						</ToggleGroupItem>
+						<ToggleGroupItem value="table" aria-label="Table view" size="sm">
+							<TableIcon className="h-4 w-4" />
+						</ToggleGroupItem>
+					</ToggleGroup>
+					<Button
+						variant="outline"
+						size="icon"
+						title="Install Solution"
+						data-testid="open-install"
+						onClick={() => setDialogMode({ kind: "create" })}
+					>
+						<Plus className="h-4 w-4" />
+					</Button>
+				</div>
+			</div>
+
+			{/* Search + Organization filter */}
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+				<SearchBox
+					value={searchTerm}
+					onChange={setSearchTerm}
+					placeholder="Search Solutions by name or slug..."
+					className="flex-1"
+				/>
+				<div className="w-full sm:w-64">
+					<OrganizationSelect
+						value={filterOrgId}
+						onChange={setFilterOrgId}
+						showAll
+						showGlobal
+						placeholder="All organizations"
+					/>
+				</div>
+			</div>
+
+			<div className="flex-1 min-h-0 overflow-auto">
+				{isLoading ? (
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
+						{[...Array(3)].map((_, i) => (
+							<Skeleton key={i} className="h-36 w-full" />
+						))}
+					</div>
+				) : listError ? (
+					<Card>
+						<CardContent className="py-10 text-center text-sm text-destructive">
+							{listError instanceof Error
+								? listError.message
+								: "Failed to load Solutions"}
+						</CardContent>
+					</Card>
+				) : solutions.length === 0 ? (
+					<button
+						type="button"
+						onClick={() => setDialogMode({ kind: "create" })}
+						className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed py-20 text-center transition-colors hover:border-primary/60 hover:bg-accent/30"
+					>
+						<Boxes className="h-12 w-12 text-muted-foreground" />
+						<h3 className="mt-4 text-lg font-semibold">
+							No Solutions installed yet
+						</h3>
+						<p className="mt-2 max-w-sm text-sm text-muted-foreground">
+							Drag a Solution .zip anywhere on this page, or click to
+							choose a file to install.
+						</p>
+					</button>
+				) : filtered.length === 0 ? (
+					<div className="rounded-lg border py-12 text-center text-sm text-muted-foreground">
+						No Solutions match the current filters.
+					</div>
+				) : viewMode === "grid" ? (
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
+						{filtered.map((sol) => (
+							<div
+								key={sol.id}
+								data-testid="install-card"
+								role="button"
+								tabIndex={0}
+								onClick={() => navigate(`/solutions/${sol.id}`)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" || e.key === " ") {
+										e.preventDefault();
+										navigate(`/solutions/${sol.id}`);
+									}
+								}}
+								className="group relative flex cursor-pointer flex-col overflow-hidden rounded-[10px] border bg-card transition-colors hover:border-border/80 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							>
+								<div className="flex items-start justify-between gap-3 border-b px-4 py-3">
+									<div className="flex min-w-0 items-center gap-2">
+										<EntityLogo
+											entityType="solution"
+											entityId={sol.id}
+											fallback={
+												<Boxes className="h-4 w-4 shrink-0 text-muted-foreground" />
+											}
+											size={20}
+											className="h-5 w-5 rounded object-cover shrink-0"
+										/>
+										<div className="min-w-0">
+											<div className="truncate text-[14.5px] font-semibold">
+												{sol.name}
+											</div>
+											<div className="truncate text-xs text-muted-foreground">
+												{sol.slug}
+											</div>
+										</div>
+									</div>
+								</div>
+								<div className="flex items-center gap-2 px-4 py-3">
+									{orgBadge(sol)}
+									{sourceBadge(sol)}
+									{sol.version && (
+										<Badge variant="outline">v{sol.version}</Badge>
+									)}
+								</div>
+							</div>
+						))}
+					</div>
+				) : (
+					<DataTable>
+						<DataTableHeader>
+							<DataTableRow>
+								<DataTableHead>Name</DataTableHead>
+								<DataTableHead>Slug</DataTableHead>
+								<DataTableHead>Organization</DataTableHead>
+								<DataTableHead>Source</DataTableHead>
+								<DataTableHead>Version</DataTableHead>
+							</DataTableRow>
+						</DataTableHeader>
+						<DataTableBody>
+							{filtered.map((sol) => (
+								<DataTableRow
+									key={sol.id}
+									data-testid="install-row"
+									className="cursor-pointer"
+									onClick={() => navigate(`/solutions/${sol.id}`)}
+								>
+									<DataTableCell className="font-medium">
+										<span className="flex items-center gap-2">
+											<EntityLogo
+												entityType="solution"
+												entityId={sol.id}
+												fallback={
+													<Boxes className="h-4 w-4 shrink-0 text-muted-foreground" />
+												}
+												size={16}
+												className="h-4 w-4 rounded object-cover shrink-0"
+											/>
+											{sol.name}
+										</span>
+									</DataTableCell>
+									<DataTableCell className="text-muted-foreground">
+										{sol.slug}
+									</DataTableCell>
+									<DataTableCell>{orgBadge(sol)}</DataTableCell>
+									<DataTableCell>{sourceBadge(sol)}</DataTableCell>
+									<DataTableCell className="text-muted-foreground">
+										{sol.version ? `v${sol.version}` : "—"}
+									</DataTableCell>
+								</DataTableRow>
+							))}
+						</DataTableBody>
+					</DataTable>
+				)}
+			</div>
+
+			{dialogMode && (
+				<CreateEditSolution
+					mode={dialogMode}
+					open
+					onClose={() => setDialogMode(null)}
+					onSaved={(sol) => {
+						setDialogMode(null);
+						navigate(`/solutions/${sol.id}`);
+					}}
+				/>
+			)}
+		</div>
+	);
+}

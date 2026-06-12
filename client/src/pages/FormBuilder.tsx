@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { parseSolutionFrom } from "@/lib/solution-back-nav";
 import { ArrowLeft, Save, Eye, Pencil, Info, Play } from "lucide-react";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +39,9 @@ import { toast } from "sonner";
 export function FormBuilder() {
 	const navigate = useNavigate();
 	const { formId } = useParams();
+	const { search } = useLocation();
+	const fromSolution = parseSolutionFrom(search);
+	const backTo = fromSolution ? `/solutions/${fromSolution}` : "/forms";
 	const isEditing = !!formId;
 	const { scope } = useOrgScope();
 	const { user, isPlatformAdmin } = useAuth();
@@ -45,6 +50,9 @@ export function FormBuilder() {
 	const createForm = useCreateForm();
 	const updateForm = useUpdateForm();
 	const { data: workflowsMetadata } = useWorkflowsMetadata();
+
+	// Solution-managed forms are read-only on the platform (criterion 6).
+	const isSolutionManaged = existingForm?.is_solution_managed ?? false;
 
 	const defaultOrgId = isPlatformAdmin
 		? null
@@ -101,7 +109,8 @@ export function FormBuilder() {
 				default_launch_params:
 					(existingForm.default_launch_params as Record<string, unknown>) || {},
 				access_level:
-					(existingForm.access_level as "authenticated" | "role_based") || "role_based",
+					(existingForm.access_level as "authenticated" | "everyone" | "role_based") ||
+					"role_based",
 				role_ids: [],
 				organization_id: existingForm.organization_id ?? defaultOrgId,
 			});
@@ -116,7 +125,8 @@ export function FormBuilder() {
 	const defaultLaunchParams = formInfo?.default_launch_params ||
 		(existingForm?.default_launch_params as Record<string, unknown>) || {};
 	const accessLevel = formInfo?.access_level ||
-		(existingForm?.access_level as "authenticated" | "role_based") || "role_based";
+		(existingForm?.access_level as "authenticated" | "everyone" | "role_based") ||
+		"role_based";
 	const selectedRoleIds = formInfo?.role_ids || [];
 	const organizationId = formInfo?.organization_id ??
 		existingForm?.organization_id ?? defaultOrgId;
@@ -366,8 +376,8 @@ export function FormBuilder() {
 					<Button
 						variant="outline"
 						size="icon"
-						onClick={() => navigate("/forms")}
-						title="Back to Forms"
+						onClick={() => navigate(backTo)}
+						title={fromSolution ? "Back to Solution" : "Back to Forms"}
 					>
 						<ArrowLeft className="h-4 w-4" />
 					</Button>
@@ -414,6 +424,7 @@ export function FormBuilder() {
 							onClick={handleSave}
 							disabled={
 								isSaveDisabled ||
+									isSolutionManaged ||
 								createForm.isPending ||
 								updateForm.isPending
 							}
@@ -431,6 +442,12 @@ export function FormBuilder() {
 					</div>
 				</div>
 			</div>
+
+			{isSolutionManaged && (
+				<div className="px-1 pb-3">
+					<SolutionManagedBanner entityLabel="form" />
+				</div>
+			)}
 
 			<Tabs
 				defaultValue="builder"

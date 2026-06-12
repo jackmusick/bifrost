@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +55,16 @@ class Workflow(Base):
     # Organization scoping - NULL means global (available to all orgs)
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
+
+    # Solution scoping - NULL means ad-hoc _repo/ entity (unchanged behavior).
+    # NOT NULL means solution-managed: read-only on the platform, one writer per
+    # install (deploy or git auto-pull). See solutions.py / success-criteria §3.2.
+    solution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("solutions.id", ondelete="CASCADE"),
         nullable=True,
         default=None,
         index=True,
@@ -143,7 +153,26 @@ class Workflow(Base):
             postgresql_where=text("api_key_hash IS NOT NULL"),
         ),
         # Type index is created as a regular index via mapped_column(index=True)
-        # Unique constraint on (path, function_name) for ON CONFLICT upserts
-        UniqueConstraint("path", "function_name", name="workflows_path_function_key"),
+        # Uniqueness of (path, function_name) is scoped per source so a solution
+        # can reuse the same relative path as _repo/ or another install
+        # (self-contained worlds, criterion 2 / §3.5). Two partial unique indexes:
+        #  - _repo/ rows (solution_id IS NULL): unique on (path, function_name),
+        #    preserving the original invariant.
+        #  - solution rows: unique on (path, function_name, solution_id).
+        Index(
+            "uq_workflows_path_function_repo",
+            "path",
+            "function_name",
+            unique=True,
+            postgresql_where=text("solution_id IS NULL"),
+        ),
+        Index(
+            "uq_workflows_path_function_solution",
+            "path",
+            "function_name",
+            "solution_id",
+            unique=True,
+            postgresql_where=text("solution_id IS NOT NULL"),
+        ),
     )
 

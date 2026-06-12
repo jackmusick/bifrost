@@ -59,12 +59,26 @@ _EXECUTION_PATH_RE = re.compile(r"^/api/executions/([0-9a-f-]{36})")
 
 
 def _get_embed_payload(request: Request) -> dict | None:
-    """Return the decoded JWT payload if this is an embed token, else None."""
+    """Return the decoded JWT payload if this is an embed token, else None.
+
+    OPEN-D: the token is inspected from EVERY path auth accepts it on — the
+    Authorization header AND the ``access_token`` / ``embed_token`` cookies
+    (mirroring ``get_current_user_optional``'s precedence). Header-only
+    inspection let an embed end user replay their token as a cookie and reach
+    non-allowlisted endpoints (e.g. /api/sdk/config/get) unscoped.
+    """
+    token = None
     auth_header = request.headers.get("authorization", "")
-    if not auth_header.lower().startswith("bearer "):
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:]  # Strip "Bearer "
+    elif "access_token" in request.cookies:
+        token = request.cookies["access_token"]
+    elif "embed_token" in request.cookies:
+        token = request.cookies["embed_token"]
+
+    if not token:
         return None
 
-    token = auth_header[7:]  # Strip "Bearer "
     payload = decode_token(token)
     if payload is None:
         return None

@@ -155,6 +155,28 @@ describe("CreateUserDialog — validation", () => {
 });
 
 describe("CreateUserDialog — happy path", () => {
+	it("sends is_external when the External user switch is on", async () => {
+		const { user } = renderWithProviders(
+			<CreateUserDialog open={true} onOpenChange={vi.fn()} />,
+		);
+
+		await user.type(
+			screen.getByLabelText(/email address/i),
+			"guest@example.com",
+		);
+		await user.type(screen.getByLabelText(/display name/i), "Guest");
+		const orgSelect = screen.getByLabelText(
+			/organization/i,
+		) as HTMLSelectElement;
+		await user.selectOptions(orgSelect, "org-1");
+
+		await user.click(screen.getByRole("switch", { name: /external user/i }));
+		await user.click(screen.getByRole("button", { name: /create user/i }));
+
+		await waitFor(() => expect(mockCreateMutate).toHaveBeenCalled());
+		expect(mockCreateMutate.mock.calls[0]![0].body.is_external).toBe(true);
+	});
+
 	it("always creates a registration link without triggering invite automation", async () => {
 		const onOpenChange = vi.fn();
 		const { user } = renderWithProviders(
@@ -182,6 +204,7 @@ describe("CreateUserDialog — happy path", () => {
 				name: "Alice",
 				is_active: true,
 				is_superuser: false,
+				is_external: false,
 				organization_id: "org-1",
 				invite: true,
 				trigger_automation: false,

@@ -46,6 +46,15 @@ class Application(Base):
         ForeignKey("organizations.id", ondelete="CASCADE"), default=None
     )
 
+    # Solution scoping - NULL means ad-hoc _repo/ entity. NOT NULL = solution-
+    # managed (read-only on platform). See solutions.py / success-criteria §3.2.
+    solution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("solutions.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
+
     # Publish history
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
@@ -58,6 +67,13 @@ class Application(Base):
     # Access control (follows same pattern as forms)
     access_level: Mapped[str] = mapped_column(
         String(20), default=AppAccessLevel.AUTHENTICATED, server_default="'authenticated'"
+    )
+
+    # Render model: 'inline_v1' (legacy — app renders inline inside the platform
+    # React tree, SDK via globalThis) | 'standalone_v2' (own createRoot + router +
+    # the bifrost SDK as a real import). See the v2 app model spec.
+    app_model: Mapped[str] = mapped_column(
+        String(20), default="inline_v1", server_default="inline_v1"
     )
 
     # Metadata

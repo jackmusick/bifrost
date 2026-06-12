@@ -151,6 +151,19 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
     # Capture starting resource usage
     start_rss, start_utime, start_stime = _get_resource_usage()
 
+    # Activate the per-execution Solution import root BEFORE any workspace code
+    # loads. With no solution_id this is a no-op (plain _repo/ behavior). The
+    # finally below always clears it so a forked worker reused for the next
+    # execution never inherits a stale root. See module_cache_sync.
+    from src.core.module_cache_sync import clear_solution_context, set_solution_context
+
+    _exec_solution_id = context_data.get("solution_id")
+    if _exec_solution_id:
+        set_solution_context(
+            _exec_solution_id,
+            global_repo_access=bool(context_data.get("solution_global_repo_access", False)),
+        )
+
     try:
         # Reconstruct Organization
         org = None
@@ -281,6 +294,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             is_platform_admin=context_data.get("is_platform_admin", False),
             broadcaster=None,  # Logs go to Redis Stream directly
             event=event_ctx,
+            solution_id=context_data.get("solution_id"),  # install scope for SDK
         )
 
         # Execute
@@ -335,6 +349,11 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                 "cpu_total_seconds": metrics.cpu_total_seconds,
             },
         }
+
+    finally:
+        # Always clear the solution import root — a forked worker is reused for
+        # later executions and must not inherit this one's root.
+        clear_solution_context()
 
 
 async def worker_main(execution_id: str):

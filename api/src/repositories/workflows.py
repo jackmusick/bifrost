@@ -20,17 +20,20 @@ Access Control:
 - access_level field: 'authenticated' or 'role_based'
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Literal, Sequence
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from src.core.org_filter import OrgFilterType
 from src.models import Workflow
 from src.models.orm.workflow_roles import WorkflowRole
 from src.repositories.org_scoped import OrgScopedRepository
+
+logger = logging.getLogger(__name__)
 
 # Type discriminator values
 WorkflowType = Literal["workflow", "tool", "data_provider"]
@@ -58,7 +61,9 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
     # Identifier Resolution
     # ==========================================================================
 
-    async def resolve(self, identifier: str) -> Workflow | None:
+    async def resolve(
+        self, identifier: str, *, solution_scope: UUID | None = None
+    ) -> Workflow | None:
         """Resolve a workflow by UUID or path::function_name.
 
         Resolution order:
@@ -70,6 +75,13 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
 
         Args:
             identifier: A workflow UUID string or "path::function_name" ref
+            solution_scope: The CALLING install's solution_id, when the caller is
+                a Solution app/form. A v2 app's ``path::fn`` ref carries no
+                install id (it can't know the per-install uuid5), so path-ref
+                resolution disambiguates to THIS install's own workflow first,
+                falling back to the global ``_repo/`` row. Without it, two
+                same-org installs sharing a path would resolve non-deterministically
+                (Codex #8 P1). Ignored for UUID lookups (already unambiguous).
 
         Returns:
             Workflow if found and accessible, None otherwise
@@ -82,15 +94,18 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
 
         # path::function_name format (portable ref used by app code)
         if "::" in identifier:
-            return await self._resolve_by_path_ref(identifier)
+            return await self._resolve_by_path_ref(identifier, solution_scope=solution_scope)
 
         return None
 
-    async def _resolve_by_path_ref(self, ref: str) -> Workflow | None:
+    async def _resolve_by_path_ref(
+        self, ref: str, *, solution_scope: UUID | None = None
+    ) -> Workflow | None:
         """Resolve a path::function_name reference to a workflow.
 
         Args:
             ref: A string like "workflows/foo.py::bar" or "path::function_name"
+            solution_scope: see :meth:`resolve`.
 
         Returns:
             Workflow if found, None otherwise
@@ -107,9 +122,49 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
                 Workflow.is_active.is_(True),
             )
         )
+        # Include solution-managed rows: a v2 Solution app (and forms) reference
+        # their own workflow by ``path::fn`` — it cannot hard-code the per-install
+        # uuid5 id it won't know until install (R7-P1-c). Cascade scope limits to
+        # (caller org OR global); the disambiguation below picks the right row.
         stmt = self._apply_cascade_scope(stmt)
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        rows = list(result.scalars().all())
+        if not rows:
+            return None
+        # A path can match a _repo/ row and/or one-or-more solution rows (two
+        # different solution slugs in one org both shipping workflows/main.py).
+        # Disambiguate DETERMINISTICALLY by the CALLER'S scope (Codex #8/#11).
+        # This MUST run even for a single row, so a scoped caller never resolves
+        # a lone SIBLING-install row by the count==1 shortcut.
+        if solution_scope is not None:
+            # A Solution app/form caller: resolve THIS install's own workflow
+            # first (no guesswork), else the global _repo/ row (the app
+            # referenced a shared-library path). NEVER a SIBLING install's row —
+            # a stale/typo'd ref in app A must not execute app B's workflow just
+            # because they share a path. Absent both → None (the caller 404s).
+            own = [w for w in rows if w.solution_id == solution_scope]
+            if own:
+                return own[0]
+            repo_rows = [w for w in rows if w.solution_id is None]
+            return repo_rows[0] if repo_rows else None
+        # No install scope — a _repo/ or system caller. Prefer the _repo/ row so a
+        # shared-library path-ref is never hijacked by a Solution reusing the
+        # path; fall back to a solution row only when there is no _repo/ row AND
+        # exactly one solution row is visible (nothing to guess between).
+        repo_rows = [w for w in rows if w.solution_id is None]
+        if repo_rows:
+            return repo_rows[0]
+        if len(rows) == 1:
+            return rows[0]
+        # 2+ solution rows, no _repo/ row, no caller scope: never guess which
+        # install executes — callers 404 with the ref in the detail.
+        logger.warning(
+            "Ambiguous unscoped path-ref %s::%s matches %d solution workflows; refusing",
+            path,
+            function_name,
+            len(rows),
+        )
+        return None
 
     # ==========================================================================
     # Type-Based Queries
@@ -185,7 +240,12 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
                     )
                 )
         elif filter_type is OrgFilterType.ORG_ONLY:
-            stmt = stmt.where(Workflow.organization_id == filter_org_id)
+            # A None org here is not a license to read global (``== None``
+            # compiles to ``IS NULL``) — it means no rows.
+            if filter_org_id is None:
+                stmt = stmt.where(false())
+            else:
+                stmt = stmt.where(Workflow.organization_id == filter_org_id)
         elif filter_type is OrgFilterType.GLOBAL_ONLY:
             stmt = stmt.where(Workflow.organization_id.is_(None))
 
@@ -244,6 +304,9 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         stmt = select(Workflow).where(
             Workflow.name == name,
             Workflow.type == type,
+            # _repo/-tier lookup: solution workflows are resolved by id, and may
+            # reuse a _repo/ name — exclude them to avoid MultipleResultsFound.
+            Workflow.solution_id.is_(None),
         )
         if active_only:
             stmt = stmt.where(Workflow.is_active.is_(True))

@@ -426,3 +426,123 @@ class TestLegacyMigration:
         result = creds_mod.get_credentials()  # no args
         assert result is not None
         assert result["api_url"] == "https://prod.example.com"
+
+
+class TestAuthTokenCommand:
+    """`bifrost auth token` prints resolved url+token as JSON, so a scaffolded
+    vite dev config can read the credential store (device-code login stores the
+    token in keyring/JSON, NOT in a nearby .env) — R7-P2-f."""
+
+    def test_token_emits_json_when_authenticated(self, monkeypatch, capsys):
+        import json
+
+        from bifrost.cli import handle_auth
+
+        monkeypatch.setattr(
+            "bifrost.cli.credentials.get_credentials",
+            lambda api_url=None: {
+                "api_url": "http://localhost:38421",
+                "access_token": "at-123",
+                "refresh_token": "rt-456",
+                "expires_at": "2030-01-01T00:00:00+00:00",
+            },
+        )
+        monkeypatch.setattr("bifrost.cli.credentials.is_token_expired", lambda api_url=None: False)
+        rc = handle_auth(["token"])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        # Only url + access token are emitted (no refresh token in dev surface).
+        assert out == {
+            "api_url": "http://localhost:38421",
+            "access_token": "at-123",
+        }
+
+    def test_token_url_override_is_passed_through(self, monkeypatch, capsys):
+        import json
+
+        from bifrost.cli import handle_auth
+
+        seen = {}
+
+        def _fake(api_url=None):
+            seen["url"] = api_url
+            return {
+                "api_url": api_url or "http://x",
+                "access_token": "at",
+                "refresh_token": "rt",
+                "expires_at": None,
+            }
+
+        monkeypatch.setattr("bifrost.cli.credentials.get_credentials", _fake)
+        monkeypatch.setattr("bifrost.cli.credentials.is_token_expired", lambda api_url=None: False)
+        rc = handle_auth(["token", "--url", "http://localhost:9999"])
+        assert rc == 0
+        assert seen["url"] == "http://localhost:9999"
+        assert json.loads(capsys.readouterr().out)["api_url"] == "http://localhost:9999"
+
+    def test_token_refreshes_when_expired(self, monkeypatch, capsys):
+        """Codex/audit: an expired token must be refreshed before emit, so a long
+        `npm run dev` session isn't handed a stale token that 401s."""
+        import json
+
+        from bifrost.cli import handle_auth
+
+        # First read: expired token. After a (faked) successful refresh: fresh one.
+        state = {"refreshed": False}
+
+        def _get(api_url=None):
+            tok = "fresh-at" if state["refreshed"] else "stale-at"
+            return {"api_url": "http://x", "access_token": tok, "refresh_token": "rt",
+                    "expires_at": "2020-01-01T00:00:00+00:00"}
+
+        def _expired(api_url=None):
+            return not state["refreshed"]
+
+        async def _refresh():
+            state["refreshed"] = True
+            return True
+
+        monkeypatch.setattr("bifrost.cli.credentials.get_credentials", _get)
+        monkeypatch.setattr("bifrost.cli.credentials.is_token_expired", _expired)
+        monkeypatch.setattr("bifrost.client.refresh_tokens", _refresh)
+
+        rc = handle_auth(["token"])
+        assert rc == 0
+        assert state["refreshed"] is True
+        assert json.loads(capsys.readouterr().out)["access_token"] == "fresh-at"
+
+    def test_token_warns_when_expired_and_refresh_fails(self, monkeypatch, capsys):
+        """Refresh failure → warn on stderr but still emit (clear re-login signal,
+        not silence)."""
+        import json
+
+        from bifrost.cli import handle_auth
+
+        monkeypatch.setattr(
+            "bifrost.cli.credentials.get_credentials",
+            lambda api_url=None: {"api_url": "http://x", "access_token": "stale",
+                                  "refresh_token": "rt", "expires_at": "2020-01-01T00:00:00+00:00"},
+        )
+        monkeypatch.setattr("bifrost.cli.credentials.is_token_expired", lambda api_url=None: True)
+
+        async def _refresh_fail():
+            return False
+
+        monkeypatch.setattr("bifrost.client.refresh_tokens", _refresh_fail)
+
+        rc = handle_auth(["token"])
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert json.loads(captured.out)["access_token"] == "stale"  # still emitted
+        assert "expired" in captured.err.lower()  # but warned
+
+    def test_token_returns_error_when_not_authenticated(self, monkeypatch, capsys):
+        from bifrost.cli import handle_auth
+
+        monkeypatch.setattr(
+            "bifrost.cli.credentials.get_credentials", lambda api_url=None: None
+        )
+        rc = handle_auth(["token"])
+        assert rc == 1
+        # Nothing token-shaped on stdout (vite must not parse a token from noise).
+        assert "access_token" not in capsys.readouterr().out

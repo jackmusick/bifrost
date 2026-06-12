@@ -61,6 +61,7 @@ async def execute_workflow(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflow = await repo.resolve(workflow_id)
 
@@ -122,6 +123,7 @@ async def list_workflows(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflows = await repo.search(query=query, category=category, limit=100)
             total_count = await repo.count_active()
@@ -269,6 +271,7 @@ async def get_workflow(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
 
             if workflow_id:
@@ -368,12 +371,16 @@ async def register_workflow(context: Any, path: str, function_name: str, organiz
                     f"No @workflow/@tool/@data_provider decorated function '{function_name}' found in {path}"
                 )
 
-            # Check already registered
+            # Check already registered. Scope to _repo/ rows (solution_id IS
+            # NULL): register creates a WORKSPACE workflow, and a solution-managed
+            # workflow at the same (path, function_name) is deploy-owned in a
+            # separate uniqueness scope — it must not block registration (Codex #14).
             existing = await db.execute(
                 select(WorkflowORM).where(
                     WorkflowORM.path == path,
                     WorkflowORM.function_name == function_name,
                     WorkflowORM.is_active.is_(True),
+                    WorkflowORM.solution_id.is_(None),
                 )
             )
             if existing.scalar_one_or_none():

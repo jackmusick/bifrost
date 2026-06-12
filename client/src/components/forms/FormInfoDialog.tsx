@@ -58,7 +58,7 @@ const formInfoSchema = z.object({
 	workflow_id: z.string().min(1, "Linked workflow is required"),
 	launch_workflow_id: z.string(),
 	default_launch_params: z.record(z.string(), z.unknown()),
-	access_level: z.enum(["authenticated", "role_based"]),
+	access_level: z.enum(["authenticated", "everyone", "role_based"]),
 	role_ids: z.array(z.string()),
 	organization_id: z.string().nullable(),
 });
@@ -133,7 +133,8 @@ export function FormInfoDialog({
 					default_launch_params:
 						(initialData.default_launch_params as Record<string, unknown>) || {},
 					access_level:
-						(initialData.access_level as "authenticated" | "role_based") || "role_based",
+						(initialData.access_level as "authenticated" | "everyone" | "role_based") ||
+						"role_based",
 					role_ids: initialRoleIds || [],
 					organization_id: initialData.organization_id ?? defaultOrgId,
 				});
@@ -541,9 +542,15 @@ export function FormInfoDialog({
 												},
 												{
 													value: "authenticated",
-													label: "Authenticated Users",
+													label: "Everyone except external users",
 													description:
-														"Any authenticated user can access",
+														"Any signed-in user except external users",
+												},
+												{
+													value: "everyone",
+													label: "Everyone",
+													description:
+														"Any signed-in user, including external users",
 												},
 											]}
 											placeholder="Select access level"

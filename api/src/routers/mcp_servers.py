@@ -155,6 +155,7 @@ async def list_mcp_servers(
         org_id=filter_org_id if not is_admin else (filter_org_id or ctx.org_id),
         user_id=ctx.user.user_id,
         is_superuser=is_admin,
+        is_external=ctx.user.is_external,
     )
 
     if is_admin:
@@ -184,6 +185,7 @@ async def get_mcp_server(
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     server = await repo.get_server(server_id)
     if server is None:

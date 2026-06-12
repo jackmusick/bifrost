@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -105,8 +106,13 @@ const ACCESS_LEVELS: {
 }[] = [
 	{
 		value: "authenticated",
-		label: "Authenticated",
-		description: "Available to all authenticated users",
+		label: "Everyone except external users",
+		description: "Available to all signed-in users except external users",
+	},
+	{
+		value: "everyone",
+		label: "Everyone",
+		description: "Available to all signed-in users, including external users",
 	},
 	{
 		value: "role_based",
@@ -120,7 +126,7 @@ const formSchema = z.object({
 	description: z.string().max(500).optional(),
 	system_prompt: z.string().min(1, "System prompt is required"),
 	channels: z.array(z.enum(["chat", "voice", "teams", "slack"])),
-	access_level: z.enum(["authenticated", "role_based"]),
+	access_level: z.enum(["authenticated", "everyone", "role_based"]),
 	organization_id: z.string().nullable(),
 	tool_ids: z.array(z.string()),
 	system_tools: z.array(z.string()),
@@ -176,6 +182,10 @@ export function AgentSettingsTab({
 	const createAgent = useCreateAgent();
 	const updateAgent = useUpdateAgent();
 
+	// Solution-managed agents are read-only on the platform (criterion 6):
+	// show the banner and block Save. Only meaningful in edit mode.
+	const isSolutionManaged = mode === "edit" && (agent?.is_solution_managed ?? false);
+
 	const { data: allAgents } = useAgents();
 	const { data: toolsGrouped } = useToolsGrouped({ include_inactive: true });
 	const { data: roles } = useRoles();
@@ -206,6 +216,7 @@ export function AgentSettingsTab({
 				channels: ((a.channels as AgentChannel[]) ?? ["chat"]) as AgentChannel[],
 				access_level: (a.access_level ?? "role_based") as
 					| "authenticated"
+					| "everyone"
 					| "role_based",
 				organization_id: a.organization_id ?? null,
 				tool_ids: a.tool_ids ?? [],
@@ -371,6 +382,11 @@ export function AgentSettingsTab({
 				className={cn("overflow-hidden", CARD_SURFACE)}
 				data-testid="agent-settings-form"
 			>
+				{isSolutionManaged && (
+					<div className="px-5 pt-4">
+						<SolutionManagedBanner entityLabel="agent" />
+					</div>
+				)}
 				{/* Identity */}
 				<FormSection title="Identity">
 					{isPlatformAdmin ? (
@@ -1250,7 +1266,7 @@ export function AgentSettingsTab({
 				<div className="flex items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
 					<Button
 						type="submit"
-						disabled={pending || hasMismatchedTools}
+						disabled={pending || hasMismatchedTools || isSolutionManaged}
 						data-testid="save-agent-button"
 					>
 						{pending ? (

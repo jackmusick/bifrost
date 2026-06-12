@@ -5,6 +5,7 @@ Workflow metadata and validation contract models for Bifrost.
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,8 +71,14 @@ class WorkflowMetadata(BaseModel):
     # Organization scoping - NULL means global (available to all orgs)
     organization_id: str | None = Field(default=None, description="Organization ID if org-scoped, None for global")
 
+    # Solution scoping - true when this entity is solution-managed (deployed,
+    # read-only on the platform). The UI uses this to render it read-only with a
+    # "managed by Solution" affordance. The install id itself is not exposed.
+    is_solution_managed: bool = Field(default=False, description="True if managed by a deployed Solution (read-only on platform)")
+    solution_id: UUID | None = Field(default=None, description="UUID of the owning Solution install (null if not solution-managed)")
+
     # Access control
-    access_level: str = Field(default="role_based", description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required)")
+    access_level: str = Field(default="role_based", description="Access level: 'authenticated' (any signed-in user except externals), 'everyone' (any signed-in user incl. externals), or 'role_based' (specific roles required)")
 
     # Optional fields with defaults
     category: str = Field(default="General", description="Category for organization")
@@ -166,7 +173,7 @@ class RegisterWorkflowRequest(BaseModel):
     organization_id: str | None = Field(default=None, description="Organization ID to scope the workflow to, or null for global scope")
     access_level: str | None = Field(
         default=None,
-        description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required). Omit to leave at the schema default.",
+        description="Access level: 'authenticated' (any signed-in user except externals), 'everyone' (any signed-in user incl. externals), or 'role_based' (specific roles required). Omit to leave at the schema default.",
     )
     role_ids: list[str] | None = Field(
         default=None,
@@ -286,7 +293,7 @@ class WorkflowUpdateRequest(BaseModel):
     )
     access_level: str | None = Field(
         default=None,
-        description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles required)"
+        description="Access level: 'authenticated' (any signed-in user except externals), 'everyone' (any signed-in user incl. externals), or 'role_based' (specific roles required)"
     )
     clear_roles: bool = Field(
         default=False,

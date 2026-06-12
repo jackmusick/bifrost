@@ -21,6 +21,7 @@ import {
 	Code2,
 } from "lucide-react";
 import { EntityLogo } from "@/components/EntityLogo";
+import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { AppInfoDialog } from "@/components/app-builder/AppInfoDialog";
 import { CreateAppModal } from "@/components/app-builder/CreateAppModal";
 import { Button } from "@/components/ui/button";
@@ -229,7 +230,7 @@ export function Applications() {
 			<div className="flex-1 min-h-0 overflow-auto">
 			{isLoading ? (
 				viewMode === "grid" || !canManageApps ? (
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
 						{[...Array(6)].map((_, i) => (
 							<Skeleton key={i} className="h-48 w-full" />
 						))}
@@ -243,11 +244,14 @@ export function Applications() {
 				)
 			) : filteredApps && filteredApps.length > 0 ? (
 				viewMode === "grid" || !canManageApps ? (
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
 						{filteredApps.map((app) => {
-							const defaultTarget = app.is_published
-								? () => handleLaunch(app.slug)
-								: () => handlePreview(app.slug);
+							// v2 apps have no draft preview — an unpublished v2 app
+							// still targets launch (which explains the missing publish).
+							const defaultTarget =
+								app.is_published || app.app_model === "standalone_v2"
+									? () => handleLaunch(app.slug)
+									: () => handlePreview(app.slug);
 							const orgLabel = isPlatformAdmin
 								? app.organization_id
 									? getOrgName(app.organization_id)
@@ -285,7 +289,11 @@ export function Applications() {
 													{app.name}
 												</span>
 											</div>
-											{canManageApps ? (
+											{app.is_solution_managed ? (
+												<SolutionManagedBadge
+													solutionId={app.solution_id}
+												/>
+											) : canManageApps ? (
 												<div className="flex shrink-0 gap-1">
 													<Button
 														type="button"
@@ -351,7 +359,10 @@ export function Applications() {
 													Open Published
 												</button>
 											)}
-											{canManageApps && (
+											{/* standalone_v2 apps have no draft bundle —
+											    deploy IS the publish; /preview would serve
+											    the same dist. No preview affordance. */}
+											{canManageApps && app.app_model !== "standalone_v2" && (
 												<button
 													type="button"
 													className="pointer-events-auto text-left text-[13px] font-medium text-foreground hover:text-primary"
@@ -518,22 +529,29 @@ export function Applications() {
 												>
 													<PlayCircle className="h-4 w-4" />
 												</Button>
-												{canManageApps && (
+												{/* No preview for standalone_v2 — there is no draft
+												    bundle; deploy IS the publish. */}
+												{canManageApps &&
+													app.app_model !== "standalone_v2" &&
+													app.has_unpublished_changes && (
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() =>
+															handlePreview(app.slug)
+														}
+														title="Preview draft"
+													>
+														<Eye className="h-4 w-4" />
+													</Button>
+												)}
+												{app.is_solution_managed && (
+													<SolutionManagedBadge
+														solutionId={app.solution_id}
+													/>
+												)}
+												{canManageApps && !app.is_solution_managed && (
 													<>
-														{app.has_unpublished_changes && (
-															<Button
-																variant="ghost"
-																size="sm"
-																onClick={() =>
-																	handlePreview(
-																		app.slug,
-																	)
-																}
-																title="Preview draft"
-															>
-																<Eye className="h-4 w-4" />
-															</Button>
-														)}
 														<Button
 															variant="ghost"
 															size="sm"

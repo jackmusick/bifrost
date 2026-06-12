@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType
@@ -115,10 +115,36 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         return list(result.scalars().all())
 
     async def get_by_slug_global(self, slug: str) -> Application | None:
-        """Check if any application exists with this slug (globally unique)."""
-        query = select(self.model).where(self.model.slug == slug)
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        """Resolve an app by slug for an admin, disambiguating by the active org.
+
+        Solution apps share a slug across orgs (criterion 9 — the same solution
+        installed for two orgs), so a bare ``scalar_one_or_none`` over the slug
+        would raise ``MultipleResultsFound`` for a platform admin (Codex R4).
+        Resolve like the user cascade does: prefer the row in the admin's active
+        org, then the global (NULL-org) row. Only genuinely undisambiguable when
+        two rows share BOTH slug and org — which the deploy-time collision guard
+        forbids — so we fall back to a deterministic pick rather than 500.
+        """
+        rows = list(
+            (
+                await self.session.execute(
+                    select(self.model).where(self.model.slug == slug)
+                )
+            ).scalars().all()
+        )
+        if not rows:
+            return None
+        if len(rows) == 1:
+            return rows[0]
+        if self.org_id is not None:
+            for r in rows:
+                if getattr(r, "organization_id", None) == self.org_id:
+                    return r
+        for r in rows:
+            if getattr(r, "organization_id", None) is None:
+                return r
+        # No org match and no global row — pick deterministically (stable order).
+        return sorted(rows, key=lambda r: str(r.id))[0]
 
     async def get_role_ids(self, app_id: UUID) -> list[UUID]:
         """Get list of role IDs assigned to an application."""
@@ -132,7 +158,14 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         created_by: str,
     ) -> Application:
         """Create a new application with access control settings."""
-        # Check if application already exists in this scope
+        # Serialize against solution deploys of the same slug (deploy.py takes
+        # the same lock): both sides SELECT-then-INSERT into disjoint partial
+        # unique indexes, so a racing pair lands two same-slug rows and every
+        # subsequent open 500s with MultipleResultsFound.
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('bifrost:appslug:' || :s))"),
+            {"s": data.slug},
+        )
         existing = await self.get_by_slug_global(data.slug)
         if existing:
             raise ValueError(f"Application with slug '{data.slug}' already exists")
@@ -145,6 +178,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             organization_id=self.org_id,
             created_by=created_by,
             access_level=data.access_level,
+            app_model=data.app_model,
             repo_path=f"apps/{data.slug}",
         )
         self.session.add(application)

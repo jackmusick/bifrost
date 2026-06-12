@@ -62,6 +62,10 @@ from src.models.orm.applications import Application
 from src.models.orm.agents import Agent, AgentTool
 from src.models.orm.users import Role
 from src.services.workflow_validation import _extract_relative_path
+from src.services.solutions.guard import (
+    assert_entity_id_not_solution_managed,
+    assert_not_solution_managed,
+)
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.db_deps import DbSession
@@ -107,6 +111,8 @@ def _convert_workflow_orm_to_schema(workflow: WorkflowORM, used_by_count: int = 
         tags=workflow.tags or [],
         type=workflow_type,
         organization_id=str(workflow.organization_id) if workflow.organization_id else None,
+        is_solution_managed=workflow.solution_id is not None,
+        solution_id=workflow.solution_id,
         access_level=workflow.access_level or "role_based",
         parameters=parameters,
         execution_mode=execution_mode,
@@ -692,6 +698,51 @@ async def _insert_scheduled_execution(
     return exec_id
 
 
+async def _derive_solution_scope(
+    db,
+    *,
+    solution_id: str | None,
+    form_id: str | None,
+    app_id: str | None,
+) -> "UUID | None":
+    """Resolve the calling install's scope for a path::fn workflow ref.
+
+    Precedence: explicit solution_id (a Solution form/agent that knows its
+    own install) > form_id (Form.solution_id) > app_id (Application.solution_id).
+    A bad/foreign/missing reference yields None → no narrowing (the path ref
+    resolves the _repo/ row, or 404s for a scoped caller). Each source is
+    client-supplied; the resolver's own org gate (cascade scope) prevents a
+    foreign scope from reaching another org's workflow.
+    """
+    from src.models.orm.forms import Form
+    from src.models.orm.applications import Application
+
+    if solution_id:
+        try:
+            return UUID(solution_id)
+        except ValueError:
+            return None
+    if form_id:
+        try:
+            form_uuid = UUID(form_id)
+        except ValueError:
+            return None
+        return (
+            await db.execute(select(Form.solution_id).where(Form.id == form_uuid))
+        ).scalar_one_or_none()
+    if app_id:
+        try:
+            app_uuid = UUID(app_id)
+        except ValueError:
+            return None
+        return (
+            await db.execute(
+                select(Application.solution_id).where(Application.id == app_uuid)
+            )
+        ).scalar_one_or_none()
+    return None
+
+
 @router.post(
     "/execute",
     response_model=WorkflowExecutionResponse,
@@ -739,12 +790,32 @@ async def execute_workflow(
         org_id=lookup_org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_superuser,
+        # Embed principals carry is_external=True (OPEN-D: external-equivalent
+        # for the config/knowledge/table data gates), but workflow execution
+        # is the HMAC-pre-authorized app function-call channel — deliberately
+        # allowlisted by EmbedScopeMiddleware and execution-scoped by jti.
+        # Keep the pre-OPEN-D resolution semantics for embed sessions here.
+        is_external=ctx.user.is_external and not ctx.user.embed,
+    )
+
+    # A Solution caller's path::fn ref carries no install id (it can't know the
+    # per-install uuid5). Derive the install scope from the caller so a path ref
+    # resolves to THIS install's own workflow, not a sibling install's that
+    # shares the path (Codex #8 P1) nor the bare _repo/ one. solution_id (a
+    # form/agent) > form_id > app_id. A bad/foreign ref yields no scope.
+    solution_scope = await _derive_solution_scope(
+        db,
+        solution_id=request.solution_id,
+        form_id=request.form_id,
+        app_id=request.app_id,
     )
 
     # Look up workflow metadata for type checking (needed for data provider handling)
     workflow = None
     if request.workflow_id:
-        workflow = await workflow_repo.resolve(request.workflow_id)
+        workflow = await workflow_repo.resolve(
+            request.workflow_id, solution_scope=solution_scope
+        )
         if not workflow:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -1202,10 +1273,10 @@ async def register_workflow(
     org_uuid = UUID(request.organization_id) if request.organization_id else None
 
     # Validate access_level early so we don't half-register on a typo
-    if request.access_level is not None and request.access_level not in ("authenticated", "role_based"):
+    if request.access_level is not None and request.access_level not in ("authenticated", "everyone", "role_based"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid access_level: '{request.access_level}'. Must be 'authenticated' or 'role_based'",
+            detail=f"Invalid access_level: '{request.access_level}'. Must be 'authenticated', 'everyone', or 'role_based'",
         )
 
     # Parse role_ids and verify they exist before any DB mutation
@@ -1355,6 +1426,9 @@ async def update_workflow(
                 detail=f"Workflow with ID '{workflow_id}' not found",
             )
 
+        # Solution-managed workflows are read-only here; deploy is the writer.
+        assert_not_solution_managed(workflow)
+
         # Update organization_id - use model_fields_set to distinguish "not provided" from "explicitly null"
         if "organization_id" in request.model_fields_set:
             if request.organization_id is not None:
@@ -1375,10 +1449,10 @@ async def update_workflow(
 
         # Update access_level if provided
         if request.access_level is not None:
-            if request.access_level not in ("authenticated", "role_based"):
+            if request.access_level not in ("authenticated", "everyone", "role_based"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid access_level: '{request.access_level}'. Must be 'authenticated' or 'role_based'",
+                    detail=f"Invalid access_level: '{request.access_level}'. Must be 'authenticated', 'everyone', or 'role_based'",
                 )
             workflow.access_level = request.access_level
 
@@ -1716,6 +1790,7 @@ async def replace_workflow(
     """
     from src.services.workflow_orphan import WorkflowOrphanService
 
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     try:
         orphan_service = WorkflowOrphanService(db)
         workflow = await orphan_service.replace_workflow(
@@ -1820,6 +1895,7 @@ async def recreate_workflow_file(
     from src.services.workflow_orphan import WorkflowOrphanService
     from src.services.file_storage import FileStorageService
 
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     try:
         orphan_service = WorkflowOrphanService(db)
 
@@ -1890,6 +1966,7 @@ async def deactivate_workflow(
     """
     from src.services.workflow_orphan import WorkflowOrphanService
 
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     try:
         orphan_service = WorkflowOrphanService(db)
         workflow, ref_count = await orphan_service.deactivate_workflow(workflow_id)
@@ -1992,6 +2069,10 @@ async def assign_roles_to_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workflow with ID '{workflow_id}' not found",
         )
+    # Roles are solution-owned and portable — locked for managed workflows.
+    # The before_flush backstop can't see this (we add WorkflowRole rows, never
+    # dirtying the Workflow itself), so the explicit guard is load-bearing here.
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
 
     now = datetime.now(timezone.utc)
 
@@ -2049,6 +2130,10 @@ async def remove_role_from_workflow(
         workflow_id: UUID of the workflow
         role_id: UUID of the role to remove
     """
+    # Locked for managed workflows. This is a Core delete() that bypasses the
+    # ORM unit-of-work, so the before_flush backstop never sees it — the guard
+    # is the only protection here.
+    await assert_entity_id_not_solution_managed(db, WorkflowORM, workflow_id)
     result = await db.execute(
         delete(WorkflowRole).where(
             WorkflowRole.workflow_id == workflow_id,
@@ -2110,6 +2195,9 @@ async def delete_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workflow with ID '{workflow_id}' not found",
         )
+
+    # Solution-managed workflows are read-only here; deploy is the writer.
+    assert_not_solution_managed(workflow)
 
     if not workflow.path:
         raise HTTPException(

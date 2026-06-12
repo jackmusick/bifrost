@@ -28,6 +28,7 @@ from fastapi import APIRouter, HTTPException, Path, status
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.models.contracts.applications import (
     AppFileUpdate,
     AppRenderResponse,
@@ -219,11 +220,25 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
     Raises:
         HTTPException 404 if not found or access denied
     """
+    if ctx.user.embed is True:
+        # Embed pre-auth (OPEN-D): the token is HMAC-bound to exactly ONE
+        # app (its app_id claim). Tier/role checks don't apply; identity
+        # binding does — only the bound app's files resolve.
+        if ctx.user.app_id == str(app_id):
+            app = await ctx.db.get(Application, app_id)
+            if app is not None:
+                return app
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{app_id}' not found",
+        )
+
     repo = ApplicationRepository(
         session=ctx.db,
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     try:
         return await repo.can_access(id=app_id)
@@ -378,6 +393,10 @@ async def write_app_file(
     S3 _repo/ storage, file_index update, pubsub, and preview sync).
     """
     app = await get_application_or_404(ctx, app_id)
+    # Solution-managed app source is read-only on the platform — only deploy
+    # may write it. The before_flush backstop can't see this: it writes to S3 +
+    # file_index, never dirtying the Application ORM row. (criterion 6)
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 
     # Validate path conventions
     validate_file_path(file_path)
@@ -424,6 +443,8 @@ async def delete_app_file(
     file_index cleanup, pubsub, and preview sync).
     """
     app = await get_application_or_404(ctx, app_id)
+    # Read-only for solution-managed apps (S3 delete bypasses the ORM backstop).
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     prefix = app.repo_prefix
     full_path = f"{prefix}{file_path}"
 
@@ -557,6 +578,42 @@ async def get_bundle_manifest(
     storage_mode = "preview" if mode == FileMode.draft else "live"
     app_id_str = str(app.id)
 
+    # standalone_v2 apps have NO esbuild bundle/manifest — they're a Vite build
+    # served from _apps/{id}/dist/. Surface the hashed entry JS + CSS from the
+    # built dist so the shell loads them into a same-document mount (NOT an
+    # iframe — the iframe never updated the address bar, breaking deep-links /
+    # refresh; Codex P1-b/G7). The client reads these instead of scraping
+    # index.html.
+    if app.app_model == "standalone_v2":
+        import re as _re
+
+        from src.services.solutions.app_build import SolutionAppBuilder
+
+        # The entry chunk + CSS are whatever index.html references — Vite may emit
+        # several .js chunks (vendor splits), so the <script type=module src> and
+        # <link rel=stylesheet href> in index.html are the source of truth, not a
+        # "first .js" guess.
+        entry: str | None = None
+        css: str | None = None
+        try:
+            html = (await SolutionAppBuilder().read_dist(app_id_str, "index.html")).decode()
+            if m := _re.search(r'<script[^>]+type="module"[^>]+src="([^"]+)"', html):
+                entry = m.group(1).split("/dist/")[-1].lstrip("/")
+            if m := _re.search(r'<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"', html):
+                css = m.group(1).split("/dist/")[-1].lstrip("/")
+        except Exception:  # noqa: BLE001 - missing/unbuilt dist → entry stays None, shell shows a clear error
+            pass
+        return {
+            "entry": entry,
+            "css": css,
+            "base_url": f"/api/applications/{app_id}/dist",
+            "mode": storage_mode,
+            "dependencies": app.dependencies or {},
+            "migrated": False,
+            "organization_id": str(app.organization_id) if app.organization_id else None,
+            "app_model": "standalone_v2",
+        }
+
     import json as _json
     from src.services.app_bundler import SCHEMA_VERSION, build_with_migrate
     from src.core.cache import get_shared_redis
@@ -623,6 +680,7 @@ async def get_bundle_manifest(
                             "dependencies": m.get("dependencies") or (app.dependencies or {}),
                             "migrated": False,
                             "organization_id": str(app.organization_id) if app.organization_id else None,
+                            "app_model": app.app_model,
                         }
                 except FileNotFoundError:
                     continue
@@ -655,6 +713,7 @@ async def get_bundle_manifest(
             # so the developer knows to pull.
             "migrated": migrated,
             "organization_id": str(app.organization_id) if app.organization_id else None,
+            "app_model": app.app_model,
         }
 
     assert manifest_bytes is not None
@@ -671,6 +730,7 @@ async def get_bundle_manifest(
         # always run as their org. Global apps return null and fall back to
         # caller's-org behavior.
         "organization_id": str(app.organization_id) if app.organization_id else None,
+        "app_model": app.app_model,
     }
 
 
@@ -720,6 +780,64 @@ async def get_bundle_asset(
     )
 
 
+@render_router.get(
+    "/dist/{path:path}",
+    summary="Serve a standalone_v2 app's built dist/ file from _apps/{id}/dist/",
+)
+async def get_v2_dist_asset(
+    app_id: UUID = Path(..., description="Application UUID"),
+    path: str = Path(..., description="Path within the app's dist/ (e.g. index.html)"),
+    *,
+    ctx: Context,
+    _user: CurrentUser,
+):
+    """Stream a built dist/ file for a standalone_v2 app.
+
+    BundledAppShell mounts a v2 app SAME-DOCUMENT (not an iframe): it reads the
+    hashed entry/css from the bundle-manifest and loads them from this dist/
+    prefix; the app's own bundle pulls any further chunks from here too.
+    """
+    from botocore.exceptions import ClientError
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    from src.services.solutions.app_build import SolutionAppBuilder
+
+    app = await get_application_or_404(ctx, app_id)
+    rel = path or "index.html"
+    try:
+        data = await SolutionAppBuilder().read_dist(str(app.id), rel)
+    except ClientError as exc:
+        # read_dist surfaces a missing key as the raw botocore ClientError from
+        # get_object (Code=NoSuchKey). Only THAT is a 404 — anything else is a
+        # real storage failure and must surface, not masquerade as not-found.
+        if exc.response.get("Error", {}).get("Code") == "NoSuchKey":
+            raise HTTPException(
+                status_code=404, detail=f"dist asset not found: {rel}"
+            ) from exc
+        logger.exception("dist asset read failed: app=%s rel=%s", app.id, rel)
+        raise
+    except Exception:
+        logger.exception("dist asset read failed: app=%s rel=%s", app.id, rel)
+        raise
+
+    if rel.endswith(".html"):
+        media_type = "text/html"
+    elif rel.endswith(".js"):
+        media_type = "application/javascript"
+    elif rel.endswith(".css"):
+        media_type = "text/css"
+    elif rel.endswith(".map") or rel.endswith(".json"):
+        media_type = "application/json"
+    else:
+        media_type = "application/octet-stream"
+
+    # index.html must not be cached (it references hashed assets); assets are
+    # immutable.
+    cache = "no-cache" if rel.endswith(".html") else "public, max-age=31536000, immutable"
+    return Response(content=data, media_type=media_type, headers={"Cache-Control": cache})
+
+
 # =============================================================================
 # Dependencies endpoints — read/write Application.dependencies
 # =============================================================================
@@ -758,6 +876,8 @@ async def put_dependencies(
     Validates every package name and version, enforces the max-dependency limit.
     """
     app = await get_application_or_404(ctx, app_id)
+    # Dependencies are solution-owned metadata — read-only for managed apps.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 
     # Validate
     if len(deps) > _MAX_DEPENDENCIES:

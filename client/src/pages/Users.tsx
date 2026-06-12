@@ -54,6 +54,7 @@ import { EditUserDialog } from "@/components/users/EditUserDialog";
 import { UserActionsMenu } from "@/components/users/UserActionsMenu";
 import { RegistrationLinkDialog } from "@/components/users/RegistrationLinkDialog";
 import { UserStatusBadge } from "@/components/users/UserStatusBadge";
+import { Badge } from "@/components/ui/badge";
 import { BulkActionBar } from "@/components/users/BulkActionBar";
 import { UserEmailCell } from "@/components/users/UserEmailCell";
 import {
@@ -591,6 +592,21 @@ export function Users() {
 														</TooltipTrigger>
 														<TooltipContent>
 															Platform Admin
+														</TooltipContent>
+													</Tooltip>
+												)}
+												{user.is_external && (
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<Badge
+																variant="outline"
+																className="text-xs shrink-0"
+															>
+																External
+															</Badge>
+														</TooltipTrigger>
+														<TooltipContent>
+															External user — sees only what the Everyone tier or an explicit role grant allows
 														</TooltipContent>
 													</Tooltip>
 												)}

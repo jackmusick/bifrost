@@ -165,6 +165,9 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 
 	const shell = (
 		<BundledAppShell
+			// Fresh instance per app so navigating between apps never carries the
+			// previous app's v2 mount state into the next (Codex #10).
+			key={application.id}
 			appId={application.id}
 			appSlug={application.slug}
 			isPreview={preview}
@@ -173,6 +176,14 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 
 	if (isEmbed) {
 		return <div className="h-screen overflow-auto">{shell}</div>;
+	}
+
+	// standalone_v2 apps are full-page: the app owns its whole document and
+	// composes the platform header itself via the optional SDK <BifrostHeader>.
+	// Wrapping it in AppLayout would impose platform chrome and double up with
+	// the app's own header (v2 spec §2/§4; Codex R4).
+	if (application.app_model === "standalone_v2") {
+		return <div className="h-screen w-screen overflow-hidden">{shell}</div>;
 	}
 
 	return (

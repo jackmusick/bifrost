@@ -44,11 +44,13 @@ class AgentRouter:
         user_id: UUID | None = None,
         org_id: UUID | None = None,
         is_superuser: bool = False,
+        is_external: bool = False,
     ):
         self._session_factory = session_factory
         self._user_id = user_id
         self._org_id = org_id
         self._is_superuser = is_superuser
+        self._is_external = is_external
 
     @asynccontextmanager
     async def _db(self):
@@ -212,6 +214,7 @@ Your response (agent name or DIRECT):"""
                 org_id=self._org_id,
                 user_id=self._user_id,
                 is_superuser=self._is_superuser,
+                is_external=self._is_external,
             )
             if self._is_superuser:
                 return await repo.list_all_in_scope(

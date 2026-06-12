@@ -11,7 +11,10 @@ Scope Parameter Values:
 """
 
 from enum import Enum
+from typing import Any
 from uuid import UUID
+
+from sqlalchemy import ColumnElement, false, or_
 
 from src.core.principal import UserPrincipal
 
@@ -23,6 +26,40 @@ class OrgFilterType(Enum):
     GLOBAL_ONLY = "global"  # Only org_id IS NULL
     ORG_ONLY = "org_only"  # Only specific org, NO global fallback (platform admin selecting org)
     ORG_PLUS_GLOBAL = "org"  # Specific org + global records (org users only)
+
+
+def org_filter_clause(
+    org_column: Any,
+    filter_type: "OrgFilterType",
+    filter_org_id: UUID | None,
+) -> ColumnElement[bool] | None:
+    """Build the SQL predicate for a resolved org filter.
+
+    Single source of truth for translating ``(filter_type, filter_org_id)``
+    into a WHERE clause, so an inline consumer can never re-derive it wrongly
+    (``org_column == None`` compiles to ``IS NULL``, silently widening an
+    org-pinned filter to the global tier).
+
+    Returns:
+        - ``None`` for ALL (caller applies no org predicate).
+        - the appropriate ``IS NULL`` / ``== org`` / ``(== org OR IS NULL)``
+          predicate otherwise. ORG_ONLY with a None org_id collapses to a
+          no-match rather than leaking the global tier.
+    """
+    if filter_type is OrgFilterType.ALL:
+        return None
+    if filter_type is OrgFilterType.GLOBAL_ONLY:
+        return org_column.is_(None)
+    if filter_type is OrgFilterType.ORG_ONLY:
+        # NO global fallback. A None org here is not a license to read global —
+        # it means "no rows" (``== None`` would compile to ``IS NULL``).
+        if filter_org_id is None:
+            return false()
+        return org_column == filter_org_id
+    # ORG_PLUS_GLOBAL
+    if filter_org_id is None:
+        return org_column.is_(None)
+    return or_(org_column == filter_org_id, org_column.is_(None))
 
 
 def resolve_org_filter(

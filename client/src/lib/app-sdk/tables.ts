@@ -1,5 +1,10 @@
 import type { components } from "@/lib/v1";
+import { getBifrostTransport } from "./transport";
 import { subscribeToTable } from "./ws-client";
+
+// Transport state lives in ./transport (shared with the ws client); re-export
+// the setters/getters here so existing import sites keep working.
+export { getBifrostTransport, setBifrostTransport } from "./transport";
 
 type DocumentPublic = components["schemas"]["DocumentPublic"];
 type DocumentQuery = components["schemas"]["DocumentQuery"];
@@ -92,16 +97,26 @@ async function http<T>(
   options: { throwOnNotFound?: boolean } = {},
 ): Promise<T | null> {
   const method = (init.method ?? "GET").toUpperCase();
+  const transport = getBifrostTransport();
+  const usingProvider = Boolean(transport.baseUrl || transport.headers);
+  // Same-origin (v1) uses cookie + CSRF. A provider transport (v2) carries its
+  // own auth headers (bearer) and targets a possibly cross-origin baseUrl, so
+  // CSRF/cookies don't apply.
   const csrfHeaders: Record<string, string> =
-    method === "GET" || method === "HEAD"
+    usingProvider || method === "GET" || method === "HEAD"
       ? {}
       : { "X-CSRF-Token": getCsrfToken() };
-  const r = await fetch(path, {
+  const url = transport.baseUrl
+    ? `${transport.baseUrl.replace(/\/$/, "")}${path}`
+    : path;
+  const doFetch = transport.fetchImpl ?? fetch;
+  const r = await doFetch(url, {
     ...init,
-    credentials: "include",
+    credentials: usingProvider ? "omit" : "include",
     headers: {
       "content-type": "application/json",
       ...csrfHeaders,
+      ...(transport.headers ?? {}),
       ...(init.headers ?? {}),
     },
   });

@@ -39,6 +39,7 @@ from src.models.contracts.applications import (
     ApplicationUpdate,
 )
 from src.models.orm.applications import Application
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.core.exceptions import AccessDeniedError
 from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
 
@@ -121,9 +122,12 @@ async def application_to_public(
         is_published=application.is_published,
         has_unpublished_changes=application.has_unpublished_changes,
         access_level=application.access_level,
+        app_model=application.app_model,
         role_ids=role_ids,
         repo_path=application.repo_path,
         logo=_logo_data_url(application.logo_data, application.logo_content_type),
+        is_solution_managed=application.solution_id is not None,
+        solution_id=application.solution_id,
     )
 
 
@@ -143,20 +147,51 @@ async def get_application_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
+    if ctx.user.embed is True:
+        # Embed principals are HMAC-pre-authorized for exactly ONE app — the
+        # token's app_id claim. Tier/role checks don't apply (the principal
+        # is a synthetic external identity with no roles); identity binding
+        # does: only the bound app resolves, anything else is a 404. This
+        # both keeps embed rendering working under is_external=True (OPEN-D)
+        # and stops an embed token browsing other apps' metadata.
+        result = await ctx.db.execute(
+            select(Application).where(Application.slug == slug)
+        )
+        app = next(
+            (
+                a
+                for a in result.scalars().all()
+                if ctx.user.app_id == str(a.id)
+            ),
+            None,
+        )
+        if app is not None:
+            return app
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{slug}' not found",
+        )
+
     repo = ApplicationRepository(
         session=ctx.db,
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     try:
         if ctx.user.is_platform_admin:
-            # Slugs are globally unique — super admins can resolve across orgs
+            # A solution app slug can exist in several orgs (criterion 9). The
+            # admin resolver disambiguates by the active org (then global), so a
+            # legitimate cross-org install doesn't 500 with MultipleResultsFound.
             app = await repo.get_by_slug_global(slug)
             if not app:
                 raise AccessDeniedError(f"Application '{slug}' not found")
             return app
-        return await repo.can_access(slug=slug)
+        # include_solution_managed: a deployed (solution-managed) app MUST be
+        # openable by its slug for regular users (criterion 16) — the deployed
+        # entities are visible/usable even though the Solution itself is not.
+        return await repo.can_access(slug=slug, include_solution_managed=True)
     except AccessDeniedError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -180,11 +215,24 @@ async def get_application_by_id_or_404(
     Raises:
         HTTPException 404 if not found or access denied
     """
+    if ctx.user.embed is True:
+        # Embed pre-auth: bound to the token's app_id only (see the slug
+        # helper above — OPEN-D).
+        if ctx.user.app_id == str(app_id):
+            app = await ctx.db.get(Application, app_id)
+            if app is not None:
+                return app
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application '{app_id}' not found",
+        )
+
     repo = ApplicationRepository(
         session=ctx.db,
         org_id=ctx.org_id,
         user_id=ctx.user.user_id,
         is_superuser=ctx.user.is_platform_admin,
+        is_external=ctx.user.is_external,
     )
     try:
         return await repo.can_access(id=app_id)
@@ -226,6 +274,7 @@ async def create_application(
         target_org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -270,6 +319,7 @@ async def list_applications(
         filter_org,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     # Superusers use list_all_in_scope (respects filter_type, no role checks)
@@ -304,6 +354,7 @@ async def get_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     application = await get_application_or_404(ctx, slug)
     return await application_to_public(application, repo)
@@ -321,11 +372,13 @@ async def update_application(
     user: CurrentUser,
 ) -> ApplicationPublic:
     """Update application metadata and access control by ID."""
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -375,11 +428,13 @@ async def delete_application(
     user: CurrentUser,
 ) -> None:
     """Delete an application by ID."""
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     success = await repo.delete_application(app_id)
 
@@ -415,6 +470,7 @@ async def get_draft(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     app = await get_application_by_id_or_404(ctx, app_id)
     export_data = await repo.export_application(app)
@@ -441,11 +497,13 @@ async def save_draft(
 
     Replaces all existing draft files with the provided definition.
     """
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     app = await get_application_by_id_or_404(ctx, app_id)
 
@@ -482,11 +540,14 @@ async def publish_application(
 
     Copies all draft files to a new live version.
     """
+    # Publishing a solution-managed app is a deploy-owned action.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -535,11 +596,14 @@ async def replace_application_endpoint(
     Validates that the new path is unique, non-nested with other apps, and has
     source files under it. ``force: true`` bypasses all three checks.
     """
+    # Repointing a solution-managed app's source is a deploy-owned action.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
 
     try:
@@ -772,6 +836,7 @@ async def export_application(
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     application = await get_application_by_id_or_404(ctx, app_id)
     export_data = await repo.export_application(application, version_id)
@@ -801,11 +866,14 @@ async def rollback_application(
     Sets the specified version as the new active version.
     The draft version remains unchanged.
     """
+    # Version rollback of a solution-managed app is a deploy-owned action.
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     repo = ApplicationRepository(
         ctx.db,
         ctx.org_id,
         user_id=user.user_id,
         is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
     )
     application = await get_application_by_id_or_404(ctx, app_id)
 
@@ -840,6 +908,7 @@ async def upload_application_logo(
 
     Requires the same permissions as updating the application.
     """
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     application = await get_application_by_id_or_404(ctx, app_id)
 
     if file.content_type not in LOGO_ALLOWED_CONTENT_TYPES:
@@ -882,8 +951,16 @@ async def get_application_logo(
     app_id: UUID,
     ctx: Context,
 ) -> Response:
-    application = await get_application_by_id_or_404(ctx, app_id)
-    if not application.logo_data:
+    # The logo is non-sensitive chrome shown in the app header. Resolve the row
+    # by id WITHOUT the consumer-access gate that get_application_by_id_or_404
+    # applies: any authenticated user who can MOUNT the app (it's served to
+    # them) must be able to see its logo — including external/portal users, for
+    # whom the role-scoped metadata lookup 404s. Only the logo bytes + type are
+    # returned, nothing else about the app.
+    application = (
+        await ctx.db.execute(select(Application).where(Application.id == app_id))
+    ).scalar_one_or_none()
+    if application is None or not application.logo_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Logo not set",
@@ -903,6 +980,7 @@ async def delete_application_logo(
     app_id: UUID,
     ctx: Context,
 ) -> Response:
+    await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     application = await get_application_by_id_or_404(ctx, app_id)
     application.logo_data = None
     application.logo_content_type = None

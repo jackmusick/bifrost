@@ -95,8 +95,13 @@ const ACCESS_LEVELS = [
 	},
 	{
 		value: "authenticated",
-		label: "Authenticated Users",
-		description: "Any authenticated user can access",
+		label: "Everyone except external users",
+		description: "Any signed-in user except external users",
+	},
+	{
+		value: "everyone",
+		label: "Everyone",
+		description: "Any signed-in user, including external users",
 	},
 ];
 
@@ -115,7 +120,7 @@ const formSchema = z.object({
 		),
 	description: z.string().optional(),
 	organization_id: z.string().nullable(),
-	access_level: z.enum(["authenticated", "role_based"]),
+	access_level: z.enum(["authenticated", "everyone", "role_based"]),
 	role_ids: z.array(z.string()),
 });
 
@@ -182,7 +187,9 @@ export function AppInfoDialog({
 				slug: existingApp.slug,
 				description: existingApp.description ?? "",
 				organization_id: existingApp.organization_id ?? null,
-				access_level: (existingApp.access_level as "authenticated" | "role_based") || "authenticated",
+				access_level:
+					(existingApp.access_level as "authenticated" | "everyone" | "role_based") ||
+					"authenticated",
 				role_ids: existingApp.role_ids ?? [],
 			});
 		} else if (!isEditing && open) {
@@ -256,6 +263,7 @@ export function AppInfoDialog({
 						slug: values.slug,
 						description: values.description || null,
 						access_level: values.access_level,
+						app_model: "inline_v1",
 						role_ids: values.role_ids,
 						organization_id: values.organization_id || null,
 					},

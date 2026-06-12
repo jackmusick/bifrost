@@ -79,6 +79,8 @@ Start the development stack (per-worktree isolated):
 
 The default mode allocates a free local port for the client (deterministic per worktree, in 30000-39999). If `NETBIRD_SETUP_KEY` is set in `~/.config/bifrost/debug.env`, the stack boots with a Netbird sidecar instead and is reachable at `http://<bifrost-debug-WORKTREE>` over the Netbird mesh — no host ports.
 
+**Forcing port mode for browser/Playwright work:** Chrome/Playwright cannot drive netbird stacks (Vite HMR websocket hangs). If your `~/.config/bifrost/debug.env` has `NETBIRD_SETUP_KEY`, run `BIFROST_FORCE_PORT=1 ./debug.sh up` to force port mode for that boot without editing the global config. `env -u NETBIRD_SETUP_KEY ./debug.sh up` does **not** work — `debug.sh` re-sources the global `debug.env` under `set -a`, re-introducing the key.
+
 Stack contains: API (port 8000 internal), Client (port 80 internal), Scheduler, Worker, Postgres, RabbitMQ, Redis, SeaweedFS. All Bifrost services build from `api/Dockerfile.dev` / `client/Dockerfile.dev` (source build, not public images).
 
 ### Hot Reload is Automatic
@@ -185,7 +187,7 @@ Entity mutations have three parallel surfaces: **CLI** (`bifrost <entity> ...`),
 
 **When renaming or reassigning an entity (workflow, table, config):** grep the codebase before committing. Workflows are referenced by `path::func` in forms; tables are referenced by name in workflow SDK calls (`sdk.tables.get("...")`); configs are referenced by key. `bifrost tables update --name` warns on renames but does not block — the author is responsible for a full-workspace search (`rg -n '\b<old-name>\b' apps/ workflows/`) before pushing.
 
-**`.bifrost/` is export-only.** Watch only syncs code (`apps/`, `workflows/*.py`); it does NOT push `.bifrost/` content. Entity mutations go through the CLI (`bifrost orgs create`, `bifrost roles update`, etc.) or MCP. To share an env's state across environments, use `bifrost export --portable <dir>` (scrubs env-specific fields) and `bifrost import <dir> --org <uuid> --role-mode name` (rewrites org/role refs against the target env).
+**`.bifrost/` is export-only.** Watch only syncs code (`apps/`, `workflows/*.py`); it does NOT push `.bifrost/` content. Entity mutations go through the CLI (`bifrost orgs create`, `bifrost roles update`, etc.) or MCP. To distribute a packaged set of entities into an org, use **Solutions** (`bifrost solution deploy` / `solution install <zip>`) — the install-scoped, lifecycle-aware successor to the older `bifrost export --portable` / `bifrost import` flow. **`bifrost export` / `bifrost import` were REMOVED** (they predated Solutions and the `--portable` scrub never actually stripped org IDs). For raw `_repo/` workspace movement across environments, use git sync.
 
 **MCP vs REST routers (existing drift):** the MCP tools for `agents`, `forms`, `tables`, `apps`, `events` re-implement router logic and have diverged (different permission models, missing side effects, divergent validation). See `docs/plans/2026-04-18-mcp-router-reconciliation.md` for the catalog and reconciliation sequence. **New MCP tools must be thin HTTP wrappers that call the REST endpoints** (see `api/src/services/mcp_server/tools/roles.py` / `configs.py` / `_http_bridge.py` for the pattern) — no direct ORM access, no repository imports. A unit test (`api/tests/unit/test_mcp_thin_wrapper.py`) enforces this.
 

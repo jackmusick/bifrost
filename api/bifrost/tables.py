@@ -22,11 +22,23 @@ def _current_context():
 
 
 def _scope_query(scope: str | None) -> str:
-    """Build the ``?scope=`` querystring fragment for REST table-document URLs.
+    """Build the ``?scope=...&solution=...`` querystring for REST table URLs.
 
-    Returns ``""`` when scope is None so the URL ends cleanly.
+    ``scope`` is the org scope (as before). When the active execution belongs to a
+    solution install, also append ``solution=<install_id>`` (from the
+    ExecutionContext) so the server resolves a table BY NAME to the install's OWN
+    table first, then the org/_repo/ cascade — the same own-first behavior a
+    Solution app gets via its ``X-Bifrost-App`` header. Omitted outside a solution
+    execution, so plain ``_repo/`` behavior is unchanged.
     """
-    return f"?{urlencode({'scope': scope})}" if scope else ""
+    params: dict[str, str] = {}
+    if scope:
+        params["scope"] = scope
+    ctx = _current_context()
+    solution_id = getattr(ctx, "solution_id", None) if ctx is not None else None
+    if solution_id:
+        params["solution"] = str(solution_id)
+    return f"?{urlencode(params)}" if params else ""
 
 
 async def _ensure_table_exists(table: str, scope: str | None) -> None:

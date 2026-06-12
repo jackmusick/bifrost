@@ -6,7 +6,8 @@
  */
 
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { parseSolutionFrom } from "@/lib/solution-back-nav";
 import { ArrowLeft, Upload, Settings, Loader2, Link } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import { AppInfoDialog } from "@/components/app-builder/AppInfoDialog";
 import { EmbedSettingsDialog } from "@/components/app-builder/EmbedSettingsDialog";
 import { toast } from "sonner";
 import { AppCodeEditorLayout } from "@/components/app-code-editor/AppCodeEditorLayout";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import {
 	useApplication,
 	useCreateApplication,
@@ -36,6 +38,9 @@ import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 export function AppCodeEditorPage() {
 	const navigate = useNavigate();
 	const { applicationId: slugParam } = useParams();
+	const { search } = useLocation();
+	const fromSolution = parseSolutionFrom(search);
+	const backTo = fromSolution ? `/solutions/${fromSolution}` : "/apps";
 	const isEditing = !!slugParam;
 	const { user, isPlatformAdmin } = useAuth();
 
@@ -66,6 +71,11 @@ export function AppCodeEditorPage() {
 	const [publishMessage, setPublishMessage] = useState("");
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 	const [isEmbedOpen, setIsEmbedOpen] = useState(false);
+
+	// Solution-managed apps are read-only on the platform (deploy is the only
+	// writer). The API rejects edits/publish regardless; this drives the UI
+	// affordance (banner + hidden Publish).
+	const isManaged = !!existingApp?.is_solution_managed;
 
 	// For existing apps, we skip the creation form and go straight to the editor
 	// For new apps, we show the creation form first
@@ -254,7 +264,10 @@ export function AppCodeEditorPage() {
 					<Button
 						variant="ghost"
 						size="icon"
-						onClick={() => navigate("/apps")}
+						onClick={() => navigate(backTo)}
+						aria-label={
+							fromSolution ? "Back to Solution" : "Back to Apps"
+						}
 					>
 						<ArrowLeft className="h-5 w-5" />
 					</Button>
@@ -266,8 +279,8 @@ export function AppCodeEditorPage() {
 				</div>
 
 				<div className="flex items-center gap-2">
-					{/* Embed */}
-					{isEditing && existingApp && (
+					{/* Embed — hidden for managed apps (embed secrets are mutations) */}
+					{isEditing && existingApp && !isManaged && (
 						<>
 							<Button
 								variant="ghost"
@@ -286,24 +299,30 @@ export function AppCodeEditorPage() {
 						</>
 					)}
 
-					{/* Settings */}
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={() => setIsSettingsOpen(true)}
-						title="Settings"
-						aria-label="Settings"
-					>
-						<Settings className="h-4 w-4" />
-					</Button>
-					<AppInfoDialog
-						appSlug={existingApp?.slug}
-						open={isSettingsOpen}
-						onOpenChange={setIsSettingsOpen}
-					/>
+					{/* Settings — hidden for solution-managed apps: the dialog
+					    exposes Save/Delete/Replace/logo mutations the API rejects. */}
+					{!isManaged && (
+						<>
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => setIsSettingsOpen(true)}
+								title="Settings"
+								aria-label="Settings"
+							>
+								<Settings className="h-4 w-4" />
+							</Button>
+							<AppInfoDialog
+								appSlug={existingApp?.slug}
+								open={isSettingsOpen}
+								onOpenChange={setIsSettingsOpen}
+							/>
+						</>
+					)}
 
-					{/* Publish */}
-					{hasDraft && (
+					{/* Publish — hidden for solution-managed apps (deploy is the
+					    only writer; the API rejects publish regardless). */}
+					{hasDraft && !isManaged && (
 						<Button
 							size="sm"
 							onClick={() => setIsPublishDialogOpen(true)}
@@ -316,6 +335,13 @@ export function AppCodeEditorPage() {
 				</div>
 			</div>
 
+			{/* Solution-managed read-only affordance */}
+			{isManaged && (
+				<div className="px-4 pt-3">
+					<SolutionManagedBanner entityLabel="app" />
+				</div>
+			)}
+
 			{/* Code Editor */}
 			<div className="flex-1 min-h-0">
 				{existingApp?.id && (
@@ -323,6 +349,7 @@ export function AppCodeEditorPage() {
 						appId={existingApp.id}
 						appName={existingApp.name}
 						appSlug={existingApp.slug}
+						readOnly={isManaged}
 					/>
 				)}
 			</div>

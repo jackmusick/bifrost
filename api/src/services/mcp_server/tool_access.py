@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -69,6 +69,7 @@ class MCPToolAccessService:
         is_superuser: bool,
         user_id: UUID | str | None = None,
         org_id: UUID | str | None = None,
+        is_external: bool = False,
     ) -> MCPToolAccessResult:
         """
         Get all MCP tools accessible to the user.
@@ -96,6 +97,8 @@ class MCPToolAccessService:
         accessible_agents = await self._get_accessible_agents(
             user_roles=user_roles,
             is_superuser=is_superuser,
+            is_external=is_external,
+            org_id=org_id,
         )
 
         # Step 2: Collect tools from accessible agents, enforcing per-workflow
@@ -103,7 +106,8 @@ class MCPToolAccessService:
         tools: list[ToolInfo] = []
         seen_tool_ids: set[str] = set()  # Deduplicate across agents
         workflow_repo = self._build_workflow_repo(
-            user_id=user_id, org_id=org_id, is_superuser=is_superuser
+            user_id=user_id, org_id=org_id, is_superuser=is_superuser,
+            is_external=is_external,
         )
 
         for agent in accessible_agents:
@@ -161,6 +165,7 @@ class MCPToolAccessService:
         is_superuser: bool,
         user_id: UUID | str | None = None,
         org_id: UUID | str | None = None,
+        is_external: bool = False,
     ) -> AgentScopedToolResult | None:
         """
         Get MCP tools for a specific agent, verifying user access.
@@ -179,7 +184,10 @@ class MCPToolAccessService:
         Returns:
             AgentScopedToolResult if agent exists and user has access, None otherwise
         """
-        # Query the specific agent with tools and roles eagerly loaded
+        # Query the specific agent with tools and roles eagerly loaded.
+        # Org-scope IN THE DATABASE (LEAK #2): a by-id fetch must not reach an
+        # agent outside the caller's org cascade — otherwise a role_based agent
+        # in another org with a same-named role would pass _check_agent_access.
         query = (
             select(Agent)
             .options(
@@ -190,6 +198,18 @@ class MCPToolAccessService:
             .where(Agent.is_active.is_(True))
         )
 
+        if not is_superuser:
+            scope_org = UUID(org_id) if isinstance(org_id, str) and org_id else org_id
+            if scope_org is not None:
+                query = query.where(
+                    or_(
+                        Agent.organization_id == scope_org,
+                        Agent.organization_id.is_(None),
+                    )
+                )
+            else:
+                query = query.where(Agent.organization_id.is_(None))
+
         result = await self.session.execute(query)
         agent = result.scalars().unique().first()
 
@@ -198,7 +218,7 @@ class MCPToolAccessService:
             return None
 
         # Check access using same rules as _get_accessible_agents
-        if not self._check_agent_access(agent, user_roles, is_superuser):
+        if not self._check_agent_access(agent, user_roles, is_superuser, is_external):
             logger.warning(f"User denied access to agent {agent_id}")
             return None
 
@@ -223,7 +243,8 @@ class MCPToolAccessService:
         # the executor). seen_tool_ids is fresh because this is an
         # agent-scoped call: no cross-agent dedup needed.
         workflow_repo = self._build_workflow_repo(
-            user_id=user_id, org_id=org_id, is_superuser=is_superuser
+            user_id=user_id, org_id=org_id, is_superuser=is_superuser,
+            is_external=is_external,
         )
         for workflow_info in await self._visible_workflows_for_agent(
             agent, workflow_repo, seen_tool_ids=set()
@@ -251,6 +272,7 @@ class MCPToolAccessService:
         user_id: UUID | str | None,
         org_id: UUID | str | None,
         is_superuser: bool,
+        is_external: bool = False,
     ):
         """Construct a WorkflowRepository pinned to the caller's identity.
 
@@ -267,6 +289,7 @@ class MCPToolAccessService:
             org_id=org_id,
             user_id=user_id,
             is_superuser=is_superuser,
+            is_external=is_external,
         )
 
     async def _visible_workflows_for_agent(
@@ -337,9 +360,15 @@ class MCPToolAccessService:
         agent: Agent,
         user_roles: list[str],
         is_superuser: bool,
+        is_external: bool = False,
     ) -> bool:
         """Check if user has access to a specific agent (same rules as _get_accessible_agents)."""
         if agent.access_level == AgentAccessLevel.AUTHENTICATED:
+            # "Everyone except external users": no authenticated-tier
+            # entitlement for externals.
+            return is_superuser or not is_external
+
+        if agent.access_level == AgentAccessLevel.EVERYONE:
             return True
 
         if agent.access_level == AgentAccessLevel.ROLE_BASED:
@@ -354,6 +383,8 @@ class MCPToolAccessService:
         self,
         user_roles: list[str],
         is_superuser: bool,
+        is_external: bool = False,
+        org_id: UUID | str | None = None,
     ) -> list[Agent]:
         """
         Get agents accessible to the user based on access_level and roles.
@@ -364,8 +395,12 @@ class MCPToolAccessService:
           OR be a platform admin (superuser)
         - ROLE_BASED with no roles: Only superusers can access
         - Platform admins (superusers) bypass ROLE_BASED role checks (issue #244)
+
+        Org scoping (LEAK #2): the query is org-scoped IN THE DATABASE so a
+        role_based agent in another org with a same-named role can NEVER leak.
+        A regular user sees their org + global; a superuser sees all orgs.
         """
-        # Query all active agents with their tools and roles eagerly loaded
+        # Query active agents, scoped to the caller's org cascade.
         query = (
             select(Agent)
             .options(
@@ -374,6 +409,19 @@ class MCPToolAccessService:
             )
             .where(Agent.is_active.is_(True))
         )
+
+        if not is_superuser:
+            scope_org = UUID(org_id) if isinstance(org_id, str) and org_id else org_id
+            if scope_org is not None:
+                query = query.where(
+                    or_(
+                        Agent.organization_id == scope_org,
+                        Agent.organization_id.is_(None),
+                    )
+                )
+            else:
+                # Non-admin with no org: global only.
+                query = query.where(Agent.organization_id.is_(None))
 
         result = await self.session.execute(query)
         all_agents = result.scalars().unique().all()
@@ -384,7 +432,12 @@ class MCPToolAccessService:
 
         for agent in all_agents:
             if agent.access_level == AgentAccessLevel.AUTHENTICATED:
-                # Any authenticated user can access
+                # "Everyone except external users": no authenticated-tier
+                # entitlement for externals.
+                if is_superuser or not is_external:
+                    accessible_agents.append(agent)
+
+            elif agent.access_level == AgentAccessLevel.EVERYONE:
                 accessible_agents.append(agent)
 
             elif agent.access_level == AgentAccessLevel.ROLE_BASED:

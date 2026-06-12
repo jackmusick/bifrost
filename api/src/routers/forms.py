@@ -25,8 +25,10 @@ from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_org_filter
 from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
+from src.repositories.workflows import WorkflowRepository
 from src.models import Execution as ExecutionORM
-from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM, UserRole as UserRoleORM
+from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM
+from src.services.solutions.guard import assert_not_solution_managed
 from src.models import Role as RoleORM
 from src.models import Workflow as WorkflowORM
 from src.models import FormCreate, FormUpdate, FormPublic
@@ -250,6 +252,7 @@ async def list_forms(
         org_id=filter_org,
         user_id=ctx.user.user_id if not ctx.user.is_superuser else None,
         is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
     )
 
     # Platform admins bypass access level filtering - they see all forms within org scope
@@ -435,6 +438,7 @@ async def get_form(
         org_id=None,  # No org filtering for initial fetch
         user_id=ctx.user.user_id if not ctx.user.is_superuser else None,
         is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
     )
     form = await repo.get_form(form_id)
 
@@ -449,9 +453,20 @@ async def get_form(
         orm_form.role_ids = await _load_form_role_ids(db, orm_form.id)  # type: ignore[attr-defined]
         return FormPublic.model_validate(orm_form)
 
-    # Check access - admins and embed users can see all forms
-    if ctx.user.is_superuser or ctx.user.embed:
+    # Platform admins see all forms.
+    if ctx.user.is_superuser:
         return await _to_public(form)
+
+    # Embed users are HMAC-pre-authorized — but ONLY for the form their token
+    # is bound to (EXT-1 NEW-I). An unbound embed token must not read a
+    # cross-tenant form's schema/workflow ids/launch params.
+    if ctx.user.embed:
+        if _embed_can_access_form(ctx, form):
+            return await _to_public(form)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form not found",
+        )
 
     # Non-admins can only see active forms
     if not form.is_active:
@@ -460,36 +475,23 @@ async def get_form(
             detail="Form not found",
         )
 
-    # Check org access - user can access their org's forms OR global forms (org_id is NULL)
-    if form.organization_id is not None and form.organization_id != ctx.org_id:
+    # Single org+role+access_level gate — the same OrgScopedRepository gate
+    # the listing and execute paths use (handles cascade scope, role_based
+    # role checks, and external-user isolation in one place).
+    if not await _check_form_access(
+        db,
+        form,
+        ctx.user.user_id,
+        ctx.org_id,
+        ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to form",
         )
 
-    # Check access level
-    access_level = form.access_level or "role_based"
-    if access_level == "authenticated":
-        return await _to_public(form)
-
-    # Role-based: check if user has a role assigned to this form
-    role_query = select(UserRoleORM.role_id).where(UserRoleORM.user_id == ctx.user.user_id)
-    role_result = await db.execute(role_query)
-    user_role_ids = list(role_result.scalars().all())
-
-    if user_role_ids:
-        form_role_query = select(FormRoleORM).where(
-            FormRoleORM.form_id == form_id,
-            FormRoleORM.role_id.in_(user_role_ids),
-        )
-        form_role_result = await db.execute(form_role_query)
-        if form_role_result.scalar_one_or_none() is not None:
-            return await _to_public(form)
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Access denied to form",
-    )
+    return await _to_public(form)
 
 
 @router.patch(
@@ -523,6 +525,9 @@ async def update_form(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Form not found",
         )
+
+    # Solution-managed forms are read-only here; deploy is the writer.
+    assert_not_solution_managed(form)
 
     # Validate references being updated
     form_schema_for_validation = None
@@ -669,6 +674,9 @@ async def delete_form(
             detail="Form not found",
         )
 
+    # Solution-managed forms are read-only here; deploy is the writer.
+    assert_not_solution_managed(form)
+
     if purge:
         if form.is_active:
             raise HTTPException(
@@ -714,6 +722,7 @@ async def _check_form_access(
     user_id: UUID,
     user_org_id: UUID | None,
     is_superuser: bool,
+    is_external: bool = False,
 ) -> bool:
     """
     Check if user has access to execute a form.
@@ -732,9 +741,39 @@ async def _check_form_access(
         org_id=user_org_id,
         user_id=user_id,
         is_superuser=is_superuser,
+        is_external=is_external,
     )
     accessible = await repo.get(id=form.id)
     return accessible is not None
+
+
+def _embed_can_access_form(ctx, form: FormORM) -> bool:
+    """Whether an EMBED principal is bound to THIS form (EXT-1 NEW-I).
+
+    An embed token is HMAC-pre-authorized for exactly ONE resource. Before this
+    gate, the embed short-circuits in get_form / execute_form /
+    execute_startup_workflow / generate_upload_url skipped access control for
+    ANY embed token regardless of which form the path named — so an embed token
+    minted for app A in org H could read AND EXECUTE any form in any other org
+    (cross-tenant workflow execution as sentinel in the victim's org). Mirrors
+    the app-binding pattern in applications.py / app_code_files.py.
+
+    Binding rules (the token must be bound to the form being touched):
+    - form-embed token (``form_id`` claim set): must match the path form
+      exactly — ``ctx.user.form_id == str(form.id)``.
+    - app-embed token (``app_id`` set, no ``form_id``): the form must live in
+      the embed's OWN org (the form's org equals the token's org — a concrete
+      org). A global form (org-id None) is never embed-reachable, and a
+      cross-org form is rejected. This is the safe minimum that kills the
+      cross-tenant exec even without a form->app FK.
+    - a token with neither claim is never form-bound.
+    """
+    if ctx.user.form_id is not None:
+        return ctx.user.form_id == str(form.id)
+    if ctx.user.app_id is not None:
+        form_org = getattr(form, "organization_id", None)
+        return form_org is not None and form_org == ctx.user.organization_id
+    return False
 
 
 @router.post(
@@ -779,9 +818,24 @@ async def execute_form(
             detail="Form not found",
         )
 
-    # Check access — embed users are pre-authorized via HMAC
-    if not ctx.user.embed:
-        has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
+    # Check access. Embed users are pre-authorized via HMAC — but ONLY for the
+    # form their token is bound to (EXT-1 NEW-I): an unbound embed token must
+    # not execute a cross-tenant form's workflow as sentinel in the victim org.
+    if ctx.user.embed:
+        if not _embed_can_access_form(ctx, form):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Form not found",
+            )
+    else:
+        has_access = await _check_form_access(
+            db,
+            form,
+            ctx.user.user_id,
+            ctx.org_id,
+            ctx.user.is_superuser,
+            is_external=ctx.user.is_external,
+        )
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -794,6 +848,33 @@ async def execute_form(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Form has no workflow configured",
         )
+
+    # Resolve the form's workflow ref to a concrete workflow. form.workflow_id
+    # may be a portable path::function ref (solution-managed forms) or a UUID.
+    # Scope resolution to the form's install (form.solution_id) so a solution
+    # form reaches its OWN workflow, not a sibling install's or the bare _repo/
+    # one. resolve() handles both UUID and path::fn, own-first then _repo/.
+    #
+    # Resolve on the FORM's behalf: the form's access_level gate (checked above)
+    # is authoritative — forms intentionally let users run workflows they don't
+    # directly have a role on, so we must NOT apply the workflow's RBAC filter
+    # here (that's what the old bare-id select did). is_superuser=True bypasses
+    # the role filter; org_id scopes cascade resolution.
+    #
+    # Resolution and execution are anchored to the FORM's world, not the
+    # caller's: a cross-org bypass caller (platform admin / provider) executing
+    # an org-scoped form must resolve the install's own workflow and run in the
+    # form's org. Caller identity was already used for AUTHORIZATION above.
+    anchor_org_id = form.organization_id if form.organization_id is not None else ctx.org_id
+
+    _wf_repo = WorkflowRepository(db, org_id=anchor_org_id, is_superuser=True)
+    _resolved_wf = await _wf_repo.resolve(form.workflow_id, solution_scope=form.solution_id)
+    if _resolved_wf is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workflow not found: {form.workflow_id}",
+        )
+    resolved_workflow_id = str(_resolved_wf.id)
 
     # Merge: defaults < verified HMAC params < user form input
     verified_params = ctx.user.verified_params or {}
@@ -809,15 +890,7 @@ async def execute_form(
     if scheduled_at is not None:
         from src.routers.workflows import _insert_scheduled_execution
 
-        workflow_result = await db.execute(
-            select(WorkflowORM).where(WorkflowORM.id == UUID(form.workflow_id))
-        )
-        workflow = workflow_result.scalar_one_or_none()
-        if not workflow:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workflow not found: {form.workflow_id}",
-            )
+        workflow = _resolved_wf
 
         exec_id = await _insert_scheduled_execution(
             db=db,
@@ -825,7 +898,7 @@ async def execute_form(
             workflow_name=workflow.name,
             parameters=merged_params,
             scheduled_at=scheduled_at,
-            organization_id=ctx.org_id,
+            organization_id=anchor_org_id,
             executed_by=ctx.user.user_id,
             executed_by_name=ctx.user.name or ctx.user.email or "Unknown",
             form_id=form.id,
@@ -844,10 +917,10 @@ async def execute_form(
             scheduled_at=scheduled_at,
         )
 
-    # Create organization object if org_id is set
+    # Create organization object if the anchor org is set
     org = None
-    if ctx.org_id:
-        org = Organization(id=str(ctx.org_id), name="", is_active=True)
+    if anchor_org_id:
+        org = Organization(id=str(anchor_org_id), name="", is_active=True)
 
     # Create shared context for execution
     # startup_data from the request is passed to context.startup
@@ -855,7 +928,7 @@ async def execute_form(
         user_id=str(ctx.user.user_id),
         name=ctx.user.name,
         email=ctx.user.email,
-        scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
+        scope=str(anchor_org_id) if anchor_org_id else "GLOBAL",
         organization=org,
         is_platform_admin=ctx.user.is_superuser,
         is_function_key=False,
@@ -867,7 +940,7 @@ async def execute_form(
         # Execute workflow by ID
         response = await run_workflow(
             context=shared_ctx,
-            workflow_id=form.workflow_id,
+            workflow_id=resolved_workflow_id,
             input_data=merged_params,
             form_id=str(form.id),
         )
@@ -957,9 +1030,24 @@ async def execute_startup_workflow(
             detail="Form not found",
         )
 
-    # Check access — embed users are pre-authorized via HMAC
-    if not ctx.user.embed:
-        has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
+    # Check access. Embed users are pre-authorized via HMAC — but ONLY for the
+    # form their token is bound to (EXT-1 NEW-I): an unbound embed token must
+    # not run a cross-tenant form's launch workflow as sentinel.
+    if ctx.user.embed:
+        if not _embed_can_access_form(ctx, form):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Form not found",
+            )
+    else:
+        has_access = await _check_form_access(
+            db,
+            form,
+            ctx.user.user_id,
+            ctx.org_id,
+            ctx.user.is_superuser,
+            is_external=ctx.user.is_external,
+        )
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -970,21 +1058,45 @@ async def execute_startup_workflow(
     if not form.launch_workflow_id:
         return FormStartupResponse(result=None)
 
+    # Resolve the launch workflow ref with the form's install scope. Like the
+    # main workflow, launch_workflow_id may be a portable path::function ref for
+    # solution-managed forms; scope to form.solution_id so the install reaches
+    # its own launch workflow (own-first, then bare _repo/).
+    #
+    # Resolve on the FORM's behalf (is_superuser=True): the form access gate
+    # above is authoritative, so we must not apply the workflow's RBAC filter
+    # here — a form user with no role on the launch workflow must still reach it.
+    # Anchored to the FORM's org like the execute path: a cross-org bypass
+    # caller must resolve the install's own launch workflow, not their org's.
+    launch_anchor_org_id = (
+        form.organization_id if form.organization_id is not None else ctx.org_id
+    )
+    _launch_repo = WorkflowRepository(db, org_id=launch_anchor_org_id, is_superuser=True)
+    _resolved_launch = await _launch_repo.resolve(
+        form.launch_workflow_id, solution_scope=form.solution_id
+    )
+    if _resolved_launch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Launch workflow not found: {form.launch_workflow_id}",
+        )
+    resolved_launch_workflow_id = str(_resolved_launch.id)
+
     # Merge: defaults < verified HMAC params < user input
     verified_params = ctx.user.verified_params or {}
     merged_params = {**(form.default_launch_params or {}), **verified_params, **input_data}
 
-    # Create organization object if org_id is set
+    # The launch workflow runs in the form's data world (same anchor as
+    # resolution above and as the execute path).
     org = None
-    if ctx.org_id:
-        org = Organization(id=str(ctx.org_id), name="", is_active=True)
+    if launch_anchor_org_id:
+        org = Organization(id=str(launch_anchor_org_id), name="", is_active=True)
 
-    # Create shared context for execution
     shared_ctx = SharedContext(
         user_id=str(ctx.user.user_id),
         name=ctx.user.name,
         email=ctx.user.email,
-        scope=str(ctx.org_id) if ctx.org_id else "GLOBAL",
+        scope=str(launch_anchor_org_id) if launch_anchor_org_id else "GLOBAL",
         organization=org,
         is_platform_admin=ctx.user.is_superuser,
         is_function_key=False,
@@ -995,7 +1107,7 @@ async def execute_startup_workflow(
         # Execute launch workflow by ID
         response = await run_workflow(
             context=shared_ctx,
-            workflow_id=form.launch_workflow_id,
+            workflow_id=resolved_launch_workflow_id,
             input_data=merged_params,
             form_id=str(form.id),
         )
@@ -1133,9 +1245,24 @@ async def generate_upload_url(
             detail="Form not found",
         )
 
-    # Check access — embed users are pre-authorized via HMAC
-    if not ctx.user.embed:
-        has_access = await _check_form_access(db, form, ctx.user.user_id, ctx.org_id, ctx.user.is_superuser)
+    # Check access. Embed users are pre-authorized via HMAC — but ONLY for the
+    # form their token is bound to (EXT-1 NEW-I): an unbound embed token must
+    # not mint an upload URL for a cross-tenant form.
+    if ctx.user.embed:
+        if not _embed_can_access_form(ctx, form):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Form not found",
+            )
+    else:
+        has_access = await _check_form_access(
+            db,
+            form,
+            ctx.user.user_id,
+            ctx.org_id,
+            ctx.user.is_superuser,
+            is_external=ctx.user.is_external,
+        )
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -94,10 +94,10 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/integrations.py', 'ConfigModel.organization_id == organization_id,', 'integration config inline; phase 5 migrates'),
     ('routers/integrations.py', 'ConfigModel.organization_id == org_id,', 'integration config inline; phase 5 migrates'),
     ('routers/knowledge_sources.py', 'KnowledgeNamespaceRole.organization_id == org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'stmt = stmt.where(KnowledgeStore.organization_id.is_(None))', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id == filter_org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
-    ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id.is_(None),', 'knowledge sources inline cascade; phase 6 migrates'),
+    # The KnowledgeStore document-list inline cascades were removed (EXT-1
+    # NEW-J) — list_all_documents / list_documents now route through
+    # org_filter_clause (the single source of truth that honors the EMPTY
+    # sentinel). Only the namespace-role + target_org_id lookups remain inline.
     ('routers/knowledge_sources.py', 'KnowledgeStore.organization_id == target_org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
     ('routers/llm_config.py', 'SystemConfig.organization_id.is_(None),', 'SystemConfig admin lookup; pre-repo pattern (permanent)'),
     ('routers/mcp_connections.py', 'query = query.where(MCPConnection.organization_id == scope_org)', 'MCP connection org filter; phase 6 migrates'),
@@ -117,7 +117,17 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/roi_reports.py', 'query = query.where(WorkflowROIDaily.organization_id == org_uuid)', 'identity-entity scope filter (permanent)'),
     ('routers/roi_reports.py', '.join(Organization, ExecutionMetricsDaily.organization_id == Organization.id)', 'identity-entity scope filter (permanent)'),
     ('routers/roles.py', 'KnowledgeNamespaceRoleORM.organization_id == entry.organization_id,', 'KnowledgeNamespaceRole identity-entity filter (permanent)'),
+    ('routers/solutions.py', 'set_keys_q = select(Config.key).where(Config.organization_id == sol.organization_id)', 'entities endpoint: install-scoped config-key existence read for value_set status (NOT cascade)'),
+    ('routers/solutions.py', 'set_keys_q = select(Config.key).where(Config.organization_id.is_(None))', 'entities endpoint: global-scope config-key existence read for value_set status (NOT cascade)'),
+    ('routers/solutions.py', 'Config.organization_id == sol.organization_id', 'uninstall: install-scoped orphan-stamp UPDATE on config values (NOT cascade)'),
+    ('routers/solutions.py', 'else Config.organization_id.is_(None)', 'uninstall: global-scope orphan-stamp UPDATE on config values (NOT cascade)'),
+    ('routers/solutions.py', 'SolutionORM.organization_id == sol.organization_id', 'uninstall: find OTHER live installs declaring the same key in this org to skip stamping a shared value (NOT cascade)'),
+    ('routers/solutions.py', 'else SolutionORM.organization_id.is_(None)', 'uninstall: global-scope variant of the same shared-key guard (NOT cascade)'),
     ('routers/tables.py', 'CustomClaimORM.organization_id == organization_id', 'tables custom claim cross-ref; phase 6 migrates'),
+    # X-Bifrost-App app-scoped solution table lookup (install-scoped, NOT org
+    # cascade).
+    ('routers/tables.py', 'Table.organization_id == target_org_id,', 'install-scoped solution table lookup: org arm'),
+    ('routers/tables.py', 'Table.organization_id.is_(None),', 'install-scoped solution table lookup: global arm'),
     ('routers/usage_reports.py', 'base_conditions.append(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
     ('routers/usage_reports.py', 'exec_conditions.append(Execution.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
     ('routers/usage_reports.py', 'workflow_query = workflow_query.where(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
@@ -129,7 +139,7 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/users.py', 'query = query.where(UserORM.organization_id.is_(None))', 'User identity-entity filter (permanent)'),
     ('routers/users.py', 'query = query.where(UserORM.organization_id == filter_org)', 'User identity-entity filter (permanent)'),
     ('routers/websocket.py', '(TableOrm.organization_id == user.organization_id)', 'websocket table subscription filter; phase 6 migrates'),
-    ('routers/websocket.py', '| (TableOrm.organization_id.is_(None))', 'websocket table subscription filter; phase 6 migrates'),
+    ('routers/websocket.py', '| TableOrm.organization_id.is_(None)', 'websocket table subscription filter; phase 6 migrates'),
     ('routers/workflows.py', 'query = query.where(WorkflowORM.organization_id.is_(None))', 'workflows inline cascade; phase 6 migrates'),
     ('routers/workflows.py', 'query = query.where(WorkflowORM.organization_id == filter_org)', 'workflows inline cascade; phase 6 migrates'),
     ('routers/workflows.py', 'WorkflowORM.organization_id == filter_org,', 'workflows inline cascade; phase 6 migrates'),
@@ -233,6 +243,9 @@ IDENTITY_MODELS: set[str] = {
     "KnowledgeNamespaceRole",
     "Event",
     "AuditLog",
+    # A Solution install belongs to a scope (organization_id) but is never
+    # resolved by name with cascade — it is identity, like Organization.
+    "Solution",
 }
 
 

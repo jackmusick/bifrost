@@ -61,6 +61,7 @@ function EditUserDialogContent({
 	const [isPlatformAdmin, setIsPlatformAdmin] = useState(
 		user.is_superuser,
 	);
+	const [isExternal, setIsExternal] = useState(user.is_external);
 	const [orgId, setOrgId] = useState<string>(user.organization_id || "");
 	const [validationError, setValidationError] = useState<string | null>(null);
 	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
@@ -175,6 +176,10 @@ function EditUserDialogContent({
 				!isEditingSelf && orgId !== (user.organization_id || "")
 					? orgId || null
 					: null,
+			is_external:
+				!isEditingSelf && isExternal !== user.is_external
+					? isExternal
+					: null,
 		};
 
 		// Compute role changes
@@ -188,6 +193,7 @@ function EditUserDialogContent({
 			body.is_active === null &&
 			body.is_superuser === null &&
 			body.organization_id === null &&
+			body.is_external === null &&
 			!hasRoleChanges
 		) {
 			toast.info("No changes to save");
@@ -201,7 +207,8 @@ function EditUserDialogContent({
 				body.name !== null ||
 				body.is_active !== null ||
 				body.is_superuser !== null ||
-				body.organization_id !== null
+				body.organization_id !== null ||
+				body.is_external !== null
 			) {
 				await updateMutation.mutateAsync({
 					params: { path: { user_id: user.id } },
@@ -379,6 +386,25 @@ function EditUserDialogContent({
 							: "The organization this user belongs to"}
 					</p>
 				</div>
+
+				{!isPlatformAdmin && (
+					<div className="flex items-center justify-between rounded-lg border p-4">
+						<div className="space-y-0.5">
+							<Label htmlFor="external">External user</Label>
+							<p className="text-xs text-muted-foreground">
+								Sees only what the Everyone tier or an explicit
+								role grant allows — excluded from
+								&ldquo;Everyone except external users&rdquo; content
+							</p>
+						</div>
+						<Switch
+							id="external"
+							checked={isExternal}
+							onCheckedChange={setIsExternal}
+							disabled={isEditingSelf}
+						/>
+					</div>
+				)}
 
 				{/* Roles multi-select */}
 				{!isPlatformAdmin && !isEditingSelf && (

@@ -46,24 +46,32 @@ async def embed_app(
             .where(Application.slug == slug)
             .options(selectinload(Application.embed_secrets))
         )
-        app = result.scalar_one_or_none()
+        candidates = list(result.scalars().all())
 
-    if not app:
+    if not candidates:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    active_secrets = [s for s in app.embed_secrets if s.is_active]
-    if not active_secrets:
-        raise HTTPException(status_code=403, detail="No embed secrets configured")
-
-    # Try each active secret using its configured scheme
-    verified = False
-    for secret_record in active_secrets:
-        raw_secret = decrypt_secret(secret_record.secret_encrypted)
-        if verify_embed_hmac(query_params, raw_secret, secret_record.hmac_scheme):
-            verified = True
+    # A slug may match multiple installs of the same solution (slug uniqueness
+    # is per-install). The embed secret is bound to ONE Application row, so the
+    # HMAC itself disambiguates: the row whose active secret verifies wins.
+    app = None
+    for candidate in candidates:
+        for secret_record in (s for s in candidate.embed_secrets if s.is_active):
+            raw_secret = decrypt_secret(secret_record.secret_encrypted)
+            if verify_embed_hmac(query_params, raw_secret, secret_record.hmac_scheme):
+                app = candidate
+                break
+        if app is not None:
             break
 
-    if not verified:
+    if app is None:
+        # "No embed secrets configured" only when NO candidate has one: with
+        # multiple installs we can't know which install the caller meant, and
+        # reporting per-install secret state on a public endpoint would leak
+        # configuration info. Whenever any secret exists, the only safe answer
+        # is that the signature didn't verify.
+        if not any(s.is_active for c in candidates for s in c.embed_secrets):
+            raise HTTPException(status_code=403, detail="No embed secrets configured")
         raise HTTPException(status_code=403, detail="Invalid HMAC signature")
 
     # Extract verified params (everything except hmac)
@@ -81,6 +89,13 @@ async def embed_app(
         "email": "embed@internal.gobifrost.com",
         "is_superuser": False,
         "embed": True,
+        # OPEN-D: an embed end user is EXTERNAL-equivalent — the token is
+        # handed to an untrusted third-party-embedded browser. Stamping
+        # is_external engages the external gates (no global config secrets,
+        # no global knowledge/tables) even if a future endpoint slips past
+        # the EmbedScopeMiddleware allowlist. Embed rendering itself is
+        # HMAC-pre-authorized and bound to this app/form id, not tiers.
+        "is_external": True,
         "roles": ["EmbedUser"],
     }
     access_token = create_access_token(token_data, expires_delta=timedelta(hours=8))
@@ -159,6 +174,13 @@ async def embed_form(
         "email": "embed@internal.gobifrost.com",
         "is_superuser": False,
         "embed": True,
+        # OPEN-D: an embed end user is EXTERNAL-equivalent — the token is
+        # handed to an untrusted third-party-embedded browser. Stamping
+        # is_external engages the external gates (no global config secrets,
+        # no global knowledge/tables) even if a future endpoint slips past
+        # the EmbedScopeMiddleware allowlist. Embed rendering itself is
+        # HMAC-pre-authorized and bound to this app/form id, not tiers.
+        "is_external": True,
         "roles": ["EmbedUser"],
     }
     access_token = create_access_token(token_data, expires_delta=timedelta(hours=8))

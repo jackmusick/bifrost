@@ -15,6 +15,7 @@ class ApplicationCreate(BaseModel):
     icon: str | None = Field(default=None, max_length=50)
     slug: str = Field(min_length=1, max_length=255)
     access_level: str = Field(default="authenticated")
+    app_model: str = Field(default="inline_v1")
     role_ids: list[UUID] = Field(default_factory=list)
     organization_id: UUID | None = Field(default=None)
 

@@ -51,6 +51,10 @@ class ApplicationCreate(ApplicationBase):
         default="authenticated",
         description="Access level: 'authenticated' (any logged-in user) or 'role_based' (specific roles)",
     )
+    app_model: str = Field(
+        default="inline_v1",
+        description="Render model: 'inline_v1' (legacy inline render) or 'standalone_v2' (own createRoot + router + real SDK)",
+    )
     role_ids: list[UUID] = Field(
         default_factory=list,
         description="Role IDs for role_based access (ignored if access_level is 'authenticated')",
@@ -75,8 +79,10 @@ class ApplicationCreate(ApplicationBase):
     @classmethod
     def validate_access_level(cls, v: str) -> str:
         """Validate access_level is one of the allowed values."""
-        if v not in ("authenticated", "role_based"):
-            raise ValueError("access_level must be 'authenticated' or 'role_based'")
+        if v not in ("authenticated", "everyone", "role_based"):
+            raise ValueError(
+                "access_level must be 'authenticated', 'everyone', or 'role_based'"
+            )
         return v
 
 
@@ -120,8 +126,10 @@ class ApplicationUpdate(BaseModel):
     @classmethod
     def validate_access_level(cls, v: str | None) -> str | None:
         """Validate access_level is one of the allowed values."""
-        if v is not None and v not in ("authenticated", "role_based"):
-            raise ValueError("access_level must be 'authenticated' or 'role_based'")
+        if v is not None and v not in ("authenticated", "everyone", "role_based"):
+            raise ValueError(
+                "access_level must be 'authenticated', 'everyone', or 'role_based'"
+            )
         return v
 
 
@@ -143,6 +151,9 @@ class ApplicationPublic(ApplicationBase):
     is_published: bool
     has_unpublished_changes: bool
     access_level: str = Field(default="authenticated")
+    app_model: str = Field(default="inline_v1", description="Render model: inline_v1 (legacy inline) | standalone_v2")
+    is_solution_managed: bool = Field(default=False, description="True if managed by a deployed Solution (read-only on platform)")
+    solution_id: UUID | None = Field(default=None, description="UUID of the owning Solution install (null if not solution-managed)")
     role_ids: list[UUID] = Field(default_factory=list)
     repo_path: str = Field(
         description="Workspace-relative path to the app's source directory. Mutated via POST /api/applications/{id}/replace."

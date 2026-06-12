@@ -24,6 +24,7 @@ import {
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import type { CategoryCount } from "@/components/workflows/WorkflowSidebar";
 import { Button } from "@/components/ui/button";
+import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import {
 	Card,
 	CardContent,
@@ -66,7 +67,7 @@ import type { components } from "@/lib/v1";
 type BaseWorkflow = components["schemas"]["WorkflowMetadata"];
 type Workflow = BaseWorkflow & {
 	is_orphaned?: boolean;
-	access_level?: "authenticated" | "role_based";
+	access_level?: "authenticated" | "everyone" | "role_based";
 };
 type Organization = components["schemas"]["OrganizationPublic"];
 
@@ -471,7 +472,12 @@ export function Workflows() {
 														</TooltipTrigger>
 														<TooltipContent>Open in editor</TooltipContent>
 													</Tooltip>
-													{isPlatformAdmin && (
+													{workflow.is_solution_managed && (
+														<SolutionManagedBadge
+															solutionId={workflow.solution_id}
+														/>
+													)}
+													{isPlatformAdmin && !workflow.is_solution_managed && (
 														<Button
 															variant="outline"
 															size="icon-sm"
@@ -532,6 +538,11 @@ export function Workflows() {
 																			<Users className="h-3 w-3" />
 																			Auth
 																		</>
+																	) : workflow.access_level === "everyone" ? (
+																		<>
+																			<Users className="h-3 w-3" />
+																			Everyone
+																		</>
 																	) : (
 																		<>
 																			<Shield className="h-3 w-3" />
@@ -542,8 +553,10 @@ export function Workflows() {
 															</TooltipTrigger>
 															<TooltipContent>
 																{workflow.access_level === "authenticated"
-																	? "Any authenticated user can execute"
-																	: "Role-based access required"}
+																	? "Any signed-in user except external users can execute"
+																	: workflow.access_level === "everyone"
+																		? "Any signed-in user, including external users, can execute"
+																		: "Role-based access required"}
 															</TooltipContent>
 														</Tooltip>
 													</>
@@ -734,7 +747,14 @@ export function Workflows() {
 																<Code2 className="h-4 w-4" />
 															)}
 														</Button>
-														{isPlatformAdmin && (
+														{workflow.is_solution_managed && (
+															<SolutionManagedBadge
+																solutionId={
+																	workflow.solution_id
+																}
+															/>
+														)}
+														{isPlatformAdmin && !workflow.is_solution_managed && (
 															<Button
 																variant="ghost"
 																size="icon-sm"

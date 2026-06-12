@@ -55,6 +55,10 @@ async def get_config(
         description="Filter scope: omit for all (superusers), 'global' for global only, "
         "or org UUID for specific org."
     ),
+    include_orphaned: bool = Query(
+        default=False,
+        description="Include orphaned configs (former-install data left by an uninstalled Solution).",
+    ),
 ) -> list[ConfigResponse]:
     """Get configuration for current scope.
 
@@ -72,7 +76,7 @@ async def get_config(
     # Use repository for all filtering
     # Config endpoints are superuser-only, so is_superuser=True (no role checks)
     repo = ConfigRepository(ctx.db, org_id=filter_org, is_superuser=True)
-    return await repo.list_configs(filter_type)
+    return await repo.list_configs(filter_type, include_orphaned=include_orphaned)
 
 
 @router.post(

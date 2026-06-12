@@ -597,11 +597,16 @@ class FileOperationsService:
         if fi_result2.scalar_one_or_none():
             raise FileExistsError(f"File already exists: {new_path}")
 
-        # Update entity table paths for Python files
+        # Update entity table paths for Python files. Scope to _repo/ rows
+        # (solution_id IS NULL): renaming a WORKSPACE file must never rewrite the
+        # path of a solution-managed workflow at the same path — deploy owns those
+        # rows and their paths are install-relative, not workspace-relative
+        # (Codex #14).
         if old_path.endswith(".py"):
-            # Update any workflows that reference this path
+            # Update any _repo/ workflows that reference this path
             stmt = update(Workflow).where(
-                Workflow.path == old_path
+                Workflow.path == old_path,
+                Workflow.solution_id.is_(None),
             ).values(
                 path=new_path,
                 updated_at=now,

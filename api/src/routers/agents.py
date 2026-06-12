@@ -45,6 +45,7 @@ from src.models.orm import (
 )
 from shared.svg_sanitizer import SvgSanitizationError, sanitize_svg
 from src.repositories.agents import AgentRepository
+from src.services.solutions.guard import assert_not_solution_managed
 from src.routers.tools import get_system_tool_ids
 from src.services.agent_stats import get_agent_stats, get_fleet_stats
 from src.services.workflow_role_service import sync_agent_roles_to_workflows
@@ -130,8 +131,14 @@ async def _validate_user_tool_access(
     db: DbSession,
     user_id: UUID,
     tool_ids: list[str],
+    is_external: bool = False,
 ) -> None:
-    """Validate user can access all specified tools via their roles."""
+    """Validate user can access all specified tools via their roles.
+
+    External users get no authenticated-tier entitlement (EXT-1 rule 2):
+    a workflow with access_level='authenticated' still requires a role
+    intersection for them.
+    """
     if not tool_ids:
         return
 
@@ -159,7 +166,10 @@ async def _validate_user_tool_access(
         if not workflow.is_active:
             raise HTTPException(422, f"Tool '{workflow.name}' is inactive")
 
-        if workflow.access_level == "authenticated":
+        if workflow.access_level == "everyone":
+            continue
+
+        if workflow.access_level == "authenticated" and not is_external:
             continue
 
         result = await db.execute(
@@ -231,6 +241,8 @@ def _agent_to_public(agent: Agent) -> AgentPublic:
         max_iterations=agent.max_iterations,
         max_token_budget=agent.max_token_budget,
         logo=_logo_data_url(agent.logo_data, agent.logo_content_type),
+        is_solution_managed=agent.solution_id is not None,
+        solution_id=agent.solution_id,
     )
 
 
@@ -282,6 +294,7 @@ async def list_agents(
         org_id=filter_org_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     if is_admin:
@@ -341,7 +354,9 @@ async def create_agent(
         if agent_data.access_level != AgentAccessLevel.PRIVATE:
             raise HTTPException(403, "Non-admin users can only create private agents")
         agent_data.organization_id = user.organization_id
-        await _validate_user_tool_access(db, user.user_id, agent_data.tool_ids)
+        await _validate_user_tool_access(
+            db, user.user_id, agent_data.tool_ids, is_external=user.is_external
+        )
         agent_data.system_tools = []
         agent_data.knowledge_sources = []
         agent_data.delegated_agent_ids = []
@@ -583,6 +598,7 @@ async def get_agent(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -623,6 +639,9 @@ async def update_agent(
             detail=f"Agent {agent_id} not found",
         )
 
+    # Solution-managed agents are read-only here; deploy is the writer.
+    assert_not_solution_managed(agent)
+
     is_admin = user.is_platform_admin
 
     if not is_admin:
@@ -649,7 +668,9 @@ async def update_agent(
         if agent_data.access_level is not None and agent_data.access_level != AgentAccessLevel.PRIVATE:
             raise HTTPException(403, "Use the promote endpoint to change access level")
         if agent_data.tool_ids is not None:
-            await _validate_user_tool_access(db, user.user_id, agent_data.tool_ids)
+            await _validate_user_tool_access(
+                db, user.user_id, agent_data.tool_ids, is_external=user.is_external
+            )
         agent_data.system_tools = None
         agent_data.knowledge_sources = None
         agent_data.delegated_agent_ids = None
@@ -782,6 +803,7 @@ async def update_agent(
             org_id=user.organization_id,
             user_id=user.user_id,
             is_superuser=is_admin,
+            is_external=user.is_external,
         )
         await repo.set_mcp_connection_grants(
             agent_id,
@@ -833,6 +855,9 @@ async def delete_agent(
             detail=f"Agent {agent_id} not found",
         )
 
+    # Solution-managed agents are read-only here; deploy is the writer.
+    assert_not_solution_managed(agent)
+
     is_admin = user.is_platform_admin
 
     if not is_admin:
@@ -866,6 +891,7 @@ async def promote_agent(
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(404, f"Agent {agent_id} not found")
+    assert_not_solution_managed(agent)
 
     if agent.access_level != AgentAccessLevel.PRIVATE:
         raise HTTPException(400, "Agent is not private — nothing to promote")
@@ -939,6 +965,7 @@ async def get_agent_stats_endpoint(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -966,6 +993,7 @@ async def get_agent_tools(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -1007,6 +1035,7 @@ async def get_agent_delegations(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
 
     agent = await repo.get_agent_with_access_check(agent_id)
@@ -1039,6 +1068,7 @@ async def upload_agent_logo(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
     agent = await repo.get_agent_with_access_check(agent_id)
     if not agent:
@@ -1046,6 +1076,7 @@ async def upload_agent_logo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+    assert_not_solution_managed(agent)
 
     if file.content_type not in LOGO_ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -1093,6 +1124,7 @@ async def get_agent_logo(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
     agent = await repo.get_agent_with_access_check(agent_id)
     if not agent or not agent.logo_data:
@@ -1118,6 +1150,7 @@ async def delete_agent_logo(
         org_id=user.organization_id,
         user_id=user.user_id,
         is_superuser=is_admin,
+        is_external=user.is_external,
     )
     agent = await repo.get_agent_with_access_check(agent_id)
     if not agent:
@@ -1125,6 +1158,7 @@ async def delete_agent_logo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
         )
+    assert_not_solution_managed(agent)
     agent.logo_data = None
     agent.logo_content_type = None
     await db.commit()

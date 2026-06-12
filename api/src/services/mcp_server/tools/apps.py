@@ -13,14 +13,53 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi import HTTPException
 from fastmcp.tools import ToolResult
 
 from src.core.pubsub import publish_app_draft_update, publish_app_published
 from src.services.mcp_server.tool_result import error_result, success_result
 from src.services.mcp_server.tools._http_bridge import call_rest
+from src.services.mcp_server.tools._org_scope import apply_mcp_org_scope
 from src.services.mcp_server.tools.db import get_tool_db
 
 logger = logging.getLogger(__name__)
+
+
+def _pick_slug_row(rows: list[Any], org_id: Any) -> Any | None:
+    """Disambiguate multiple Application rows sharing one slug.
+
+    Slug uniqueness is per-install (partial unique indexes: global for
+    ``solution_id IS NULL``, ``(solution_id, slug)`` for installs), so a bare
+    ``scalar_one_or_none`` raises ``MultipleResultsFound`` for platform-admin
+    contexts. Resolve like ``ApplicationRepository.get_by_slug_global``:
+    prefer the caller-org row, then the global (NULL-org) row, then a
+    deterministic lowest-id pick.
+    """
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0]
+    if org_id is not None:
+        for row in rows:
+            # str() on both sides: MCP context.org_id may be a string UUID
+            # while the ORM column is a UUID object.
+            if row.organization_id is not None and str(row.organization_id) == str(org_id):
+                return row
+    for row in rows:
+        if row.organization_id is None:
+            return row
+    return sorted(rows, key=lambda row: str(row.id))[0]
+
+
+def _guard_message(err: Exception) -> str:
+    """Extract the read-only message from a solution-guard rejection.
+
+    ``assert_not_solution_managed`` raises ``HTTPException`` (whose ``detail``
+    holds the locked wording); the before_flush backstop raises
+    ``SolutionManagedWriteError`` (whose ``str()`` is the same wording).
+    """
+    detail = getattr(err, "detail", None)
+    return str(detail) if detail is not None else str(err)
 
 
 async def list_apps(context: Any) -> ToolResult:
@@ -36,11 +75,8 @@ async def list_apps(context: Any) -> ToolResult:
         async with get_tool_db(context) as db:
             query = select(Application)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query.order_by(Application.name))
             apps = result.scalars().all()
@@ -127,10 +163,17 @@ async def create_app(
 
     try:
         async with get_tool_db(context) as db:
+            # Scope the duplicate check to the namespace the new row will
+            # occupy: the partial unique index is global on slug only WHERE
+            # solution_id IS NULL, so solution-managed rows (any org's
+            # installs) never block an ad-hoc _repo app.
             existing = await db.execute(
-                select(Application).where(Application.slug == slug)
+                select(Application.id).where(
+                    Application.slug == slug,
+                    Application.solution_id.is_(None),
+                )
             )
-            if existing.scalar_one_or_none():
+            if existing.first():
                 return error_result(f"Application with slug '{slug}' already exists")
 
             app = Application(
@@ -243,14 +286,15 @@ async def get_app(
             else:
                 query = query.where(Application.slug == app_slug)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
-            app = result.scalar_one_or_none()
+            if app_id:
+                app = result.scalar_one_or_none()
+            else:
+                # Slugs are unique per install, not globally — disambiguate.
+                app = _pick_slug_row(list(result.scalars().all()), context.org_id)
 
             if not app:
                 return error_result(f"Application not found: {app_id or app_slug}")
@@ -315,11 +359,8 @@ async def update_app(
         async with get_tool_db(context) as db:
             query = select(Application).where(Application.id == app_uuid)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
             app = result.scalar_one_or_none()
@@ -375,6 +416,10 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
 
     from src.models.orm.applications import Application
     from src.services.app_storage import AppStorageService
+    from src.services.solutions.guard import (
+        SolutionManagedWriteError,
+        assert_not_solution_managed,
+    )
 
     logger.info(f"MCP publish_app called with id={app_id}")
 
@@ -395,6 +440,15 @@ async def publish_app(context: Any, app_id: str) -> ToolResult:
 
             if not app:
                 return error_result(f"Application not found: {app_id}")
+
+            # Refuse before any S3 write: app_storage.publish() copies
+            # preview → live in S3, which the before_flush backstop cannot
+            # see (criterion 6). The guard raises HTTP 409 with the locked
+            # message; surface it as an error_result, not a 500.
+            try:
+                assert_not_solution_managed(app)
+            except (HTTPException, SolutionManagedWriteError) as guard_err:
+                return error_result(_guard_message(guard_err))
 
             # Publish via AppStorageService: copy preview → live in S3
             app_storage = AppStorageService()
@@ -782,14 +836,41 @@ async def push_files(
 
     from sqlalchemy import select
 
+    from src.models.orm.applications import Application
     from src.models.orm.file_index import FileIndex
     from src.services.app_storage import AppStorageService
     from src.services.file_storage import FileStorageService
+    from src.services.solutions.guard import (
+        SOLUTION_MANAGED_MESSAGE,
+        is_solution_managed,
+    )
 
     logger.info(f"MCP push_files called with {len(files)} file(s)")
 
     try:
         async with get_tool_db(context) as db:
+            # Refuse before any S3 write: file_storage.write_file (_repo) and
+            # app_storage.write_preview_file (preview) both write S3 without
+            # dirtying the Application row, so the before_flush backstop never
+            # fires for them (criterion 6). Reject the whole batch if ANY pushed
+            # file lands under a solution-managed app's repo_path.
+            all_apps = (await db.execute(select(Application))).scalars().all()
+            managed_prefixes = [
+                app_obj.repo_path.rstrip("/") + "/"
+                for app_obj in all_apps
+                if is_solution_managed(app_obj)
+            ]
+            blocked = sorted(
+                repo_path
+                for repo_path in files
+                if any(repo_path.startswith(p) for p in managed_prefixes)
+            )
+            if blocked:
+                return error_result(
+                    SOLUTION_MANAGED_MESSAGE,
+                    {"blocked_paths": blocked},
+                )
+
             file_storage = FileStorageService(db)
             created = 0
             updated = 0
@@ -829,6 +910,21 @@ async def push_files(
                 prefix = delete_missing_prefix
                 if not prefix.endswith("/"):
                     prefix += "/"
+                # The delete-sweep is a separate write path from the files-key
+                # guard above: an empty/partial `files` dict slips past the key
+                # check, but the sweep would still delete _repo files under
+                # `prefix`. Refuse if the sweep would touch ANY solution-managed
+                # app's files — in either direction: the delete prefix is under a
+                # managed prefix (delete "apps/managed/sub"), OR contains/equals
+                # one (delete "apps/" which would sweep "apps/managed/...").
+                if any(
+                    prefix.startswith(managed) or managed.startswith(prefix)
+                    for managed in managed_prefixes
+                ):
+                    return error_result(
+                        SOLUTION_MANAGED_MESSAGE,
+                        {"blocked_delete_prefix": delete_missing_prefix},
+                    )
                 existing_files = await db.execute(
                     select(FileIndex.path).where(FileIndex.path.startswith(prefix))
                 )
@@ -846,11 +942,6 @@ async def push_files(
             # Compile app files that were pushed
             compile_warnings = []
             app_file_groups: dict[str, list[dict[str, str]]] = {}  # app_id -> files
-
-            # Load all apps to match pushed files against their repo_path
-            from src.models.orm.applications import Application
-            all_apps_result = await db.execute(select(Application))
-            all_apps = all_apps_result.scalars().all()
 
             # Build prefix -> app mapping
             app_by_prefix: dict[str, Application] = {}
@@ -960,14 +1051,15 @@ async def get_app_dependencies(
             else:
                 query = select(Application).where(Application.slug == app_slug)
 
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
-            app = result.scalar_one_or_none()
+            if app_id:
+                app = result.scalar_one_or_none()
+            else:
+                # Slugs are unique per install, not globally — disambiguate.
+                app = _pick_slug_row(list(result.scalars().all()), context.org_id)
             if not app:
                 return error_result(f"Application not found: {app_id or app_slug}")
 
@@ -1037,11 +1129,8 @@ async def update_app_dependencies(
     try:
         async with get_tool_db(context) as db:
             query = select(Application).where(Application.id == app_uuid)
-            if not context.is_platform_admin and context.org_id:
-                query = query.where(
-                    (Application.organization_id == context.org_id)
-                    | (Application.organization_id.is_(None))
-                )
+            # Org cascade (external-aware): externals get no global tier.
+            query = apply_mcp_org_scope(query, Application, context)
 
             result = await db.execute(query)
             app = result.scalar_one_or_none()

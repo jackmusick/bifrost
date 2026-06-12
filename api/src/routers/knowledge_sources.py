@@ -12,12 +12,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import delete, or_, select, update
+from sqlalchemy import delete, select, update
 
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
-from src.core.org_filter import OrgFilterType, resolve_org_filter
+from src.core.org_filter import OrgFilterType, org_filter_clause, resolve_org_filter
 from src.models.contracts.knowledge import (
     KnowledgeDocumentBulkScopeUpdate,
     KnowledgeDocumentCreate,
@@ -38,6 +38,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-sources", tags=["Knowledge Sources"])
 
 
+def _deny_external(user) -> None:
+    """403 an external principal off the direct knowledge surface.
+
+    The knowledge store has no grant axis (no roles, no access_level, no row
+    policies), so its read endpoints are implicitly internal-only. Externals
+    reach KB content only THROUGH workflows/agents they were granted (the
+    engine sentinel keeps the full cascade).
+    """
+    if getattr(user, "is_external", False):
+        raise HTTPException(
+            status_code=403,
+            detail="External users cannot access the knowledge store directly",
+        )
+
+
 # =============================================================================
 # Namespace Listing
 # =============================================================================
@@ -50,6 +65,7 @@ async def list_namespaces(
     scope: str | None = Query(default=None),
 ) -> list[KnowledgeNamespaceInfo]:
     """List knowledge namespaces derived from knowledge_store."""
+    _deny_external(user)
     try:
         filter_type, filter_org_id = resolve_org_filter(user, scope)
     except ValueError as e:
@@ -203,7 +219,7 @@ async def list_all_documents(
     - "global": show only global documents (organization_id IS NULL)
     - UUID string: show only that org's documents (no global fallback)
     """
-
+    _deny_external(user)
 
     try:
         filter_type, filter_org_id = resolve_org_filter(user, scope)
@@ -212,20 +228,13 @@ async def list_all_documents(
 
     stmt = select(KnowledgeStore)
 
-    # Apply org scope filter (same pattern as workflows router)
-    if filter_type == OrgFilterType.ALL:
-        pass  # No org filter - show everything
-    elif filter_type == OrgFilterType.GLOBAL_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
-    elif filter_type == OrgFilterType.ORG_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)
-    else:  # ORG_PLUS_GLOBAL
-        stmt = stmt.where(
-            or_(
-                KnowledgeStore.organization_id == filter_org_id,
-                KnowledgeStore.organization_id.is_(None),
-            )
-        )
+    # Apply org scope filter via the single source of truth — never a
+    # hand-rolled cascade (an ``== None`` org filter compiles to ``IS NULL``).
+    _clause = org_filter_clause(
+        KnowledgeStore.organization_id, filter_type, filter_org_id
+    )
+    if _clause is not None:
+        stmt = stmt.where(_clause)
 
     if namespace:
         stmt = stmt.where(KnowledgeStore.namespace == namespace)
@@ -348,7 +357,7 @@ async def list_documents(
     offset: int = Query(default=0, ge=0),
 ) -> list[KnowledgeDocumentSummary]:
     """List documents in a namespace."""
-
+    _deny_external(user)
 
     try:
         filter_type, filter_org_id = resolve_org_filter(user, scope)
@@ -357,19 +366,12 @@ async def list_documents(
 
     stmt = select(KnowledgeStore).where(KnowledgeStore.namespace == namespace)
 
-    if filter_type == OrgFilterType.ALL:
-        pass
-    elif filter_type == OrgFilterType.GLOBAL_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id.is_(None))
-    elif filter_type == OrgFilterType.ORG_ONLY:
-        stmt = stmt.where(KnowledgeStore.organization_id == filter_org_id)
-    else:  # ORG_PLUS_GLOBAL
-        stmt = stmt.where(
-            or_(
-                KnowledgeStore.organization_id == filter_org_id,
-                KnowledgeStore.organization_id.is_(None),
-            )
-        )
+    # Org scope via the single source of truth (org_filter_clause).
+    _clause = org_filter_clause(
+        KnowledgeStore.organization_id, filter_type, filter_org_id
+    )
+    if _clause is not None:
+        stmt = stmt.where(_clause)
 
     if search:
         stmt = stmt.where(
@@ -455,6 +457,7 @@ async def get_document(
     user: CurrentActiveUser,
 ) -> KnowledgeDocumentPublic:
     """Get a document by UUID."""
+    _deny_external(user)
     repo = KnowledgeRepository(session=db, org_id=user.organization_id)
     doc = await repo.get_by_id(doc_id)
 

@@ -100,6 +100,7 @@ async def list_tools(
             org_id=user.organization_id,
             user_id=user.user_id,
             is_superuser=user.is_superuser,
+            is_external=user.is_external,
         )
         workflows = await workflow_repo.list_tools_for_filter(
             filter_type,

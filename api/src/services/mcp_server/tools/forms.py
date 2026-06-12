@@ -12,6 +12,7 @@ from uuid import UUID
 from fastmcp.tools import ToolResult
 
 from src.services.mcp_server.tool_result import error_result, success_result
+from src.services.mcp_server.tools._org_scope import apply_mcp_org_scope
 from src.services.mcp_server.tools.db import get_tool_db
 
 # MCPContext is imported where needed to avoid circular imports
@@ -264,6 +265,7 @@ async def create_form(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflow = await workflow_repo.get(id=UUID_TYPE(workflow_id))
             if not workflow:
@@ -375,39 +377,22 @@ async def get_form(
             query = select(FormORM).options(selectinload(FormORM.fields))
 
             if form_id:
-                # ID-based lookup: IDs are unique, so cascade filter is safe
+                # ID-based lookup: IDs are unique, so cascade filter is safe.
                 try:
                     uuid_id = UUID_TYPE(form_id)
                 except ValueError:
                     return error_result(f"'{form_id}' is not a valid UUID")
                 query = query.where(FormORM.id == uuid_id)
-                # Apply org scoping for non-admins (cascade filter for ID lookups)
-                if not context.is_platform_admin and context.org_id:
-                    from sqlalchemy import or_
-                    org_uuid = UUID_TYPE(str(context.org_id))
-                    query = query.where(
-                        or_(
-                            FormORM.organization_id == org_uuid,
-                            FormORM.organization_id.is_(None)  # Global forms
-                        )
-                    )
+                query = apply_mcp_org_scope(query, FormORM, context)
             else:
                 # Name-based lookup: use prioritized lookup (org-specific > global)
                 query = query.where(FormORM.name == form_name)
+                query = apply_mcp_org_scope(query, FormORM, context)
                 if not context.is_platform_admin and context.org_id:
-                    from sqlalchemy import or_
-                    org_uuid = UUID_TYPE(str(context.org_id))
-                    query = query.where(
-                        or_(
-                            FormORM.organization_id == org_uuid,
-                            FormORM.organization_id.is_(None)  # Global forms
-                        )
-                    )
                     # Prioritize org-specific over global (nulls come last)
-                    query = query.order_by(FormORM.organization_id.desc().nulls_last()).limit(1)
-                elif not context.is_platform_admin:
-                    # No org context - only global forms
-                    query = query.where(FormORM.organization_id.is_(None))
+                    query = query.order_by(
+                        FormORM.organization_id.desc().nulls_last()
+                    ).limit(1)
 
             result = await db.execute(query)
             form = result.scalar_one_or_none()
@@ -424,6 +409,7 @@ async def get_form(
                 org_id=ctx_org_id,
                 user_id=ctx_user_id,
                 is_superuser=context.is_platform_admin,
+                is_external=context.is_external,
             )
             workflow_name = None
             launch_workflow_name = None
@@ -551,6 +537,19 @@ async def update_form(
             if not form:
                 return error_result(f"Form '{form_id}' not found. Use list_forms to see available forms.")
 
+            # Solution-managed forms are read-only (criterion 6). Refuse BEFORE
+            # any mutation: this tool issues a Core bulk delete of FormField rows
+            # that bypasses the ORM-flush backstop, and the agent executor commits
+            # even after an error_result — so a late guard would leave the field
+            # delete persisted (Codex #13).
+            from src.services.solutions.guard import (
+                SOLUTION_MANAGED_MESSAGE,
+                is_solution_managed,
+            )
+
+            if is_solution_managed(form):
+                return error_result(SOLUTION_MANAGED_MESSAGE)
+
             # Check access for non-admins
             if not context.is_platform_admin:
                 if form.organization_id:
@@ -586,6 +585,7 @@ async def update_form(
                     org_id=ctx_org_id,
                     user_id=ctx_user_id,
                     is_superuser=context.is_platform_admin,
+                    is_external=context.is_external,
                 )
                 workflow = await workflow_repo.get(id=UUID_TYPE(workflow_id))
                 if not workflow:
@@ -611,6 +611,7 @@ async def update_form(
                         org_id=ctx_org_id,
                         user_id=ctx_user_id,
                         is_superuser=context.is_platform_admin,
+                        is_external=context.is_external,
                     )
                     launch_workflow = await workflow_repo.get(id=UUID_TYPE(launch_workflow_id))
                     if not launch_workflow:

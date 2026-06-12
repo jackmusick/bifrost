@@ -65,4 +65,46 @@ describe("RouteTransitionProgress", () => {
 			screen.queryByRole("progressbar", { name: "Loading page" }),
 		).not.toBeInTheDocument();
 	});
+
+	it("ignores navigation inside a mounted application", () => {
+		// A standalone app under /apps/<id> runs its own router; the platform
+		// router never sees those pushes, so the bar would start and never finish.
+		window.history.pushState({}, "", "/apps/app-1/documents");
+		try {
+			render(
+				<MemoryRouter initialEntries={["/apps/app-1/documents"]}>
+					<RouteTransitionProgress />
+					<a href="/apps/app-1/staff/users">Portal Users</a>
+				</MemoryRouter>,
+			);
+
+			fireEvent.click(screen.getByRole("link", { name: "Portal Users" }));
+
+			expect(
+				screen.queryByRole("progressbar", { name: "Loading page" }),
+			).not.toBeInTheDocument();
+		} finally {
+			window.history.pushState({}, "", "/");
+		}
+	});
+
+	it("tracks navigation leaving a mounted application", () => {
+		window.history.pushState({}, "", "/apps/app-1/documents");
+		try {
+			render(
+				<MemoryRouter initialEntries={["/apps/app-1/documents"]}>
+					<RouteTransitionProgress />
+					<a href="/forms">Back to Bifrost</a>
+				</MemoryRouter>,
+			);
+
+			fireEvent.click(screen.getByRole("link", { name: "Back to Bifrost" }));
+
+			expect(
+				screen.getByRole("progressbar", { name: "Loading page" }),
+			).toBeInTheDocument();
+		} finally {
+			window.history.pushState({}, "", "/");
+		}
+	});
 });

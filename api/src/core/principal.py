@@ -31,6 +31,12 @@ class UserPrincipal:
     is_active: bool = True
     is_superuser: bool = False
     is_verified: bool = False
+    # External (portal/guest) principal. Enforced at the access-level gate
+    # only: excluded from access_level="authenticated" entities, admitted by
+    # "everyone" and by explicit role grants. Org→global cascade is unchanged.
+    # The claim is minted already neutralized for bypass callers (platform
+    # admin / provider org) — see shared/external_access.py.
+    is_external: bool = False
     roles: list[str] = field(default_factory=list)
     # Role identity used by table-policy `has_role` evaluator. Populated by
     # `get_execution_context` from the `user_roles` table; empty for token-only

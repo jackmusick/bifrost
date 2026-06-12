@@ -31,6 +31,7 @@ import {
 } from "@/services/websocket";
 import { useAppBuilderStore } from "@/stores/app-builder.store";
 import { AppLoadingSkeleton } from "./AppLoadingSkeleton";
+import { StandaloneV2App } from "./StandaloneV2App";
 
 // jsDelivr — JSPM's CDN 404s on floating tags (`@2`), only exact versions
 // resolve. Pinned to an exact version for reproducible loads.
@@ -106,7 +107,8 @@ function registerUserDepImportMap(dependencies: Record<string, string>): void {
 }
 
 interface BundleManifest {
-	entry: string;
+	// null for a standalone_v2 app with no built dist yet; a string otherwise.
+	entry: string | null;
 	css: string | null;
 	base_url: string;
 	mode: "preview" | "live";
@@ -119,6 +121,10 @@ interface BundleManifest {
 	// Mirrors how org-scoped workflows always run as their org regardless
 	// of who triggered them.
 	organization_id?: string | null;
+	// Render model: 'inline_v1' (legacy — this component fetches + renders the
+	// bundle inline) | 'standalone_v2' (the app is a normal React project served
+	// as its own dist/index.html and mounted standalone). Absent => inline_v1.
+	app_model?: "inline_v1" | "standalone_v2";
 }
 
 interface BundledAppShellProps {
@@ -140,6 +146,29 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 	const [BundledApp, setBundledApp] = useState<BundledAppComponent | null>(null);
 	const [loadedEntry, setLoadedEntry] = useState<string | null>(null);
 	const [cssHref, setCssHref] = useState<string | null>(null);
+	// Render model from the manifest. 'standalone_v2' apps are NOT loaded inline
+	// here — they are mounted same-document by <StandaloneV2App>.
+	const [appModel, setAppModel] = useState<"inline_v1" | "standalone_v2">("inline_v1");
+	// For standalone_v2: the hashed entry/css + dist base from the manifest, used
+	// to mount the app same-document (replaces the old iframe).
+	const [v2Mount, setV2Mount] = useState<{
+		entry: string;
+		css: string | null;
+		baseUrl: string;
+	} | null>(null);
+	// Reset the v2 mount DURING RENDER when the app changes (React's "adjust
+	// state on prop change" pattern). This shell instance is reused across app
+	// routes; without this, the render below would pair the NEW appId with the
+	// PREVIOUS app's entry/baseUrl during the next manifest fetch, mounting app
+	// A's bundle under app B's identity (Codex #10). Resetting here (not in an
+	// effect) means there's never a frame with mixed identity. The AppRouter
+	// also keys the shell by appId; this is the in-component backstop for any
+	// caller that reuses the instance.
+	const [prevAppId, setPrevAppId] = useState(appId);
+	if (appId !== prevAppId) {
+		setPrevAppId(appId);
+		if (v2Mount !== null) setV2Mount(null);
+	}
 	// Org-scoped app: tells the table SDK to default `scope` to the app's
 	// org for `tables.*` and `useTable` calls inside the bundle. Captured
 	// from the first successful manifest fetch.
@@ -193,7 +222,10 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 	useEffect(() => {
 		const controller = new AbortController();
 
-		async function loadBundle(entryOverride?: string, cssOverride?: string | null) {
+		async function loadBundle(
+			entryOverride?: string,
+			cssOverride?: string | null,
+		): Promise<"inline_v1" | "standalone_v2" | undefined> {
 			try {
 				const mode = isPreview ? "draft" : "live";
 				let entry: string;
@@ -219,7 +251,9 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 						throw new Error(`Bundle manifest fetch failed: ${resp.status} ${txt}`);
 					}
 					const manifest: BundleManifest = await resp.json();
-					entry = manifest.entry;
+					// inline_v1 always has an entry; a v2 app may have null (handled
+					// by the standalone_v2 branch below, which returns early).
+					entry = manifest.entry ?? "";
 					css = manifest.css;
 					baseUrl = manifest.base_url;
 					dependencies = manifest.dependencies ?? {};
@@ -235,6 +269,25 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 					// default `scope` to this value; global apps leave it null
 					// and fall back to the caller's-org behavior.
 					setAppOrgId(manifest.organization_id ?? null);
+
+					// standalone_v2 apps are a normal Vite build mounted SAME-DOCUMENT
+					// (own createRoot + router + real SDK) by <StandaloneV2App> — not
+					// inline, not an iframe. Capture the entry/css/base so it can load
+					// the built bundle. Do NOT proceed to the inline import path.
+					if (manifest.app_model === "standalone_v2") {
+						if (!manifest.entry) {
+							throw new Error(
+								"This v2 app has no built bundle yet (deploy it first).",
+							);
+						}
+						setV2Mount({
+							entry: manifest.entry,
+							css: manifest.css,
+							baseUrl: manifest.base_url,
+						});
+						setAppModel("standalone_v2");
+						return "standalone_v2";
+					}
 				}
 
 				if (controller.signal.aborted) return;
@@ -283,10 +336,15 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 				setCssHref(nextCssHref);
 				setBundledApp(() => module.default as BundledAppComponent);
 				setLoadedEntry(entry);
+				// Reset the render model on the inline path so navigating from a
+				// standalone_v2 app to an inline_v1 app in the same shell instance
+				// drops the iframe and renders the inline bundle.
+				setAppModel("inline_v1");
 
 				// Successful reload — clear any prior build-error banner.
 				setBuildErrors(null);
 				setBuildErrorDismissed(false);
+				return "inline_v1";
 			} catch (err) {
 				if (controller.signal.aborted) return;
 				// LOAD error vs BUILD error: if we've never loaded a bundle,
@@ -307,16 +365,22 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 					setBuildErrorDismissed(false);
 				}
 			}
+			// A load failure leaves the model unresolved.
+			return undefined;
 		}
-
-		loadBundle();
 
 		// Preview-only: subscribe to draft bundle updates for this app.
 		// Success → reload entry. Failure → show banner over last-good render.
+		// standalone_v2 apps are deploy-driven (no hot-reload bundle), so they
+		// never subscribe — we gate on the model the first load resolved.
 		let unsub: (() => void) | null = null;
+		const initialLoad = loadBundle();
 		if (isPreview) {
 			(async () => {
 				try {
+					const model = await initialLoad;
+					if (model === "standalone_v2") return;
+					if (controller.signal.aborted) return;
 					await webSocketService.connectToAppDraft(appId);
 					unsub = webSocketService.onAppCodeFileUpdate(
 						appId,
@@ -362,6 +426,26 @@ export function BundledAppShell({ appId, appSlug, isPreview }: BundledAppShellPr
 	const showBanner =
 		buildErrors && buildErrors.length > 0 && !buildErrorDismissed;
 	const showMigrateNotice = migrateNotice && !migrateNoticeDismissed;
+
+	// standalone_v2: the app is a normal Vite build. Mount it SAME-DOCUMENT at
+	// /apps/{slug} (own createRoot + router + real SDK) so the address bar tracks
+	// the app's routes (deep-links/refresh work) — NOT an iframe (Codex P1-b/G7).
+	if (appModel === "standalone_v2") {
+		if (!v2Mount) {
+			return <AppLoadingSkeleton message="Loading application..." />;
+		}
+		return (
+			<StandaloneV2App
+				appId={appId}
+				appSlug={appSlug}
+				isPreview={isPreview}
+				entry={v2Mount.entry}
+				css={v2Mount.css}
+				baseUrl={v2Mount.baseUrl}
+				appOrgId={appOrgId}
+			/>
+		);
+	}
 
 	return (
 		<div className="relative h-full w-full">

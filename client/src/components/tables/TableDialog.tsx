@@ -28,6 +28,7 @@ import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCreateTable, useUpdateTable } from "@/services/tables";
 import type { TablePublic } from "@/services/tables";
+import { SolutionManagedBanner } from "@/components/solutions/SolutionManagedBanner";
 import type { components } from "@/lib/v1";
 import { PolicyEditor } from "./PolicyEditor";
 import { CodeEditor } from "./CodeEditor";
@@ -63,6 +64,9 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 	const updateTable = useUpdateTable();
 	const { isPlatformAdmin, user } = useAuth();
 	const isEditing = !!table;
+	// Solution-managed tables are read-only on the platform: deploy owns schema +
+	// policies (criterion 6). Row data stays editable elsewhere (criterion 7).
+	const isSolutionManaged = table?.is_solution_managed ?? false;
 
 	// Derive original organization_id from the table prop
 	const originalOrgId = useMemo(() => table?.organization_id ?? null, [table]);
@@ -181,6 +185,8 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 							: "Create a new data table for storing documents"}
 					</DialogDescription>
 				</DialogHeader>
+
+				{isSolutionManaged && <SolutionManagedBanner entityLabel="table" />}
 
 				<Form {...form}>
 					<form
@@ -308,7 +314,7 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 							>
 								Cancel
 							</Button>
-							<Button type="submit" disabled={isPending}>
+							<Button type="submit" disabled={isPending || isSolutionManaged}>
 								{isPending
 									? "Saving..."
 									: isEditing

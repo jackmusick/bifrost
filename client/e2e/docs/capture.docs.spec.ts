@@ -157,11 +157,17 @@ async function applyMocks(
 
 const manifestPath = path.join(DOCS_REPO_PATH, "screenshots.yaml");
 if (!fs.existsSync(manifestPath)) {
-  test(`docs manifest is missing at ${manifestPath}`, () => {
-    throw new Error(
-      `Expected screenshots.yaml at ${manifestPath}. Mount the docs repo at $DOCS_REPO_PATH.`,
-    );
-  });
+  // Only `./test.sh client docs` (the docker-compose.docs.yml overlay) sets
+  // DOCS_REPO_PATH in the container. When it's set but the manifest is
+  // missing, the mount is broken — fail loudly. When it's unset, this is a
+  // plain `client e2e` run without the docs overlay: declare no tests.
+  if (process.env.DOCS_REPO_PATH) {
+    test(`docs manifest is missing at ${manifestPath}`, () => {
+      throw new Error(
+        `Expected screenshots.yaml at ${manifestPath}. Mount the docs repo at $DOCS_REPO_PATH.`,
+      );
+    });
+  }
 } else {
   ensureTmpDir();
   // Clear stale results from prior runs.

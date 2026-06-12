@@ -48,6 +48,14 @@ class Agent(Base):
     organization_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("organizations.id"), default=None
     )
+    # Solution scoping - NULL means ad-hoc _repo/ entity. NOT NULL = solution-
+    # managed (read-only on platform). See solutions.py / success-criteria §3.2.
+    solution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("solutions.id", ondelete="CASCADE"),
+        nullable=True,
+        default=None,
+        index=True,
+    )
     owner_user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), default=None
     )

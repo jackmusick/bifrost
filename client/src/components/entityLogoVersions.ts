@@ -13,16 +13,16 @@
 
 import { useSyncExternalStore } from "react";
 
-type Key = `app:${string}` | `agent:${string}`;
+type Key = `app:${string}` | `agent:${string}` | `solution:${string}`;
 
 const versions = new Map<Key, number>();
 const listeners = new Set<() => void>();
 
-function key(type: "app" | "agent", id: string): Key {
+function key(type: "app" | "agent" | "solution", id: string): Key {
 	return `${type}:${id}` as Key;
 }
 
-export function bumpEntityLogo(type: "app" | "agent", id: string): void {
+export function bumpEntityLogo(type: "app" | "agent" | "solution", id: string): void {
 	const k = key(type, id);
 	versions.set(k, Date.now());
 	for (const fn of listeners) fn();
@@ -36,7 +36,7 @@ function subscribe(fn: () => void): () => void {
 }
 
 export function useEntityLogoVersion(
-	type: "app" | "agent",
+	type: "app" | "agent" | "solution",
 	id: string,
 ): number | undefined {
 	return useSyncExternalStore(

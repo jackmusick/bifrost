@@ -95,6 +95,7 @@ async def list_agents(context: Any) -> ToolResult:
                 org_id=org_id,
                 user_id=user_id,
                 is_superuser=is_admin,
+                is_external=context.is_external,
             )
 
             if is_admin:
@@ -139,10 +140,11 @@ async def get_agent(
     Returns:
         ToolResult with agent details
     """
-    from sqlalchemy import or_, select
+    from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
     from src.models.orm import Agent
+    from src.services.mcp_server.tools._org_scope import apply_mcp_org_scope
 
     logger.info(f"MCP get_agent called: agent_id={agent_id}, agent_name={agent_name}")
 
@@ -166,30 +168,16 @@ async def get_agent(
                     return error_result(f"'{agent_id}' is not a valid UUID")
                 query = query.where(Agent.id == uuid_id)
                 # Apply org scoping for non-admins (cascade filter for ID lookups)
-                if not context.is_platform_admin and context.org_id:
-                    org_uuid = UUID(str(context.org_id)) if isinstance(context.org_id, str) else context.org_id
-                    query = query.where(
-                        or_(
-                            Agent.organization_id == org_uuid,
-                            Agent.organization_id.is_(None)  # Global agents
-                        )
-                    )
+                query = apply_mcp_org_scope(query, Agent, context)
             else:
                 # Name-based lookup: use prioritized lookup (org-specific > global)
                 query = query.where(Agent.name == agent_name)
+                query = apply_mcp_org_scope(query, Agent, context)
                 if not context.is_platform_admin and context.org_id:
-                    org_uuid = UUID(str(context.org_id)) if isinstance(context.org_id, str) else context.org_id
-                    query = query.where(
-                        or_(
-                            Agent.organization_id == org_uuid,
-                            Agent.organization_id.is_(None)  # Global agents
-                        )
-                    )
                     # Prioritize org-specific over global (nulls come last)
-                    query = query.order_by(Agent.organization_id.desc().nulls_last()).limit(1)
-                elif not context.is_platform_admin:
-                    # No org context - only global agents
-                    query = query.where(Agent.organization_id.is_(None))
+                    query = query.order_by(
+                        Agent.organization_id.desc().nulls_last()
+                    ).limit(1)
 
             result = await db.execute(query)
             agent = result.scalar_one_or_none()
@@ -484,6 +472,19 @@ async def update_agent(
 
             if not agent:
                 return error_result(f"Agent '{agent_id}' not found. Use list_agents to see available agents.")
+
+            # Solution-managed agents are read-only (criterion 6). Refuse BEFORE
+            # any mutation: this tool issues Core bulk deletes (AgentTool /
+            # AgentDelegation) that bypass the ORM-flush backstop, and the agent
+            # executor commits even after an error_result — so a late guard would
+            # leave the bulk delete persisted (Codex #13).
+            from src.services.solutions.guard import (
+                SOLUTION_MANAGED_MESSAGE,
+                is_solution_managed,
+            )
+
+            if is_solution_managed(agent):
+                return error_result(SOLUTION_MANAGED_MESSAGE)
 
             # Check access for non-admins
             if not context.is_platform_admin:

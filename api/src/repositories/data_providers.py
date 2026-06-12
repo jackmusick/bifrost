@@ -63,7 +63,8 @@ class DataProviderRepository(OrgScopedRepository[Workflow]):
             .where(Workflow.is_active.is_(True))
         )
 
-        # Apply cascade scoping manually (count queries can't use _apply_cascade_scope)
+        # Apply cascade scoping manually (count queries can't use
+        # _apply_cascade_scope).
         if self.org_id is not None:
             query = query.where(
                 (Workflow.organization_id == self.org_id)

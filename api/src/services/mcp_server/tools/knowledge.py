@@ -39,6 +39,15 @@ async def search_knowledge(
     if not query:
         return error_result("query is required")
 
+    # External (portal/guest) principals have no direct knowledge surface:
+    # the store has no grant axis (no roles, no access_level), so it is
+    # implicitly internal-only. Externals reach KB content only THROUGH
+    # agents/workflows they were granted (the engine keeps the full cascade).
+    if bool(getattr(context, "is_external", False)):
+        return error_result(
+            "Access denied: external users cannot search the knowledge store directly."
+        )
+
     # Validate namespace access
     accessible = context.accessible_namespaces
     if not accessible:
@@ -64,7 +73,6 @@ async def search_knowledge(
             embedding_client = await get_embedding_client(db)
             query_embedding = await embedding_client.embed_single(query)
 
-            # Search knowledge store
             repo = KnowledgeRepository(
                 db, org_id=context.org_id if context.org_id else None, is_superuser=True
             )

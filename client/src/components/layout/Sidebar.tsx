@@ -23,6 +23,7 @@ import {
 	Network,
 	BookOpen,
 	ServerCog,
+	Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -174,6 +175,12 @@ const navSections: NavSection[] = [
 				title: "Roles",
 				href: "/roles",
 				icon: UserCog,
+				requiresPlatformAdmin: true,
+			},
+			{
+				title: "Solutions",
+				href: "/solutions",
+				icon: Boxes,
 				requiresPlatformAdmin: true,
 			},
 			{

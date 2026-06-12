@@ -318,6 +318,8 @@ class FormPublic(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     dependency_count: int = Field(default=0, description="Number of workflow dependencies this form uses")
+    is_solution_managed: bool = Field(default=False, description="True if managed by a deployed Solution (read-only on platform)")
+    solution_id: UUID | None = Field(default=None, description="UUID of the owning Solution install (null if not solution-managed)")
 
     @model_validator(mode="before")
     @classmethod
@@ -372,6 +374,8 @@ class FormPublic(BaseModel):
                 "is_active": data.is_active,
                 "created_at": data.created_at,
                 "updated_at": data.updated_at,
+                "is_solution_managed": getattr(data, "solution_id", None) is not None,
+                "solution_id": getattr(data, "solution_id", None),
             }
             # Forward an attached role_ids list when callers populate it
             # (via a separate FormRole query). Falls back to default_factory
@@ -380,6 +384,28 @@ class FormPublic(BaseModel):
             if attached_role_ids is not None:
                 data_dict["role_ids"] = list(attached_role_ids)
             return data_dict
+
+        # ORM object with no fields relationship loaded: map the handful of
+        # attributes pydantic needs, deriving the solution-managed flag (the ORM
+        # attr is solution_id; the DTO field is is_solution_managed).
+        if not isinstance(data, dict):
+            return {
+                "id": data.id,
+                "name": data.name,
+                "description": data.description,
+                "workflow_id": data.workflow_id,
+                "launch_workflow_id": data.launch_workflow_id,
+                "default_launch_params": data.default_launch_params,
+                "allowed_query_params": data.allowed_query_params,
+                "access_level": data.access_level,
+                "organization_id": data.organization_id,
+                "is_active": data.is_active,
+                "created_at": data.created_at,
+                "updated_at": data.updated_at,
+                "is_solution_managed": getattr(data, "solution_id", None) is not None,
+                "solution_id": getattr(data, "solution_id", None),
+                **({"role_ids": list(data.role_ids)} if getattr(data, "role_ids", None) is not None else {}),
+            }
 
         return data
 

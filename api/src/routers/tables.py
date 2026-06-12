@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -54,7 +54,9 @@ from src.models.contracts.tables import (
     TableUpdate,
 )
 from src.models.orm.custom_claims import CustomClaim as CustomClaimORM
+from src.models.orm.applications import Application
 from src.models.orm.tables import Document, Table
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.repositories.tables import TableRepository
 from src.core.pubsub import publish_document_change, publish_policy_changed
 from src.services.audit import emit_audit
@@ -574,10 +576,18 @@ async def get_table_or_404(
     which already enforces the org gate (its ID-lookup branch returns None
     for non-superusers reaching outside their own-or-global scope). Avoids
     bypassing the gate with raw SELECT.
+
+    Install-scoped name resolution (a Solution app via ``X-Bifrost-App`` OR a
+    solution workflow via ``ctx.solution_id``) is handled in
+    ``_resolve_solution_table_by_name`` below — own-first, then the org/_repo/
+    cascade. Gated by the org check.
     """
     target_org_id = _resolve_target_org_safe(ctx, scope)
     repo = TableRepository(
-        ctx.db, target_org_id, is_superuser=ctx.user.is_superuser
+        ctx.db,
+        target_org_id,
+        is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
     )
 
     # Try UUID lookup first — repo.get(id=...) enforces the org gate for
@@ -593,9 +603,19 @@ async def get_table_or_404(
             "falling back to name lookup"
         )
 
-    # Fall back to name lookup (cascade scoping: org-specific then global)
+    # Fall back to name lookup (cascade scoping: org-specific then global).
     if not table:
-        table = await repo.get_by_name(name_or_id)
+        # A Solution app (X-Bifrost-App header) references a table by NAME but
+        # can't know the per-install remapped id — resolve its OWN install's
+        # table. Without this, the name cascade excludes solution-managed rows
+        # and every row op 404s even though the app deployed the table (Codex #15).
+        # The lookup is GATED to the caller's org scope (Codex #16): the
+        # X-Bifrost-App header is client-supplied, so it must NOT let a caller
+        # reach a table in an org they can't see by passing a foreign app id.
+        install_table = await _resolve_solution_table_by_name(
+            ctx, name_or_id, target_org_id
+        )
+        table = install_table or await repo.get_by_name(name_or_id)
 
     if not table:
         raise HTTPException(
@@ -604,6 +624,60 @@ async def get_table_or_404(
         )
 
     return table
+
+
+async def _resolve_solution_table_by_name(
+    ctx: Context, name: str, target_org_id: UUID | None
+) -> Table | None:
+    """Resolve a table by name within a calling INSTALL (solution_id), preferring
+    it over a _repo/ table. The install scope comes from EITHER source on ``ctx``:
+
+    - A Solution **app** — ``ctx.app_id`` (``X-Bifrost-App``) → ``Application.solution_id``.
+    - A Solution **workflow** — ``ctx.solution_id`` (the SDK appends ``?solution=``
+      from the ExecutionContext when a solution workflow is executing).
+
+    One own-first resolver, two callers. GATED to the caller's org scope: both are
+    client-supplied, so a caller naming a FOREIGN org's install must not reach
+    that org's table (Codex #16) — a non-superuser only resolves a table whose org
+    is its own (``target_org_id``) or global (NULL); a superuser is unrestricted
+    (mirrors the OrgScopedRepository ID-lookup gate). Returns None for non-install
+    callers or when no in-scope install table matches.
+    """
+    solution_id: UUID | None = None
+    if ctx.solution_id:
+        # A solution workflow: the install id is on the execution context (the SDK
+        # appended ?solution=); no app lookup needed.
+        try:
+            solution_id = UUID(ctx.solution_id)
+        except ValueError:
+            return None
+    elif ctx.app_id:
+        try:
+            app_uuid = UUID(ctx.app_id)
+        except ValueError:
+            return None
+        solution_id = (
+            await ctx.db.execute(
+                select(Application.solution_id).where(Application.id == app_uuid)
+            )
+        ).scalar_one_or_none()
+    if solution_id is None:
+        return None
+    stmt = select(Table).where(
+        Table.name == name,
+        Table.solution_id == solution_id,
+    )
+    # Org gate: non-superusers see only their-org-or-global tables. (A solution's
+    # entities inherit the install's org, so gating the Table's org is sufficient
+    # and matches how repo.get(id=...) gates a UUID lookup.)
+    if not ctx.user.is_superuser:
+        stmt = stmt.where(
+            or_(
+                Table.organization_id == target_org_id,
+                Table.organization_id.is_(None),
+            )
+        )
+    return (await ctx.db.execute(stmt)).scalar_one_or_none()
 
 
 # =============================================================================
@@ -665,6 +739,10 @@ async def list_tables(
         default=None,
         description="Filter scope: 'global' for global only, org UUID for specific org.",
     ),
+    include_orphaned: bool = Query(
+        default=False,
+        description="Include orphaned tables (former-install data left by an uninstalled Solution).",
+    ),
 ) -> TableListResponse:
     """List all tables in the current scope (platform admin only)."""
     try:
@@ -676,7 +754,7 @@ async def list_tables(
         )
 
     repo = TableRepository(ctx.db, filter_org, is_superuser=True)
-    tables = await repo.list_tables(filter_type)
+    tables = await repo.list_tables(filter_type, include_orphaned=include_orphaned)
 
     return TableListResponse(
         tables=[TablePublic.model_validate(t) for t in tables],
@@ -845,7 +923,12 @@ async def update_table(
     ctx: Context,
     user: CurrentSuperuser,
 ) -> TablePublic:
-    """Update table metadata by ID (platform admin only)."""
+    """Update table metadata by ID (platform admin only).
+
+    Solution-managed tables are read-only here: deploy owns schema + policies.
+    Row DATA (documents) stays editable — that's runtime state (criterion 7).
+    """
+    await assert_entity_id_not_solution_managed(ctx.db, Table, table_id)
     if "policies" in data.model_fields_set:
         existing_table = (
             await ctx.db.execute(select(Table).where(Table.id == table_id))
@@ -899,6 +982,7 @@ async def delete_table(
     user: CurrentSuperuser,
 ) -> None:
     """Delete a table and all its documents by ID (platform admin only)."""
+    await assert_entity_id_not_solution_managed(ctx.db, Table, table_id)
     repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
     success = await repo.delete_table(table_id)
 

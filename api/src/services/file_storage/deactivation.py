@@ -172,10 +172,14 @@ class DeactivationProtectionService:
         pending_deactivations: list[PendingDeactivationInfo] = []
         available_replacements: list[AvailableReplacementInfo] = []
 
-        # Get all active workflows at this path
+        # Get all active workflows at this path. Scope to _repo/ rows
+        # (solution_id IS NULL): saving a WORKSPACE file must never consider a
+        # solution-managed workflow at the same path for deactivation — deploy is
+        # its sole writer (Codex #14).
         stmt = select(Workflow).where(
             Workflow.path == path,
             Workflow.is_active == True,  # noqa: E712
+            Workflow.solution_id.is_(None),
         )
         result = await self.db.execute(stmt)
         existing_workflows = list(result.scalars().all())
@@ -344,24 +348,29 @@ class DeactivationProtectionService:
         """
         from src.models import Workflow
 
-        # Find active workflows at this path that are not in the remaining functions
+        # Find active workflows at this path that are not in the remaining
+        # functions. Scope to _repo/ rows (solution_id IS NULL): a workspace file
+        # save must never deactivate a solution-managed workflow sharing this path
+        # (deploy owns those rows — Codex #14).
         if remaining_function_names:
             stmt = (
                 update(Workflow)
                 .where(
                     Workflow.path == path,
                     Workflow.is_active == True,  # noqa: E712
+                    Workflow.solution_id.is_(None),
                     ~Workflow.function_name.in_(remaining_function_names),
                 )
                 .values(is_active=False)
             )
         else:
-            # No functions remain - deactivate all workflows at this path
+            # No functions remain - deactivate all _repo/ workflows at this path
             stmt = (
                 update(Workflow)
                 .where(
                     Workflow.path == path,
                     Workflow.is_active == True,  # noqa: E712
+                    Workflow.solution_id.is_(None),
                 )
                 .values(is_active=False)
             )

@@ -219,6 +219,16 @@ def _clear_workspace_modules() -> None:
         )
     ]
 
+    # Cross-solution isolation note: a VirtualModuleLoader module records its
+    # __file__ as the BARE relative path (modules/foo.py), NOT a _solutions/{id}/-
+    # rooted path — so two installs' same-named modules both cache under the bare
+    # name. The eviction below handles this via the hash check: a solution
+    # module's name maps (through the _repo/-keyed index) to either no path or a
+    # DIFFERENT (_repo/) content hash than the one it loaded with, so it is
+    # cleared and the next import re-resolves within the now-active solution
+    # context. (An earlier _solutions/-prefix force-evict block was dead code —
+    # the prefix never matched — and was removed; this is the real mechanism.)
+
     # Check each module's hash — only clear if content changed
     modules_to_clear: list[str] = []
     modules_kept = 0
@@ -348,6 +358,24 @@ async def _execute_async(execution_id: str, worker_id: str) -> dict[str, Any]:
             "duration_ms": 0,
             "worker_id": worker_id,
         }
+
+    # 1b. Activate THIS execution's Solution import root, THEN evict workspace
+    # modules — in that order. The cross-solution eviction in
+    # _clear_workspace_modules keys off the active install (get_solution_context);
+    # if it ran with no context (as the template_process fork path did), a prior
+    # install's same-name module could survive the hash check and shadow this
+    # install's file, breaking multi-install isolation (Codex #9). _run_execution
+    # re-applies the same context for the run itself; setting it here is the
+    # idempotent prerequisite for a correctly-scoped eviction.
+    from src.core.module_cache_sync import set_solution_context
+
+    _exec_solution_id = context.get("solution_id")
+    if _exec_solution_id:
+        set_solution_context(
+            _exec_solution_id,
+            global_repo_access=bool(context.get("solution_global_repo_access", False)),
+        )
+    _clear_workspace_modules()
 
     # 2. Run the execution using existing worker logic
     # This reuses the shared _run_execution() from worker.py

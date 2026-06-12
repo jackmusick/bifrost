@@ -44,6 +44,7 @@ from src.routers.events import router as events_router
 from src.routers.hooks import router as hooks_router
 from src.routers.tables import router as tables_router
 from src.routers.claims import router as claims_router
+from src.routers.solutions import router as solutions_router
 from src.routers.knowledge_sources import router as knowledge_sources_router
 from src.routers.app_embed_secrets import router as app_embed_secrets_router
 from src.routers.applications import router as applications_router
@@ -116,6 +117,7 @@ __all__ = [
     "hooks_router",
     "tables_router",
     "claims_router",
+    "solutions_router",
     "knowledge_sources_router",
     "app_embed_secrets_router",
     "applications_router",

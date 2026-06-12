@@ -46,7 +46,7 @@ class AgentRepository(OrgScopedRepository[Agent]):
             selectinload(self.model.roles),
         )
 
-        # Build scope filter: cascade (org + global) OR user's own private agents
+        # Build scope filter: cascade (org + global) OR user's own private agents.
         cascade_conditions = []
         if self.org_id is not None:
             cascade_conditions.append(self.model.organization_id == self.org_id)

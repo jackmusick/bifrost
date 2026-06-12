@@ -15,9 +15,11 @@ import { searchNpmPackages, type NpmPackageResult } from "@/lib/npm-search";
 
 interface DependencyPanelProps {
 	appId: string;
+	/** Solution-managed app: deps are read-only (view, no add/remove). */
+	readOnly?: boolean;
 }
 
-export function DependencyPanel({ appId }: DependencyPanelProps) {
+export function DependencyPanel({ appId, readOnly = false }: DependencyPanelProps) {
 	const {
 		dependencies,
 		isLoading,
@@ -115,7 +117,8 @@ export function DependencyPanel({ appId }: DependencyPanelProps) {
 
 	return (
 		<div ref={panelRef} className="h-full flex flex-col">
-			{/* Search */}
+			{/* Search — hidden for solution-managed (read-only) apps */}
+			{!readOnly && (
 			<div className="p-2 border-b relative">
 				<div className="relative">
 					<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -163,6 +166,7 @@ export function DependencyPanel({ appId }: DependencyPanelProps) {
 					</div>
 				)}
 			</div>
+			)}
 
 			{/* Installed packages */}
 			<div className="flex-1 overflow-auto">
@@ -189,16 +193,18 @@ export function DependencyPanel({ appId }: DependencyPanelProps) {
 										{version}
 									</div>
 								</div>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="h-6 w-6 opacity-0 group-hover:opacity-100 flex-shrink-0"
-									onClick={() => removeDependency(name)}
-									disabled={isSaving}
-									title={`Remove ${name}`}
-								>
-									<X className="h-3.5 w-3.5" />
-								</Button>
+								{!readOnly && (
+									<Button
+										variant="ghost"
+										size="icon"
+										className="h-6 w-6 opacity-0 group-hover:opacity-100 flex-shrink-0"
+										onClick={() => removeDependency(name)}
+										disabled={isSaving}
+										title={`Remove ${name}`}
+									>
+										<X className="h-3.5 w-3.5" />
+									</Button>
+								)}
 							</div>
 						))}
 					</div>
