@@ -1,11 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { BifrostHeader } from "./bifrost-header";
 import { BifrostProvider } from "./provider";
 
 describe("BifrostHeader (SDK, self-contained)", () => {
-  it("renders the title + back-to-Bifrost link and logs out via context", () => {
+  it("renders the title + back-to-Bifrost link and logs out via the user menu", () => {
     const onLogout = vi.fn();
     render(
       <BifrostProvider baseUrl="https://dev.example" token="t" onLogout={onLogout}>
@@ -16,8 +16,27 @@ describe("BifrostHeader (SDK, self-contained)", () => {
     const back = screen.getByRole("link", { name: /Bifrost/i });
     expect(back.getAttribute("href")).toBe("https://dev.example/");
 
-    screen.getByRole("button", { name: /log out/i }).click();
+    // Log out lives inside the user-menu dropdown now — open it first.
+    fireEvent.click(screen.getByRole("button", { name: /account menu/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /log out/i }));
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the theme toggle ONLY when the app opts in via supportsTheme", () => {
+    const { rerender } = render(
+      <BifrostProvider baseUrl="https://dev.example" token="t">
+        <BifrostHeader title="X" />
+      </BifrostProvider>,
+    );
+    // Default: app did not declare supportsTheme → no toggle.
+    expect(screen.queryByRole("button", { name: /theme/i })).toBeNull();
+
+    rerender(
+      <BifrostProvider baseUrl="https://dev.example" token="t" supportsTheme>
+        <BifrostHeader title="X" />
+      </BifrostProvider>,
+    );
+    expect(screen.getByRole("button", { name: /theme/i })).toBeInTheDocument();
   });
 
   it("renders an optional action slot", () => {

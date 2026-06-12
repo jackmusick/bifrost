@@ -48,6 +48,12 @@ export interface BifrostAppBootstrap {
 	/** Ask the platform to log out (the app may expose a logout affordance). */
 	onLogout: () => void;
 	/**
+	 * The platform's current theme ("light" | "dark"), so a theme-aware app
+	 * starts in sync with the platform instead of flashing the wrong theme.
+	 * Apps that don't support theming ignore it.
+	 */
+	theme: "light" | "dark";
+	/**
 	 * The app MUST call this right after `createRoot(...)` with a teardown fn
 	 * (`() => root.unmount()`). The shell invokes it when the user navigates
 	 * away, so the app's React root, effects, timers, and websocket
@@ -157,6 +163,10 @@ export function StandaloneV2App({
 				clearAuthTokens();
 				window.location.assign("/login");
 			},
+			// The platform reflects its theme as the `dark` class on the document
+			// root (see ThemeContext). Hand the app the current theme so a
+			// theme-aware app starts in sync.
+			theme: document.documentElement.classList.contains("dark") ? "dark" : "light",
 			registerUnmount: (teardown: () => void) => {
 				appTeardown = teardown;
 			},

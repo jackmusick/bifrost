@@ -21,7 +21,7 @@
  * `GET /api/applications/{appId}` → logo data URL. Both degrade gracefully
  * (initials fallback, no logo) if unavailable.
  */
-import { ArrowLeft, ChevronDown, LogOut } from "lucide-react";
+import { ArrowLeft, ChevronDown, LogOut, Moon, Sun } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -165,7 +165,8 @@ const menuItemStyle: CSSProperties = {
 };
 
 export function BifrostHeader({ title, logo, action, className }: BifrostHeaderProps) {
-  const { baseUrl, appId, authedFetch, logout } = useBifrostContext();
+  const { baseUrl, appId, authedFetch, logout, theme, toggleTheme, supportsTheme } =
+    useBifrostContext();
   const platformRoot = `${baseUrl.replace(/\/$/, "")}/`;
   ensureStyle();
 
@@ -241,6 +242,21 @@ export function BifrostHeader({ title, logo, action, className }: BifrostHeaderP
 
       <div style={rightStyle}>
         {action}
+        {/* Light/dark toggle — only when the app declared it supports theming
+            (supportsTheme on BifrostProvider). Apps with hardcoded colors omit
+            it and no toggle shows. */}
+        {supportsTheme && (
+          <button
+            type="button"
+            className="bfh-trigger"
+            onClick={toggleTheme}
+            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
+            style={{ ...triggerStyle, padding: "0.4rem" }}
+          >
+            {theme === "dark" ? <Sun style={iconStyle} /> : <Moon style={iconStyle} />}
+          </button>
+        )}
         <div ref={menuRef} style={{ position: "relative" }}>
           <button
             type="button"
@@ -248,6 +264,7 @@ export function BifrostHeader({ title, logo, action, className }: BifrostHeaderP
             onClick={() => setOpen((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={open}
+            aria-label="Account menu"
             style={triggerStyle}
           >
             <span style={avatarStyle(26)}>

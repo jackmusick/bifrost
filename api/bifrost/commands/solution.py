@@ -331,6 +331,10 @@ const token = boot?.token ?? import.meta.env.VITE_BIFROST_TOKEN ?? "";
 const orgScope = boot?.orgScope ?? import.meta.env.VITE_BIFROST_ORG_ID ?? null;
 // This app's id, so useWorkflow scopes path refs to THIS install's workflow.
 const appId = boot?.appId ?? import.meta.env.VITE_BIFROST_APP_ID ?? null;
+// Platform theme, so a theme-aware app starts in sync. Add supportsTheme to
+// BifrostProvider (and key your styles off the `dark` class) to opt into the
+// header's light/dark toggle.
+const theme = boot?.theme ?? "light";
 
 const root = createRoot(mountEl);
 // Let the platform tear this root down on navigation (no leak).
@@ -338,7 +342,7 @@ boot?.registerUnmount?.(() => root.unmount());
 
 root.render(
   <StrictMode>
-    <BifrostProvider baseUrl={baseUrl} token={token} orgScope={orgScope} appId={appId} onLogout={boot?.onLogout}>
+    <BifrostProvider baseUrl={baseUrl} token={token} orgScope={orgScope} appId={appId} theme={theme} onLogout={boot?.onLogout}>
       <BrowserRouter basename={basename}>
         <App />
       </BrowserRouter>

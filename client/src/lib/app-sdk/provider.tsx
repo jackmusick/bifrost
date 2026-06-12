@@ -19,10 +19,12 @@
  */
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 
@@ -46,9 +48,30 @@ export interface BifrostContextValue {
   authedFetch: typeof fetch;
   /** Log the user out. No-op if the app did not supply `onLogout`. */
   logout: () => void;
+  /**
+   * Current theme. Mirrors the platform contract: persisted in
+   * localStorage["theme"] and reflected as the `dark` class on the document
+   * root, so an app that keys its tokens off `.dark` (or Tailwind's `dark:`)
+   * follows the platform — and the platform's own preference — automatically.
+   */
+  theme: Theme;
+  /** Set the theme. Persists + updates the root class; notifies the host. */
+  setTheme: (theme: Theme) => void;
+  /** Convenience: flip light↔dark. */
+  toggleTheme: () => void;
+  /**
+   * Whether this app declared it SUPPORTS theming (`supportsTheme` prop).
+   * BifrostHeader only renders its light/dark toggle when this is true, so an
+   * app with hardcoded colors never shows a toggle that would half-break it.
+   */
+  supportsTheme: boolean;
 }
 
+export type Theme = "light" | "dark";
+
 const BifrostContext = createContext<BifrostContextValue | null>(null);
+
+const THEME_KEY = "theme";
 
 export interface BifrostProviderProps {
   baseUrl: string;
@@ -60,7 +83,39 @@ export interface BifrostProviderProps {
   fetchImpl?: typeof fetch;
   /** Called when the app requests logout (e.g. a platform "log out" action). */
   onLogout?: () => void;
+  /**
+   * Declares that this app responds to theme changes (its tokens key off the
+   * `dark` class / provided theme). When true, BifrostHeader shows the
+   * light/dark toggle. Apps with hardcoded colors omit it (default false) and
+   * stay in whatever theme the platform last set, with no toggle. The app owns
+   * this because the app renders <BifrostProvider> + <BifrostHeader>.
+   */
+  supportsTheme?: boolean;
+  /**
+   * Host-controlled theme. When the platform mounts the app it can pass its
+   * current theme so the app starts in sync; omit to let the provider read the
+   * shared localStorage["theme"]. `onThemeChange` lets the host persist/echo a
+   * change the app makes.
+   */
+  theme?: Theme;
+  onThemeChange?: (theme: Theme) => void;
   children: ReactNode;
+}
+
+function readStoredTheme(initial?: Theme): Theme {
+  if (initial) return initial;
+  if (typeof localStorage !== "undefined") {
+    const t = localStorage.getItem(THEME_KEY);
+    if (t === "light" || t === "dark") return t;
+  }
+  return "light";
+}
+
+function applyThemeClass(theme: Theme): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (theme === "dark") root.classList.add("dark");
+  else root.classList.remove("dark");
 }
 
 function joinUrl(baseUrl: string, input: RequestInfo | URL): RequestInfo | URL {
@@ -80,8 +135,38 @@ export function BifrostProvider({
   appId = null,
   fetchImpl,
   onLogout,
+  supportsTheme = false,
+  theme: themeProp,
+  onThemeChange,
   children,
 }: BifrostProviderProps) {
+  // Theme state: seed from the host prop, else the shared localStorage key.
+  // Apply the `dark` root class on mount + every change so the app (and the
+  // platform) stay visually in sync through one contract.
+  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme(themeProp));
+  useEffect(() => {
+    applyThemeClass(theme);
+  }, [theme]);
+  // Follow the host if it drives the theme prop (platform-controlled mounts).
+  useEffect(() => {
+    if (themeProp && themeProp !== theme) setThemeState(themeProp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeProp]);
+
+  const setTheme = useCallback(
+    (next: Theme) => {
+      setThemeState(next);
+      if (typeof localStorage !== "undefined") localStorage.setItem(THEME_KEY, next);
+      applyThemeClass(next);
+      onThemeChange?.(next);
+    },
+    [onThemeChange],
+  );
+  const toggleTheme = useCallback(
+    () => setTheme(theme === "dark" ? "light" : "dark"),
+    [theme, setTheme],
+  );
+
   const value = useMemo<BifrostContextValue>(() => {
     const baseFetch = fetchImpl ?? globalThis.fetch;
     const authedFetch: typeof fetch = (input, init) => {
@@ -102,8 +187,12 @@ export function BifrostProvider({
       appId,
       authedFetch,
       logout,
+      theme,
+      setTheme,
+      toggleTheme,
+      supportsTheme,
     };
-  }, [baseUrl, token, orgScope, appId, fetchImpl, onLogout]);
+  }, [baseUrl, token, orgScope, appId, fetchImpl, onLogout, theme, setTheme, toggleTheme, supportsTheme]);
 
   // Route the data SDK (tables.*/useTable) through this provider so a v2 app
   // in `npm run dev` (different origin) reaches the configured Bifrost API with
